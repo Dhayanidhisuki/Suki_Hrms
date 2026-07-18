@@ -88,7 +88,7 @@ export default function EmployeeListPage() {
         <h1 className="text-2xl font-bold">Employee Master</h1>
         <Link
           href="/employees/new"
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+          className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition"
         >
           + Add Employee
         </Link>
@@ -101,7 +101,7 @@ export default function EmployeeListPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by code or name..."
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
         />
         <button
           type="submit"
@@ -112,7 +112,7 @@ export default function EmployeeListPage() {
       </form>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+        <div className="bg-gray-50 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
@@ -158,26 +158,26 @@ export default function EmployeeListPage() {
                       {emp.jobInfos[0]?.employeeType.name ?? '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <span className={`px-2 inline-flex text-xs leading-5 rounded-full border ${
                         emp.status === 'active'
-                          ? 'bg-green-100 text-green-800'
+                          ? 'font-semibold border-gray-300 text-gray-700'
                           : emp.status === 'resigned' || emp.status === 'terminated'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
+                          ? 'font-medium border-gray-200 text-gray-400'
+                          : 'font-semibold border-gray-400 text-gray-700'
                       }`}>
                         {emp.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Link href={`/employees/${emp.id}`} className="text-blue-600 hover:text-blue-900 mr-3">
+                      <Link href={`/employees/${emp.id}`} className="text-gray-700 hover:text-gray-900 mr-3">
                         View
                       </Link>
-                      <Link href={`/employees/${emp.id}/edit`} className="text-indigo-600 hover:text-indigo-900 mr-3">
+                      <Link href={`/employees/${emp.id}/edit`} className="text-gray-700 hover:text-gray-900 mr-3">
                         Edit
                       </Link>
                       <button
                         onClick={() => handleDelete(emp.id)}
-                        className="text-red-600 hover:text-red-900"
+                        className="text-gray-500 hover:text-gray-900"
                       >
                         Delete
                       </button>

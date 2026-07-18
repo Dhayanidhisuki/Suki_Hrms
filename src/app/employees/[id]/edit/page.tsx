@@ -86,7 +86,7 @@ export default function EmployeeEditPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+        <div className="bg-gray-50 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
@@ -100,7 +100,7 @@ export default function EmployeeEditPage() {
               type="text"
               value={employeeCode}
               onChange={(e) => setEmployeeCode(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -108,7 +108,7 @@ export default function EmployeeEditPage() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             >
               <option value="active">Active</option>
               <option value="on-leave">On Leave</option>
@@ -123,7 +123,7 @@ export default function EmployeeEditPage() {
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -132,7 +132,7 @@ export default function EmployeeEditPage() {
               type="text"
               value={middleName}
               onChange={(e) => setMiddleName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -142,7 +142,7 @@ export default function EmployeeEditPage() {
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -151,7 +151,7 @@ export default function EmployeeEditPage() {
               type="number"
               value={reportingManagerId}
               onChange={(e) => setReportingManagerId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function EmployeeEditPage() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+            className="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition disabled:opacity-50"
           >
             {loading ? 'Saving...' : 'Save Changes'}
           </button>

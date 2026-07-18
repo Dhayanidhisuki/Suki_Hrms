@@ -119,7 +119,7 @@ export default function EmployeeViewPage() {
   }, [params?.id]);
 
   if (loading) return <div className="p-6 text-center text-gray-500">Loading...</div>;
-  if (error) return <div className="p-6 text-center text-red-600">{error}</div>;
+  if (error) return <div className="p-6 text-center text-gray-700 font-medium">{error}</div>;
   if (!employee) return <div className="p-6 text-center text-gray-500">Employee not found</div>;
 
   const currentJob = employee.jobInfos.find((j) => !j.effectiveTo) ?? employee.jobInfos[0];
@@ -142,7 +142,7 @@ export default function EmployeeViewPage() {
         <div className="flex gap-2">
           <Link
             href={`/employees/${employee.id}/edit`}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition"
           >
             Edit
           </Link>
@@ -157,10 +157,10 @@ export default function EmployeeViewPage() {
 
       {/* Status badge */}
       <div className="mb-4">
-        <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
+        <span className={`px-3 py-1 text-sm rounded-full border ${
           employee.status === 'active'
-            ? 'bg-green-100 text-green-800'
-            : 'bg-red-100 text-red-800'
+            ? 'font-semibold border-gray-300 text-gray-700'
+            : 'font-medium border-gray-200 text-gray-400'
         }`}>
           {employee.status}
         </span>
@@ -231,7 +231,7 @@ export default function EmployeeViewPage() {
                 <li key={d.id} className="text-sm">
                   <span className="font-medium">{d.name}</span>
                   <span className="text-gray-500"> — {d.relationship}</span>
-                  {d.isDependent && <span className="text-green-600 ml-2">(dependent)</span>}
+                  {d.isDependent && <span className="text-gray-500 ml-2">(dependent)</span>}
                 </li>
               ))}
             </ul>
@@ -285,11 +285,11 @@ export default function EmployeeViewPage() {
                   <span className="font-medium capitalize">{d.docType}</span>
                   {d.docNumber && <span className="text-gray-500"> — {d.docNumber}</span>}
                   {d.expiryDate && (
-                    <span className={`ml-2 text-xs ${new Date(d.expiryDate) < new Date() ? 'text-red-600' : 'text-gray-400'}`}>
+                    <span className={`ml-2 text-xs ${new Date(d.expiryDate) < new Date() ? 'font-semibold text-gray-900' : 'text-gray-400'}`}>
                       Expires: {formatDate(d.expiryDate)}
                     </span>
                   )}
-                  {d.isVerified && <span className="text-green-600 ml-2 text-xs">✓ verified</span>}
+                  {d.isVerified && <span className="text-gray-600 ml-2 text-xs">✓ verified</span>}
                 </li>
               ))}
             </ul>

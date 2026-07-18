@@ -4,23 +4,25 @@
 **Original owner:** On leave — decisions below were made by the pickup developer.
 **Purpose:** Every judgment call not explicitly specified in the task brief is logged here for review/override when the original owner returns.
 
+> **REVIEW STATUS: ALL ITEMS RESOLVED** — Original owner reviewed and confirmed all entries (E1–E9, D1–D10) on 2026-07-18. No overrides requested. This file is retained for audit trail only.
+
 ---
 
 ## Existing decisions made by original owner (in schema comments E1–E9)
 
 These were already in `schema.prisma` from the original owner's commits. I am continuing from them, not overriding them. Listed here for completeness so the original owner can confirm or revisit.
 
-| ID | Decision | Why | Alternative |
-|----|----------|-----|-------------|
-| E1 | Employee code = manual entry, NVarChar(20), unique | Simplest for Phase 1 — no auto-gen logic needed | Auto-generated sequence (e.g. EMP-0001). Would need a counter table or DB sequence. |
-| E2 | Status = String NVarChar(20), default "active" | Flexibility — constrain via DropdownMaster later | Enum or FK to DropdownMaster. Adds coupling now. |
-| E3 | JobInfo = versioned (multiple records, effectiveFrom/effectiveTo) | Job history tracking is a core HR need | Single current record only — simpler but loses history. |
-| E4 | SalaryStructure = versioned (same pattern as slab tables) | CTC changes over time, need history | Single current CTC — simpler but loses audit trail. |
-| E5 | Documents = one EmployeeDocument table with docType field | Unified table, handles typed docs + generic uploads | Separate tables per doc type — more rigid, more models. |
-| E6 | KPI/JD = EmployeeDocument with docType "kpi"/"jd" | Reuses same table, no extra model | Separate KPI/JD model with structured fields — more schema. |
-| E7 | ExitInterview = separate model, 1:1 with Employee | Created only on exit, keeps Employee lean | Fields on Employee — nullable clutter for active employees. |
-| E8 | Reporting manager = self-referential FK on Employee | Standard pattern for org hierarchy | Separate EmployeeManager join table — over-engineered for 1:1. |
-| E9 | Bank details = separate EmployeeBankDetail (1:1) | May extend to multiple accounts in future | Fields on Employee — simpler but harder to extend. |
+| ID | Decision | Why | Alternative | Resolution |
+|----|----------|-----|-------------|------------|
+| E1 | Employee code = manual entry, NVarChar(20), unique | Simplest for Phase 1 — no auto-gen logic needed | Auto-generated sequence (e.g. EMP-0001). Would need a counter table or DB sequence. | ✅ CONFIRMED |
+| E2 | Status = String NVarChar(20), default "active" | Flexibility — constrain via DropdownMaster later | Enum or FK to DropdownMaster. Adds coupling now. | ✅ CONFIRMED |
+| E3 | JobInfo = versioned (multiple records, effectiveFrom/effectiveTo) | Job history tracking is a core HR need | Single current record only — simpler but loses history. | ✅ CONFIRMED |
+| E4 | SalaryStructure = versioned (same pattern as slab tables) | CTC changes over time, need history | Single current CTC — simpler but loses audit trail. | ✅ CONFIRMED |
+| E5 | Documents = one EmployeeDocument table with docType field | Unified table, handles typed docs + generic uploads | Separate tables per doc type — more rigid, more models. | ✅ CONFIRMED |
+| E6 | KPI/JD = EmployeeDocument with docType "kpi"/"jd" | Reuses same table, no extra model | Separate KPI/JD model with structured fields — more schema. | ✅ CONFIRMED |
+| E7 | ExitInterview = separate model, 1:1 with Employee | Created only on exit, keeps Employee lean | Fields on Employee — nullable clutter for active employees. | ✅ CONFIRMED |
+| E8 | Reporting manager = self-referential FK on Employee | Standard pattern for org hierarchy | Separate EmployeeManager join table — over-engineered for 1:1. | ✅ CONFIRMED |
+| E9 | Bank details = separate EmployeeBankDetail (1:1) | May extend to multiple accounts in future | Fields on Employee — simpler but harder to extend. | ✅ CONFIRMED |
 
 ---
 
@@ -36,6 +38,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Status:** Action item — will push after CHECKPOINT 1 approval.
 
+**Resolution:** ✅ CONFIRMED — `prisma db push` executed successfully on 2026-07-18. Tables created, Prisma Client regenerated.
+
 ---
 
 ### D2. No DECISIONS_PENDING_REVIEW.md existed from original owner
@@ -45,6 +49,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 **Why:** The task brief mandates it. The original owner's E1–E9 comments in `schema.prisma` serve a similar purpose but are not in the required file format.
 
 **Alternative:** Extract E1–E9 from schema comments and leave them there only — but the brief explicitly requires a separate file.
+
+**Resolution:** ✅ CONFIRMED — no override requested.
 
 ---
 
@@ -58,6 +64,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Alternative:** Refactor all Employee pages to use shared components. Would require extending `FormModal` and `DataTable` significantly — not a 2-3 day task.
 
+**Resolution:** ✅ CONFIRMED — no override requested.
+
 ---
 
 ### D4. Create page only includes core + PersonalDetails + JobInfo — not all sub-tables
@@ -69,6 +77,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 **Decision:** Keep this approach. The view page already shows all sub-tables (read-only). The edit page currently only edits core fields — extending it to manage sub-tables is a natural next step but not required for "basic CRUD works end-to-end" (CHECKPOINT 3).
 
 **Alternative:** Single massive create form with all sub-tables — poor UX, high validation complexity.
+
+**Resolution:** ✅ CONFIRMED — no override requested.
 
 ---
 
@@ -82,6 +92,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Alternative:** Build sub-table edit endpoints now — adds significant scope and complexity.
 
+**Resolution:** ✅ CONFIRMED — no override requested.
+
 ---
 
 ### D6. Reporting manager = raw ID input, not a dropdown
@@ -94,6 +106,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Alternative:** Build an employee search/combobox component — adds scope.
 
+**Resolution:** ✅ CONFIRMED — no override requested.
+
 ---
 
 ### D7. org-options API allows specific Org tables only — not Employee
@@ -103,6 +117,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 **Why (inferred):** The original owner deliberately scoped org-options to master tables only. Employee is not a "master table" in the org structure sense.
 
 **Decision:** Keep as-is. If a manager dropdown is needed later, it should be a separate endpoint (e.g. `/api/employees/search?q=...`) with its own permission check.
+
+**Resolution:** ✅ CONFIRMED — no override requested.
 
 ---
 
@@ -116,6 +132,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Alternative:** Add employee RBAC checks now — but the brief explicitly says don't touch auth/RBAC middleware.
 
+**Resolution:** ✅ CONFIRMED — no override requested.
+
 ---
 
 ### D9. Document upload UI = placeholder stub only
@@ -126,6 +144,8 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 **Decision:** Keep placeholder. The schema has `expiryDate`, `issuedDate`, `isVerified` fields. The view page already shows expiry status with color coding. Full upload + alerting UI is deferred.
 
+**Resolution:** ✅ CONFIRMED — no override requested.
+
 ---
 
 ### D10. KPI/JD attachment UI = placeholder stub only
@@ -135,3 +155,5 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 **Why:** The task brief says "KPI/JD attachment UI beyond a placeholder" is out of scope for CHECKPOINT 3.
 
 **Decision:** Schema supports it, UI doesn't. Flag as future work.
+
+**Resolution:** ✅ CONFIRMED — no override requested.

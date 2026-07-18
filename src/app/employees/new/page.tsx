@@ -122,7 +122,7 @@ export default function EmployeeCreatePage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+        <div className="bg-gray-50 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
@@ -139,7 +139,7 @@ export default function EmployeeCreatePage() {
                 type="text"
                 value={employeeCode}
                 onChange={(e) => setEmployeeCode(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -147,7 +147,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="active">Active</option>
                 <option value="on-leave">On Leave</option>
@@ -162,7 +162,7 @@ export default function EmployeeCreatePage() {
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -171,7 +171,7 @@ export default function EmployeeCreatePage() {
                 type="text"
                 value={middleName}
                 onChange={(e) => setMiddleName(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -181,7 +181,7 @@ export default function EmployeeCreatePage() {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -190,7 +190,7 @@ export default function EmployeeCreatePage() {
                 type="number"
                 value={reportingManagerId}
                 onChange={(e) => setReportingManagerId(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
           </div>
@@ -206,7 +206,7 @@ export default function EmployeeCreatePage() {
                 type="email"
                 value={personalEmail}
                 onChange={(e) => setPersonalEmail(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -215,7 +215,7 @@ export default function EmployeeCreatePage() {
                 type="tel"
                 value={mobileNumber}
                 onChange={(e) => setMobileNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -224,7 +224,7 @@ export default function EmployeeCreatePage() {
                 type="date"
                 value={dateOfBirth}
                 onChange={(e) => setDateOfBirth(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -232,7 +232,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="">—</option>
                 <option value="male">Male</option>
@@ -245,7 +245,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={bloodGroup}
                 onChange={(e) => setBloodGroup(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="">—</option>
                 {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
@@ -265,7 +265,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="">—</option>
                 {departments.map(d => (
@@ -278,7 +278,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={designationId}
                 onChange={(e) => setDesignationId(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="">—</option>
                 {designations.map(d => (
@@ -291,7 +291,7 @@ export default function EmployeeCreatePage() {
               <select
                 value={employeeTypeId}
                 onChange={(e) => setEmployeeTypeId(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               >
                 <option value="">—</option>
                 {employeeTypes.map(t => (
@@ -305,7 +305,7 @@ export default function EmployeeCreatePage() {
                 type="date"
                 value={joinDate}
                 onChange={(e) => setJoinDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div className="col-span-2">
@@ -314,7 +314,7 @@ export default function EmployeeCreatePage() {
                 type="text"
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
           </div>
@@ -333,7 +333,7 @@ export default function EmployeeCreatePage() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+            className="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition disabled:opacity-50"
           >
             {loading ? 'Creating...' : 'Create Employee'}
           </button>
