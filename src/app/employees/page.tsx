@@ -8,6 +8,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
+interface ExpirySummary {
+  total: number;
+  expired: number;
+  expiringSoon: number;
+  valid: number;
+  noExpiry: number;
+}
+
 interface EmployeeListItem {
   id: number;
   employeeCode: string;
@@ -26,6 +34,7 @@ interface EmployeeListItem {
     employeeType: { name: string };
   }>;
   reportingManager: { firstName: string; lastName: string; employeeCode: string } | null;
+  documentExpirySummary: ExpirySummary;
 }
 
 interface ApiResponse {
@@ -136,6 +145,7 @@ export default function EmployeeListPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Designation</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Docs</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -167,6 +177,24 @@ export default function EmployeeListPage() {
                       }`}>
                         {emp.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {emp.documentExpirySummary.total === 0 ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
+                        <span>
+                          {emp.documentExpirySummary.expired > 0 && (
+                            <span className="font-bold text-gray-900">{emp.documentExpirySummary.expired} expired</span>
+                          )}
+                          {emp.documentExpirySummary.expired > 0 && emp.documentExpirySummary.expiringSoon > 0 && <span className="text-gray-400">, </span>}
+                          {emp.documentExpirySummary.expiringSoon > 0 && (
+                            <span className="font-semibold text-gray-700">{emp.documentExpirySummary.expiringSoon} expiring</span>
+                          )}
+                          {emp.documentExpirySummary.expired === 0 && emp.documentExpirySummary.expiringSoon === 0 && (
+                            <span className="text-gray-400">{emp.documentExpirySummary.total} valid</span>
+                          )}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <Link href={`/employees/${emp.id}`} className="text-gray-700 hover:text-gray-900 mr-3">

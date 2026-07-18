@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { employeeUpdateSchema } from '@/lib/validations/employee';
+import { annotateDocumentExpiry, summarizeExpiry } from '@/lib/document-expiry';
 
 export async function GET(
   _request: NextRequest,
@@ -58,7 +59,14 @@ export async function GET(
     return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
   }
 
-  return NextResponse.json(employee);
+  const annotatedDocuments = employee.documents.map(annotateDocumentExpiry);
+  const documentExpirySummary = summarizeExpiry(employee.documents);
+
+  return NextResponse.json({
+    ...employee,
+    documents: annotatedDocuments,
+    documentExpirySummary,
+  });
 }
 
 export async function PUT(

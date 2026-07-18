@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { employeeCreateSchema } from '@/lib/validations/employee';
+import { summarizeExpiry } from '@/lib/document-expiry';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -48,13 +49,19 @@ export async function GET(request: NextRequest) {
         reportingManager: {
           select: { id: true, firstName: true, lastName: true, employeeCode: true },
         },
+        documents: {
+          select: { id: true, expiryDate: true },
+        },
       },
     }),
     prisma.employee.count({ where }),
   ]);
 
   return NextResponse.json({
-    data: employees,
+    data: employees.map((emp) => ({
+      ...emp,
+      documentExpirySummary: summarizeExpiry(emp.documents),
+    })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 }

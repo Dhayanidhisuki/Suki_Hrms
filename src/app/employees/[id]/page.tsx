@@ -84,9 +84,20 @@ interface EmployeeDetail {
     id: number;
     docType: string;
     docNumber: string | null;
+    fileName: string | null;
+    issuedDate: string | null;
     expiryDate: string | null;
     isVerified: boolean;
+    expiryStatus: 'valid' | 'expiring_soon' | 'expired' | 'no_expiry';
+    daysToExpiry: number | null;
   }>;
+  documentExpirySummary: {
+    total: number;
+    expired: number;
+    expiringSoon: number;
+    valid: number;
+    noExpiry: number;
+  };
   assetAllocations: Array<{
     id: number;
     allocatedDate: string;
@@ -100,13 +111,45 @@ interface EmployeeDetail {
   reportingManager: { firstName: string; lastName: string; employeeCode: string } | null;
 }
 
+type ExpiryStatus = 'valid' | 'expiring_soon' | 'expired' | 'no_expiry';
+
+function ExpiryPill({ status, daysToExpiry }: { status: ExpiryStatus; daysToExpiry: number | null }) {
+  if (status === 'no_expiry') return null;
+  const styles: Record<ExpiryStatus, string> = {
+    valid: 'text-gray-400',
+    expiring_soon: 'font-semibold border border-gray-400 text-gray-700 px-1.5 rounded',
+    expired: 'font-bold border border-gray-900 text-gray-900 px-1.5 rounded',
+    no_expiry: '',
+  };
+  const labels: Record<ExpiryStatus, string> = {
+    valid: '',
+    expiring_soon: `Expiring in ${daysToExpiry}d`,
+    expired: `Expired ${Math.abs(daysToExpiry ?? 0)}d ago`,
+    no_expiry: '',
+  };
+  if (status === 'valid') {
+    return <span className="text-xs text-gray-400 ml-2">Valid</span>;
+  }
+  return <span className={`text-xs ml-2 ${styles[status]}`}>{labels[status]}</span>;
+}
+
 export default function EmployeeViewPage() {
   const params = useParams();
   const [employee, setEmployee] = useState<EmployeeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Document attach form state
+  const [showDocForm, setShowDocForm] = useState(false);
+  const [docType, setDocType] = useState('kpi');
+  const [docNumber, setDocNumber] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [issuedDate, setIssuedDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [docLoading, setDocLoading] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  const fetchEmployee = () => {
     if (!params?.id) return;
     fetch(`/api/employees/${params.id}`)
       .then(async (res) => {
@@ -116,7 +159,57 @@ export default function EmployeeViewPage() {
       .then((data) => setEmployee(data))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchEmployee();
   }, [params?.id]);
+
+  const handleAttachDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDocLoading(true);
+    setDocError(null);
+    try {
+      const res = await fetch(`/api/employees/${params.id}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          docType,
+          docNumber: docNumber || null,
+          fileName: fileName || null,
+          issuedDate: issuedDate || null,
+          expiryDate: expiryDate || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Failed to attach document');
+      }
+      setShowDocForm(false);
+      setDocType('kpi');
+      setDocNumber('');
+      setFileName('');
+      setIssuedDate('');
+      setExpiryDate('');
+      fetchEmployee();
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setDocLoading(false);
+    }
+  };
+
+  const handleDeleteDoc = async (docId: number) => {
+    if (!confirm('Remove this document?')) return;
+    const res = await fetch(`/api/employees/${params.id}/documents/${docId}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      fetchEmployee();
+    } else {
+      alert('Failed to delete document');
+    }
+  };
 
   if (loading) return <div className="p-6 text-center text-gray-500">Loading...</div>;
   if (error) return <div className="p-6 text-center text-gray-700 font-medium">{error}</div>;
@@ -274,26 +367,159 @@ export default function EmployeeViewPage() {
           )}
         </Section>
 
-        {/* Documents */}
-        <Section title={`Documents (${employee.documents.length})`}>
-          {employee.documents.length === 0 ? (
-            <p className="text-sm text-gray-400">No documents uploaded (placeholder)</p>
-          ) : (
-            <ul className="space-y-1">
-              {employee.documents.map((d) => (
-                <li key={d.id} className="text-sm">
-                  <span className="font-medium capitalize">{d.docType}</span>
-                  {d.docNumber && <span className="text-gray-500"> — {d.docNumber}</span>}
-                  {d.expiryDate && (
-                    <span className={`ml-2 text-xs ${new Date(d.expiryDate) < new Date() ? 'font-semibold text-gray-900' : 'text-gray-400'}`}>
-                      Expires: {formatDate(d.expiryDate)}
-                    </span>
-                  )}
-                  {d.isVerified && <span className="text-gray-600 ml-2 text-xs">✓ verified</span>}
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* Documents (typed docs: Aadhaar, PAN, Passport, DL, other) */}
+        <Section title={`Documents (${employee.documents.filter(d => !['kpi', 'jd'].includes(d.docType)).length})`}>
+          {(() => {
+            const typedDocs = employee.documents.filter(d => !['kpi', 'jd'].includes(d.docType));
+            if (typedDocs.length === 0) {
+              return <p className="text-sm text-gray-400">No documents recorded</p>;
+            }
+            return (
+              <ul className="space-y-2">
+                {typedDocs.map((d) => (
+                  <li key={d.id} className="text-sm flex items-start justify-between">
+                    <div>
+                      <span className="font-medium capitalize">{d.docType}</span>
+                      {d.docNumber && <span className="text-gray-500"> — {d.docNumber}</span>}
+                      {d.issuedDate && <span className="text-gray-400 block text-xs">Issued: {formatDate(d.issuedDate)}</span>}
+                      {d.expiryDate && <span className="text-gray-400 text-xs">Expires: {formatDate(d.expiryDate)}</span>}
+                      <ExpiryPill status={d.expiryStatus} daysToExpiry={d.daysToExpiry} />
+                      {d.isVerified && <span className="text-gray-600 ml-2 text-xs">✓ verified</span>}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteDoc(d.id)}
+                      className="text-gray-400 hover:text-gray-900 text-xs ml-2"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </Section>
+
+        {/* KPI / JD Attachments */}
+        <Section title={`KPI / JD Attachments (${employee.documents.filter(d => ['kpi', 'jd'].includes(d.docType)).length})`}>
+          {(() => {
+            const kpiJdDocs = employee.documents.filter(d => ['kpi', 'jd'].includes(d.docType));
+            return (
+              <>
+                {kpiJdDocs.length > 0 && (
+                  <ul className="space-y-2 mb-3">
+                    {kpiJdDocs.map((d) => (
+                      <li key={d.id} className="text-sm flex items-start justify-between">
+                        <div>
+                          <span className="font-medium uppercase">{d.docType}</span>
+                          {d.docNumber && <span className="text-gray-500"> — {d.docNumber}</span>}
+                          {d.fileName && <span className="text-gray-400 block text-xs">{d.fileName}</span>}
+                          {d.issuedDate && <span className="text-gray-400 block text-xs">Issued: {formatDate(d.issuedDate)}</span>}
+                          {d.expiryDate && (
+                            <>
+                              <span className="text-gray-400 text-xs">Expires: {formatDate(d.expiryDate)}</span>
+                              <ExpiryPill status={d.expiryStatus} daysToExpiry={d.daysToExpiry} />
+                            </>
+                          )}
+                          {d.isVerified && <span className="text-gray-600 ml-2 text-xs">✓ verified</span>}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteDoc(d.id)}
+                          className="text-gray-400 hover:text-gray-900 text-xs ml-2"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {kpiJdDocs.length === 0 && !showDocForm && (
+                  <p className="text-sm text-gray-400 mb-3">No KPI/JD attachments</p>
+                )}
+                {docError && (
+                  <div className="bg-gray-50 border border-gray-300 text-gray-700 px-3 py-2 rounded-lg mb-3 text-sm">
+                    {docError}
+                  </div>
+                )}
+                {showDocForm ? (
+                  <form onSubmit={handleAttachDoc} className="space-y-3 border border-gray-200 rounded-lg p-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Type *</label>
+                        <select
+                          value={docType}
+                          onChange={(e) => setDocType(e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        >
+                          <option value="kpi">KPI</option>
+                          <option value="jd">JD</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Reference Number</label>
+                        <input
+                          type="text"
+                          value={docNumber}
+                          onChange={(e) => setDocNumber(e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">File Name</label>
+                        <input
+                          type="text"
+                          value={fileName}
+                          onChange={(e) => setFileName(e.target.value)}
+                          placeholder="e.g. KPI_2026_Q1.pdf"
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Issued Date</label>
+                        <input
+                          type="date"
+                          value={issuedDate}
+                          onChange={(e) => setIssuedDate(e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Expiry Date</label>
+                        <input
+                          type="date"
+                          value={expiryDate}
+                          onChange={(e) => setExpiryDate(e.target.value)}
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={docLoading}
+                        className="bg-gray-900 text-white px-4 py-1.5 rounded text-sm hover:bg-gray-700 transition disabled:opacity-50"
+                      >
+                        {docLoading ? 'Attaching...' : 'Attach'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowDocForm(false); setDocError(null); }}
+                        className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-200 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => setShowDocForm(true)}
+                    className="text-sm text-gray-700 hover:text-gray-900 font-medium"
+                  >
+                    + Attach KPI / JD
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </Section>
 
         {/* Assets */}

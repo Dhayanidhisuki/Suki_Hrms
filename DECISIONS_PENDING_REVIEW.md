@@ -148,12 +148,42 @@ These were already in `schema.prisma` from the original owner's commits. I am co
 
 ---
 
-### D10. KPI/JD attachment UI = placeholder stub only
+## New decisions made on feature/employee-master-doc-tracking branch
 
-**What:** No UI for KPI/JD attachments. The `EmployeeDocument` model supports `docType: "kpi" | "jd"` at schema level, but no form or UI creates these.
+### D11. 30-day expiry warning threshold
 
-**Why:** The task brief says "KPI/JD attachment UI beyond a placeholder" is out of scope for CHECKPOINT 3.
+**What:** Documents within 30 days of their `expiryDate` are classified as "expiring soon." Documents past their expiry date are "expired." Documents with no expiry date are "no_expiry."
 
-**Decision:** Schema supports it, UI doesn't. Flag as future work.
+**Why:** 30 days is a common HR compliance window — gives enough time to initiate renewal before expiry without being noisy. Configurable via `EXPIRY_WARNING_DAYS` constant in `src/lib/document-expiry.ts`.
 
-**Resolution:** ✅ CONFIRMED — no override requested.
+**Alternative:** 60-day or 90-day warning window. 30 is conservative but standard for identity documents (passport renewal can take weeks).
+
+---
+
+### D12. Expiry status computed at API layer (derived field), not stored in DB
+
+**What:** `expiryStatus` and `daysToExpiry` are computed at runtime in the API response from the existing `expiryDate` field. They are NOT stored as columns in the `EmployeeDocument` table.
+
+**Why:** Storing a computed status would require a cron job or trigger to update it daily as time passes. Computing at read time is simpler and always accurate.
+
+**Alternative:** Add `expiryStatus` as a DB column + nightly refresh job — more complex, stale risk.
+
+---
+
+### D13. KPI/JD attach UI is inline on the view page, not a separate page
+
+**What:** The KPI/JD attachment form appears inline within the "KPI / JD Attachments" section of the employee view page. It toggles via a "+ Attach KPI / JD" button. No separate `/employees/[id]/documents/new` page.
+
+**Why:** A separate page for a 5-field form is overkill. Inline keeps context — you see existing attachments while adding a new one.
+
+**Alternative:** Dedicated document management page — more navigation, less context.
+
+---
+
+### D14. File storage is still placeholder — attach form captures metadata only
+
+**What:** The attach form captures `docType`, `docNumber`, `fileName` (as text), `issuedDate`, `expiryDate`. There is no actual file upload — `fileName` is a free-text field and `filePath` is not exposed in the UI.
+
+**Why:** The brief says "attachment" not "file storage." Real file upload requires storage infrastructure (S3/local disk + upload endpoint + virus scanning). Metadata-only is functional for tracking what documents exist and their expiry.
+
+**Alternative:** Build full file upload with S3 — significant infrastructure scope beyond this branch.

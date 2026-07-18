@@ -133,5 +133,20 @@ export const employeeUpdateSchema = z.object({
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+// ─── EmployeeDocument ─────────────────────────────────────────────────────────
+
+export const documentCreateSchema = z.object({
+  docType: z.enum(['aadhaar', 'pan', 'passport', 'driving_license', 'kpi', 'jd', 'other']),
+  docNumber: z.string().max(50).optional().nullable(),
+  fileName: z.string().max(200).optional().nullable(),
+  filePath: z.string().max(500).optional().nullable(),
+  issuedDate: z.coerce.date().optional().nullable(),
+  expiryDate: z.coerce.date().optional().nullable(),
+  isVerified: z.boolean().default(false),
+});
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export type EmployeeCreateInput = z.infer<typeof employeeCreateSchema>;
 export type EmployeeUpdateInput = z.infer<typeof employeeUpdateSchema>;
+export type DocumentCreateInput = z.infer<typeof documentCreateSchema>;
