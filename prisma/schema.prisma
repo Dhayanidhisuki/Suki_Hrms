@@ -1,0 +1,509 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ERP READ-ONLY TABLES (existing in ERPDb_ESSKAY — never written to)
+// ═══════════════════════════════════════════════════════════════════
+
+model ErpUser {
+  userId      String  @id @map("USER_ID") @db.VarChar(20)
+  roleName    String  @map("ROLE_NAME") @db.VarChar(50)
+  addRoleName String? @map("ADD_ROLE_NAME") @db.VarChar(50)
+  empCd       String? @map("EMP_CD") @db.VarChar(20)
+  isActive    Boolean @default(true) @map("IS_ACTIVE")
+
+  @@map("ERP_USER")
+}
+
+model Employee {
+  empCd     String  @id @map("EMP_CD") @db.VarChar(20)
+  empName   String  @map("EMP_NAME") @db.VarChar(100)
+  deptName  String? @map("DEPT_NAME") @db.VarChar(50)
+  deptCode  String? @map("DEPT_CODE") @db.VarChar(20)
+  isActive  Boolean @default(true) @map("IS_ACTIVE")
+
+  @@map("EMPLOYEE")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MASTER TABLES
+// ═══════════════════════════════════════════════════════════════════
+
+model Supplier {
+  id            Int      @id @default(autoincrement()) @map("ID")
+  supCode       String   @unique @map("SUP_CODE") @db.VarChar(20)
+  supName       String   @map("SUP_NAME") @db.VarChar(200)
+  address       String?  @map("ADDRESS") @db.VarChar(500)
+  city          String?  @map("CITY") @db.VarChar(100)
+  state         String?  @map("STATE") @db.VarChar(100)
+  gstin         String?  @map("GSTIN") @db.VarChar(20)
+  phone         String?  @map("PHONE") @db.VarChar(20)
+  email         String?  @map("EMAIL") @db.VarChar(100)
+  bankName      String?  @map("BANK_NAME") @db.VarChar(100)
+  accountNo     String?  @map("ACCOUNT_NO") @db.VarChar(30)
+  ifscCode      String?  @map("IFSC_CODE") @db.VarChar(20)
+  isApproved    Boolean  @default(false) @map("APPROVED_SUPPLIER")
+  status        String   @default("Active") @map("STATUS") @db.VarChar(10)
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtUserId String?  @map("LST_UPDT_USER_ID_CD") @db.VarChar(20)
+  lstUpdtDt     DateTime @updatedAt @map("LST_UPDT_DT")
+
+  toolsMappings ToolsMapping[]
+  poReceives    ToolsPoReceive[]
+  poSchedules   ToolsPoSchMaster[]
+
+  @@map("SUPPLIER")
+}
+
+model Subcontractor {
+  id            Int      @id @default(autoincrement()) @map("ID")
+  subCode       String   @unique @map("SUB_CODE") @db.VarChar(20)
+  subName       String   @map("SUB_NAME") @db.VarChar(200)
+  natureOfWork  String?  @map("NATURE_OF_WORK") @db.VarChar(200)
+  isStoreVendor Boolean  @default(false) @map("IS_STORE_VENDOR")
+  isInhouse     Boolean  @default(false) @map("IS_INHOUSE")
+  isIssueDc     Boolean  @default(false) @map("IS_ISSUE_DC")
+  address       String?  @map("ADDRESS") @db.VarChar(500)
+  gstin         String?  @map("GSTIN") @db.VarChar(20)
+  status        String   @default("Active") @map("STATUS") @db.VarChar(10)
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtUserId String?  @map("LST_UPDT_USER_ID_CD") @db.VarChar(20)
+  lstUpdtDt     DateTime @updatedAt @map("LST_UPDT_DT")
+
+  calibIssueInhouse ToolsTransIssueForCalibration[]
+
+  @@map("SUBCONTRACTOR")
+}
+
+model ToolsType {
+  id          Int      @id @default(autoincrement()) @map("ID")
+  code        String   @unique @map("CODE") @db.VarChar(20)
+  name        String   @map("NAME") @db.VarChar(100)
+  description String?  @map("DESCRIPTION") @db.VarChar(500)
+  creatUserIdCd String @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt     DateTime @default(now()) @map("CREAT_DT")
+
+  @@map("TOOLS_TYPE")
+}
+
+model GaugeType {
+  id          Int      @id @default(autoincrement()) @map("ID")
+  code        String   @unique @map("CODE") @db.VarChar(20)
+  name        String   @map("NAME") @db.VarChar(100)
+  description String?  @map("DESCRIPTION") @db.VarChar(500)
+  creatUserIdCd String @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt     DateTime @default(now()) @map("CREAT_DT")
+
+  @@map("GAUGE_TYPE")
+}
+
+model OtherToolsType {
+  id              Int      @id @default(autoincrement()) @map("ID")
+  code            String   @unique @map("CODE") @db.VarChar(20)
+  name            String   @map("NAME") @db.VarChar(100)
+  prefixToolsNo   String?  @map("PREFIX_TOOLS_NO") @db.VarChar(20)
+  poPrefix        String?  @map("PO_PREFIX") @db.VarChar(20)
+  grnPrefix       String?  @map("GRN_PREFIX") @db.VarChar(20)
+  indentPrefix    String?  @map("INDENT_PREFIX") @db.VarChar(20)
+  creatUserIdCd   String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt         DateTime @default(now()) @map("CREAT_DT")
+
+  subgroups QmsOtherToolsType[]
+
+  @@map("OTHER_TOOLS_TYPE")
+}
+
+model QmsOtherToolsType {
+  id            Int            @id @default(autoincrement()) @map("ID")
+  code          String         @unique @map("CODE") @db.VarChar(20)
+  name          String         @map("NAME") @db.VarChar(100)
+  refGroupId    Int            @map("REF_GROUP_ID")
+  creatUserIdCd String         @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime       @default(now()) @map("CREAT_DT")
+
+  group         OtherToolsType @relation(fields: [refGroupId], references: [id])
+
+  @@map("QMS_OTHER_TOOLS_TYPE")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TOOLS MANAGE MASTER — Core registry (BRD: GAUGEANDTOOLS)
+// ═══════════════════════════════════════════════════════════════════
+
+model GaugeAndTools {
+  id                    Int      @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo         String   @unique @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  name                  String   @map("NAME") @db.VarChar(200)
+  description           String?  @map("DES") @db.VarChar(1000)
+  size                  String?  @map("SIZE") @db.VarChar(100)
+  shape                 String?  @map("SHAPE") @db.VarChar(100)
+  grouping              String   @map("GROUPING") @db.VarChar(100)
+  type                  String?  @map("TYPE") @db.VarChar(100)
+  serialNoGenReq        Boolean  @default(false) @map("SERIAL_NO_GEN_REQ")
+  totQty                Int      @default(0) @map("TOT_QTY")
+  qtyIn                 Int      @default(0) @map("QTY_IN")
+  qtyOut                Int      @default(0) @map("QTY_OUT")
+  qtyNew                Int      @default(0) @map("QTY_NEW")
+  location              String?  @map("LOCATION") @db.VarChar(100)
+  deptName              String?  @map("DEPT_NAME") @db.VarChar(100)
+  status                String   @default("Available") @map("STATUS") @db.VarChar(30)
+  calibrationFrqMonths  Int?     @map("CALIBRATION_FRQ_MONTHS")
+  caliPlannedWho        String?  @map("CALI_PLANNED_WHO") @db.VarChar(200)
+  lastCalibrationDate   DateTime? @map("LAST_CALIBRATION_DATE")
+  nextCalibrationDate   DateTime? @map("NEXT_C_DATE")
+  supCode               String?  @map("SUP_CODE") @db.VarChar(20)
+  creatUserIdCd         String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  lstUpdtUserIdCd       String?  @map("LST_UPDT_USER_ID_CD") @db.VarChar(20)
+  creatDt               DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtDt             DateTime @updatedAt @map("LST_UPDT_DT")
+
+  serialNumbers         GaugeSerialNo[]
+  details               ToolsDetails[]
+  specifications        ToolsSpecification[]
+  priceMaster           ToolsPriceMaster[]
+  toolsMapping          ToolsMapping[]
+  machineMapping        ToolsMachineTrans[]
+  issueLines            ToolsTransIssue[]
+  receiveLines          ToolsIssueReceivedTrans[]
+  consumptionLines      ToolsConsumptionTransIssue[]
+  poReceiveLines        ToolsPoReceiveTrans[]
+  calibIssueLines       ToolsTransIssueForCalibration[]
+  calibReceiveLines     ToolsTransReceiveForCalibration[]
+  calibControlCard      GaugeControlCard?
+
+  @@map("GAUGEANDTOOLS")
+}
+
+model GaugeSerialNo {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  serialNo      String        @unique @map("SERIAL_NO") @db.VarChar(50)
+  status        String        @default("Available") @map("STATUS") @db.VarChar(30)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("GAUGE_SERIAL_NO")
+}
+
+model ToolsDetails {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  detailKey     String        @map("DETAIL_KEY") @db.VarChar(100)
+  detailValue   String?       @map("DETAIL_VALUE") @db.VarChar(500)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_DETAILS")
+}
+
+model ToolsSpecification {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  specName      String        @map("SPEC_NAME") @db.VarChar(100)
+  specValue     String?       @map("SPEC_VALUE") @db.VarChar(500)
+  unit          String?       @map("UNIT") @db.VarChar(30)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_SPECIFICATION")
+}
+
+model ToolsPriceMaster {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  effectiveDate DateTime      @map("EFFECTIVE_DATE")
+  supCode       String?       @map("SUP_CODE") @db.VarChar(20)
+  unitRate      Decimal       @map("UNIT_RATE") @db.Decimal(10, 2)
+  grnNo         String?       @map("GRN_NO") @db.VarChar(30)
+  creatUserIdCd String        @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_PRICE_MASTER")
+}
+
+model ToolsMapping {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  supCode       String        @map("SUP_CODE") @db.VarChar(20)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  supplier      Supplier      @relation(fields: [supCode], references: [supCode])
+
+  @@unique([toolOrGaugeNo, supCode])
+  @@map("TOOLS_MAPPING")
+}
+
+model ToolsMachineTrans {
+  id            Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  macCode       String        @map("MAC_CODE") @db.VarChar(30)
+  creatDt       DateTime      @default(now()) @map("CREAT_DT")
+
+  tool          GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_MACHINE_TRANS")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ISSUE / RECEIVE / CONSUMPTION TRANSACTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+model GaugeToolsIssue {
+  id            Int      @id @default(autoincrement()) @map("ID")
+  dcNo          String   @unique @map("DC_NO") @db.VarChar(30)
+  deptName      String   @map("DEPT_NAME") @db.VarChar(100)
+  partyName     String   @map("PARTY_NAME") @db.VarChar(200)
+  issueDate     DateTime @map("ISSUE_DATE")
+  dueDate       DateTime @map("DUE_DATE")
+  status        String   @default("OPEN") @map("STATUS") @db.VarChar(10)
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtUserId String?  @map("LST_UPDT_USER_ID_CD") @db.VarChar(20)
+  lstUpdtDt     DateTime @updatedAt @map("LST_UPDT_DT")
+
+  lines              ToolsTransIssue[]
+  receivedHeaders    ToolsIssueReceived[]
+
+  @@map("GAUGE_TOOLS_ISSUE")
+}
+
+model ToolsTransIssue {
+  id            Int             @id @default(autoincrement()) @map("ID")
+  dcNo          String          @map("DC_NO") @db.VarChar(30)
+  toolOrGaugeNo String          @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  qtyIssued     Int             @map("QTY_ISSUED")
+  qtyReturned   Int             @default(0) @map("QTY_RETURNED")
+  remainingQty  Int             @map("REMAINING_QTY")
+  status        String          @default("Open") @map("STATUS") @db.VarChar(10)
+  creatDt       DateTime        @default(now()) @map("CREAT_DT")
+
+  header        GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
+  tool          GaugeAndTools   @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_TRANS_ISSUE")
+}
+
+model ToolsIssueReceived {
+  id               Int             @id @default(autoincrement()) @map("ID")
+  receiveNo        String          @unique @map("RECEIVE_NO") @db.VarChar(30)
+  dcNo             String          @map("DC_NO") @db.VarChar(30)
+  receiveDate      DateTime        @map("RECEIVE_DATE")
+  remarks          String?         @map("REMARKS") @db.VarChar(500)
+  creatUserIdCd    String          @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt          DateTime        @default(now()) @map("CREAT_DT")
+
+  issueHeader      GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
+  lines            ToolsIssueReceivedTrans[]
+
+  @@map("TOOLS_ISSUE_RECEIVED")
+}
+
+model ToolsIssueReceivedTrans {
+  id              Int                @id @default(autoincrement()) @map("ID")
+  receiveNo       String             @map("RECEIVE_NO") @db.VarChar(30)
+  toolOrGaugeNo   String             @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  qtyReturned     Int                @map("QTY_RETURNED")
+  creatDt         DateTime           @default(now()) @map("CREAT_DT")
+
+  header          ToolsIssueReceived @relation(fields: [receiveNo], references: [receiveNo])
+  tool            GaugeAndTools      @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_ISSUE_RECEIVED_TRANS")
+}
+
+model ToolsConsumptionTransIssue {
+  id                    Int           @id @default(autoincrement()) @map("ID")
+  dcNo                  String        @map("DC_NO") @db.VarChar(30)
+  toolOrGaugeNo         String        @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  worksheetRef          String        @map("WORKSHEET_REF") @db.VarChar(50)
+  qtyConsumed           Int           @map("QTY_CONSUMED")
+  consumptionDate       DateTime      @map("CONSUMPTION_DATE")
+  verifiedBySupervisor  Boolean       @default(false) @map("VERIFIED_BY_SUPERVISOR")
+  verifiedBy            String?       @map("VERIFIED_BY") @db.VarChar(20)
+  creatUserIdCd         String        @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt               DateTime      @default(now()) @map("CREAT_DT")
+
+  tool                  GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_CONSUMPTION_TRANS_ISSUE")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PURCHASE ORDER LINKED MODULES
+// ═══════════════════════════════════════════════════════════════════
+
+model ToolsPoReceive {
+  id            Int      @id @default(autoincrement()) @map("ID")
+  grnNo         String   @unique @map("GRN_NO") @db.VarChar(30)
+  poRef         String   @map("PO_REF") @db.VarChar(30)
+  supCode       String   @map("SUP_CODE") @db.VarChar(20)
+  grnDate       DateTime @map("GRN_DATE")
+  status        String   @default("Draft") @map("STATUS") @db.VarChar(15)
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtDt     DateTime @updatedAt @map("LST_UPDT_DT")
+
+  supplier      Supplier @relation(fields: [supCode], references: [supCode])
+  lines         ToolsPoReceiveTrans[]
+
+  @@map("TOOLS_PO_RECEIVE")
+}
+
+model ToolsPoReceiveTrans {
+  id            Int            @id @default(autoincrement()) @map("ID")
+  grnNo         String         @map("GRN_NO") @db.VarChar(30)
+  toolOrGaugeNo String         @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  poQty         Int            @map("PO_QTY")
+  receivedQty   Int            @map("RECEIVED_QTY")
+  pendingQty    Int            @map("PENDING_QTY")
+  unitRate      Decimal        @map("UNIT_RATE") @db.Decimal(10, 2)
+  creatDt       DateTime       @default(now()) @map("CREAT_DT")
+
+  grn           ToolsPoReceive @relation(fields: [grnNo], references: [grnNo])
+  tool          GaugeAndTools  @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_PO_RECEIVE_TRANS")
+}
+
+model ToolsPoSchMaster {
+  id              Int      @id @default(autoincrement()) @map("ID")
+  scheduleNo      String   @unique @map("SCHEDULE_NO") @db.VarChar(30)
+  poRef           String   @map("PO_REF") @db.VarChar(30)
+  supCode         String   @map("SUP_CODE") @db.VarChar(20)
+  createdDate     DateTime @default(now()) @map("CREATED_DATE")
+  overallStatus   String   @default("Pending") @map("OVERALL_STATUS") @db.VarChar(25)
+  creatUserIdCd   String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+
+  supplier        Supplier @relation(fields: [supCode], references: [supCode])
+  lines           ToolsPoSchTrans[]
+
+  @@map("TOOLS_PO_SCH_MASTER")
+}
+
+model ToolsPoSchTrans {
+  id              Int              @id @default(autoincrement()) @map("ID")
+  scheduleNo      String           @map("SCHEDULE_NO") @db.VarChar(30)
+  toolOrGaugeNo   String           @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  expectedDate    DateTime         @map("EXPECTED_DATE")
+  expectedQty     Int              @map("EXPECTED_QTY")
+  receivedQty     Int              @default(0) @map("RECEIVED_QTY")
+  status          String           @default("Pending") @map("STATUS") @db.VarChar(25)
+
+  schedule        ToolsPoSchMaster @relation(fields: [scheduleNo], references: [scheduleNo])
+
+  @@map("TOOLS_PO_SCH_TRANS")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CALIBRATION WORKFLOW
+// ═══════════════════════════════════════════════════════════════════
+
+model ToolsIssueForCalibration {
+  id                   Int      @id @default(autoincrement()) @map("ID")
+  calibDcNo            String   @unique @map("CALIB_DC_NO") @db.VarChar(30)
+  issueType            String   @map("ISSUE_TYPE") @db.VarChar(15)
+  labName              String?  @map("LAB_NAME") @db.VarChar(200)
+  issueDate            DateTime @map("ISSUE_DATE")
+  expectedReturnDate   DateTime @map("EXPECTED_RETURN_DATE")
+  status               String   @default("OPEN") @map("STATUS") @db.VarChar(10)
+  creatUserIdCd        String   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt              DateTime @default(now()) @map("CREAT_DT")
+
+  inHouseLines         ToolsTransIssueForCalibration[]
+  receiveHeaders       ToolsReceiveForCalibration[]
+
+  @@map("TOOLS_ISSUE_FOR_CALIBRATION")
+}
+
+model ToolsTransIssueForCalibration {
+  id                Int                       @id @default(autoincrement()) @map("ID")
+  calibDcNo         String                    @map("CALIB_DC_NO") @db.VarChar(30)
+  toolOrGaugeNo     String                    @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  subCode           String?                   @map("SUB_CODE") @db.VarChar(20)
+  lastCalibDate     DateTime?                 @map("LAST_CALIB_DATE")
+  dueDate           DateTime?                 @map("DUE_DATE")
+  creatDt           DateTime                  @default(now()) @map("CREAT_DT")
+
+  calibIssue        ToolsIssueForCalibration  @relation(fields: [calibDcNo], references: [calibDcNo])
+  tool              GaugeAndTools             @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  subcontractor     Subcontractor?            @relation(fields: [subCode], references: [subCode])
+
+  @@map("TOOLS_TRANS_ISSUE_FOR_CALIBRATION")
+}
+
+model ToolsReceiveForCalibration {
+  id            Int                      @id @default(autoincrement()) @map("ID")
+  calibRcvNo    String                   @unique @map("CALIB_RCV_NO") @db.VarChar(30)
+  calibDcNo     String                   @map("CALIB_DC_NO") @db.VarChar(30)
+  receiveDate   DateTime                 @map("RECEIVE_DATE")
+  creatUserIdCd String                   @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt       DateTime                 @default(now()) @map("CREAT_DT")
+
+  calibIssue    ToolsIssueForCalibration @relation(fields: [calibDcNo], references: [calibDcNo])
+  lines         ToolsTransReceiveForCalibration[]
+
+  @@map("TOOLS_RECEIVE_FOR_CALIBRATION")
+}
+
+model ToolsTransReceiveForCalibration {
+  id                 Int                        @id @default(autoincrement()) @map("ID")
+  calibRcvNo         String                     @map("CALIB_RCV_NO") @db.VarChar(30)
+  toolOrGaugeNo      String                     @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  calibrationDate    DateTime                   @map("CALIBRATION_DATE")
+  result             String                     @map("RESULT") @db.VarChar(25)
+  nextCalibDate      DateTime                   @map("NEXT_CALIB_DATE")
+  certificateFileName String?                   @map("CALI_RESULTS_FILE_NAME") @db.VarChar(200)
+  remarks            String?                    @map("REMARKS") @db.VarChar(1000)
+  creatDt            DateTime                   @default(now()) @map("CREAT_DT")
+
+  header             ToolsReceiveForCalibration @relation(fields: [calibRcvNo], references: [calibRcvNo])
+  tool               GaugeAndTools              @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("TOOLS_TRANS_RECEIVE_FOR_CALIBRATION")
+}
+
+model GaugeControlCard {
+  id                  Int           @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo       String        @unique @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  lastCalibrationDate DateTime?     @map("LAST_CALIBRATION_DATE")
+  nextCalibDate       DateTime?     @map("NEXT_C_DATE")
+  calibratedBy        String?       @map("CALIBRATED_BY") @db.VarChar(200)
+  lastResult          String?       @map("LAST_RESULT") @db.VarChar(25)
+  lstUpdtDt           DateTime      @updatedAt @map("LST_UPDT_DT")
+
+  tool                GaugeAndTools @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  history             GaugeControlCardTrans[]
+
+  @@map("GAUGE_CONTROL_CARD")
+}
+
+model GaugeControlCardTrans {
+  id                  Int               @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo       String            @map("TOOL_OR_GAUGE_NO") @db.VarChar(30)
+  calibrationDate     DateTime          @map("CALIBRATION_DATE")
+  calibratedBy        String?           @map("CALIBRATED_BY") @db.VarChar(200)
+  result              String            @map("CALI_RESULTS") @db.VarChar(25)
+  nextCalibDate       DateTime          @map("NEXT_C_DATE")
+  certificateFileName String?           @map("CALI_RESULTS_FILE_NAME") @db.VarChar(200)
+  remarks             String?           @map("REMARKS") @db.VarChar(1000)
+  creatUserIdCd       String            @map("CREAT_USER_ID_CD") @db.VarChar(20)
+  creatDt             DateTime          @default(now()) @map("CREAT_DT")
+
+  controlCard         GaugeControlCard  @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+
+  @@map("GAUGE_CONTROL_CARD_TRANS")
+}
