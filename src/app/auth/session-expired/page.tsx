@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { LogIn, ShieldAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function SessionExpiredPage() {
   return (
@@ -17,13 +18,11 @@ export default function SessionExpiredPage() {
           Your session has ended due to inactivity. Please sign in again to
           continue using SUKI ERP Tools Management.
         </p>
-        <Link
-          href="/"
-          id="session-expired-signin-btn"
-          className="mt-6 inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150"
-        >
-          <LogIn className="w-4 h-4" />
-          Sign In Again
+        <Link href="/" id="session-expired-signin-btn" className="mt-6 block w-full">
+          <Button variant="primary" className="w-full">
+            <LogIn className="w-4 h-4" />
+            Sign In Again
+          </Button>
         </Link>
       </div>
     </div>

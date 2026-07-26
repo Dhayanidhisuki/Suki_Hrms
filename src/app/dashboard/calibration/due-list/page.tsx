@@ -56,22 +56,22 @@ export default function CalibrationDueListPage() {
   });
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
               Calibration Due List
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-[var(--text-muted)] mt-0.5">
               Tools/gauges due or overdue for calibration (GAUGEANDTOOLS)
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
-            <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-1 mb-4 w-fit">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+            <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1 mb-4 w-fit">
               {(["All", "Overdue", "Due in 7 Days", "Due in 30 Days"] as const).map((f) => (
                 <button
                   key={f}
@@ -79,8 +79,8 @@ export default function CalibrationDueListPage() {
                   onClick={() => setFilter(f)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     filter === f
-                      ? "bg-white shadow-sm text-slate-800"
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   {f}
@@ -94,12 +94,12 @@ export default function CalibrationDueListPage() {
               ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100">
+                  <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                     {["Tool No", "Name", "Location", "Calibrated By", "Next Due", "Days Left"].map(
                       (col) => (
                         <th
                           key={col}
-                          className="text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider pb-2.5 pr-4 last:pr-0"
+                          className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0"
                         >
                           {col}
                         </th>
@@ -107,26 +107,26 @@ export default function CalibrationDueListPage() {
                     )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-[var(--border-main)]">
                   {filtered.map((t) => {
                     const overdue = (t.daysLeft ?? 0) < 0;
                     return (
-                      <tr key={t.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 pr-4 font-mono text-xs text-slate-500">{t.toolOrGaugeNo}</td>
-                        <td className="py-3 pr-4 font-medium text-slate-800">{t.name}</td>
-                        <td className="py-3 pr-4 text-slate-600">{t.location ?? "—"}</td>
-                        <td className="py-3 pr-4 text-slate-600">{t.caliPlannedWho ?? "—"}</td>
-                        <td className="py-3 pr-4 font-mono text-xs text-slate-600">
+                      <tr key={t.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{t.toolOrGaugeNo}</td>
+                        <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{t.name}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.location ?? "—"}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.caliPlannedWho ?? "—"}</td>
+                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">
                           {t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—"}
                         </td>
-                        <td className="py-3">
+                        <td className="py-3 px-3">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
                               overdue
-                                ? "bg-red-50 text-red-700"
+                                ? "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
                                 : (t.daysLeft ?? 99) <= 7
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-emerald-50 text-emerald-700"
+                                ? "bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border border-[var(--border-main)]"
+                                : "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
                             }`}
                           >
                             {overdue && <AlertTriangle className="w-3 h-3" />}
@@ -140,7 +140,7 @@ export default function CalibrationDueListPage() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-slate-400">
+                      <td colSpan={6} className="py-8 text-center text-sm text-[var(--text-muted)]">
                         No tools match this filter.
                       </td>
                     </tr>
@@ -149,8 +149,8 @@ export default function CalibrationDueListPage() {
               </table>
               )}
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100">
-              <span className="text-xs text-slate-400">
+            <div className="mt-4 pt-3 border-t border-[var(--border-main)]">
+              <span className="text-xs text-[var(--text-muted)]">
                 Showing {filtered.length} of {rows.length} tools due for calibration
               </span>
             </div>

@@ -7,6 +7,7 @@ import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
+import { Button } from "@/components/ui/button";
 
 type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL";
 
@@ -43,9 +44,9 @@ interface Tool {
 }
 
 const statusConfig: Record<string, { bg: string; text: string }> = {
-  OPEN: { bg: "bg-blue-50", text: "text-blue-700" },
-  CLOSED: { bg: "bg-emerald-50", text: "text-emerald-700" },
-  PARTIAL: { bg: "bg-amber-50", text: "text-amber-700" },
+  OPEN: { bg: "bg-[var(--primary-light)] border border-[var(--border-main)]", text: "text-[var(--primary)]" },
+  CLOSED: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
+  PARTIAL: { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]" },
 };
 
 interface StagedLine {
@@ -105,10 +106,10 @@ export default function IssueToolPage() {
     loadTools();
   }, [loadIssues, loadTools]);
 
-  // Click outside to close search dropdown
+  // Click outside listener to close search dropdown
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowSearchDropdown(false);
       }
     }
@@ -116,55 +117,52 @@ export default function IssueToolPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Compute stock levels live taking staged lines into account
+  // Filter tools for dropdown
+  const searchResults = tools.filter((t) => {
+    const query = searchVal.toLowerCase();
+    const matchesQuery = t.name.toLowerCase().includes(query) || t.toolOrGaugeNo.toLowerCase().includes(query);
+    const isAvailable = t.qtyIn > 0 && t.status === "Available";
+    return matchesQuery && isAvailable;
+  });
+
   const getAvailableStock = (toolNo: string) => {
-    const matched = tools.find((t) => t.toolOrGaugeNo === toolNo);
-    if (!matched) return 0;
-    const stagedQty = stagedLines
+    const found = tools.find((t) => t.toolOrGaugeNo === toolNo);
+    const inStock = found ? found.qtyIn : 0;
+    const alreadyStaged = stagedLines
       .filter((l) => l.toolOrGaugeNo === toolNo)
       .reduce((sum, l) => sum + l.qtyIssued, 0);
-    return Math.max(0, matched.qtyIn - stagedQty);
+    return Math.max(0, inStock - alreadyStaged);
   };
 
-  const handleSelectTool = (toolNo: string, toolName: string, originalQtyIn: number) => {
-    const currentAvailable = getAvailableStock(toolNo);
-    if (currentAvailable <= 0) return;
+  const handleSelectTool = (toolNo: string, name: string, stock: number) => {
+    const currentAvail = getAvailableStock(toolNo);
+    if (currentAvail <= 0) return;
 
-    // Add to staged lines (or increment if already staged)
     const existingIdx = stagedLines.findIndex((l) => l.toolOrGaugeNo === toolNo);
-    if (existingIdx > -1) {
-      const list = [...stagedLines];
-      if (list[existingIdx].qtyIssued < originalQtyIn) {
-        list[existingIdx].qtyIssued += 1;
-        setStagedLines(list);
-      }
+    if (existingIdx >= 0) {
+      const updated = [...stagedLines];
+      updated[existingIdx].qtyIssued += 1;
+      setStagedLines(updated);
     } else {
-      setStagedLines([
-        ...stagedLines,
-        {
-          toolOrGaugeNo: toolNo,
-          toolName,
-          qtyIssued: 1,
-          qtyAvailable: originalQtyIn,
-        },
+      setStagedLines((prev) => [
+        ...prev,
+        { toolOrGaugeNo: toolNo, toolName: name, qtyIssued: 1, qtyAvailable: stock },
       ]);
     }
     setSearchVal("");
     setShowSearchDropdown(false);
+    setFormErrors((prev) => ({ ...prev, lines: "" }));
+  };
+
+  const handleUpdateQty = (index: number, newQty: number) => {
+    const updated = [...stagedLines];
+    const maxVal = updated[index].qtyAvailable;
+    updated[index].qtyIssued = Math.min(Math.max(1, newQty), maxVal);
+    setStagedLines(updated);
   };
 
   const handleRemoveLine = (index: number) => {
-    const list = [...stagedLines];
-    list.splice(index, 1);
-    setStagedLines(list);
-  };
-
-  const handleUpdateQty = (index: number, val: number) => {
-    const list = [...stagedLines];
-    const item = list[index];
-    const clamped = Math.max(1, Math.min(val, item.qtyAvailable));
-    list[index].qtyIssued = clamped;
-    setStagedLines(list);
+    setStagedLines((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleClearForm = () => {
@@ -179,22 +177,10 @@ export default function IssueToolPage() {
     e.preventDefault();
     const errors: Record<string, string> = {};
 
-    if (!deptName.trim()) errors.deptName = "Department Name is required";
-    if (!partyName.trim()) errors.partyName = "Party Name/Employee is required";
-    if (!dueDate) {
-      errors.dueDate = "Due Date is required";
-    } else {
-      const due = new Date(dueDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (due < today) {
-        errors.dueDate = "Due date must be today or in the future";
-      }
-    }
-
-    if (stagedLines.length === 0) {
-      errors.lines = "At least one tool line item is required";
-    }
+    if (!deptName.trim()) errors.deptName = "Department is required";
+    if (!partyName.trim()) errors.partyName = "Receiving party/employee is required";
+    if (!dueDate) errors.dueDate = "Return due date is required";
+    if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -204,7 +190,6 @@ export default function IssueToolPage() {
     const payload = {
       deptName,
       partyName,
-      issueDate,
       dueDate,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
@@ -213,42 +198,31 @@ export default function IssueToolPage() {
     };
 
     setBannerMsg(null);
-    const res = await apiPost<{ issue: ToolsIssueHeader }>("/api/issue", payload);
+    const res = await apiPost<{ item: ToolsIssueHeader }>("/api/issue", payload);
+
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
 
-    setSuccessBanner(`Issue created successfully.`);
-    setTimeout(() => setSuccessBanner(""), 4000);
-    handleClearForm();
-    setShowCreate(false);
-    loadIssues();
-    loadTools();
+    if (res.data?.item) {
+      setSuccessBanner(`DC #${res.data.item.dcNo} issued successfully to ${partyName}!`);
+      handleClearForm();
+      setShowCreate(false);
+      loadIssues();
+      loadTools();
+      setTimeout(() => setSuccessBanner(""), 5000);
+    }
   };
 
-  // Search options in popup list
-  const searchResults = tools.filter((t) => {
-    const matchesSearch =
-      t.name.toLowerCase().includes(searchVal.toLowerCase()) ||
-      t.toolOrGaugeNo.toLowerCase().includes(searchVal.toLowerCase());
-    const hasInStock = t.qtyIn > 0;
-    const isAvail = t.status === "Available" || t.status === "Issued";
-
-    // Deduct staged lines to verify if truly still in stock
-    const currentAvailable = getAvailableStock(t.toolOrGaugeNo);
-
-    return matchesSearch && hasInStock && isAvail && currentAvailable > 0;
-  });
-
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
           {successBanner && (
-            <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2.5 text-emerald-800 text-sm font-semibold shadow-sm">
+            <div className="mb-4 p-4 bg-[var(--color-success-bg)] border border-[var(--border-main)] rounded-2xl flex items-center gap-2.5 text-[var(--color-success-text)] text-sm font-semibold shadow-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               <span>{successBanner}</span>
             </div>
@@ -258,8 +232,8 @@ export default function IssueToolPage() {
             <div
               className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
                 bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
+                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
+                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
               }`}
             >
               {bannerMsg.text}
@@ -275,23 +249,24 @@ export default function IssueToolPage() {
           {/* ── Header ── */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
                 Issue Tool
               </h1>
-              <p className="text-sm text-slate-500 mt-0.5">
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">
                 Issue tools/gauges to department or employee (GAUGE_TOOLS_ISSUE)
               </p>
             </div>
             <RoleGate permission="canCreateIssue">
               {!showCreate && (
-                <button
+                <Button
                   id="issue-create-btn"
                   onClick={() => setShowCreate(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150 group"
+                  variant="primary"
+                  className="group"
                 >
                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                   New Issue (DC)
-                </button>
+                </Button>
               )}
             </RoleGate>
           </div>
@@ -302,18 +277,18 @@ export default function IssueToolPage() {
               {loading ? (
                 <TableSkeleton rows={3} />
               ) : issues.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-400">
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-8 text-center text-sm text-[var(--text-muted)]">
                   No issue records found. Create a new issue to get started.
                 </div>
               ) : (
               issues.map((issue) => {
                 const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
                 return (
-                  <div key={issue.id} className="bg-white rounded-2xl border border-slate-200 p-5">
+                  <div key={issue.id} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="font-mono text-sm font-semibold text-slate-800">{issue.dcNo}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">
+                        <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
                           {issue.deptName} · {issue.partyName} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
                         </p>
                       </div>
@@ -324,14 +299,14 @@ export default function IssueToolPage() {
                       </span>
                     </div>
                     <div className="overflow-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-100">
+                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                             {["Tool No", "Qty Issued", "Qty Returned", "Remaining", "Status"].map(
                               (col) => (
                                 <th
                                   key={col}
-                                  className="text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider pb-2.5 pr-4 last:pr-0"
+                                  className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4"
                                 >
                                   {col}
                                 </th>
@@ -339,21 +314,21 @@ export default function IssueToolPage() {
                             )}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-[var(--border-main)]">
                           {issue.lines.map((line) => (
-                            <tr key={line.id} className="hover:bg-slate-50/60 transition-colors">
-                              <td className="py-3 pr-4 font-mono text-xs text-slate-500">
+                            <tr key={line.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                              <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)] font-medium">
                                 {line.toolOrGaugeNo}
                               </td>
-                              <td className="py-3 pr-4 text-slate-600">{line.qtyIssued}</td>
-                              <td className="py-3 pr-4 text-slate-600">{line.qtyReturned}</td>
-                              <td className="py-3 pr-4 text-slate-600">{line.remainingQty}</td>
-                              <td className="py-3">
+                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.qtyIssued}</td>
+                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.qtyReturned}</td>
+                              <td className="py-3 px-4 align-middle text-[var(--text-primary)] font-mono text-xs font-semibold">{line.remainingQty}</td>
+                              <td className="py-3 px-4 align-middle">
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
                                     line.status === "Open"
-                                      ? "bg-blue-50 text-blue-700"
-                                      : "bg-emerald-50 text-emerald-700"
+                                      ? "bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--border-main)]"
+                                      : "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
                                   }`}
                                 >
                                   {line.status}
@@ -375,17 +350,17 @@ export default function IssueToolPage() {
               {/* LEFT FORM PANEL (60%) */}
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Header Info Card */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Issue Slip Header</h2>
-                    <span className="font-mono text-xs text-slate-400 font-bold bg-slate-100 px-2.5 py-1 rounded-md">
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)]">
+                    <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Issue Slip Header</h2>
+                    <span className="font-mono text-xs text-[var(--text-muted)] font-bold bg-[var(--bg-subtle)] px-2.5 py-1 rounded-md">
                       DC No: Auto-generated
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                         Department Requesting *
                       </label>
                       <input
@@ -393,12 +368,12 @@ export default function IssueToolPage() {
                         value={deptName}
                         onChange={(e) => setDeptName(e.target.value)}
                         placeholder="e.g. Machining / QC"
-                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50 font-medium"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                       />
-                      {formErrors.deptName && <p className="text-red-500 text-xs mt-1 font-semibold">{formErrors.deptName}</p>}
+                      {formErrors.deptName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.deptName}</p>}
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                         Receiving Party / Employee *
                       </label>
                       <input
@@ -406,26 +381,26 @@ export default function IssueToolPage() {
                         value={partyName}
                         onChange={(e) => setPartyName(e.target.value)}
                         placeholder="Employee Name / Code"
-                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50 font-medium"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                       />
-                      {formErrors.partyName && <p className="text-red-500 text-xs mt-1 font-semibold">{formErrors.partyName}</p>}
+                      {formErrors.partyName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.partyName}</p>}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                         Issue Date
                       </label>
                       <input
                         type="date"
                         value={issueDate}
                         readOnly
-                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-100 outline-none font-mono text-slate-500 cursor-not-allowed"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-hover)] outline-none font-mono text-[var(--text-muted)] cursor-not-allowed"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                         Return Due Date *
                       </label>
                       <input
@@ -433,22 +408,22 @@ export default function IssueToolPage() {
                         type="date"
                         value={dueDate}
                         onChange={(e) => setDueDate(e.target.value)}
-                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50 font-mono font-medium"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono font-medium"
                       />
-                      {formErrors.dueDate && <p className="text-red-500 text-xs mt-1 font-semibold">{formErrors.dueDate}</p>}
+                      {formErrors.dueDate && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.dueDate}</p>}
                     </div>
                   </div>
                 </div>
 
                 {/* Line Items Card */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-                  <div className="pb-3 border-b border-slate-100">
-                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Tool Line Items</h2>
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
+                  <div className="pb-3 border-b border-[var(--border-main)]">
+                    <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Tool Line Items</h2>
                   </div>
 
                   {/* Smart Tool Search Input */}
                   <div className="relative" ref={dropdownRef}>
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       id="tool-select-search"
                       value={searchVal}
@@ -458,29 +433,29 @@ export default function IssueToolPage() {
                       }}
                       onFocus={() => setShowSearchDropdown(true)}
                       placeholder="Type tool name or registry number to add line item…"
-                      className="w-full text-sm border border-slate-200 rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50"
+                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                     />
 
                     {/* Popover results */}
                     {showSearchDropdown && searchVal.trim().length > 0 && (
-                      <div className="absolute z-10 w-full bg-white border border-slate-200 shadow-lg rounded-xl mt-1 max-h-56 overflow-y-auto divide-y divide-slate-50">
+                      <div className="absolute z-10 w-full bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-lg rounded-xl mt-1 max-h-56 overflow-y-auto divide-y divide-[var(--border-main)]">
                         {searchResults.map((t) => (
                           <div
                             key={t.id}
                             onClick={() => handleSelectTool(t.toolOrGaugeNo, t.name, t.qtyIn)}
-                            className="p-3 hover:bg-blue-50/50 cursor-pointer transition-colors flex items-center justify-between text-sm"
+                            className="p-3 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors flex items-center justify-between text-sm"
                           >
                             <div>
-                              <p className="font-semibold text-slate-800">{t.name}</p>
-                              <p className="text-xs font-mono text-slate-400">{t.toolOrGaugeNo} · {t.grouping}</p>
+                              <p className="font-semibold text-[var(--text-primary)]">{t.name}</p>
+                              <p className="text-xs font-mono text-[var(--text-muted)]">{t.toolOrGaugeNo} · {t.grouping}</p>
                             </div>
-                            <span className="text-xs font-bold text-emerald-600 font-mono bg-emerald-50 px-2 py-0.5 rounded-full">
+                            <span className="text-xs font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
                               {getAvailableStock(t.toolOrGaugeNo)} in-stock
                             </span>
                           </div>
                         ))}
                         {searchResults.length === 0 && (
-                          <p className="p-4 text-center text-xs text-slate-400">
+                          <p className="p-4 text-center text-xs text-[var(--text-muted)]">
                             No available tools match your query.
                           </p>
                         )}
@@ -489,29 +464,29 @@ export default function IssueToolPage() {
                   </div>
 
                   {formErrors.lines && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-semibold flex items-center gap-2">
+                    <div className="p-3 bg-[var(--color-danger-bg)] border border-[var(--border-main)] rounded-xl text-xs text-[var(--color-danger-text)] font-semibold flex items-center gap-2">
                       <ShieldAlert className="w-4 h-4 text-red-500" />
                       <span>{formErrors.lines}</span>
                     </div>
                   )}
 
                   {/* Line list table */}
-                  <div className="overflow-auto border border-slate-100 rounded-xl">
+                  <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50/50">
+                        <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                           {["Tool No", "Name", "Requested Qty", "Available Qty", ""].map((col) => (
-                            <th key={col} className="text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider py-2.5 px-4">
+                            <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                               {col}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-[var(--border-main)]">
                         {stagedLines.map((line, idx) => (
                           <tr key={idx}>
-                            <td className="py-2.5 px-4 font-mono text-xs text-slate-500 font-semibold">{line.toolOrGaugeNo}</td>
-                            <td className="py-2.5 px-4 font-medium text-slate-800">{line.toolName}</td>
+                            <td className="py-2.5 px-4 font-mono text-xs text-[var(--text-secondary)] font-semibold">{line.toolOrGaugeNo}</td>
+                            <td className="py-2.5 px-4 font-medium text-[var(--text-primary)]">{line.toolName}</td>
                             <td className="py-2.5 px-4">
                               <input
                                 type="number"
@@ -519,15 +494,15 @@ export default function IssueToolPage() {
                                 max={line.qtyAvailable}
                                 value={line.qtyIssued}
                                 onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
-                                className="w-20 text-center text-sm border border-slate-200 rounded-lg py-1 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-mono font-semibold"
+                                className="w-20 text-center text-sm border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono font-semibold"
                               />
                             </td>
-                            <td className="py-2.5 px-4 font-mono text-xs text-emerald-600 font-bold">{line.qtyAvailable}</td>
+                            <td className="py-2.5 px-4 font-mono text-xs text-[var(--color-success-text)] font-bold">{line.qtyAvailable}</td>
                             <td className="py-2.5 px-4 text-right">
                               <button
                                 type="button"
                                 onClick={() => handleRemoveLine(idx)}
-                                className="p-1 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-500 transition-colors"
+                                className="p-1 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
                               >
                                 <Trash className="w-4 h-4" />
                               </button>
@@ -536,7 +511,7 @@ export default function IssueToolPage() {
                         ))}
                         {stagedLines.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="py-8 text-center text-xs text-slate-400 font-medium">
+                            <td colSpan={5} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
                               No staged tool lines yet. Search and select above to add.
                             </td>
                           </tr>
@@ -547,72 +522,73 @@ export default function IssueToolPage() {
                 </div>
 
                 {/* Form submit/reset buttons */}
-                <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-slate-50 py-4 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-[var(--bg-app)] py-4 border-t border-[var(--border-main)]">
                   <button
                     type="button"
                     onClick={() => {
                       handleClearForm();
                       setShowCreate(false);
                     }}
-                    className="px-5 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-all"
+                    className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={handleClearForm}
-                    className="px-5 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-all"
+                    className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-all"
                   >
                     Clear Form
                   </button>
-                  <button
+                  <Button
                     type="submit"
                     id="submit-issue-btn"
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150"
+                    variant="primary"
+                    size="lg"
                   >
                     <ArrowUpRight className="w-4 h-4" /> Submit Issue
-                  </button>
+                  </Button>
                 </div>
               </form>
 
               {/* RIGHT STOCK QUICK-VIEW PANEL (40%) */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 sticky top-6">
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4 sticky top-6">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Current Stock View</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Live staging impact summary</p>
+                  <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Current Stock View</h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Live staging impact summary</p>
                 </div>
 
-                <div className="border-y border-slate-100 py-3 space-y-2 text-sm">
+                <div className="border-y border-[var(--border-main)] py-3 space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Tools Staged</span>
-                    <span className="font-bold text-slate-800">{stagedLines.length}</span>
+                    <span className="text-[var(--text-muted)] font-medium">Tools Staged</span>
+                    <span className="font-bold text-[var(--text-primary)]">{stagedLines.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500 font-medium">Total Quantity</span>
-                    <span className="font-bold text-slate-800">
+                    <span className="text-[var(--text-muted)] font-medium">Total Quantity</span>
+                    <span className="font-bold text-[var(--text-primary)]">
                       {stagedLines.reduce((sum, l) => sum + l.qtyIssued, 0)}
                     </span>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Live Staged Impact</p>
+                  <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Live Staged Impact</p>
                   <div className="space-y-2.5 max-h-64 overflow-y-auto">
                     {stagedLines.map((l, i) => (
                       <div key={i} className="flex items-center justify-between text-xs font-sans">
                         <div className="min-w-0 pr-3">
-                          <p className="font-semibold text-slate-800 truncate">{l.toolName}</p>
-                          <p className="text-[10px] font-mono text-slate-400">{l.toolOrGaugeNo}</p>
+                          <p className="font-semibold text-[var(--text-primary)] truncate">{l.toolName}</p>
+                          <p className="text-[10px] font-mono text-[var(--text-muted)]">{l.toolOrGaugeNo}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <span className="font-bold font-mono text-slate-800">{l.qtyIssued}</span>
-                          <span className="text-slate-300"> / </span>
-                          <span className="font-mono text-slate-400">{getAvailableStock(l.toolOrGaugeNo)} avail</span>
+                          <span className="font-bold font-mono text-[var(--text-primary)]">{l.qtyIssued}</span>
+                          <span className="text-[var(--text-muted)]"> / </span>
+                          <span className="font-mono text-[var(--text-muted)]">{getAvailableStock(l.toolOrGaugeNo)} avail</span>
                         </div>
                       </div>
                     ))}
                     {stagedLines.length === 0 && (
-                      <p className="text-center text-xs text-slate-300 py-4 font-medium">
+                      <p className="text-center text-xs text-[var(--text-muted)] py-4 font-medium">
                         No staged lines to summarize.
                       </p>
                     )}

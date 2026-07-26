@@ -3,26 +3,25 @@
 import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/apiClient";
 import Link from "next/link";
-import { ArrowUpRight, ArrowRight } from "lucide-react";
+import { CalendarClock, ArrowRight } from "lucide-react";
 
-interface ActivityRecord {
+interface CalItem {
   id: number;
-  dcNo: string;
-  deptName: string;
-  partyName: string;
-  issueDate: string | null;
-  dueDate: string | null;
+  toolOrGaugeNo: string;
+  name: string;
+  nextCalibrationDate: string | null;
   status: string;
+  grouping: string;
 }
 
-export default function ActivityTable() {
-  const [items, setItems] = useState<ActivityRecord[]>([]);
+export default function RecentCalibrationTable() {
+  const [items, setItems] = useState<CalItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiGet<{ recentActivity: ActivityRecord[] }>("/api/dashboard/kpi").then((res) => {
-      if (res.data?.recentActivity) {
-        setItems(res.data.recentActivity);
+    apiGet<{ recentCalibrationDue: CalItem[] }>("/api/dashboard/kpi").then((res) => {
+      if (res.data?.recentCalibrationDue) {
+        setItems(res.data.recentCalibrationDue);
       }
       setLoading(false);
     });
@@ -33,20 +32,20 @@ export default function ActivityTable() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[var(--primary-light)] flex items-center justify-center text-[var(--primary)]">
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-[var(--color-warning-bg)] flex items-center justify-center text-[var(--color-warning-text)]">
+              <CalendarClock className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-semibold text-[var(--text-primary)]">
-                Recent Issue / Receive Activity
+                Upcoming Calibrations
               </h2>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Latest tool slips from GaugeToolsIssue
+                Tools nearing calibration due date
               </p>
             </div>
           </div>
           <Link
-            href="/dashboard/transactions/receive"
+            href="/dashboard/calibration/due-list"
             className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
           >
             View All <ArrowRight className="w-3 h-3" />
@@ -58,13 +57,13 @@ export default function ActivityTable() {
             <thead>
               <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                 <th className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase py-2.5 px-3">
-                  DC No
+                  Tool No
                 </th>
                 <th className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase py-2.5 px-3">
-                  Department / Party
+                  Name
                 </th>
                 <th className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase py-2.5 px-3">
-                  Issue Date
+                  Due Date
                 </th>
                 <th className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase py-2.5 px-3">
                   Status
@@ -72,38 +71,34 @@ export default function ActivityTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-main)]">
-              {items.map((row) => {
-                const isOverdue = row.status === "OPEN" && row.dueDate ? new Date(row.dueDate) < new Date() : false;
-                const hasParty = row.partyName && row.partyName !== "-";
-                const dateStr = row.issueDate ? row.issueDate.split("T")[0] : "—";
-
+              {items.map((t) => {
+                const dueDate = t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—";
+                const isOverdue = t.nextCalibrationDate ? new Date(t.nextCalibrationDate) < new Date() : false;
                 return (
-                  <tr key={row.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                  <tr key={t.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                     <td className="py-3 px-3 align-middle font-mono text-xs font-semibold text-[var(--text-secondary)]">
-                      {row.dcNo}
+                      {t.toolOrGaugeNo}
                     </td>
                     <td className="py-3 px-3 align-middle">
-                      <p className="font-semibold text-[var(--text-primary)] text-xs truncate max-w-[150px]">
-                        {hasParty ? row.partyName : row.deptName}
+                      <p className="font-semibold text-[var(--text-primary)] text-xs truncate max-w-[140px]">
+                        {t.name}
                       </p>
-                      {hasParty && (
-                        <p className="text-[10px] text-[var(--text-muted)] font-medium">{row.deptName}</p>
-                      )}
+                      <p className="text-[10px] text-[var(--text-muted)] font-medium">{t.grouping}</p>
                     </td>
-                    <td className="py-3 px-3 align-middle font-mono text-xs text-[var(--text-muted)]">
-                      {dateStr}
+                    <td className="py-3 px-3 align-middle font-mono text-xs">
+                      <span className={isOverdue ? "text-[var(--color-danger-text)] font-bold" : "text-[var(--text-secondary)]"}>
+                        {dueDate}
+                      </span>
                     </td>
                     <td className="py-3 px-3 align-middle">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           isOverdue
                             ? "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-                            : row.status === "OPEN"
-                            ? "bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--border-main)]"
-                            : "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
+                            : "bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border border-[var(--border-main)]"
                         }`}
                       >
-                        {isOverdue ? "OVERDUE" : row.status}
+                        {isOverdue ? "OVERDUE" : t.status}
                       </span>
                     </td>
                   </tr>
@@ -112,7 +107,7 @@ export default function ActivityTable() {
               {items.length === 0 && !loading && (
                 <tr>
                   <td colSpan={4} className="py-6 text-center text-xs text-[var(--text-muted)]">
-                    No recent activity records found.
+                    No upcoming calibrations found.
                   </td>
                 </tr>
               )}

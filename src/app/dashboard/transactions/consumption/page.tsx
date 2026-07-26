@@ -7,6 +7,7 @@ import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
+import { Button } from "@/components/ui/button";
 
 interface ToolConsumption {
   id: number;
@@ -158,13 +159,13 @@ export default function ConsumptionPage() {
   });
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
           {successBanner && (
-            <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2.5 text-emerald-800 text-sm font-semibold shadow-sm">
+            <div className="mb-4 p-4 bg-[var(--color-success-bg)] border border-[var(--border-main)] rounded-2xl flex items-center gap-2.5 text-[var(--color-success-text)] text-sm font-semibold shadow-sm">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               <span>{successBanner}</span>
             </div>
@@ -174,8 +175,8 @@ export default function ConsumptionPage() {
             <div
               className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
                 bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
+                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
+                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
               }`}
             >
               {bannerMsg.text}
@@ -190,10 +191,10 @@ export default function ConsumptionPage() {
 
           {/* ── Header ── */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
               Tools Consumption
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-[var(--text-muted)] mt-0.5">
               Log consumed/used quantities against worksheets (TOOLS_CONSUMPTION_TRANS_ISSUE)
             </p>
           </div>
@@ -203,27 +204,27 @@ export default function ConsumptionPage() {
             <RoleGate
               permission="canLogConsumption"
               fallback={
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 text-center py-10">
-                  <ShieldAlert className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-800">Access Denied</p>
-                  <p className="text-xs text-slate-400 mt-1">Your role does not have permissions to log consumption.</p>
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 text-center py-10">
+                  <ShieldAlert className="w-10 h-10 text-[var(--text-muted)] mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Access Denied</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Your role does not have permissions to log consumption.</p>
                 </div>
               }
             >
-              <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-                <div className="pb-3 border-b border-slate-100">
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Log Consumption</h2>
+              <form onSubmit={handleSubmit} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
+                <div className="pb-3 border-b border-[var(--border-main)]">
+                  <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Log Consumption</h2>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                     Select Issue DC *
                   </label>
                   <select
                     id="form-dc"
                     value={dcNo}
                     onChange={(e) => handleDcChange(e.target.value)}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-medium text-slate-700"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-medium"
                   >
                     <option value="">-- Choose DC --</option>
                     {openIssues.map((issue) => (
@@ -232,19 +233,19 @@ export default function ConsumptionPage() {
                       </option>
                     ))}
                   </select>
-                  {errors.dcNo && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.dcNo}</p>}
+                  {errors.dcNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.dcNo}</p>}
                 </div>
 
                 {dcNo && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                       Select Issued Tool *
                     </label>
                     <select
                       id="form-tool"
                       value={toolOrGaugeNo}
                       onChange={(e) => handleToolChange(e.target.value)}
-                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-medium text-slate-700"
+                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-medium"
                     >
                       <option value="">-- Choose Tool --</option>
                       {selectableLines.map((l) => (
@@ -253,12 +254,12 @@ export default function ConsumptionPage() {
                         </option>
                       ))}
                     </select>
-                    {errors.toolOrGaugeNo && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.toolOrGaugeNo}</p>}
+                    {errors.toolOrGaugeNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.toolOrGaugeNo}</p>}
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                     Worksheet Reference *
                   </label>
                   <input
@@ -266,13 +267,13 @@ export default function ConsumptionPage() {
                     value={worksheetRef}
                     onChange={(e) => setWorksheetRef(e.target.value)}
                     placeholder="e.g. WS-2026-101"
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50 font-mono font-medium"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono font-medium"
                   />
-                  {errors.worksheetRef && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.worksheetRef}</p>}
+                  {errors.worksheetRef && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.worksheetRef}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                     Quantity Consumed *
                   </label>
                   <input
@@ -282,22 +283,22 @@ export default function ConsumptionPage() {
                     max={maxAvailable}
                     value={qtyConsumed}
                     onChange={(e) => setQtyConsumed(Number(e.target.value))}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50 font-mono font-bold text-slate-700"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] font-mono font-bold text-[var(--text-primary)]"
                   />
                   {dcNo && toolOrGaugeNo && (
-                    <p className="text-[10px] text-slate-400 font-medium mt-1">
-                      Max available from this issue slip: <span className="font-bold text-amber-600">{maxAvailable}</span>.
+                    <p className="text-[10px] text-[var(--text-muted)] font-medium mt-1">
+                      Max available from this issue slip: <span className="font-bold text-[var(--color-warning-text)]">{maxAvailable}</span>.
                     </p>
                   )}
-                  {errors.qtyConsumed && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.qtyConsumed}</p>}
+                  {errors.qtyConsumed && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.qtyConsumed}</p>}
                 </div>
 
-                <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Supervisor Verified</span>
+                <div className="border-t border-[var(--border-main)] pt-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Supervisor Verified</span>
                   <RoleGate
                     permission="canApproveSupplier"
                     fallback={
-                      <span className="text-xs text-slate-300 font-medium italic">Requires Admin Role</span>
+                      <span className="text-xs text-[var(--text-muted)] font-medium italic">Requires Admin Role</span>
                     }
                   >
                     <input
@@ -305,82 +306,83 @@ export default function ConsumptionPage() {
                       id="form-verified"
                       checked={verifiedBySupervisor}
                       onChange={(e) => setVerifiedBySupervisor(e.target.checked)}
-                      className="w-5 h-5 text-blue-600 border-slate-200 rounded focus:ring-blue-500"
+                      className="w-5 h-5 text-[var(--primary)] border-[var(--border-main)] rounded focus:ring-[var(--primary)]"
                     />
                   </RoleGate>
                 </div>
 
-                <button
+                <Button
                   type="submit"
                   id="submit-consumption-btn"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150"
+                  variant="primary"
+                  className="w-full"
                 >
                   <ArrowUpRight className="w-4 h-4" /> Submit Consumption
-                </button>
+                </Button>
               </form>
             </RoleGate>
 
             {/* RIGHT RECENT LOG PANEL */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col min-w-0">
+            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 flex flex-col min-w-0">
               <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Recent Consumption Logs</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Historical transations log</p>
+                  <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Recent Consumption Logs</h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Historical transations log</p>
                 </div>
 
                 <div className="relative max-w-xs">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="log-search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Filter worksheet/tool…"
-                    className="text-xs border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/30 bg-slate-50"
+                    className="text-xs border border-[var(--border-main)] rounded-lg pl-8 pr-2 py-1.5 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                   />
                 </div>
               </div>
 
-              <div className="overflow-auto border border-slate-100 rounded-xl">
+              <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                 {loading ? (
                   <TableSkeleton rows={4} />
                 ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50">
+                    <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                       {["Date", "Tool No & Name", "Worksheet", "Qty", "Verified", "DC Ref"].map((col) => (
-                        <th key={col} className="text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider py-2.5 px-4">
+                        <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                           {col}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-[var(--border-main)]">
                     {filtered.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 px-4 font-mono text-xs text-slate-500">{c.consumptionDate ? c.consumptionDate.split("T")[0] : "—"}</td>
+                      <tr key={c.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                        <td className="py-3 px-4 font-mono text-xs text-[var(--text-secondary)]">{c.consumptionDate ? c.consumptionDate.split("T")[0] : "—"}</td>
                         <td className="py-3 px-4">
-                          <p className="font-semibold text-slate-800">{c.tool?.name ?? c.toolOrGaugeNo}</p>
-                          <p className="text-[10px] font-mono text-slate-400">{c.toolOrGaugeNo}</p>
+                          <p className="font-semibold text-[var(--text-primary)]">{c.tool?.name ?? c.toolOrGaugeNo}</p>
+                          <p className="text-[10px] font-mono text-[var(--text-muted)]">{c.toolOrGaugeNo}</p>
                         </td>
-                        <td className="py-3 px-4 font-mono text-xs text-slate-700">{c.worksheetRef}</td>
-                        <td className="py-3 px-4 font-mono text-xs font-bold text-slate-800">{c.qtyConsumed}</td>
+                        <td className="py-3 px-4 font-mono text-xs text-[var(--text-primary)]">{c.worksheetRef}</td>
+                        <td className="py-3 px-4 font-mono text-xs font-bold text-[var(--text-primary)]">{c.qtyConsumed}</td>
                         <td className="py-3 px-4">
                           {c.verifiedBySupervisor ? (
-                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 text-emerald-600">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]">
                               <Check className="w-3.5 h-3.5" />
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border border-[var(--border-main)]">
                               Pending
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 font-mono text-xs text-slate-500">{c.dcNo}</td>
+                        <td className="py-3 px-4 font-mono text-xs text-[var(--text-secondary)]">{c.dcNo}</td>
                       </tr>
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                        <td colSpan={6} className="py-8 text-center text-xs text-[var(--text-muted)]">
                           No logged consumption matching filter.
                         </td>
                       </tr>

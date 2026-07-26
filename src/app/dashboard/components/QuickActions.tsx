@@ -27,18 +27,18 @@ function ActionButton({
 }: ActionButtonProps) {
   const styles = {
     primary:
-      "bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 shadow-sm hover:shadow-md",
+      "bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white border border-[var(--primary-hover)] shadow-sm hover:shadow-md",
     secondary:
-      "bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md",
+      "bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border-main)] hover:border-[var(--border-strong)] shadow-sm hover:shadow-md",
     ghost:
-      "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-dashed border-slate-300 hover:border-slate-400",
+      "bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-dashed border-[var(--border-main)] hover:border-[var(--border-strong)]",
   };
 
   return (
     <button
       id={id}
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 group ${styles[variant]}`}
+      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 group cursor-pointer ${styles[variant]}`}
     >
       {/* Icon container */}
       <div
@@ -46,8 +46,8 @@ function ActionButton({
           variant === "primary"
             ? "bg-white/20 group-hover:bg-white/30"
             : variant === "secondary"
-            ? "bg-blue-50 group-hover:bg-blue-100"
-            : "bg-white group-hover:bg-blue-50"
+            ? "bg-[var(--primary-light)] group-hover:bg-[var(--primary-subtle)]"
+            : "bg-[var(--bg-surface)] group-hover:bg-[var(--primary-light)]"
         }`}
       >
         <span
@@ -55,8 +55,8 @@ function ActionButton({
             variant === "primary"
               ? "text-white"
               : variant === "secondary"
-              ? "text-blue-600"
-              : "text-slate-500 group-hover:text-blue-600"
+              ? "text-[var(--primary)]"
+              : "text-[var(--text-muted)] group-hover:text-[var(--primary)]"
           }
         >
           {icon}
@@ -67,14 +67,14 @@ function ActionButton({
       <div className="text-left min-w-0">
         <p
           className={`text-sm font-semibold leading-tight ${
-            variant === "primary" ? "text-white" : "text-slate-800"
+            variant === "primary" ? "text-white" : "text-[var(--text-primary)]"
           }`}
         >
           {label}
         </p>
         <p
           className={`text-[11px] leading-tight mt-0.5 ${
-            variant === "primary" ? "text-blue-100" : "text-slate-400"
+            variant === "primary" ? "text-white/80" : "text-[var(--text-muted)]"
           }`}
         >
           {sublabel}
@@ -84,7 +84,7 @@ function ActionButton({
       {/* Arrow */}
       <ArrowUpRight
         className={`w-4 h-4 ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-150 ${
-          variant === "primary" ? "text-blue-200" : "text-slate-400"
+          variant === "primary" ? "text-white/80" : "text-[var(--text-muted)]"
         }`}
       />
     </button>
@@ -93,13 +93,13 @@ function ActionButton({
 
 export default function QuickActions() {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5">
+    <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
       {/* ── Header ── */}
       <div className="mb-4">
-        <h2 className="text-base font-semibold text-slate-800">
+        <h2 className="text-base font-semibold text-[var(--text-primary)]">
           Quick Actions
         </h2>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <p className="text-xs text-[var(--text-muted)] mt-0.5">
           Common tool management tasks
         </p>
       </div>
@@ -121,8 +121,8 @@ export default function QuickActions() {
       </div>
 
       {/* ── Footer note ── */}
-      <div className="mt-4 pt-3 border-t border-slate-100">
-        <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+      <div className="mt-4 pt-3 border-t border-[var(--border-main)]">
+        <p className="text-[11px] text-[var(--text-muted)] text-center leading-relaxed">
           All actions are logged in the Tools History Card
         </p>
       </div>

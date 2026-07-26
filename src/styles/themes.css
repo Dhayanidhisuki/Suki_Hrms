@@ -1,0 +1,159 @@
+/* Suki CRM Theme System: 4 color themes x 2 modes = 8 combinations */
+
+:root {
+  /* Common / Base Variables (Light mode default) */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --border-main: #e2e8f0;
+  --border-light: #f1f5f9;
+  --border-strong: #cbd5e1;
+
+  /* Sidebar is ALWAYS #000000 across all themes and modes */
+  --sidebar-bg: #000000;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-hover: #1e293b;
+  --sidebar-border: #1e293b;
+
+  /* Global Fixed Status Colors */
+  --color-success: #10b981;
+  --color-success-bg: #ecfdf5;
+  --color-success-text: #047857;
+
+  --color-danger: #ef4444;
+  --color-danger-bg: #fef2f2;
+  --color-danger-text: #b91c1c;
+
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-warning-text: #b45309;
+
+  --color-info: #3b82f6;
+  --color-info-bg: #eff6ff;
+  --color-info-text: #1d4ed8;
+}
+
+/* Light Mode Accent Colors */
+[data-theme="blue"] {
+  --primary: #2090FF;
+  --primary-hover: #0077e6;
+  --primary-light: #e6f3ff;
+  --primary-subtle: #b8dbff;
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(32, 144, 255, 0.35);
+}
+
+[data-theme="green"] {
+  --primary: #7f9e15;
+  --primary-hover: #6a8511;
+  --primary-light: #f4f7e6;
+  --primary-subtle: #d3e299;
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(127, 158, 21, 0.35);
+}
+
+[data-theme="purple"] {
+  --primary: #CD69ED;
+  --primary-hover: #b84dd8;
+  --primary-light: #faeafd;
+  --primary-subtle: #f0b7f8;
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(205, 105, 237, 0.35);
+}
+
+[data-theme="orange"] {
+  --primary: #FF6901;
+  --primary-hover: #e05b00;
+  --primary-light: #fff0e6;
+  --primary-subtle: #ffc499;
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(255, 105, 1, 0.35);
+}
+
+/* Dark Mode: One shared foundation block */
+[data-mode="dark"] {
+  --bg-app: #0b0f17;
+  --bg-surface: #151c28;
+  --bg-surface-elevated: #1e293b;
+  --bg-subtle: #1e293b;
+  --bg-card: #151c28;
+  --bg-hover: #1e293b;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --text-inverse: #0f172a;
+
+  --border-main: #1e293b;
+  --border-light: #0f172a;
+  --border-strong: #334155;
+
+  /* Sidebar remains #000000 */
+  --sidebar-bg: #000000;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-hover: #151c28;
+  --sidebar-border: #1e293b;
+
+  /* Status Colors in Dark Mode */
+  --color-success-bg: rgba(16, 185, 129, 0.15);
+  --color-success-text: #34d399;
+
+  --color-danger-bg: rgba(239, 68, 68, 0.15);
+  --color-danger-text: #f87171;
+
+  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-warning-text: #fbbf24;
+
+  --color-info-bg: rgba(59, 130, 246, 0.15);
+  --color-info-text: #60a5fa;
+}
+
+/* Dark Mode: 4 per-theme accent overrides */
+[data-mode="dark"][data-theme="blue"] {
+  --primary: #389fff;
+  --primary-hover: #2090FF;
+  --primary-light: rgba(32, 144, 255, 0.18);
+  --primary-subtle: rgba(32, 144, 255, 0.3);
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(56, 159, 255, 0.4);
+}
+
+[data-mode="dark"][data-theme="green"] {
+  --primary: #91b518;
+  --primary-hover: #7f9e15;
+  --primary-light: rgba(127, 158, 21, 0.18);
+  --primary-subtle: rgba(127, 158, 21, 0.3);
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(145, 181, 24, 0.4);
+}
+
+[data-mode="dark"][data-theme="purple"] {
+  --primary: #d97df3;
+  --primary-hover: #CD69ED;
+  --primary-light: rgba(205, 105, 237, 0.18);
+  --primary-subtle: rgba(205, 105, 237, 0.3);
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(217, 125, 243, 0.4);
+}
+
+[data-mode="dark"][data-theme="orange"] {
+  --primary: #ff7a1a;
+  --primary-hover: #FF6901;
+  --primary-light: rgba(255, 105, 1, 0.18);
+  --primary-subtle: rgba(255, 105, 1, 0.3);
+  --primary-foreground: #ffffff;
+  --ring-color: rgba(255, 122, 26, 0.4);
+}

@@ -7,6 +7,7 @@ import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+import { Button } from "@/components/ui/button";
 
 type ToolStatus = "Available" | "Issued" | "Under Calibration" | "Under Repair" | "Scrapped";
 
@@ -51,11 +52,11 @@ interface ToolsSubgroup {
 }
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
-  Available: { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
-  Issued: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500" },
-  "Under Calibration": { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
-  "Under Repair": { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500" },
-  Scrapped: { bg: "bg-slate-100", text: "text-slate-500", dot: "bg-slate-400" },
+  Available: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]", dot: "bg-emerald-500" },
+  Issued: { bg: "bg-[var(--primary-light)] border border-[var(--border-main)]", text: "text-[var(--primary)]", dot: "bg-[var(--primary)]" },
+  "Under Calibration": { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]", dot: "bg-amber-500" },
+  "Under Repair": { bg: "bg-[var(--color-danger-bg)] border border-[var(--border-main)]", text: "text-[var(--color-danger-text)]", dot: "bg-red-500" },
+  Scrapped: { bg: "bg-[var(--bg-subtle)] border border-[var(--border-main)]", text: "text-[var(--text-muted)]", dot: "bg-slate-400" },
 };
 
 interface ToolSpec {
@@ -337,7 +338,7 @@ export default function ToolsMasterPage() {
   });
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
@@ -372,36 +373,37 @@ export default function ToolsMasterPage() {
               {/* ── Header ── */}
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
                     Tools Master
                   </h1>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                  <p className="text-sm text-[var(--text-muted)] mt-0.5">
                     Register and manage tools/gauges (GAUGEANDTOOLS)
                   </p>
                 </div>
                 <RoleGate permission="canEditMaster">
-                  <button
+                  <Button
                     id="tools-add-btn"
                     onClick={handleOpenAdd}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150 group"
+                    variant="primary"
+                    className="group"
                   >
                     <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                     Add Tool
-                  </button>
+                  </Button>
                 </RoleGate>
               </div>
 
               {/* ── Filters Card ── */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="relative flex-1 max-w-sm">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       id="tools-search-input"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search tool name, number, or group…"
-                      className="w-full text-sm border border-slate-200 rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all bg-slate-50"
+                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                     />
                   </div>
 
@@ -412,7 +414,7 @@ export default function ToolsMasterPage() {
                         id="tools-group-filter"
                         value={groupFilter}
                         onChange={(e) => setGroupFilter(e.target.value)}
-                        className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-medium text-slate-700"
+                        className="text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                       >
                         <option value="All">All Groups</option>
                         {toolsGroups.map((g) => (
@@ -429,7 +431,7 @@ export default function ToolsMasterPage() {
                         id="tools-status-filter"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-medium text-slate-700"
+                        className="text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                       >
                         <option value="All">All Statuses</option>
                         <option value="Available">Available</option>
@@ -444,14 +446,14 @@ export default function ToolsMasterPage() {
               </div>
 
               {/* ── Table Card ── */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 animate-fade-in">
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 animate-fade-in">
                 {loading ? (
                   <TableSkeleton rows={6} />
                 ) : (
                 <div className="overflow-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-100">
+                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                         {[
                           "Tool/Gauge No",
                           "Name",
@@ -463,14 +465,14 @@ export default function ToolsMasterPage() {
                         ].map((col) => (
                           <th
                             key={col}
-                            className="text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider pb-2.5 pr-4 last:pr-0"
+                            className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0"
                           >
                             {col}
                           </th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-[var(--border-main)]">
                       {filtered.map((t) => {
                         const sc = statusConfig[t.status] ?? statusConfig["Available"];
                         const calOverdue = isCalibrationOverdue(t.nextCalibrationDate);
@@ -478,36 +480,36 @@ export default function ToolsMasterPage() {
                           <tr
                             key={t.id}
                             onClick={() => handleRowClick(t)}
-                            className="hover:bg-slate-50/60 cursor-pointer transition-colors group"
+                            className="hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                           >
-                            <td className="py-3.5 pr-4 font-mono text-xs text-slate-500 font-semibold">
+                            <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold">
                               {t.toolOrGaugeNo}
                             </td>
-                            <td className="py-3.5 pr-4">
-                              <p className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                            <td className="py-3.5 px-3">
+                              <p className="font-semibold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors">
                                 {t.name}
                               </p>
-                              <p className="text-[11px] text-slate-400 line-clamp-1">{t.description}</p>
+                              <p className="text-[11px] text-[var(--text-muted)] line-clamp-1">{t.description}</p>
                             </td>
-                            <td className="py-3.5 pr-4 text-slate-600">
-                              {t.grouping} <span className="text-slate-300">/</span> {t.type}
+                            <td className="py-3.5 px-3 text-[var(--text-secondary)]">
+                              {t.grouping} <span className="text-[var(--text-muted)]">/</span> {t.type}
                             </td>
-                            <td className="py-3.5 pr-4 font-mono text-xs text-slate-600">
-                              {t.qtyIn} / {t.qtyOut} <span className="text-slate-300">({t.totQty})</span>
+                            <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)]">
+                              {t.qtyIn} / {t.qtyOut} <span className="text-[var(--text-muted)]">({t.totQty})</span>
                             </td>
                             <td
-                              className={`py-3.5 pr-4 font-mono text-xs font-semibold ${
-                                calOverdue ? "text-red-600 font-bold" : "text-slate-600"
+                              className={`py-3.5 px-3 font-mono text-xs font-semibold ${
+                                calOverdue ? "text-[var(--color-danger-text)] font-bold" : "text-[var(--text-secondary)]"
                               }`}
                             >
                               {t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—"}
                               {calOverdue && (
-                                <span className="block text-[9px] text-red-500 font-sans tracking-wide uppercase mt-0.5">
+                                <span className="block text-[9px] text-[var(--color-danger-text)] font-sans tracking-wide uppercase mt-0.5">
                                   Overdue
                                 </span>
                               )}
                             </td>
-                            <td className="py-3.5 pr-4">
+                            <td className="py-3.5 px-3">
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
                               >
@@ -515,11 +517,11 @@ export default function ToolsMasterPage() {
                                 {t.status}
                               </span>
                             </td>
-                            <td className="py-3.5" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                               <RoleGate permission="canEditMaster">
                                 <button
                                   onClick={() => handleDeleteTool(t.id)}
-                                  className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                                  className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
                                   title="Delete Tool"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -531,7 +533,7 @@ export default function ToolsMasterPage() {
                       })}
                       {filtered.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-sm text-slate-400">
+                          <td colSpan={7} className="py-8 text-center text-sm text-[var(--text-muted)]">
                             No tools found in registry.
                           </td>
                         </tr>
@@ -540,8 +542,8 @@ export default function ToolsMasterPage() {
                   </table>
                 </div>
                 )}
-                <div className="mt-4 pt-3 border-t border-slate-100">
-                  <span className="text-xs text-slate-400 font-medium">
+                <div className="mt-4 pt-3 border-t border-[var(--border-main)]">
+                  <span className="text-xs text-[var(--text-muted)] font-medium">
                     Showing {filtered.length} of {tools.length} tool records
                   </span>
                 </div>
@@ -553,17 +555,17 @@ export default function ToolsMasterPage() {
               {/* Breadcrumb back */}
               <button
                 onClick={() => setViewState("list")}
-                className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-700 uppercase tracking-widest mb-4 transition-colors"
+                className="inline-flex items-center gap-1 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-widest mb-4 transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" /> Back to registry list
               </button>
 
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
                     {viewState === "create" ? "New Tool" : name}
                   </h1>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                  <p className="text-sm text-[var(--text-muted)] mt-0.5">
                     {viewState === "create"
                       ? "Register a new tool or gauge record"
                       : `Editing registry details of ${toolOrGaugeNo}`}
@@ -573,8 +575,8 @@ export default function ToolsMasterPage() {
 
               {/* Overdue Alert banner in edit mode */}
               {viewState === "edit" && isCalibrationOverdue(nextCalibrationDate) && (
-                <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-800 text-sm">
-                  <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div className="mb-5 p-4 bg-[var(--color-danger-bg)] border border-[var(--border-main)] rounded-2xl flex items-start gap-3 text-[var(--color-danger-text)] text-sm">
+                  <ShieldAlert className="w-5 h-5 text-[var(--color-danger-text)] shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold">Calibration Overdue:</span> This precision tool is{" "}
                     <span className="font-mono font-bold">{getOverdueDays(nextCalibrationDate)}</span> days
@@ -584,7 +586,7 @@ export default function ToolsMasterPage() {
               )}
 
               {/* 5 Tab Navigation bar */}
-              <div className="flex items-center border-b border-slate-200 mb-6 overflow-x-auto gap-2">
+              <div className="flex items-center border-b border-[var(--border-main)] mb-6 overflow-x-auto gap-2">
                 {[
                   { id: "general", label: "General Info" },
                   { id: "stock", label: "Stock & Quantities" },
@@ -597,8 +599,8 @@ export default function ToolsMasterPage() {
                     onClick={() => setActiveTab(tb.id as any)}
                     className={`pb-3 px-4 text-sm font-semibold transition-all border-b-2 -mb-[2px] whitespace-nowrap ${
                       activeTab === tb.id
-                        ? "border-blue-600 text-blue-600"
-                        : "border-transparent text-slate-400 hover:text-slate-600"
+                        ? "border-[var(--primary)] text-[var(--primary)]"
+                        : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     }`}
                   >
                     {tb.label}
@@ -610,10 +612,10 @@ export default function ToolsMasterPage() {
               <form onSubmit={handleSave} className="space-y-6">
                 {/* ── TAB 1: General Info ── */}
                 {activeTab === "general" && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Tool / Gauge Number *
                         </label>
                         <input
@@ -622,12 +624,12 @@ export default function ToolsMasterPage() {
                           onChange={(e) => setToolOrGaugeNo(e.target.value.toUpperCase())}
                           placeholder="e.g. TL-MIC-001"
                           disabled={viewState === "edit"}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-slate-50 font-mono uppercase font-semibold disabled:bg-slate-100 disabled:text-slate-400"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] font-mono uppercase font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-muted)]"
                         />
-                        {errors.toolOrGaugeNo && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.toolOrGaugeNo}</p>}
+                        {errors.toolOrGaugeNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.toolOrGaugeNo}</p>}
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Name *
                         </label>
                         <input
@@ -635,22 +637,22 @@ export default function ToolsMasterPage() {
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           placeholder="e.g. Outside Micrometer 0-25mm"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-slate-50 font-medium"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                         />
-                        {errors.name && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.name}</p>}
+                        {errors.name && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.name}</p>}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Group
                         </label>
                         <select
                           id="form-grouping"
                           value={grouping}
                           onChange={(e) => setGrouping(e.target.value)}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-medium text-slate-700"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                         >
                           {toolsGroups.map((g) => (
                             <option key={g.id} value={g.name}>
@@ -660,14 +662,14 @@ export default function ToolsMasterPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Type / Subgroup
                         </label>
                         <select
                           id="form-type"
                           value={type}
                           onChange={(e) => setType(e.target.value)}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-medium text-slate-700"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                         >
                           {toolsSubgroups.map((sg) => (
                             <option key={sg.id} value={sg.name}>
@@ -679,7 +681,7 @@ export default function ToolsMasterPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                         Description
                       </label>
                       <textarea
@@ -688,13 +690,13 @@ export default function ToolsMasterPage() {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Details about standard usage, accuracy specs, etc."
-                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] resize-none"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Size / Measuring Range
                         </label>
                         <input
@@ -702,11 +704,11 @@ export default function ToolsMasterPage() {
                           value={size}
                           onChange={(e) => setSize(e.target.value)}
                           placeholder="e.g. 0-25mm"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Shape
                         </label>
                         <input
@@ -714,14 +716,14 @@ export default function ToolsMasterPage() {
                           value={shape}
                           onChange={(e) => setShape(e.target.value)}
                           placeholder="e.g. Cylindrical"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                    <div className="grid grid-cols-2 gap-4 border-t border-[var(--border-main)] pt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Department Location
                         </label>
                         <input
@@ -729,11 +731,11 @@ export default function ToolsMasterPage() {
                           value={deptName}
                           onChange={(e) => setDeptName(e.target.value)}
                           placeholder="e.g. QC"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Storage Location Bin
                         </label>
                         <input
@@ -741,7 +743,7 @@ export default function ToolsMasterPage() {
                           value={location}
                           onChange={(e) => setLocation(e.target.value)}
                           placeholder="e.g. Tool Crib A"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                         />
                       </div>
                     </div>
@@ -750,10 +752,10 @@ export default function ToolsMasterPage() {
 
                 {/* ── TAB 2: Stock & Quantities ── */}
                 {activeTab === "stock" && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Total Registered Qty *
                         </label>
                         <input
@@ -768,19 +770,19 @@ export default function ToolsMasterPage() {
                               setQtyIn(val);
                             }
                           }}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-mono font-semibold"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-mono font-semibold"
                         />
-                        {errors.totQty && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.totQty}</p>}
+                        {errors.totQty && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.totQty}</p>}
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Tool Status
                         </label>
                         <select
                           id="form-status"
                           value={status}
                           onChange={(e) => setStatus(e.target.value as ToolStatus)}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-medium text-slate-700"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-medium text-[var(--text-primary)]"
                         >
                           <option value="Available">Available</option>
                           <option value="Issued">Issued</option>
@@ -791,65 +793,65 @@ export default function ToolsMasterPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4 bg-slate-50/40 p-4 rounded-xl">
+                    <div className="grid grid-cols-3 gap-4 border-t border-[var(--border-main)] pt-4 bg-[var(--bg-subtle)] p-4 rounded-xl">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">
                           Quantity In Store
                         </label>
-                        <p className="text-lg font-bold text-slate-800 font-mono">{qtyIn}</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)] font-mono">{qtyIn}</p>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">
                           Quantity Issued Out
                         </label>
-                        <p className="text-lg font-bold text-slate-800 font-mono">{qtyOut}</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)] font-mono">{qtyOut}</p>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">
                           New Stock (GRN)
                         </label>
-                        <p className="text-lg font-bold text-slate-800 font-mono">{qtyNew}</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)] font-mono">{qtyNew}</p>
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-400 flex items-center gap-1.5 leading-relaxed">
-                      <HelpCircle className="w-4 h-4 text-slate-300" />
+                    <p className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 leading-relaxed">
+                      <HelpCircle className="w-4 h-4 text-[var(--text-muted)]" />
                       <span>
                         <strong>Note:</strong> QTY_IN, QTY_OUT and QTY_NEW are updated automatically on Issue, Receive, and GRN transactions.
                       </span>
                     </p>
 
                     {/* Serial Generation Option */}
-                    <div className="border-t border-slate-100 pt-4 space-y-4">
+                    <div className="border-t border-[var(--border-main)] pt-4 space-y-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">Generate Unique Serials</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Auto-generates rows in GAUGE_SERIAL_NO for item tracking</p>
+                          <p className="text-sm font-semibold text-[var(--text-primary)]">Generate Unique Serials</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Auto-generates rows in GAUGE_SERIAL_NO for item tracking</p>
                         </div>
                         <input
                           type="checkbox"
                           id="form-serial-req"
                           checked={serialNoGenReq}
                           onChange={(e) => setSerialNoGenReq(e.target.checked)}
-                          className="w-5 h-5 text-blue-600 border-slate-200 rounded focus:ring-blue-500"
+                          className="w-5 h-5 text-[var(--primary)] border-[var(--border-main)] rounded focus:ring-[var(--primary)]"
                         />
                       </div>
 
                       {serialNoGenReq && (
                         <div className="space-y-3">
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                          <div className="p-3 bg-[var(--color-warning-bg)] border border-[var(--border-main)] rounded-xl text-xs text-[var(--color-warning-text)]">
                             <strong>System Notice:</strong> The ERP will automatically register <strong>{totQty}</strong> unique serials in GAUGE_SERIAL_NO on saving.
                           </div>
                           <button
                             type="button"
                             onClick={handlePreviewSerials}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1"
+                            className="text-xs font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
                           >
                             Preview Serial Numbers →
                           </button>
 
                           {showSerialPreview && (
-                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-36 overflow-y-auto font-mono text-xs text-slate-500 space-y-1">
+                            <div className="p-3 bg-[var(--bg-subtle)] border border-[var(--border-main)] rounded-xl max-h-36 overflow-y-auto font-mono text-xs text-[var(--text-secondary)] space-y-1">
                               {serialPreview.map((s, i) => (
                                 <p key={i}>{s}</p>
                               ))}
@@ -863,10 +865,10 @@ export default function ToolsMasterPage() {
 
                 {/* ── TAB 3: Calibration ── */}
                 {activeTab === "calibration" && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Calibration Frequency (Months)
                         </label>
                         <input
@@ -875,11 +877,11 @@ export default function ToolsMasterPage() {
                           min={1}
                           value={calibrationFrqMonths}
                           onChange={(e) => setCalibrationFrqMonths(Number(e.target.value))}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-mono"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Planned Lab / Agency Name
                         </label>
                         <input
@@ -887,14 +889,14 @@ export default function ToolsMasterPage() {
                           value={caliPlannedWho}
                           onChange={(e) => setCaliPlannedWho(e.target.value)}
                           placeholder="e.g. Reliable Calibration Lab"
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                    <div className="grid grid-cols-2 gap-4 border-t border-[var(--border-main)] pt-4">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Last Calibration Date
                         </label>
                         <input
@@ -902,11 +904,11 @@ export default function ToolsMasterPage() {
                           type="date"
                           value={lastCalibrationDate}
                           onChange={(e) => setLastCalibrationDate(e.target.value)}
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30 font-mono"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Next Scheduled Calibration
                         </label>
                         <input
@@ -914,9 +916,9 @@ export default function ToolsMasterPage() {
                           type="date"
                           value={nextCalibrationDate}
                           readOnly
-                          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-100 font-mono font-bold text-slate-700 outline-none cursor-not-allowed"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-hover)] font-mono font-bold text-[var(--text-primary)] outline-none cursor-not-allowed"
                         />
-                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                        <p className="text-[10px] text-[var(--text-muted)] font-medium mt-1">
                           Calculated automatically: Last Date + {calibrationFrqMonths} Months frequency.
                         </p>
                       </div>
@@ -926,34 +928,34 @@ export default function ToolsMasterPage() {
 
                 {/* ── TAB 4: Specifications ── */}
                 {activeTab === "specs" && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-slate-800 font-sans">Measurement Parameters</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Parameters stored under TOOLS_SPECIFICATION</p>
+                        <p className="text-sm font-semibold text-[var(--text-primary)] font-sans">Measurement Parameters</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Parameters stored under TOOLS_SPECIFICATION</p>
                       </div>
                       <button
                         type="button"
                         id="add-spec-row-btn"
                         onClick={handleAddSpec}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
+                        className="text-xs font-bold text-[var(--primary)] flex items-center gap-1 hover:underline"
                       >
                         <Plus className="w-4 h-4" /> Add Parameter
                       </button>
                     </div>
 
-                    <div className="overflow-auto border border-slate-100 rounded-xl">
+                    <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50/50">
+                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                             {["Specification Parameter Name", "Standard Value", "Unit of Measure", ""].map((col) => (
-                              <th key={col} className="text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider py-2.5 px-4">
+                              <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                                 {col}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-[var(--border-main)]">
                           {specs.map((item, index) => (
                             <tr key={index}>
                               <td className="py-2.5 px-3">
@@ -965,7 +967,7 @@ export default function ToolsMasterPage() {
                                     setSpecs(list);
                                   }}
                                   placeholder="e.g. Accuracy / Range"
-                                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                                 />
                               </td>
                               <td className="py-2.5 px-3">
@@ -977,7 +979,7 @@ export default function ToolsMasterPage() {
                                     setSpecs(list);
                                   }}
                                   placeholder="Value"
-                                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                                 />
                               </td>
                               <td className="py-2.5 px-3">
@@ -989,14 +991,14 @@ export default function ToolsMasterPage() {
                                     setSpecs(list);
                                   }}
                                   placeholder="UoM"
-                                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500/30"
+                                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                                 />
                               </td>
                               <td className="py-2.5 px-3">
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteSpec(index)}
-                                  className="p-1 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-500 transition-colors"
+                                  className="p-1 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
                                 >
                                   <Trash className="w-4 h-4" />
                                 </button>
@@ -1011,26 +1013,26 @@ export default function ToolsMasterPage() {
 
                 {/* ── TAB 5: Price History ── */}
                 {activeTab === "price" && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-800 font-sans">PO Sourcing Log</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Historically tracked rates captured from TOOLS_PRICE_MASTER & GRNs</p>
+                      <p className="text-sm font-semibold text-[var(--text-primary)] font-sans">PO Sourcing Log</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">Historically tracked rates captured from TOOLS_PRICE_MASTER & GRNs</p>
                     </div>
 
-                    <div className="overflow-auto border border-slate-100 rounded-xl">
+                    <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50/50">
+                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                             {["Date", "Sourced Supplier", "GRN / Source Doc", "Sourcing Unit Rate (₹)"].map((col) => (
-                              <th key={col} className="text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider py-2.5 px-4">
+                              <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                                 {col}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-[var(--border-main)]">
                           <tr>
-                            <td colSpan={4} className="py-8 text-center text-xs text-slate-400 font-medium">
+                            <td colSpan={4} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
                               No purchase or receipt transaction history found for this tool record.
                             </td>
                           </tr>
@@ -1041,21 +1043,22 @@ export default function ToolsMasterPage() {
                 )}
 
                 {/* Footer submit and cancel buttons */}
-                <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-slate-50 py-4 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-[var(--bg-app)] py-4 border-t border-[var(--border-main)]">
                   <button
                     type="button"
                     onClick={() => setViewState("list")}
-                    className="px-5 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-all"
+                    className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-all"
                   >
                     Cancel
                   </button>
-                  <button
+                  <Button
                     type="submit"
                     id="tool-save-btn"
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-150"
+                    variant="primary"
+                    size="lg"
                   >
                     <Save className="w-4 h-4" /> Save Record
-                  </button>
+                  </Button>
                 </div>
               </form>
             </div>
