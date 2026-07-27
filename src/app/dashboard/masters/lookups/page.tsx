@@ -9,7 +9,7 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
-type Tab = "Tool Types" | "Gauge Types" | "Tools Groups" | "Tools Subgroups";
+type Tab = "Tool Types" | "Gauge Types" | "Tools Groups" | "Tools Subgroups" | "Calib Frequency";
 
 interface ToolType {
   id: number;
@@ -43,7 +43,14 @@ interface ToolsSubgroup {
   group?: { id: number; code: string; name: string } | null;
 }
 
-const tabs: Tab[] = ["Tool Types", "Gauge Types", "Tools Groups", "Tools Subgroups"];
+interface CalibFrequency {
+  id: number;
+  prodToleranceMin: string | null;
+  prodToleranceMax: number | null;
+  calibFrequency: number | null;
+}
+
+const tabs: Tab[] = ["Tool Types", "Gauge Types", "Tools Groups", "Tools Subgroups", "Calib Frequency"];
 
 export default function LookupsPage() {
   const [tab, setTab] = useState<Tab>("Tool Types");
@@ -53,6 +60,7 @@ export default function LookupsPage() {
   const [gaugeTypes, setGaugeTypes] = useState<GaugeType[]>([]);
   const [toolsGroups, setToolsGroups] = useState<ToolsGroup[]>([]);
   const [toolsSubgroups, setToolsSubgroups] = useState<ToolsSubgroup[]>([]);
+  const [calibFreqs, setCalibFreqs] = useState<CalibFrequency[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -85,16 +93,18 @@ export default function LookupsPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [tt, gt, gr, sg] = await Promise.all([
+    const [tt, gt, gr, sg, cf] = await Promise.all([
       apiGet<{ items: ToolType[] }>("/api/lookups/tool-types"),
       apiGet<{ items: GaugeType[] }>("/api/lookups/gauge-types"),
       apiGet<{ items: ToolsGroup[] }>("/api/lookups/groups"),
       apiGet<{ items: ToolsSubgroup[] }>("/api/lookups/subgroups"),
+      apiGet<{ items: CalibFrequency[] }>("/api/lookups/calib-frequency"),
     ]);
     if (tt.data?.items) setToolTypes(tt.data.items);
     if (gt.data?.items) setGaugeTypes(gt.data.items);
     if (gr.data?.items) setToolsGroups(gr.data.items);
     if (sg.data?.items) setToolsSubgroups(sg.data.items);
+    if (cf.data?.items) setCalibFreqs(cf.data.items);
     setLoading(false);
   }, []);
 
@@ -197,6 +207,47 @@ export default function LookupsPage() {
       return;
     }
     setBannerMsg({ type: "success", text: "Subgroup deleted." });
+    loadAll();
+  };
+
+  // Calib Frequency state
+  const [cfMin, setCfMin] = useState("");
+  const [cfMax, setCfMax] = useState("");
+  const [cfFreq, setCfFreq] = useState("");
+  const [cfAdding, setCfAdding] = useState(false);
+  const [cfError, setCfError] = useState("");
+
+  const handleSaveCalibFreq = async () => {
+    setCfError("");
+    const payload: Record<string, string | number> = {};
+    if (cfMin.trim()) payload.prodToleranceMin = cfMin.trim();
+    if (cfMax.trim()) payload.prodToleranceMax = Number(cfMax);
+    if (cfFreq.trim()) payload.calibFrequency = Number(cfFreq);
+
+    if (Object.keys(payload).length === 0) {
+      setCfError("At least one field is required");
+      return;
+    }
+
+    const res = await apiPost("/api/lookups/calib-frequency", payload);
+    if (res.error) {
+      setCfError(res.error.message);
+      return;
+    }
+
+    setBannerMsg({ type: "success", text: "Calibration frequency added." });
+    setCfAdding(false);
+    setCfMin(""); setCfMax(""); setCfFreq("");
+    loadAll();
+  };
+
+  const handleDeleteCalibFreq = async (id: number) => {
+    const res = await apiDelete(`/api/lookups/calib-frequency/${id}`);
+    if (res.error) {
+      setBannerMsg({ type: "error", text: res.error.message });
+      return;
+    }
+    setBannerMsg({ type: "success", text: "Calibration frequency deleted." });
     loadAll();
   };
 
@@ -412,6 +463,46 @@ export default function LookupsPage() {
                   </tbody>
                 </table>
               </div>
+              )
+            )}
+
+            {/* Tab Content 5: Calib Frequency */}
+            {tab === "Calib Frequency" && (
+              loading ? (
+                <TableSkeleton rows={4} />
+              ) : (
+                <div className="space-y-4">
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                          {["Prod Tolerance Min", "Prod Tolerance Max", "Calib Frequency (months)", "Actions"].map((col) => (
+                            <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-main)]">
+                        {calibFreqs.map((cf) => (
+                          <tr key={cf.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                            <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMin ?? "-"}</td>
+                            <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMax ?? "-"}</td>
+                            <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{cf.calibFrequency ?? "-"}</td>
+                            <td className="py-3 px-3">
+                              <RoleGate permission="canDeleteMaster">
+                                <button onClick={() => handleDeleteCalibFreq(cf.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </RoleGate>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {renderCalibFreqEditor()}
+                </div>
               )
             )}
 
@@ -690,6 +781,79 @@ export default function LookupsPage() {
                 setInlineDesc("");
                 setInlineError("");
                 setIsInlineAdding(true);
+              }}
+              className="flex items-center gap-1.5 text-[var(--primary)] hover:underline font-bold text-xs"
+            >
+              <Plus className="w-4 h-4" /> Add Row
+            </button>
+          )}
+        </div>
+      </RoleGate>
+    );
+  }
+
+  function renderCalibFreqEditor() {
+    return (
+      <RoleGate permission="canEditMaster">
+        <div className="border border-dashed border-[var(--border-main)] rounded-2xl p-4 bg-[var(--bg-subtle)] mt-4">
+          {cfAdding ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <input
+                    id="cf-form-min"
+                    value={cfMin}
+                    onChange={(e) => setCfMin(e.target.value)}
+                    placeholder="Prod Tolerance Min"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                  />
+                </div>
+                <div>
+                  <input
+                    id="cf-form-max"
+                    value={cfMax}
+                    onChange={(e) => setCfMax(e.target.value)}
+                    placeholder="Prod Tolerance Max"
+                    type="number"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                  />
+                </div>
+                <div>
+                  <input
+                    id="cf-form-freq"
+                    value={cfFreq}
+                    onChange={(e) => setCfFreq(e.target.value)}
+                    placeholder="Frequency (months)"
+                    type="number"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                  />
+                </div>
+              </div>
+              {cfError && <p className="text-[var(--color-danger-text)] text-xs font-semibold">{cfError}</p>}
+              <div className="flex items-center justify-end gap-2.5">
+                <button
+                  onClick={() => setCfAdding(false)}
+                  className="px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <Button
+                  id="cf-save-btn"
+                  onClick={handleSaveCalibFreq}
+                  variant="primary"
+                  size="sm"
+                >
+                  <Check className="w-3.5 h-3.5" /> Save Row
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              id="cf-add-row-btn"
+              onClick={() => {
+                setCfMin(""); setCfMax(""); setCfFreq("");
+                setCfError("");
+                setCfAdding(true);
               }}
               className="flex items-center gap-1.5 text-[var(--primary)] hover:underline font-bold text-xs"
             >

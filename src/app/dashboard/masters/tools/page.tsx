@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Trash2, ShieldAlert, ArrowLeft, Trash, Save, HelpCircle, CheckCircle2 } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, Trash, Save, HelpCircle, CheckCircle2 } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 type ToolStatus = "Available" | "Issued" | "Under Calibration" | "Under Repair" | "Scrapped";
 
 interface GaugeAndTool {
-  id: number;
+  refNo: number;
   toolOrGaugeNo: string;
   name: string;
   description: string | null;
@@ -20,31 +20,27 @@ interface GaugeAndTool {
   shape: string | null;
   grouping: string;
   type: string | null;
-  serialNoGenReq: boolean;
+  serialNoGenReq: string | null;
   totQty: number;
   qtyIn: number;
   qtyOut: number;
   qtyNew: number;
   location: string | null;
-  deptName: string | null;
   status: string;
   calibrationFrqMonths: number | null;
-  caliPlannedWho: string | null;
-  lastCalibrationDate: string | null;
-  nextCalibrationDate: string | null;
   supCode: string | null;
-  serialNumbers?: { id: number; serialNo: string; status: string }[];
+  serialNumbers?: { refNo: number; serialNo: number; status: string | null }[];
 }
 
 interface ToolsGroup {
-  id: number;
+  rowId: number;
   code: string;
   name: string;
   prefixToolsNo: string | null;
 }
 
 interface ToolsSubgroup {
-  id: number;
+  rowId: number;
   code: string;
   name: string;
   refGroupId: number;
@@ -127,12 +123,8 @@ export default function ToolsMasterPage() {
   const [qtyOut, setQtyOut] = useState(0);
   const [qtyNew, setQtyNew] = useState(0);
   const [location, setLocation] = useState("");
-  const [deptName, setDeptName] = useState("");
   const [status, setStatus] = useState<ToolStatus>("Available");
   const [calibrationFrqMonths, setCalibrationFrqMonths] = useState(12);
-  const [caliPlannedWho, setCaliPlannedWho] = useState("");
-  const [lastCalibrationDate, setLastCalibrationDate] = useState("");
-  const [nextCalibrationDate, setNextCalibrationDate] = useState("");
 
   // Sub-table specifications list
   const [specs, setSpecs] = useState<ToolSpec[]>([]);
@@ -143,17 +135,6 @@ export default function ToolsMasterPage() {
 
   // Field validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Auto-calculation of next calibration date
-  useEffect(() => {
-    if (lastCalibrationDate) {
-      const last = new Date(lastCalibrationDate);
-      last.setMonth(last.getMonth() + Number(calibrationFrqMonths));
-      setNextCalibrationDate(last.toISOString().split("T")[0]);
-    } else {
-      setNextCalibrationDate("");
-    }
-  }, [lastCalibrationDate, calibrationFrqMonths]);
 
   // Prefix auto-generation on Grouping selection
   useEffect(() => {
@@ -174,18 +155,14 @@ export default function ToolsMasterPage() {
     setShape(tool.shape ?? "");
     setGrouping(tool.grouping);
     setType(tool.type ?? "");
-    setSerialNoGenReq(tool.serialNoGenReq);
+    setSerialNoGenReq(tool.serialNoGenReq === "Y");
     setTotQty(tool.totQty);
     setQtyIn(tool.qtyIn);
     setQtyOut(tool.qtyOut);
     setQtyNew(tool.qtyNew);
     setLocation(tool.location ?? "");
-    setDeptName(tool.deptName ?? "");
     setStatus(tool.status as ToolStatus);
     setCalibrationFrqMonths(tool.calibrationFrqMonths ?? 12);
-    setCaliPlannedWho(tool.caliPlannedWho ?? "");
-    setLastCalibrationDate(tool.lastCalibrationDate ? tool.lastCalibrationDate.split("T")[0] : "");
-    setNextCalibrationDate(tool.nextCalibrationDate ? tool.nextCalibrationDate.split("T")[0] : "");
     setSpecs([
       { name: "Accuracy", value: "0.01", unit: "mm" },
       { name: "Measuring Range", value: tool.size ?? "", unit: "" },
@@ -211,12 +188,8 @@ export default function ToolsMasterPage() {
     setQtyOut(0);
     setQtyNew(0);
     setLocation("");
-    setDeptName("");
     setStatus("Available");
     setCalibrationFrqMonths(12);
-    setCaliPlannedWho("");
-    setLastCalibrationDate("");
-    setNextCalibrationDate("");
     setSpecs([
       { name: "Accuracy", value: "0.01", unit: "mm" },
     ]);
@@ -271,10 +244,8 @@ export default function ToolsMasterPage() {
       totQty,
       qtyIn: viewState === "create" ? totQty : qtyIn,
       location: location || undefined,
-      deptName: deptName || undefined,
       status,
       calibrationFrqMonths,
-      caliPlannedWho: caliPlannedWho || undefined,
       specifications: specs.map((s) => ({
         specName: s.name,
         specValue: s.value || undefined,
@@ -284,7 +255,7 @@ export default function ToolsMasterPage() {
 
     setBannerMsg(null);
     const res = selectedTool
-      ? await apiPut<{ tool: GaugeAndTool }>(`/api/tools/${selectedTool.id}`, payload)
+      ? await apiPut<{ tool: GaugeAndTool }>(`/api/tools/${selectedTool.refNo}`, payload)
       : await apiPost<{ tool: GaugeAndTool }>("/api/tools", payload);
 
     if (res.error) {
@@ -298,30 +269,15 @@ export default function ToolsMasterPage() {
     loadTools();
   };
 
-  const handleDeleteTool = async (id: number) => {
+  const handleDeleteTool = async (refNo: number) => {
     if (!confirm("Are you sure you want to delete this tool from GAUGEANDTOOLS?")) return;
-    const res = await apiDelete(`/api/tools/${id}`);
+    const res = await apiDelete(`/api/tools/${refNo}`);
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
     setBannerMsg({ type: "success", text: "Tool deleted." });
     loadTools();
-  };
-
-  const isCalibrationOverdue = (nextCalStr: string | null) => {
-    if (!nextCalStr) return false;
-    const nextCal = new Date(nextCalStr);
-    const today = new Date("2026-07-22");
-    return nextCal < today;
-  };
-
-  const getOverdueDays = (nextCalStr: string | null) => {
-    if (!nextCalStr) return 0;
-    const nextCal = new Date(nextCalStr);
-    const today = new Date("2026-07-22");
-    const diff = today.getTime() - nextCal.getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
   };
 
   // Filter tools
@@ -418,7 +374,7 @@ export default function ToolsMasterPage() {
                       >
                         <option value="All">All Groups</option>
                         {toolsGroups.map((g) => (
-                          <option key={g.id} value={g.name}>
+                          <option key={g.rowId} value={g.name}>
                             {g.name}
                           </option>
                         ))}
@@ -459,7 +415,6 @@ export default function ToolsMasterPage() {
                           "Name",
                           "Group / Type",
                           "Qty In / Out",
-                          "Next Calibration",
                           "Status",
                           "Actions",
                         ].map((col) => (
@@ -475,10 +430,9 @@ export default function ToolsMasterPage() {
                     <tbody className="divide-y divide-[var(--border-main)]">
                       {filtered.map((t) => {
                         const sc = statusConfig[t.status] ?? statusConfig["Available"];
-                        const calOverdue = isCalibrationOverdue(t.nextCalibrationDate);
                         return (
                           <tr
-                            key={t.id}
+                            key={t.refNo}
                             onClick={() => handleRowClick(t)}
                             className="hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                           >
@@ -497,18 +451,6 @@ export default function ToolsMasterPage() {
                             <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)]">
                               {t.qtyIn} / {t.qtyOut} <span className="text-[var(--text-muted)]">({t.totQty})</span>
                             </td>
-                            <td
-                              className={`py-3.5 px-3 font-mono text-xs font-semibold ${
-                                calOverdue ? "text-[var(--color-danger-text)] font-bold" : "text-[var(--text-secondary)]"
-                              }`}
-                            >
-                              {t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—"}
-                              {calOverdue && (
-                                <span className="block text-[9px] text-[var(--color-danger-text)] font-sans tracking-wide uppercase mt-0.5">
-                                  Overdue
-                                </span>
-                              )}
-                            </td>
                             <td className="py-3.5 px-3">
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
@@ -520,7 +462,7 @@ export default function ToolsMasterPage() {
                             <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                               <RoleGate permission="canEditMaster">
                                 <button
-                                  onClick={() => handleDeleteTool(t.id)}
+                                  onClick={() => handleDeleteTool(t.refNo)}
                                   className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
                                   title="Delete Tool"
                                 >
@@ -533,7 +475,7 @@ export default function ToolsMasterPage() {
                       })}
                       {filtered.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                          <td colSpan={6} className="py-8 text-center text-sm text-[var(--text-muted)]">
                             No tools found in registry.
                           </td>
                         </tr>
@@ -572,18 +514,6 @@ export default function ToolsMasterPage() {
                   </p>
                 </div>
               </div>
-
-              {/* Overdue Alert banner in edit mode */}
-              {viewState === "edit" && isCalibrationOverdue(nextCalibrationDate) && (
-                <div className="mb-5 p-4 bg-[var(--color-danger-bg)] border border-[var(--border-main)] rounded-2xl flex items-start gap-3 text-[var(--color-danger-text)] text-sm">
-                  <ShieldAlert className="w-5 h-5 text-[var(--color-danger-text)] shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold">Calibration Overdue:</span> This precision tool is{" "}
-                    <span className="font-mono font-bold">{getOverdueDays(nextCalibrationDate)}</span> days
-                    overdue for calibration. Recalibrate immediately before issue to maintain manufacturing quality tolerance.
-                  </div>
-                </div>
-              )}
 
               {/* 5 Tab Navigation bar */}
               <div className="flex items-center border-b border-[var(--border-main)] mb-6 overflow-x-auto gap-2">
@@ -655,7 +585,7 @@ export default function ToolsMasterPage() {
                           className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                         >
                           {toolsGroups.map((g) => (
-                            <option key={g.id} value={g.name}>
+                            <option key={g.rowId} value={g.name}>
                               {g.name}
                             </option>
                           ))}
@@ -672,7 +602,7 @@ export default function ToolsMasterPage() {
                           className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
                         >
                           {toolsSubgroups.map((sg) => (
-                            <option key={sg.id} value={sg.name}>
+                            <option key={sg.rowId} value={sg.name}>
                               {sg.name}
                             </option>
                           ))}
@@ -722,18 +652,6 @@ export default function ToolsMasterPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 border-t border-[var(--border-main)] pt-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                          Department Location
-                        </label>
-                        <input
-                          id="form-dept"
-                          value={deptName}
-                          onChange={(e) => setDeptName(e.target.value)}
-                          placeholder="e.g. QC"
-                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
-                        />
-                      </div>
                       <div>
                         <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                           Storage Location Bin
@@ -880,46 +798,15 @@ export default function ToolsMasterPage() {
                           className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                          Planned Lab / Agency Name
-                        </label>
-                        <input
-                          id="form-planned-who"
-                          value={caliPlannedWho}
-                          onChange={(e) => setCaliPlannedWho(e.target.value)}
-                          placeholder="e.g. Reliable Calibration Lab"
-                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
-                        />
-                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 border-t border-[var(--border-main)] pt-4">
                       <div>
                         <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                          Last Calibration Date
+                          Calibration Frequency (Months)
                         </label>
-                        <input
-                          id="form-last-cal"
-                          type="date"
-                          value={lastCalibrationDate}
-                          onChange={(e) => setLastCalibrationDate(e.target.value)}
-                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                          Next Scheduled Calibration
-                        </label>
-                        <input
-                          id="form-next-cal"
-                          type="date"
-                          value={nextCalibrationDate}
-                          readOnly
-                          className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-hover)] font-mono font-bold text-[var(--text-primary)] outline-none cursor-not-allowed"
-                        />
-                        <p className="text-[10px] text-[var(--text-muted)] font-medium mt-1">
-                          Calculated automatically: Last Date + {calibrationFrqMonths} Months frequency.
+                        <p className="text-sm text-[var(--text-muted)]">
+                          Calibration tracking is managed through the Calibration module.
                         </p>
                       </div>
                     </div>

@@ -13,7 +13,7 @@ export async function GET(
 
   const { id } = await params;
   const grn = await prisma.toolsPoReceive.findUnique({
-    where: { id: Number(id) },
+    where: { girNo: Number(id) },
     include: { lines: { include: { tool: true } }, supplier: true },
   });
 

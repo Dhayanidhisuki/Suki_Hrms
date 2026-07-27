@@ -10,22 +10,20 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
 interface ToolsIssueLine {
-  id: number;
+  rowId: number;
   dcNo: string;
   toolOrGaugeNo: string;
-  qtyIssued: number;
-  qtyReturned: number;
-  remainingQty: number;
-  status: string;
+  issueQty: number;
+  partNo: string | null;
 }
 
 interface ToolsIssueHeader {
-  id: number;
   dcNo: string;
-  deptName: string;
-  partyName: string;
-  issueDate: string;
-  dueDate: string;
+  receiveName: string | null;
+  subCode: string | null;
+  empId: string | null;
+  issueDate: string | null;
+  dueDate: string | null;
   status: string;
   lines: ToolsIssueLine[];
 }
@@ -42,8 +40,8 @@ export default function ReceiveToolPage() {
   // Form Fields
   const [receiveDate, setReceiveDate] = useState("");
   const [remarks, setRemarks] = useState("");
-  // Mapping of Line ID to quantity currently returning
-  const [returnQtys, setReturnQtys] = useState<Record<number, number>>({});
+  // Mapping of toolOrGaugeNo to quantity returning
+  const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState("");
@@ -65,23 +63,21 @@ export default function ReceiveToolPage() {
     setReceiveDate(new Date().toISOString().split("T")[0]);
     setRemarks("");
 
-    // Pre-fill return quantities with remaining quantities
-    const qtys: Record<number, number> = {};
+    // Pre-fill return quantities with issued quantities
+    const qtys: Record<string, number> = {};
     issue.lines.forEach((l) => {
-      if (l.status === "Open") {
-        qtys[l.id] = l.remainingQty;
-      }
+      qtys[l.toolOrGaugeNo] = l.issueQty;
     });
     setReturnQtys(qtys);
     setErrors({});
     setMode("receive");
   };
 
-  const handleQtyChange = (lineId: number, maxVal: number, val: number) => {
+  const handleQtyChange = (toolOrGaugeNo: string, maxVal: number, val: number) => {
     const clamped = Math.max(0, Math.min(val, maxVal));
     setReturnQtys({
       ...returnQtys,
-      [lineId]: clamped,
+      [toolOrGaugeNo]: clamped,
     });
   };
 
@@ -94,15 +90,13 @@ export default function ReceiveToolPage() {
     let totalReturning = 0;
 
     selectedIssue.lines.forEach((line) => {
-      if (line.status === "Open") {
-        const qty = returnQtys[line.id] || 0;
-        totalReturning += qty;
-        if (qty < 0) {
-          tempErrors[String(line.id)] = "Quantity cannot be negative";
-        }
-        if (qty > line.remainingQty) {
-          tempErrors[String(line.id)] = `Cannot exceed remaining ${line.remainingQty}`;
-        }
+      const qty = returnQtys[line.toolOrGaugeNo] || 0;
+      totalReturning += qty;
+      if (qty < 0) {
+        tempErrors[line.toolOrGaugeNo] = "Quantity cannot be negative";
+      }
+      if (qty > line.issueQty) {
+        tempErrors[line.toolOrGaugeNo] = `Cannot exceed issued ${line.issueQty}`;
       }
     });
 
@@ -116,14 +110,13 @@ export default function ReceiveToolPage() {
     }
 
     const payload = {
-      issueId: selectedIssue.id,
+      dcNo: selectedIssue.dcNo,
       receiveDate,
-      remarks,
       lines: selectedIssue.lines
-        .filter((l) => l.status === "Open" && (returnQtys[l.id] || 0) > 0)
+        .filter((l) => (returnQtys[l.toolOrGaugeNo] || 0) > 0)
         .map((l) => ({
-          lineId: l.id,
-          qtyReturnedNow: returnQtys[l.id],
+          toolOrGaugeNo: l.toolOrGaugeNo,
+          quantity: returnQtys[l.toolOrGaugeNo],
         })),
     };
 
@@ -151,8 +144,7 @@ export default function ReceiveToolPage() {
     const isPending = issue.status === "OPEN" || issue.status === "PARTIAL";
     const matchesSearch =
       issue.dcNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      issue.partyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      issue.deptName.toLowerCase().includes(searchQuery.toLowerCase());
+      (issue.receiveName ?? "").toLowerCase().includes(searchQuery.toLowerCase());
 
     return isPending && matchesSearch;
   });
@@ -220,7 +212,7 @@ export default function ReceiveToolPage() {
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                        {["DC No", "Department / Party Display", "Issue Date", "Due Date", "Status", "Open Lines", "Action"].map(
+                        {["DC No", "Receive Name", "Issue Date", "Due Date", "Status", "Open Lines", "Action"].map(
                           (col) => (
                             <th
                               key={col}
@@ -235,23 +227,17 @@ export default function ReceiveToolPage() {
                     <tbody className="divide-y divide-[var(--border-main)]">
                       {filteredIssues.map((issue) => {
                         const isOver = isOverdue(issue.dueDate);
-                        const openCount = issue.lines.filter((l) => l.status === "Open").length;
-                        const hasPartyName = issue.partyName && issue.partyName !== "-";
+                        const openCount = issue.lines.length;
                         return (
                           <tr
-                            key={issue.id}
+                            key={issue.dcNo}
                             className="hover:bg-[var(--bg-hover)] transition-colors"
                           >
                             <td className="py-3.5 px-4 align-middle font-mono text-xs text-[var(--text-secondary)] font-semibold">{issue.dcNo}</td>
                             <td className="py-3.5 px-4 align-middle">
-                              <div className="flex flex-col justify-center min-h-[36px]">
-                                <p className="font-semibold text-[var(--text-primary)] text-sm leading-snug">
-                                  {hasPartyName ? issue.partyName : (issue.deptName || "—")}
-                                </p>
-                                {hasPartyName && issue.deptName && (
-                                  <p className="text-[11px] text-[var(--text-muted)] font-medium leading-snug mt-0.5">{issue.deptName}</p>
-                                )}
-                              </div>
+                              <p className="font-semibold text-[var(--text-primary)] text-sm leading-snug">
+                                {issue.receiveName ?? "—"}
+                              </p>
                             </td>
                             <td className="py-3.5 px-4 align-middle font-mono text-xs text-[var(--text-muted)]">
                               {issue.issueDate ? issue.issueDate.split("T")[0] : "—"}
@@ -290,7 +276,7 @@ export default function ReceiveToolPage() {
                                 fallback={<span className="text-xs text-[var(--text-muted)]">View only</span>}
                               >
                                 <button
-                                  id={`receive-btn-${issue.id}`}
+                                  id={`receive-btn-${issue.dcNo}`}
                                   onClick={() => handleSelectIssue(issue)}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--color-success-bg)] text-[var(--color-success-text)] hover:opacity-90 border border-[var(--border-main)] shadow-xs transition-colors cursor-pointer"
                                 >
@@ -338,9 +324,8 @@ export default function ReceiveToolPage() {
 
                   <div className="grid grid-cols-2 gap-4 text-sm bg-[var(--bg-subtle)] p-4 rounded-xl">
                     <div>
-                      <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider">Party / Employee</p>
-                      <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedIssue?.partyName}</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">{selectedIssue?.deptName}</p>
+                      <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider">Receive Name</p>
+                      <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedIssue?.receiveName ?? "—"}</p>
                     </div>
                     <div>
                       <p className="text-xs text-[var(--text-muted)] font-medium uppercase tracking-wider">Dates Logged</p>
@@ -393,7 +378,7 @@ export default function ReceiveToolPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Tool No", "Qty Issued", "Already Returned", "Remaining Qty", "Qty Returning"].map((col) => (
+                          {["Tool No", "Qty Issued", "Qty Returning"].map((col) => (
                             <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                               {col}
                             </th>
@@ -402,23 +387,20 @@ export default function ReceiveToolPage() {
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
                         {selectedIssue?.lines
-                          .filter((l) => l.status === "Open")
                           .map((line) => (
-                            <tr key={line.id}>
+                            <tr key={line.rowId}>
                               <td className="py-2.5 px-4 font-mono text-xs text-[var(--text-secondary)] font-semibold">{line.toolOrGaugeNo}</td>
-                              <td className="py-2.5 px-4 text-[var(--text-secondary)]">{line.qtyIssued}</td>
-                              <td className="py-2.5 px-4 text-[var(--text-secondary)]">{line.qtyReturned}</td>
-                              <td className="py-2.5 px-4 font-mono text-xs text-[var(--color-warning-text)] font-bold">{line.remainingQty}</td>
+                              <td className="py-2.5 px-4 text-[var(--text-secondary)]">{line.issueQty}</td>
                               <td className="py-2.5 px-4">
                                 <input
                                   type="number"
                                   min={0}
-                                  max={line.remainingQty}
-                                  value={returnQtys[line.id] ?? 0}
-                                  onChange={(e) => handleQtyChange(line.id, line.remainingQty, Number(e.target.value))}
+                                  max={line.issueQty}
+                                  value={returnQtys[line.toolOrGaugeNo] ?? 0}
+                                  onChange={(e) => handleQtyChange(line.toolOrGaugeNo, line.issueQty, Number(e.target.value))}
                                   className="w-24 text-center text-sm border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono font-semibold"
                                 />
-                                {errors[String(line.id)] && <p className="text-[var(--color-danger-text)] text-[10px] mt-1 font-semibold">{errors[String(line.id)]}</p>}
+                                {errors[line.toolOrGaugeNo] && <p className="text-[var(--color-danger-text)] text-[10px] mt-1 font-semibold">{errors[line.toolOrGaugeNo]}</p>}
                               </td>
                             </tr>
                           ))}

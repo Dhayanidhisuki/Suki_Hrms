@@ -25,6 +25,11 @@
   --sidebar-text-active: #ffffff;
   --sidebar-hover: #1e293b;
   --sidebar-border: #1e293b;
+  --sidebar-heading: #64748b;
+  --sidebar-active-bg: color-mix(in srgb, var(--primary, #2090ff) 22%, transparent);
+
+  --topbar-bg: var(--bg-card);
+  --topbar-border: var(--border-main);
 
   /* Global Fixed Status Colors */
   --color-success: #10b981;

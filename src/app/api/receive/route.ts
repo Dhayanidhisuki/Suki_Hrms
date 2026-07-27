@@ -32,72 +32,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { dcNo, receiveDate, remarks, lines } = parsed.data;
+  const { dcNo, receiveDate, subCode, lines } = parsed.data;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const receiveNo = await generateDocNumber("RCV", "TOOLS_ISSUE_RECEIVED", "RECEIVE_NO");
-
       const header = await tx.toolsIssueReceived.create({
         data: {
-          receiveNo,
           dcNo,
           receiveDate: new Date(receiveDate),
-          remarks,
+          subCode,
           creatUserIdCd: authCheck.session.userId,
         },
       });
 
-      let allClosed = true;
+      const recNo = header.recNo;
 
       for (const line of lines) {
         const issueLine = await tx.toolsTransIssue.findFirst({
           where: { dcNo, toolOrGaugeNo: line.toolOrGaugeNo },
         });
-        if (!issueLine || line.qtyReturned > issueLine.remainingQty) {
-          throw new Error(
-            `Return qty for ${line.toolOrGaugeNo} exceeds remaining ${issueLine?.remainingQty ?? 0}`
-          );
+        if (!issueLine) {
+          throw new Error(`No issue line found for ${line.toolOrGaugeNo}`);
         }
-
-        const newRemaining = issueLine.remainingQty - line.qtyReturned;
 
         await tx.toolsIssueReceivedTrans.create({
           data: {
-            receiveNo,
+            recNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
-            qtyReturned: line.qtyReturned,
-          },
-        });
-
-        await tx.toolsTransIssue.update({
-          where: { id: issueLine.id },
-          data: {
-            qtyReturned: { increment: line.qtyReturned },
-            remainingQty: newRemaining,
-            status: newRemaining === 0 ? "Returned" : "Open",
+            quantity: line.quantity,
+            creatUserIdCd: authCheck.session.userId,
           },
         });
 
         await tx.gaugeAndTools.update({
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
-            qtyIn: { increment: line.qtyReturned },
-            qtyOut: { decrement: line.qtyReturned },
+            qtyIn: { increment: line.quantity },
+            qtyOut: { decrement: line.quantity },
             lstUpdtUserIdCd: authCheck.session.userId,
           },
         });
-
-        if (newRemaining > 0) allClosed = false;
       }
 
-      const newStatus = allClosed ? "CLOSED" : "PARTIAL";
       await tx.gaugeToolsIssue.update({
         where: { dcNo },
-        data: { status: newStatus, lstUpdtUserId: authCheck.session.userId },
+        data: { status: "CLOSED", lstUpdtUserIdCd: authCheck.session.userId },
       });
 
-      return { header, status: newStatus };
+      return { header, status: "CLOSED" };
     });
 
     return NextResponse.json({ ok: true, ...result }, { status: 201 });

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
-import { generateDocNumber } from "@/lib/autonumber";
 import { PoReceiveCreateSchema } from "@/lib/validators";
 
 export async function GET() {
@@ -31,83 +30,56 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { poRef, supCode, grnDate, lines } = parsed.data;
+  const { poOrderNo, supCode, girDate, lines } = parsed.data;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const grnNo = await generateDocNumber("GRN", "TOOLS_PO_RECEIVE", "GRN_NO");
-
       const grn = await tx.toolsPoReceive.create({
         data: {
-          grnNo,
-          poRef,
+          poOrderNo,
           supCode,
-          grnDate: new Date(grnDate),
-          status: "Posted",
+          girDate: new Date(girDate),
+          girStatus: "Posted",
           creatUserIdCd: authCheck.session.userId,
         },
       });
 
-      for (const line of lines) {
-        const pending = line.poQty - line.receivedQty;
+      const girNo = grn.girNo;
 
+      for (const line of lines) {
         await tx.toolsPoReceiveTrans.create({
           data: {
-            grnNo,
-            toolOrGaugeNo: line.toolOrGaugeNo,
-            poQty: line.poQty,
-            receivedQty: line.receivedQty,
-            pendingQty: pending,
-            unitRate: line.unitRate,
+            girNo,
+            itemCode: line.itemCode,
+            invQty: line.invQty,
+            recQty: line.recQty,
+            price: line.price,
           },
         });
 
         await tx.gaugeAndTools.update({
-          where: { toolOrGaugeNo: line.toolOrGaugeNo },
+          where: { toolOrGaugeNo: line.itemCode },
           data: {
-            qtyNew: { increment: line.receivedQty },
-            totQty: { increment: line.receivedQty },
-            qtyIn: { increment: line.receivedQty },
+            qtyNew: { increment: line.recQty },
+            totQty: { increment: line.recQty },
+            qtyIn: { increment: line.recQty },
             lstUpdtUserIdCd: authCheck.session.userId,
           },
         });
 
+        const tool = await tx.gaugeAndTools.findUnique({
+          where: { toolOrGaugeNo: line.itemCode },
+        });
+
         await tx.toolsPriceMaster.create({
           data: {
-            toolOrGaugeNo: line.toolOrGaugeNo,
-            effectiveDate: new Date(grnDate),
+            toolRefNo: tool?.refNo,
+            revDate: new Date(girDate),
             supCode,
-            unitRate: line.unitRate,
-            grnNo,
+            rate: line.price,
             creatUserIdCd: authCheck.session.userId,
+            creatDt: new Date(),
           },
-        });
-
-        await tx.toolsPoSchTrans.updateMany({
-          where: { toolOrGaugeNo: line.toolOrGaugeNo },
-          data: {
-            receivedQty: { increment: line.receivedQty },
-          },
-        });
-      }
-
-      const affectedSchedules = await tx.toolsPoSchMaster.findMany({
-        where: { poRef },
-        include: { lines: true },
-      });
-
-      for (const sch of affectedSchedules) {
-        const allComplete = sch.lines.every((l) => l.receivedQty >= l.expectedQty);
-        const anyReceived = sch.lines.some((l) => l.receivedQty > 0);
-        const overallStatus = allComplete
-          ? "Completed"
-          : anyReceived
-            ? "Partially Received"
-            : "Pending";
-
-        await tx.toolsPoSchMaster.update({
-          where: { id: sch.id },
-          data: { overallStatus },
         });
       }
 

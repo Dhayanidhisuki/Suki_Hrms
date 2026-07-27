@@ -13,7 +13,7 @@ export async function GET(
 
   const { id } = await params;
   const issue = await prisma.toolsIssueForCalibration.findUnique({
-    where: { id: Number(id) },
+    where: { dcNo: Number(id) },
     include: {
       inHouseLines: { include: { tool: true } },
       receiveHeaders: { include: { lines: true } },

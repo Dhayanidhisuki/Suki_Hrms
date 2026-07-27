@@ -12,8 +12,9 @@ export async function GET(
   if (!check.ok) return check.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const tool = await prisma.gaugeAndTools.findUnique({
-    where: { id: Number(id) },
+    where: { refNo },
   });
 
   if (!tool) {

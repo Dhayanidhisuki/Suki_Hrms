@@ -51,7 +51,7 @@ export async function buildSession(
   const erpUser = await prisma.erpUser.findUnique({
     where: { userId },
   });
-  if (!erpUser || !erpUser.isActive) return null;
+  if (!erpUser || erpUser.status !== "Active") return null;
 
   let name = userId;
   try {
@@ -59,7 +59,7 @@ export async function buildSession(
       const employee = await prisma.employee.findUnique({
         where: { empCd: erpUser.empCd },
       });
-      if (employee) name = employee.empName;
+      if (employee) name = `${employee.firstName} ${employee.lastName ?? ""}`.trim();
     }
   } catch {
     // EMPLOYEE table not yet available — skip enrichment
@@ -68,8 +68,8 @@ export async function buildSession(
   return {
     userId: erpUser.userId,
     name,
-    empCd: erpUser.empCd ?? null,
-    roleName: erpUser.roleName,
+    empCd: erpUser.empCd ? String(erpUser.empCd) : null,
+    roleName: erpUser.roleName ?? "",
     addRoleName: erpUser.addRoleName ?? null,
     isLoggedIn: true,
   };

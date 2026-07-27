@@ -6,12 +6,12 @@ import Link from "next/link";
 import { CalendarClock, ArrowRight } from "lucide-react";
 
 interface CalItem {
-  id: number;
+  refNo: number | null;
   toolOrGaugeNo: string;
-  name: string;
+  name: string | null;
   nextCalibrationDate: string | null;
-  status: string;
-  grouping: string;
+  status: string | null;
+  grouping: string | null;
 }
 
 export default function RecentCalibrationTable() {
@@ -19,9 +19,9 @@ export default function RecentCalibrationTable() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiGet<{ recentCalibrationDue: CalItem[] }>("/api/dashboard/kpi").then((res) => {
-      if (res.data?.recentCalibrationDue) {
-        setItems(res.data.recentCalibrationDue);
+    apiGet<{ items: CalItem[] }>("/api/tools/calibration-due").then((res) => {
+      if (res.data?.items) {
+        setItems(res.data.items);
       }
       setLoading(false);
     });
@@ -75,7 +75,7 @@ export default function RecentCalibrationTable() {
                 const dueDate = t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—";
                 const isOverdue = t.nextCalibrationDate ? new Date(t.nextCalibrationDate) < new Date() : false;
                 return (
-                  <tr key={t.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                  <tr key={t.refNo ?? t.toolOrGaugeNo} className="hover:bg-[var(--bg-hover)] transition-colors">
                     <td className="py-3 px-3 align-middle font-mono text-xs font-semibold text-[var(--text-secondary)]">
                       {t.toolOrGaugeNo}
                     </td>

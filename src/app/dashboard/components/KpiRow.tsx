@@ -56,7 +56,7 @@ function KpiCard({
             {label}
           </p>
           <span className="text-3xl font-extrabold text-[var(--text-primary)] leading-none tabular-nums mt-2 block">
-            {value.toLocaleString()}
+            {(value ?? 0).toLocaleString()}
           </span>
         </div>
         <div

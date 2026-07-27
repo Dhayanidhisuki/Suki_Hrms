@@ -12,8 +12,9 @@ export async function GET(
   if (!check.ok) return check.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const tool = await prisma.gaugeAndTools.findUnique({
-    where: { id: Number(id) },
+    where: { refNo },
   });
 
   if (!tool) {
@@ -21,9 +22,8 @@ export async function GET(
   }
 
   const history = await prisma.toolsPriceMaster.findMany({
-    where: { toolOrGaugeNo: tool.toolOrGaugeNo },
-    orderBy: { effectiveDate: "desc" },
-    include: { tool: { select: { name: true } } },
+    where: { toolRefNo: refNo },
+    orderBy: { revDate: "desc" },
   });
 
   return NextResponse.json({ history });

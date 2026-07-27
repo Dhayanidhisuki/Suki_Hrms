@@ -14,8 +14,8 @@ export async function GET(
 
   const { id } = await params;
   const schedule = await prisma.toolsPoSchMaster.findUnique({
-    where: { id: Number(id) },
-    include: { lines: true, supplier: true },
+    where: { rowId: Number(id) },
+    include: { lines: true },
   });
 
   if (!schedule) {
@@ -44,10 +44,9 @@ export async function PUT(
   }
 
   const schedule = await prisma.toolsPoSchMaster.update({
-    where: { id: Number(id) },
+    where: { rowId: Number(id) },
     data: {
-      poRef: parsed.data.poRef,
-      supCode: parsed.data.supCode,
+      poOrderNo: parsed.data.poOrderNo,
     },
   });
 

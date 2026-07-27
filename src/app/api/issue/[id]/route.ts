@@ -13,7 +13,7 @@ export async function GET(
 
   const { id } = await params;
   const issue = await prisma.gaugeToolsIssue.findUnique({
-    where: { id: Number(id) },
+    where: { dcNo: id },
     include: {
       lines: { include: { tool: true } },
       receivedHeaders: { include: { lines: true } },

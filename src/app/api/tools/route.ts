@@ -73,10 +73,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (created.serialNoGenReq && created.totQty > 0) {
-      const serials = Array.from({ length: created.totQty }, (_, i) => ({
+    if (created.serialNoGenReq === "Yes" && created.totQty && Number(created.totQty) > 0) {
+      const serials = Array.from({ length: Number(created.totQty) }, (_, i) => ({
+        refNo: created.refNo,
         toolOrGaugeNo: created.toolOrGaugeNo,
-        serialNo: `${created.toolOrGaugeNo}-${String(i + 1).padStart(3, "0")}`,
+        serialNo: i + 1,
         status: "Available",
       }));
       await tx.gaugeSerialNo.createMany({ data: serials });
@@ -85,17 +86,18 @@ export async function POST(req: NextRequest) {
     if (specifications && specifications.length > 0) {
       await tx.toolsSpecification.createMany({
         data: specifications.map((s) => ({
-          toolOrGaugeNo: created.toolOrGaugeNo,
-          specName: s.specName,
-          specValue: s.specValue,
-          unit: s.unit,
+          toolRefNo: created.refNo,
+          parameter: s.parameter,
+          specification: s.specification,
         })),
       });
     }
 
-    await tx.gaugeControlCard.create({
-      data: { toolOrGaugeNo: created.toolOrGaugeNo },
-    });
+    if (created.toolOrGaugeNo) {
+      await tx.gaugeControlCard.create({
+        data: { toolOrGaugeNo: created.toolOrGaugeNo, type: "Gauge", creatDt: new Date() },
+      });
+    }
 
     return created;
   });

@@ -13,16 +13,17 @@ export async function GET(
   if (!check.ok) return check.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const tool = await prisma.gaugeAndTools.findUnique({
-    where: { id: Number(id) },
+    where: { refNo },
     include: {
       serialNumbers: true,
       specifications: true,
-      priceMaster: { orderBy: { effectiveDate: "desc" } },
+      priceMaster: { orderBy: { revDate: "desc" } },
       details: true,
       machineMapping: true,
-      toolsMapping: { include: { supplier: true } },
-      calibControlCard: { include: { history: { orderBy: { calibrationDate: "desc" } } } },
+      toolsMapping: true,
+      calibControlCard: { include: { history: { orderBy: { cDate: "desc" } } } },
     },
   });
 
@@ -45,6 +46,7 @@ export async function PUT(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const body = await req.json();
   const parsed = GaugeAndToolsCreateSchema.partial().safeParse(body);
   if (!parsed.success) {
@@ -54,7 +56,7 @@ export async function PUT(
   const { specifications, ...updateData } = parsed.data;
 
   const tool = await prisma.gaugeAndTools.update({
-    where: { id: Number(id) },
+    where: { refNo },
     data: { ...updateData, lstUpdtUserIdCd: authCheck.session.userId },
   });
 
@@ -73,6 +75,6 @@ export async function DELETE(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
-  await prisma.gaugeAndTools.delete({ where: { id: Number(id) } });
+  await prisma.gaugeAndTools.delete({ where: { refNo: Number(id) } });
   return NextResponse.json({ ok: true });
 }

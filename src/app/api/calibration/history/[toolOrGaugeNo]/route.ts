@@ -14,8 +14,8 @@ export async function GET(
   const { toolOrGaugeNo } = await params;
 
   const history = await prisma.gaugeControlCardTrans.findMany({
-    where: { toolOrGaugeNo },
-    orderBy: { calibrationDate: "desc" },
+    where: { controlCard: { toolOrGaugeNo } },
+    orderBy: { cDate: "desc" },
   });
 
   const controlCard = await prisma.gaugeControlCard.findUnique({

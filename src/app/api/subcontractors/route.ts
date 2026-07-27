@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const where = search
     ? {
         OR: [
-          { subCode: { contains: search } },
+          { subConId: { contains: search } },
           { subName: { contains: search } },
         ],
       }

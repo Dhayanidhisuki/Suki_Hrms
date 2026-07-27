@@ -14,8 +14,7 @@ export async function GET(
 
   const { id } = await params;
   const supplier = await prisma.supplier.findUnique({
-    where: { id: Number(id) },
-    include: { toolsMappings: true },
+    where: { supCode: id },
   });
 
   if (!supplier) {
@@ -38,15 +37,15 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
-  const parsed = SupplierUpdateSchema.safeParse({ ...body, id: Number(id) });
+  const parsed = SupplierUpdateSchema.safeParse({ ...body, supCode: id });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { id: _id, ...data } = parsed.data;
+  const { supCode: _supCode, ...data } = parsed.data;
   const supplier = await prisma.supplier.update({
-    where: { id: Number(id) },
-    data: { ...data, lstUpdtUserId: authCheck.session.userId },
+    where: { supCode: id },
+    data: { ...data, lstUpdtUserIdCd: authCheck.session.userId },
   });
 
   return NextResponse.json({ ok: true, supplier });
@@ -64,23 +63,7 @@ export async function DELETE(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
-  const orphanCount = await prisma.toolsMapping.count({
-    where: { supCode: { equals: undefined } },
-  });
-
-  const supplier = await prisma.supplier.findUnique({
-    where: { id: Number(id) },
-    include: { toolsMappings: true },
-  });
-
-  if (supplier && supplier.toolsMappings.length > 0) {
-    return NextResponse.json(
-      { error: "Cannot delete supplier with existing tool mappings" },
-      { status: 400 }
-    );
-  }
-
-  await prisma.supplier.delete({ where: { id: Number(id) } });
+  await prisma.supplier.delete({ where: { supCode: id } });
   return NextResponse.json({ ok: true });
 }
 
@@ -97,18 +80,19 @@ export async function PATCH(
 
   const { id } = await params;
   const supplier = await prisma.supplier.findUnique({
-    where: { id: Number(id) },
+    where: { supCode: id },
   });
 
   if (!supplier) {
     return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
   }
 
+  const currentApproved = supplier.approvedSupplier === "Yes";
   const updated = await prisma.supplier.update({
-    where: { id: Number(id) },
+    where: { supCode: id },
     data: {
-      isApproved: !supplier.isApproved,
-      lstUpdtUserId: authCheck.session.userId,
+      approvedSupplier: currentApproved ? "No" : "Yes",
+      lstUpdtUserIdCd: authCheck.session.userId,
     },
   });
 

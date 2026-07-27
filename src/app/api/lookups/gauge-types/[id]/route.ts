@@ -23,7 +23,7 @@ export async function PUT(
   }
 
   const item = await prisma.gaugeType.update({
-    where: { id: Number(id) },
+    where: { rowId: Number(id) },
     data: parsed.data,
   });
 
@@ -42,6 +42,6 @@ export async function DELETE(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
-  await prisma.gaugeType.delete({ where: { id: Number(id) } });
+  await prisma.gaugeType.delete({ where: { rowId: Number(id) } });
   return NextResponse.json({ ok: true });
 }

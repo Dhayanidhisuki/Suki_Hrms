@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { deptName, partyName, issueDate, dueDate, lines } = parsed.data;
+  const { receiveName, subCode, empId, issueDate, dueDate, lines } = parsed.data;
 
   try {
     const issue = await prisma.$transaction(async (tx) => {
@@ -41,9 +41,9 @@ export async function POST(req: NextRequest) {
         const tool = await tx.gaugeAndTools.findUnique({
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
         });
-        if (!tool || tool.qtyIn < line.qtyIssued) {
+        if (!tool || Number(tool.qtyIn ?? 0) < line.issueQty) {
           throw new Error(
-            `Insufficient stock for ${line.toolOrGaugeNo}. Available: ${tool?.qtyIn ?? 0}, Requested: ${line.qtyIssued}`
+            `Insufficient stock for ${line.toolOrGaugeNo}. Available: ${tool?.qtyIn ?? 0}, Requested: ${line.issueQty}`
           );
         }
       }
@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
       const header = await tx.gaugeToolsIssue.create({
         data: {
           dcNo,
-          deptName,
-          partyName,
+          receiveName,
+          subCode,
+          empId,
           issueDate: new Date(issueDate),
           dueDate: new Date(dueDate),
           status: "OPEN",
@@ -67,18 +68,18 @@ export async function POST(req: NextRequest) {
           data: {
             dcNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
-            qtyIssued: line.qtyIssued,
-            qtyReturned: 0,
-            remainingQty: line.qtyIssued,
+            issueQty: line.issueQty,
+            partNo: line.partNo,
             status: "Open",
+            creatUserIdCd: authCheck.session.userId,
           },
         });
 
         await tx.gaugeAndTools.update({
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
-            qtyIn: { decrement: line.qtyIssued },
-            qtyOut: { increment: line.qtyIssued },
+            qtyIn: { decrement: line.issueQty },
+            qtyOut: { increment: line.issueQty },
             status: "Issued",
             lstUpdtUserIdCd: authCheck.session.userId,
           },

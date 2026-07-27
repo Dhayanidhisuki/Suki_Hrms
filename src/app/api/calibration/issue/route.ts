@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
-import { generateDocNumber } from "@/lib/autonumber";
 import { CalibIssueCreateSchema } from "@/lib/validators";
 
 export async function GET(req: NextRequest) {
@@ -33,44 +32,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { issueType, labName, issueDate, expectedReturnDate, toolOrGaugeNos } = parsed.data;
+  const { receiveName, subCode, issueDate, issueFor, lines } = parsed.data;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const calibDcNo = await generateDocNumber(
-        "CALIB-DC",
-        "TOOLS_ISSUE_FOR_CALIBRATION",
-        "CALIB_DC_NO"
-      );
-
       const header = await tx.toolsIssueForCalibration.create({
         data: {
-          calibDcNo,
-          issueType,
-          labName,
+          receiveName,
+          subCode,
           issueDate: new Date(issueDate),
-          expectedReturnDate: new Date(expectedReturnDate),
-          status: "OPEN",
+          issueFor,
           creatUserIdCd: authCheck.session.userId,
         },
       });
 
-      for (const toolNo of toolOrGaugeNos) {
+      const dcNo = header.dcNo;
+
+      for (const line of lines) {
         const tool = await tx.gaugeAndTools.findUnique({
-          where: { toolOrGaugeNo: toolNo },
+          where: { toolOrGaugeNo: line.toolOrGaugeNo },
         });
 
         await tx.toolsTransIssueForCalibration.create({
           data: {
-            calibDcNo,
-            toolOrGaugeNo: toolNo,
-            lastCalibDate: tool?.lastCalibrationDate ?? null,
-            dueDate: tool?.nextCalibrationDate ?? null,
+            dcNo,
+            toolOrGaugeNo: line.toolOrGaugeNo,
+            issueQty: line.issueQty,
+            creatUserIdCd: authCheck.session.userId,
           },
         });
 
         await tx.gaugeAndTools.update({
-          where: { toolOrGaugeNo: toolNo },
+          where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
             status: "Under Calibration",
             lstUpdtUserIdCd: authCheck.session.userId,

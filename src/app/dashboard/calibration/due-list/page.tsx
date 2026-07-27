@@ -8,13 +8,12 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet } from "@/lib/apiClient";
 
 interface Tool {
-  id: number;
+  refNo: number | null;
   toolOrGaugeNo: string;
-  name: string;
-  location: string | null;
-  caliPlannedWho: string | null;
+  name: string | null;
+  grouping: string | null;
   nextCalibrationDate: string | null;
-  status: string;
+  status: string | null;
 }
 
 function daysUntil(dateStr: string | null): number | null {
@@ -95,7 +94,7 @@ export default function CalibrationDueListPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                    {["Tool No", "Name", "Location", "Calibrated By", "Next Due", "Days Left"].map(
+                    {["Tool No", "Name", "Grouping", "Next Due", "Days Left"].map(
                       (col) => (
                         <th
                           key={col}
@@ -111,11 +110,10 @@ export default function CalibrationDueListPage() {
                   {filtered.map((t) => {
                     const overdue = (t.daysLeft ?? 0) < 0;
                     return (
-                      <tr key={t.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                      <tr key={t.refNo ?? t.toolOrGaugeNo} className="hover:bg-[var(--bg-hover)] transition-colors">
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{t.toolOrGaugeNo}</td>
                         <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{t.name}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.location ?? "—"}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.caliPlannedWho ?? "—"}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.grouping ?? "—"}</td>
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">
                           {t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—"}
                         </td>
@@ -140,7 +138,7 @@ export default function CalibrationDueListPage() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                      <td colSpan={5} className="py-8 text-center text-sm text-[var(--text-muted)]">
                         No tools match this filter.
                       </td>
                     </tr>

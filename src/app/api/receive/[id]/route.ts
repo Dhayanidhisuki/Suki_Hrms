@@ -13,7 +13,7 @@ export async function GET(
 
   const { id } = await params;
   const receive = await prisma.toolsIssueReceived.findUnique({
-    where: { id: Number(id) },
+    where: { recNo: Number(id) },
     include: { lines: { include: { tool: true } }, issueHeader: true },
   });
 

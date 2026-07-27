@@ -10,7 +10,7 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
 interface ToolConsumption {
-  id: number;
+  rowId: number;
   dcNo: string;
   toolOrGaugeNo: string;
   worksheetRef: string;
@@ -23,22 +23,20 @@ interface ToolConsumption {
 }
 
 interface ToolsIssueLine {
-  id: number;
+  rowId: number;
   dcNo: string;
   toolOrGaugeNo: string;
-  qtyIssued: number;
-  qtyReturned: number;
-  remainingQty: number;
-  status: string;
+  issueQty: number;
+  partNo: string | null;
 }
 
 interface ToolsIssueHeader {
-  id: number;
   dcNo: string;
-  deptName: string;
-  partyName: string;
-  issueDate: string;
-  dueDate: string;
+  receiveName: string | null;
+  subCode: string | null;
+  empId: string | null;
+  issueDate: string | null;
+  dueDate: string | null;
   status: string;
   lines: ToolsIssueLine[];
 }
@@ -83,16 +81,16 @@ export default function ConsumptionPage() {
 
   // Get lines of selected DC
   const selectedIssueObj = issues.find((x) => x.dcNo === dcNo);
-  const selectableLines = selectedIssueObj ? selectedIssueObj.lines.filter((l) => l.status === "Open") : [];
+  const selectableLines = selectedIssueObj ? selectedIssueObj.lines : [];
 
   // Get currently selected line details
   const selectedLineObj = selectableLines.find((l) => l.toolOrGaugeNo === toolOrGaugeNo);
-  const maxAvailable = selectedLineObj ? selectedLineObj.remainingQty : 1;
+  const maxAvailable = selectedLineObj ? selectedLineObj.issueQty : 1;
 
   const handleDcChange = (val: string) => {
     setDcNo(val);
     const issue = issues.find((x) => x.dcNo === val);
-    const firstLine = issue?.lines.find((l) => l.status === "Open");
+    const firstLine = issue?.lines[0];
     setToolOrGaugeNo(firstLine ? firstLine.toolOrGaugeNo : "");
     setQtyConsumed(1);
   };
@@ -228,8 +226,8 @@ export default function ConsumptionPage() {
                   >
                     <option value="">-- Choose DC --</option>
                     {openIssues.map((issue) => (
-                      <option key={issue.id} value={issue.dcNo}>
-                        {issue.dcNo} · {issue.partyName}
+                      <option key={issue.dcNo} value={issue.dcNo}>
+                        {issue.dcNo} · {issue.receiveName ?? "—"}
                       </option>
                     ))}
                   </select>
@@ -249,8 +247,8 @@ export default function ConsumptionPage() {
                     >
                       <option value="">-- Choose Tool --</option>
                       {selectableLines.map((l) => (
-                        <option key={l.id} value={l.toolOrGaugeNo}>
-                          {l.toolOrGaugeNo} ({l.remainingQty} left)
+                        <option key={l.rowId} value={l.toolOrGaugeNo}>
+                          {l.toolOrGaugeNo} ({l.issueQty} issued)
                         </option>
                       ))}
                     </select>
@@ -358,7 +356,7 @@ export default function ConsumptionPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--border-main)]">
                     {filtered.map((c) => (
-                      <tr key={c.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                      <tr key={c.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
                         <td className="py-3 px-4 font-mono text-xs text-[var(--text-secondary)]">{c.consumptionDate ? c.consumptionDate.split("T")[0] : "—"}</td>
                         <td className="py-3 px-4">
                           <p className="font-semibold text-[var(--text-primary)]">{c.tool?.name ?? c.toolOrGaugeNo}</p>

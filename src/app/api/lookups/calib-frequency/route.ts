@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
-import { PoScheduleCreateSchema } from "@/lib/validators";
+import { CalibFrequencyMasterSchema } from "@/lib/validators";
 
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
 
-  const items = await prisma.toolsPoSchMaster.findMany({
+  const items = await prisma.calibrationFrequencyMaster.findMany({
     orderBy: { creatDt: "desc" },
-    include: { lines: true },
   });
   return NextResponse.json({ items });
 }
@@ -21,34 +20,18 @@ export async function POST(req: NextRequest) {
   const authCheck = await requireSession(session);
   if (!authCheck.ok) return authCheck.response;
 
-  const permCheck = await requirePermission(authCheck.session, "canRaisePO");
+  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
   if (!permCheck.ok) return permCheck.response;
 
   const body = await req.json();
-  const parsed = PoScheduleCreateSchema.safeParse(body);
+  const parsed = CalibFrequencyMasterSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { poOrderNo, lines } = parsed.data;
-
-  const schedule = await prisma.toolsPoSchMaster.create({
-    data: {
-      poOrderNo,
-      schDate: new Date(),
-      creatDt: new Date(),
-      creatUserIdCd: authCheck.session.userId,
-      lines: {
-        create: lines.map((l) => ({
-          poTransNo: l.poTransNo,
-          qty: l.qty,
-          creatDt: new Date(),
-          creatUserIdCd: authCheck.session.userId,
-        })),
-      },
-    },
-    include: { lines: true },
+  const item = await prisma.calibrationFrequencyMaster.create({
+    data: { ...parsed.data, creatUserIdCd: authCheck.session.userId },
   });
 
-  return NextResponse.json({ ok: true, schedule }, { status: 201 });
+  return NextResponse.json({ ok: true, item }, { status: 201 });
 }

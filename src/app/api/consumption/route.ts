@@ -13,7 +13,33 @@ export async function GET() {
     orderBy: { creatDt: "desc" },
     include: { tool: true },
   });
-  return NextResponse.json({ items });
+
+  // Batch lookup dcNo from ToolsTransIssue by issueRefNo (rowId)
+  const issueRefNos = items
+    .map((i) => i.issueRefNo)
+    .filter((v): v is number => v != null);
+  const issueLines = issueRefNos.length
+    ? await prisma.toolsTransIssue.findMany({
+        where: { rowId: { in: issueRefNos } },
+        select: { rowId: true, dcNo: true },
+      })
+    : [];
+  const dcMap = new Map(issueLines.map((l) => [l.rowId, l.dcNo]));
+
+  const mapped = items.map((item) => ({
+    rowId: item.rowId,
+    dcNo: item.issueRefNo ? dcMap.get(item.issueRefNo) ?? "" : "",
+    toolOrGaugeNo: item.toolOrGaugeNo ?? "",
+    worksheetRef: item.workSheetRefNo?.toString() ?? "",
+    qtyConsumed: Number(item.qty ?? 0),
+    consumptionDate: item.creatDt?.toISOString() ?? "",
+    verifiedBySupervisor: item.verified === "Y",
+    verifiedBy: null as string | null,
+    creatUserIdCd: item.creatUserIdCd,
+    tool: item.tool ? { name: item.tool.name } : null,
+  }));
+
+  return NextResponse.json({ items: mapped });
 }
 
 export async function POST(req: NextRequest) {
@@ -30,12 +56,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const { dcNo, toolOrGaugeNo, worksheetRef, qtyConsumed, verifiedBySupervisor } = parsed.data;
+
+  // Look up the issue line to get issueRefNo (rowId)
+  const issueLine = await prisma.toolsTransIssue.findFirst({
+    where: { dcNo, toolOrGaugeNo },
+  });
+
   const record = await prisma.toolsConsumptionTransIssue.create({
     data: {
-      ...parsed.data,
-      consumptionDate: new Date(parsed.data.consumptionDate),
-      verifiedBy: parsed.data.verifiedBySupervisor ? authCheck.session.userId : null,
+      issueRefNo: issueLine?.rowId,
+      toolOrGaugeNo,
+      workSheetRefNo: Number(worksheetRef),
+      qty: qtyConsumed,
+      verified: verifiedBySupervisor ? "Y" : "N",
       creatUserIdCd: authCheck.session.userId,
+      creatDt: new Date(),
     },
   });
 

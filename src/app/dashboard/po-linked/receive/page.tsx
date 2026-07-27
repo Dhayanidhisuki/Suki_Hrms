@@ -10,37 +10,32 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
 interface Supplier {
-  id: number;
   supCode: string;
   supName: string;
   isApproved: boolean;
 }
 
 interface Tool {
-  id: number;
+  refNo: number;
   toolOrGaugeNo: string;
   name: string;
 }
 
 interface PoGrnLine {
-  id: number;
-  grnNo: string;
-  toolOrGaugeNo: string;
-  poQty: number;
-  receivedQty: number;
-  pendingQty: number;
-  unitRate: number;
+  rowId: number;
+  girNo: number;
+  itemCode: string;
+  invQty: number;
+  recQty: number;
+  price: number;
   tool?: { name: string } | null;
 }
 
 interface PoGrnHeader {
-  id: number;
-  grnNo: string;
-  poRef: string;
-  supCode: string;
-  grnDate: string;
-  status: string;
-  supplier?: { supName: string } | null;
+  girNo: number;
+  poOrderNo: string;
+  girDate: string;
+  girStatus: string;
   lines: PoGrnLine[];
 }
 
@@ -51,9 +46,9 @@ const statusConfig: Record<string, { bg: string; text: string }> = {
 
 interface StagedGrnLine {
   toolOrGaugeNo: string;
-  poQty: number;
-  receivedQty: number;
-  unitRate: number;
+  invQty: number;
+  recQty: number;
+  price: number;
 }
 
 export default function PoReceivePage() {
@@ -71,16 +66,15 @@ export default function PoReceivePage() {
   const [expandedGrn, setExpandedGrn] = useState<number | null>(null);
 
   // Form Fields
-  const [poRef, setPoRef] = useState("");
-  const [supCode, setSupCode] = useState("");
-  const [grnDate, setGrnDate] = useState("");
+  const [poOrderNo, setPoOrderNo] = useState("");
+  const [girDate, setGirDate] = useState("");
   const [stagedLines, setStagedLines] = useState<StagedGrnLine[]>([]);
 
   // Validation Errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setGrnDate(new Date().toISOString().split("T")[0]);
+    setGirDate(new Date().toISOString().split("T")[0]);
   }, [showForm]);
 
   const loadData = useCallback(async () => {
@@ -94,8 +88,6 @@ export default function PoReceivePage() {
     if (gRes.data?.items) setGrns(gRes.data.items);
     if (sRes.data?.items) {
       setSuppliers(sRes.data.items);
-      const firstApproved = sRes.data.items.find((s) => s.isApproved);
-      if (firstApproved) setSupCode(firstApproved.supCode);
     }
     if (tRes.data?.items) {
       setTools(tRes.data.items);
@@ -114,7 +106,7 @@ export default function PoReceivePage() {
     const defaultTool = tools[0].toolOrGaugeNo;
     setStagedLines((prev) => [
       ...prev,
-      { toolOrGaugeNo: defaultTool, poQty: 10, receivedQty: 10, unitRate: 500 },
+      { toolOrGaugeNo: defaultTool, invQty: 10, recQty: 10, price: 500 },
     ]);
   };
 
@@ -133,7 +125,7 @@ export default function PoReceivePage() {
   };
 
   const handleClearForm = () => {
-    setPoRef("");
+    setPoOrderNo("");
     setStagedLines([]);
     setErrors({});
   };
@@ -142,16 +134,15 @@ export default function PoReceivePage() {
     e.preventDefault();
     const tempErrors: Record<string, string> = {};
 
-    if (!poRef.trim()) tempErrors.poRef = "PO Reference number is required";
-    if (!supCode) tempErrors.supCode = "Approved supplier selection is required";
+    if (!poOrderNo.trim()) tempErrors.poOrderNo = "PO Order number is required";
     if (stagedLines.length === 0) tempErrors.lines = "At least one GRN line item must be added";
 
     stagedLines.forEach((line, idx) => {
-      if (line.receivedQty > line.poQty) {
-        tempErrors[`qty-${idx}`] = `Received qty cannot exceed PO qty (${line.poQty})`;
+      if (line.recQty > line.invQty) {
+        tempErrors[`qty-${idx}`] = `Received qty cannot exceed invoice qty (${line.invQty})`;
       }
-      if (line.unitRate <= 0) {
-        tempErrors[`rate-${idx}`] = "Unit rate must be greater than 0";
+      if (line.price <= 0) {
+        tempErrors[`rate-${idx}`] = "Unit price must be greater than 0";
       }
     });
 
@@ -161,14 +152,13 @@ export default function PoReceivePage() {
     }
 
     const payload = {
-      poRef,
-      supCode,
-      grnDate,
+      poOrderNo,
+      girDate,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
-        poQty: l.poQty,
-        receivedQty: l.receivedQty,
-        unitRate: l.unitRate,
+        invQty: l.invQty,
+        recQty: l.recQty,
+        price: l.price,
       })),
     };
 
@@ -181,7 +171,7 @@ export default function PoReceivePage() {
     }
 
     if (res.data?.item) {
-      setSuccessBanner(`GRN #${res.data.item.grnNo} posted successfully! Inventory stock increased.`);
+      setSuccessBanner(`GRN #${res.data.item.girNo} posted successfully! Inventory stock increased.`);
       handleClearForm();
       setShowForm(false);
       loadData();
@@ -198,24 +188,24 @@ export default function PoReceivePage() {
         </div>
       );
     return grns.map((grn) => {
-      const sc = statusConfig[grn.status] ?? statusConfig["Draft"];
-      const isExpanded = expandedGrn === grn.id;
+      const sc = statusConfig[grn.girStatus] ?? statusConfig["Draft"];
+      const isExpanded = expandedGrn === grn.girNo;
       return (
-        <div key={grn.id} className="border border-[var(--border-main)] rounded-xl p-4 space-y-3 bg-[var(--bg-subtle)]">
+        <div key={grn.girNo} className="border border-[var(--border-main)] rounded-xl p-4 space-y-3 bg-[var(--bg-subtle)]">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{grn.grnNo}</p>
+              <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{grn.girNo}</p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                PO Ref: <span className="font-semibold text-[var(--text-primary)] font-mono">{grn.poRef}</span> · {grn.supplier?.supName ?? grn.supCode} · Date: {grn.grnDate ? grn.grnDate.split("T")[0] : "—"}
+                PO: <span className="font-semibold text-[var(--text-primary)] font-mono">{grn.poOrderNo}</span> · Date: {grn.girDate ? grn.girDate.split("T")[0] : "—"}
               </p>
             </div>
 
             <div className="flex items-center gap-3">
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}>
-                {grn.status}
+                {grn.girStatus}
               </span>
               <button
-                onClick={() => setExpandedGrn(isExpanded ? null : grn.id)}
+                onClick={() => setExpandedGrn(isExpanded ? null : grn.girNo)}
                 className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 text-xs font-semibold"
               >
                 {isExpanded ? "Hide details" : "View lines"}
@@ -229,7 +219,7 @@ export default function PoReceivePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[var(--text-muted)] font-bold text-[10px] uppercase bg-[var(--bg-card)]">
-                    {["Tool No", "Name", "PO Qty", "Received", "Pending", "Unit Rate"].map((col) => (
+                    {["Tool No", "Name", "Inv Qty", "Received", "Unit Price"].map((col) => (
                       <th key={col} className="text-left py-2 px-3">
                         {col}
                       </th>
@@ -238,15 +228,12 @@ export default function PoReceivePage() {
                 </thead>
                 <tbody className="divide-y divide-[var(--border-main)]">
                   {grn.lines.map((line) => (
-                    <tr key={line.id} className="text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-hover)]">
-                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-secondary)]">{line.toolOrGaugeNo}</td>
-                      <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)]">{line.tool?.name ?? line.toolOrGaugeNo}</td>
-                      <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{line.poQty}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--color-success-text)]">{line.receivedQty}</td>
-                      <td className={`py-2.5 px-3 font-mono font-bold ${line.pendingQty > 0 ? "text-[var(--color-warning-text)]" : "text-[var(--text-muted)]"}`}>
-                        {line.pendingQty}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-primary)]">₹{Number(line.unitRate).toFixed(2)}</td>
+                    <tr key={line.rowId} className="text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-hover)]">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-secondary)]">{line.itemCode}</td>
+                      <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)]">{line.tool?.name ?? line.itemCode}</td>
+                      <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{line.invQty}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--color-success-text)]">{line.recQty}</td>
+                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-primary)]">₹{Number(line.price).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -327,34 +314,16 @@ export default function PoReceivePage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                    PO Reference Number *
+                    PO Order Number *
                   </label>
                   <input
                     id="form-po-ref"
-                    value={poRef}
-                    onChange={(e) => setPoRef(e.target.value.toUpperCase())}
+                    value={poOrderNo}
+                    onChange={(e) => setPoOrderNo(e.target.value.toUpperCase())}
                     placeholder="e.g. PO-MEQ-2026-001"
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono font-semibold"
                   />
-                  {errors.poRef && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.poRef}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                    Supplier *
-                  </label>
-                  <select
-                    id="form-sup"
-                    value={supCode}
-                    onChange={(e) => setSupCode(e.target.value)}
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-semibold text-[var(--text-primary)]"
-                  >
-                    {approvedSuppliers.map((s) => (
-                      <option key={s.id} value={s.supCode}>
-                        {s.supCode} · {s.supName}
-                      </option>
-                    ))}
-                  </select>
+                  {errors.poOrderNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.poOrderNo}</p>}
                 </div>
 
                 <div>
@@ -363,8 +332,8 @@ export default function PoReceivePage() {
                   </label>
                   <input
                     type="date"
-                    value={grnDate}
-                    onChange={(e) => setGrnDate(e.target.value)}
+                    value={girDate}
+                    onChange={(e) => setGirDate(e.target.value)}
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono font-medium text-[var(--text-primary)]"
                   />
                 </div>
@@ -394,7 +363,7 @@ export default function PoReceivePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                        {["Select Tool", "PO Qty", "Received Qty", "Unit Rate (₹)", ""].map((col) => (
+                        {["Select Tool", "Inv Qty", "Received Qty", "Unit Price (₹)", ""].map((col) => (
                           <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
                             {col}
                           </th>
@@ -411,7 +380,7 @@ export default function PoReceivePage() {
                               className="w-full text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none"
                             >
                               {tools.map((t) => (
-                                <option key={t.id} value={t.toolOrGaugeNo}>
+                                <option key={t.refNo} value={t.toolOrGaugeNo}>
                                   {t.toolOrGaugeNo} · {t.name}
                                 </option>
                               ))}
@@ -421,8 +390,8 @@ export default function PoReceivePage() {
                             <input
                               type="number"
                               min={1}
-                              value={line.poQty}
-                              onChange={(e) => handleLineChange(idx, "poQty", Number(e.target.value))}
+                              value={line.invQty}
+                              onChange={(e) => handleLineChange(idx, "invQty", Number(e.target.value))}
                               className="w-24 text-center text-sm border border-[var(--border-main)] rounded-lg py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono font-medium"
                             />
                           </td>
@@ -430,9 +399,9 @@ export default function PoReceivePage() {
                             <input
                               type="number"
                               min={1}
-                              max={line.poQty}
-                              value={line.receivedQty}
-                              onChange={(e) => handleLineChange(idx, "receivedQty", Number(e.target.value))}
+                              max={line.invQty}
+                              value={line.recQty}
+                              onChange={(e) => handleLineChange(idx, "recQty", Number(e.target.value))}
                               className="w-24 text-center text-sm border border-[var(--border-main)] rounded-lg py-1.5 bg-[var(--bg-subtle)] font-mono font-bold text-[var(--text-primary)]"
                             />
                             {errors[`qty-${idx}`] && <p className="text-[var(--color-danger-text)] text-[10px] mt-1 font-semibold">{errors[`qty-${idx}`]}</p>}
@@ -441,8 +410,8 @@ export default function PoReceivePage() {
                             <input
                               type="number"
                               min={1}
-                              value={line.unitRate}
-                              onChange={(e) => handleLineChange(idx, "unitRate", Number(e.target.value))}
+                              value={line.price}
+                              onChange={(e) => handleLineChange(idx, "price", Number(e.target.value))}
                               className="w-32 text-center text-sm border border-[var(--border-main)] rounded-lg py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono font-medium"
                             />
                             {errors[`rate-${idx}`] && <p className="text-[var(--color-danger-text)] text-[10px] mt-1 font-semibold">{errors[`rate-${idx}`]}</p>}

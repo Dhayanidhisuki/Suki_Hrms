@@ -10,23 +10,21 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
 interface Tool {
-  id: number;
+  refNo: number | null;
   toolOrGaugeNo: string;
-  name: string;
-  lastCalibrationDate: string | null;
+  name: string | null;
+  status: string | null;
+  grouping: string | null;
   nextCalibrationDate: string | null;
-  status: string;
-  daysLeft?: number | null;
 }
 
 interface CalibrationIssueHeader {
-  id: number;
-  calibDcNo: string;
-  issueType: string;
-  labName: string | null;
-  issueDate: string;
-  expectedReturnDate: string | null;
-  status: string;
+  dcNo: number;
+  receiveName: string | null;
+  subCode: string | null;
+  issueDate: string | null;
+  issueFor: string | null;
+  status: string | null;
 }
 
 const statusConfig: Record<string, { bg: string; text: string }> = {
@@ -52,10 +50,10 @@ export default function CalibrationIssuePage() {
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form State
-  const [issueType, setIssueType] = useState<"External" | "In-House">("External");
-  const [labName, setLabName] = useState("");
+  const [receiveName, setReceiveName] = useState("");
+  const [subCode, setSubCode] = useState("");
   const [issueDate, setIssueDate] = useState("");
-  const [expectedReturnDate, setExpectedReturnDate] = useState("");
+  const [issueFor, setIssueFor] = useState("");
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
 
   // Validation Error State
@@ -96,8 +94,8 @@ export default function CalibrationIssuePage() {
     e.preventDefault();
     const tempErrors: Record<string, string> = {};
 
-    if (!labName.trim()) tempErrors.labName = "Lab / Unit Name is required";
-    if (!expectedReturnDate) tempErrors.expectedReturnDate = "Expected Return Date is required";
+    if (!receiveName.trim()) tempErrors.receiveName = "Receive Name is required";
+    if (!issueFor.trim()) tempErrors.issueFor = "Issue For is required";
     if (selectedTools.length === 0) tempErrors.tools = "Select at least one tool due for calibration";
 
     if (Object.keys(tempErrors).length > 0) {
@@ -106,10 +104,14 @@ export default function CalibrationIssuePage() {
     }
 
     const payload = {
-      issueType,
-      labName,
-      expectedReturnDate,
-      toolOrGaugeNos: selectedTools,
+      receiveName,
+      subCode,
+      issueDate,
+      issueFor,
+      lines: selectedTools.map((toolOrGaugeNo) => ({
+        toolOrGaugeNo,
+        issueQty: 1,
+      })),
     };
 
     setBannerMsg(null);
@@ -121,9 +123,10 @@ export default function CalibrationIssuePage() {
     }
 
     if (res.data?.item) {
-      setSuccessBanner(`Calibration DC #${res.data.item.calibDcNo} created successfully!`);
-      setLabName("");
-      setExpectedReturnDate("");
+      setSuccessBanner(`Calibration DC #${res.data.item.dcNo} created successfully!`);
+      setReceiveName("");
+      setSubCode("");
+      setIssueFor("");
       setSelectedTools([]);
       setErrors({});
       loadData();
@@ -198,44 +201,29 @@ export default function CalibrationIssuePage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1.5">
-                        Issue Type
+                        Receive Name *
                       </label>
-                      <div className="flex items-center gap-4 bg-[var(--bg-subtle)] p-2 rounded-lg border border-[var(--border-main)] w-fit">
-                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)] cursor-pointer">
-                          <input
-                            type="radio"
-                            name="issueType"
-                            checked={issueType === "External"}
-                            onChange={() => setIssueType("External")}
-                            className="w-4 h-4 text-[var(--primary)] border-[var(--border-main)]"
-                          />
-                          External Lab
-                        </label>
-                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)] cursor-pointer">
-                          <input
-                            type="radio"
-                            name="issueType"
-                            checked={issueType === "In-House"}
-                            onChange={() => setIssueType("In-House")}
-                            className="w-4 h-4 text-[var(--primary)] border-[var(--border-main)]"
-                          />
-                          In-House Unit
-                        </label>
-                      </div>
+                      <input
+                        id="form-receive-name"
+                        value={receiveName}
+                        onChange={(e) => setReceiveName(e.target.value)}
+                        placeholder="e.g. QC Department"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
+                      />
+                      {errors.receiveName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.receiveName}</p>}
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1.5">
-                        {issueType === "External" ? "Calibration Lab Name *" : "In-House Unit Name *"}
+                        Subcontractor Code
                       </label>
                       <input
-                        id="form-lab-name"
-                        value={labName}
-                        onChange={(e) => setLabName(e.target.value)}
-                        placeholder={issueType === "External" ? "e.g. Reliable Calibration Lab" : "e.g. Inhouse Repair Unit"}
+                        id="form-sub-code"
+                        value={subCode}
+                        onChange={(e) => setSubCode(e.target.value)}
+                        placeholder="e.g. S001"
                         className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                       />
-                      {errors.labName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.labName}</p>}
                     </div>
                   </div>
 
@@ -254,16 +242,16 @@ export default function CalibrationIssuePage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Expected Return Date *
+                        Issue For *
                       </label>
                       <input
-                        id="form-expected"
-                        type="date"
-                        value={expectedReturnDate}
-                        onChange={(e) => setExpectedReturnDate(e.target.value)}
+                        id="form-issue-for"
+                        value={issueFor}
+                        onChange={(e) => setIssueFor(e.target.value)}
+                        placeholder="e.g. Calibration"
                         className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono font-medium"
                       />
-                      {errors.expectedReturnDate && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.expectedReturnDate}</p>}
+                      {errors.issueFor && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.issueFor}</p>}
                     </div>
                   </div>
 
@@ -284,7 +272,7 @@ export default function CalibrationIssuePage() {
                         <thead>
                           <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                             <th className="py-2.5 px-3 text-left w-10"></th>
-                            {["Tool No", "Name", "Last Calib", "Next Due", "Days Until Due"].map((col) => (
+                            {["Tool No", "Name", "Status", "Next Due", "Days Until Due"].map((col) => (
                               <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                                 {col}
                               </th>
@@ -295,7 +283,7 @@ export default function CalibrationIssuePage() {
                           {dueToolsList.map((t) => {
                             const isOver = t.daysLeft !== null && t.daysLeft < 0;
                             return (
-                              <tr key={t.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                              <tr key={t.refNo ?? t.toolOrGaugeNo} className="hover:bg-[var(--bg-hover)] transition-colors">
                                 <td className="py-2 px-3">
                                   <input
                                     type="checkbox"
@@ -306,7 +294,7 @@ export default function CalibrationIssuePage() {
                                 </td>
                                 <td className="py-2 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold">{t.toolOrGaugeNo}</td>
                                 <td className="py-2 px-3 font-semibold text-[var(--text-primary)]">{t.name}</td>
-                                <td className="py-2 px-3 font-mono text-xs text-[var(--text-muted)]">{t.lastCalibrationDate || "—"}</td>
+                                <td className="py-2 px-3 font-mono text-xs text-[var(--text-muted)]">{t.status ?? "—"}</td>
                                 <td className={`py-2 px-3 font-mono text-xs font-semibold ${isOver ? "text-[var(--color-danger-text)]" : "text-[var(--text-secondary)]"}`}>
                                   {t.nextCalibrationDate}
                                 </td>
@@ -356,12 +344,12 @@ export default function CalibrationIssuePage() {
               <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Staged DC Summary</h2>
               <div className="border-y border-[var(--border-main)] py-3 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-[var(--text-muted)] font-medium">Staged Lab Name</span>
-                  <span className="font-bold text-[var(--text-primary)]">{labName || "—"}</span>
+                  <span className="text-[var(--text-muted)] font-medium">Receive Name</span>
+                  <span className="font-bold text-[var(--text-primary)]">{receiveName || "—"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--text-muted)] font-medium">DC Type</span>
-                  <span className="font-bold text-[var(--text-primary)]">{issueType}</span>
+                  <span className="text-[var(--text-muted)] font-medium">Issue For</span>
+                  <span className="font-bold text-[var(--text-primary)]">{issueFor || "—"}</span>
                 </div>
                 <div className="flex justify-between border-t border-[var(--border-main)] pt-2">
                   <span className="text-[var(--text-muted)] font-semibold">Selected Tools Count</span>
@@ -404,7 +392,7 @@ export default function CalibrationIssuePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                    {["DC No", "Lab / Unit Name", "Type", "Issue Date", "Expected Return", "Status"].map((col) => (
+                    {["DC No", "Receive Name", "Issue For", "Issue Date", "Status"].map((col) => (
                       <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                         {col}
                       </th>
@@ -413,14 +401,13 @@ export default function CalibrationIssuePage() {
                 </thead>
                 <tbody className="divide-y divide-[var(--border-main)]">
                   {history.map((ci) => {
-                    const sc = statusConfig[ci.status] ?? statusConfig["OPEN"];
+                    const sc = statusConfig[ci.status ?? "OPEN"] ?? statusConfig["OPEN"];
                     return (
-                      <tr key={ci.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold">{ci.calibDcNo}</td>
-                        <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{ci.labName ?? "—"}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{ci.issueType}</td>
+                      <tr key={ci.dcNo} className="hover:bg-[var(--bg-hover)] transition-colors">
+                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold">{ci.dcNo}</td>
+                        <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{ci.receiveName ?? "—"}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{ci.issueFor ?? "—"}</td>
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">{ci.issueDate ? ci.issueDate.split("T")[0] : "—"}</td>
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">{ci.expectedReturnDate ? ci.expectedReturnDate.split("T")[0] : "—"}</td>
                         <td className="py-3 px-3">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}>
                             {ci.status}

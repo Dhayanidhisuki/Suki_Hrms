@@ -12,14 +12,38 @@ export async function GET() {
   const alertDate = new Date();
   alertDate.setDate(alertDate.getDate() + alertDays);
 
-  const items = await prisma.gaugeAndTools.findMany({
+  // Get tools with calibration due based on GaugeControlCardTrans.nextCDate
+  const dueTools = await prisma.gaugeControlCardTrans.findMany({
     where: {
-      nextCalibrationDate: { lte: alertDate },
-      status: { notIn: ["Scrapped", "Under Calibration"] },
+      nextCDate: { lte: alertDate },
     },
-    orderBy: { nextCalibrationDate: "asc" },
-    include: { calibControlCard: true },
+    orderBy: { nextCDate: "asc" },
+    take: 20,
+    include: {
+      controlCard: {
+        include: {
+          tool: {
+            select: {
+              refNo: true,
+              toolOrGaugeNo: true,
+              name: true,
+              status: true,
+              grouping: true,
+            },
+          },
+        },
+      },
+    },
   });
 
-  return NextResponse.json({ items, alertDays });
+  const items = dueTools.map((t) => ({
+    refNo: t.controlCard.tool?.refNo,
+    toolOrGaugeNo: t.controlCard.toolOrGaugeNo,
+    name: t.controlCard.tool?.name,
+    status: t.controlCard.tool?.status,
+    grouping: t.controlCard.tool?.grouping,
+    nextCalibrationDate: t.nextCDate,
+  }));
+
+  return NextResponse.json({ items });
 }

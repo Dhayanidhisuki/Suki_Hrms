@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Wrench,
   LayoutDashboard,
   Package,
   ArrowUpRight,
@@ -12,7 +11,8 @@ import {
   Users,
   Settings,
   Bell,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   LogOut,
   ShoppingCart,
   ClipboardList,
@@ -22,9 +22,18 @@ import {
   ChevronLeft,
   type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/lib/SessionContext";
+import { useTheme } from "@/contexts/ThemeContext";
+
+const LOGO_BY_THEME: Record<string, string> = {
+  blue: "/logo-blue.svg",
+  green: "/logo-green.svg",
+  purple: "/logo-purple.svg",
+  orange: "/logo-orange.svg",
+};
 
 interface NavItem {
   label: string;
@@ -41,7 +50,7 @@ interface NavSection {
 
 const navSections: NavSection[] = [
   {
-    label: "Main",
+    label: "Home",
     sectionIcon: LayoutDashboard,
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -90,7 +99,9 @@ const STORAGE_KEY = "suki_sidebar_collapsed";
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useSession();
+  const { theme } = useTheme();
   const displayUser = user ?? { userId: "...", name: "Loading...", roleName: "" };
+  const logoSrc = LOGO_BY_THEME[theme] ?? LOGO_BY_THEME.blue;
 
   // Whole-sidebar collapsed/expanded
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -100,11 +111,12 @@ export default function Sidebar() {
     return false;
   });
 
-  // Per-section expanded/collapsed (for children tree)
-  const [sectionExpanded, setSectionExpanded] = useState<Record<string, boolean>>(() => {
-    const defaults: Record<string, boolean> = {};
-    navSections.forEach((s) => { defaults[s.label] = true; });
-    return defaults;
+  // Accordion: only one section open at a time (CRM-style)
+  const [openSection, setOpenSection] = useState<string | null>(() => {
+    const active = navSections.find((s) =>
+      s.items.some((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)))
+    );
+    return active?.label ?? navSections[0]?.label ?? null;
   });
 
   // Track which flyout is visible when collapsed
@@ -130,7 +142,7 @@ export default function Sidebar() {
   };
 
   const toggleSection = (label: string) => {
-    setSectionExpanded((prev) => ({ ...prev, [label]: !prev[label] }));
+    setOpenSection((prev) => (prev === label ? null : label));
   };
 
   return (
@@ -149,22 +161,34 @@ export default function Sidebar() {
         />
       </button>
 
-      {/* ── Logo ── */}
+      {/* ── Logo (theme-aware) ── */}
       <div
         className={`flex items-center border-b border-[var(--sidebar-border)] shrink-0 overflow-hidden transition-all duration-300 ${
-          isCollapsed ? "justify-center px-0 py-4" : "gap-3 px-5 py-5"
+          isCollapsed ? "justify-center px-0 py-4" : "px-5 py-5"
         }`}
       >
-        <div className="w-9 h-9 bg-[var(--primary)] rounded-xl flex items-center justify-center shadow-sm shrink-0">
-          <Wrench className="w-4 h-4 text-white" />
-        </div>
-        {!isCollapsed && (
-          <div className="leading-tight min-w-0 overflow-hidden">
-            <p className="text-sm font-bold text-white tracking-tight truncate">SUKI ERP</p>
-            <p className="text-[10px] text-slate-400 font-medium tracking-wider uppercase truncate">
-              Tools Management
-            </p>
+        {isCollapsed ? (
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm shrink-0 overflow-hidden bg-white/5">
+            <Image
+              key={logoSrc}
+              src={logoSrc}
+              alt="Suki logo"
+              width={36}
+              height={36}
+              className="w-full h-full object-contain"
+              priority
+            />
           </div>
+        ) : (
+          <Image
+            key={logoSrc}
+            src={logoSrc}
+            alt="Suki logo"
+            width={160}
+            height={50}
+            className="h-8 w-auto object-contain"
+            priority
+          />
         )}
       </div>
 
@@ -175,7 +199,7 @@ export default function Sidebar() {
           const hasActive = section.items.some(
             (item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
           );
-          const isExpanded = sectionExpanded[section.label] ?? true;
+          const isExpanded = openSection === section.label;
           const isFlyoutOpen = flyoutSection === section.label;
 
           if (isCollapsed) {
@@ -250,80 +274,97 @@ export default function Sidebar() {
             );
           }
 
-          /* ── EXPANDED: parent row + tree-style children ── */
+          /* ── EXPANDED: CRM-style accordion (single section open) ── */
           return (
-            <div key={section.label} className="mb-1">
+            <div key={section.label} className="mb-1 space-y-1">
               {/* Section parent row */}
               <button
                 onClick={() => toggleSection(section.label)}
-                className={`flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all duration-150 group cursor-pointer ${
-                  hasActive
-                    ? "text-white bg-[var(--sidebar-hover)]"
-                    : "text-slate-400 hover:bg-[var(--sidebar-hover)] hover:text-slate-200"
-                }`}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg font-medium transition-colors group cursor-pointer"
+                style={{
+                  fontSize: "13.5px",
+                  color: hasActive ? "var(--sidebar-text-active)" : "var(--sidebar-text)",
+                  background: "transparent",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--sidebar-hover)";
+                  e.currentTarget.style.borderLeft = "3px solid var(--primary)";
+                  e.currentTarget.style.paddingLeft = "11px";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.borderLeft = "";
+                  e.currentTarget.style.paddingLeft = "";
+                }}
               >
-                <SectionIcon
-                  className={`w-4 h-4 shrink-0 transition-colors ${
-                    hasActive ? "text-[var(--primary)]" : "text-slate-500 group-hover:text-slate-300"
-                  }`}
-                />
-                <span className="flex-1 uppercase tracking-widest truncate">{section.label}</span>
-                <ChevronRight
-                  className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
-                    isExpanded ? "rotate-90" : ""
-                  } ${hasActive ? "text-slate-300" : "text-slate-600 group-hover:text-slate-400"}`}
-                />
+                <div className="flex items-center gap-3">
+                  <SectionIcon
+                    className="w-4 h-4 shrink-0 transition-colors"
+                    style={{ color: hasActive ? "var(--sidebar-text-active)" : "var(--sidebar-heading)" }}
+                  />
+                  <span className="whitespace-nowrap overflow-hidden text-ellipsis">{section.label}</span>
+                </div>
+                {isExpanded ? (
+                  <ChevronUp className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--sidebar-heading)" }} />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--sidebar-heading)" }} />
+                )}
               </button>
 
-              {/* Children with tree connector */}
-              <div
-                className={`overflow-hidden transition-all duration-250 ease-in-out ${
-                  isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-                }`}
-              >
-                <ul className="mt-0.5 ml-3 pl-3 border-l border-[var(--sidebar-border)] space-y-0.5 pb-1">
+              {/* Children */}
+              {isExpanded && (
+                <div className="overflow-hidden pl-4 pr-1 py-1 space-y-1 border-l border-[var(--sidebar-border)] ml-5">
                   {section.items.map((item) => {
                     const isActive =
                       pathname === item.href ||
                       (item.href !== "/" && pathname.startsWith(item.href));
                     const Icon = item.icon;
                     return (
-                      <li key={item.label} className="relative">
-                        {/* Branch tick line */}
-                        <span className="absolute -left-3 top-1/2 w-2.5 h-px bg-[var(--sidebar-border)]" />
-                        <Link
-                          href={item.href}
-                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 group ${
-                            isActive
-                              ? "bg-[var(--primary)] text-white shadow-sm"
-                              : "text-slate-400 hover:bg-[var(--sidebar-hover)] hover:text-white"
-                          }`}
-                        >
-                          <Icon
-                            className={`w-3.5 h-3.5 shrink-0 ${
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className="flex items-center py-1.5 px-2 rounded-md font-medium transition-colors gap-2.5"
+                        style={{
+                          fontSize: "12.5px",
+                          color: isActive ? "var(--sidebar-text-active)" : "var(--sidebar-text)",
+                          fontWeight: isActive ? 600 : 500,
+                          background: isActive ? "var(--sidebar-active-bg)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.color = "var(--sidebar-text-active)";
+                            e.currentTarget.style.background = "var(--sidebar-hover)";
+                            e.currentTarget.style.borderLeft = "2px solid var(--primary)";
+                            e.currentTarget.style.paddingLeft = "6px";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.color = "var(--sidebar-text)";
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.borderLeft = "";
+                            e.currentTarget.style.paddingLeft = "";
+                          }
+                        }}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="flex-1 truncate whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
+                        {item.badge && (
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
                               isActive
-                                ? "text-white"
-                                : "text-slate-500 group-hover:text-slate-200"
+                                ? "bg-white/20 text-white"
+                                : "bg-amber-900/60 text-amber-300 border border-amber-700/50"
                             }`}
-                          />
-                          <span className="flex-1 truncate text-[13px]">{item.label}</span>
-                          {item.badge && (
-                            <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                isActive
-                                  ? "bg-white/20 text-white"
-                                  : "bg-amber-900/60 text-amber-300 border border-amber-700/50"
-                              }`}
-                            >
-                              {item.badge}
-                            </span>
-                          )}
-                        </Link>
-                      </li>
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
                     );
                   })}
-                </ul>
-              </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -368,28 +409,29 @@ export default function Sidebar() {
       </div>
 
       {/* ── User profile footer ── */}
-      <div className="border-t border-[var(--sidebar-border)] p-2 shrink-0">
+      <div className={`shrink-0 border-t border-[var(--sidebar-border)] p-3 ${isCollapsed ? "px-1.5" : ""}`}>
         <div
-          className={`flex items-center rounded-xl hover:bg-[var(--sidebar-hover)] cursor-pointer transition-colors group ${
-            isCollapsed ? "justify-center p-2" : "gap-3 px-2 py-2"
-          }`}
+          className={`flex items-center gap-3 rounded-xl p-2 transition-colors ${isCollapsed ? "justify-center" : ""}`}
+          style={{ background: "var(--sidebar-active-bg)" }}
         >
-          <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-white text-xs font-bold shadow-sm shrink-0">
+          <div className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center text-white text-[13px] font-bold shrink-0">
             {displayUser.userId?.slice(0, 2) ?? "??"}
           </div>
           {!isCollapsed && (
             <>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-200 truncate leading-tight">
+                <p className="text-[12.5px] font-semibold text-white truncate leading-tight">
                   {displayUser.name}
                 </p>
-                <p className="text-[11px] text-slate-400 truncate leading-tight font-mono">
+                <p className="text-[10.5px] text-white/70 truncate leading-tight">
                   {displayUser.userId}
                 </p>
               </div>
               <button
                 id="sidebar-logout-btn"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-950/50 transition-colors shrink-0"
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Log out"
+                title="Log out"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>

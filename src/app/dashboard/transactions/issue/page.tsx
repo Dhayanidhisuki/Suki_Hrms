@@ -12,22 +12,20 @@ import { Button } from "@/components/ui/button";
 type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL";
 
 interface ToolsIssueLine {
-  id: number;
+  rowId: number;
   dcNo: string;
   toolOrGaugeNo: string;
-  qtyIssued: number;
-  qtyReturned: number;
-  remainingQty: number;
-  status: string;
+  issueQty: number;
+  partNo: string | null;
 }
 
 interface ToolsIssueHeader {
-  id: number;
   dcNo: string;
-  deptName: string;
-  partyName: string;
-  issueDate: string;
-  dueDate: string;
+  receiveName: string | null;
+  subCode: string | null;
+  empId: string | null;
+  issueDate: string | null;
+  dueDate: string | null;
   status: IssueStatus;
   creatUserIdCd: string;
   creatDt: string;
@@ -35,7 +33,7 @@ interface ToolsIssueHeader {
 }
 
 interface Tool {
-  id: number;
+  refNo: number;
   toolOrGaugeNo: string;
   name: string;
   grouping: string;
@@ -52,7 +50,7 @@ const statusConfig: Record<string, { bg: string; text: string }> = {
 interface StagedLine {
   toolOrGaugeNo: string;
   toolName: string;
-  qtyIssued: number;
+  issueQty: number;
   qtyAvailable: number;
 }
 
@@ -67,8 +65,9 @@ export default function IssueToolPage() {
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form Header State
-  const [deptName, setDeptName] = useState("");
-  const [partyName, setPartyName] = useState("");
+  const [receiveName, setReceiveName] = useState("");
+  const [subCode, setSubCode] = useState("");
+  const [empId, setEmpId] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
@@ -130,7 +129,7 @@ export default function IssueToolPage() {
     const inStock = found ? found.qtyIn : 0;
     const alreadyStaged = stagedLines
       .filter((l) => l.toolOrGaugeNo === toolNo)
-      .reduce((sum, l) => sum + l.qtyIssued, 0);
+      .reduce((sum, l) => sum + l.issueQty, 0);
     return Math.max(0, inStock - alreadyStaged);
   };
 
@@ -141,12 +140,12 @@ export default function IssueToolPage() {
     const existingIdx = stagedLines.findIndex((l) => l.toolOrGaugeNo === toolNo);
     if (existingIdx >= 0) {
       const updated = [...stagedLines];
-      updated[existingIdx].qtyIssued += 1;
+      updated[existingIdx].issueQty += 1;
       setStagedLines(updated);
     } else {
       setStagedLines((prev) => [
         ...prev,
-        { toolOrGaugeNo: toolNo, toolName: name, qtyIssued: 1, qtyAvailable: stock },
+        { toolOrGaugeNo: toolNo, toolName: name, issueQty: 1, qtyAvailable: stock },
       ]);
     }
     setSearchVal("");
@@ -157,7 +156,7 @@ export default function IssueToolPage() {
   const handleUpdateQty = (index: number, newQty: number) => {
     const updated = [...stagedLines];
     const maxVal = updated[index].qtyAvailable;
-    updated[index].qtyIssued = Math.min(Math.max(1, newQty), maxVal);
+    updated[index].issueQty = Math.min(Math.max(1, newQty), maxVal);
     setStagedLines(updated);
   };
 
@@ -166,8 +165,9 @@ export default function IssueToolPage() {
   };
 
   const handleClearForm = () => {
-    setDeptName("");
-    setPartyName("");
+    setReceiveName("");
+    setSubCode("");
+    setEmpId("");
     setDueDate("");
     setStagedLines([]);
     setFormErrors({});
@@ -177,8 +177,7 @@ export default function IssueToolPage() {
     e.preventDefault();
     const errors: Record<string, string> = {};
 
-    if (!deptName.trim()) errors.deptName = "Department is required";
-    if (!partyName.trim()) errors.partyName = "Receiving party/employee is required";
+    if (!receiveName.trim()) errors.receiveName = "Receive Name is required";
     if (!dueDate) errors.dueDate = "Return due date is required";
     if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
 
@@ -188,12 +187,13 @@ export default function IssueToolPage() {
     }
 
     const payload = {
-      deptName,
-      partyName,
+      receiveName,
+      subCode: subCode || undefined,
+      empId: empId || undefined,
       dueDate,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
-        qtyIssued: l.qtyIssued,
+        issueQty: l.issueQty,
       })),
     };
 
@@ -206,7 +206,7 @@ export default function IssueToolPage() {
     }
 
     if (res.data?.item) {
-      setSuccessBanner(`DC #${res.data.item.dcNo} issued successfully to ${partyName}!`);
+      setSuccessBanner(`DC #${res.data.item.dcNo} issued successfully to ${receiveName}!`);
       handleClearForm();
       setShowCreate(false);
       loadIssues();
@@ -284,12 +284,12 @@ export default function IssueToolPage() {
               issues.map((issue) => {
                 const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
                 return (
-                  <div key={issue.id} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+                  <div key={issue.dcNo} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          {issue.deptName} · {issue.partyName} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
+                          {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
                         </p>
                       </div>
                       <span
@@ -302,7 +302,7 @@ export default function IssueToolPage() {
                       <table className="w-full text-sm border-collapse">
                         <thead>
                           <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                            {["Tool No", "Qty Issued", "Qty Returned", "Remaining", "Status"].map(
+                            {["Tool No", "Qty Issued"].map(
                               (col) => (
                                 <th
                                   key={col}
@@ -316,24 +316,11 @@ export default function IssueToolPage() {
                         </thead>
                         <tbody className="divide-y divide-[var(--border-main)]">
                           {issue.lines.map((line) => (
-                            <tr key={line.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                            <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
                               <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)] font-medium">
                                 {line.toolOrGaugeNo}
                               </td>
-                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.qtyIssued}</td>
-                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.qtyReturned}</td>
-                              <td className="py-3 px-4 align-middle text-[var(--text-primary)] font-mono text-xs font-semibold">{line.remainingQty}</td>
-                              <td className="py-3 px-4 align-middle">
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                    line.status === "Open"
-                                      ? "bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--border-main)]"
-                                      : "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                                  }`}
-                                >
-                                  {line.status}
-                                </span>
-                              </td>
+                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.issueQty}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -361,29 +348,42 @@ export default function IssueToolPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Department Requesting *
+                        Receive Name *
                       </label>
                       <input
-                        id="form-dept"
-                        value={deptName}
-                        onChange={(e) => setDeptName(e.target.value)}
+                        id="form-receive-name"
+                        value={receiveName}
+                        onChange={(e) => setReceiveName(e.target.value)}
                         placeholder="e.g. Machining / QC"
                         className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                       />
-                      {formErrors.deptName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.deptName}</p>}
+                      {formErrors.receiveName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.receiveName}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Receiving Party / Employee *
+                        Subcontractor Code
                       </label>
                       <input
-                        id="form-party"
-                        value={partyName}
-                        onChange={(e) => setPartyName(e.target.value)}
-                        placeholder="Employee Name / Code"
+                        id="form-sub-code"
+                        value={subCode}
+                        onChange={(e) => setSubCode(e.target.value)}
+                        placeholder="e.g. S001"
                         className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                       />
-                      {formErrors.partyName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.partyName}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                        Employee ID
+                      </label>
+                      <input
+                        id="form-emp-id"
+                        value={empId}
+                        onChange={(e) => setEmpId(e.target.value)}
+                        placeholder="Employee ID"
+                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
+                      />
                     </div>
                   </div>
 
@@ -441,7 +441,7 @@ export default function IssueToolPage() {
                       <div className="absolute z-10 w-full bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-lg rounded-xl mt-1 max-h-56 overflow-y-auto divide-y divide-[var(--border-main)]">
                         {searchResults.map((t) => (
                           <div
-                            key={t.id}
+                            key={t.refNo}
                             onClick={() => handleSelectTool(t.toolOrGaugeNo, t.name, t.qtyIn)}
                             className="p-3 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors flex items-center justify-between text-sm"
                           >
@@ -492,7 +492,7 @@ export default function IssueToolPage() {
                                 type="number"
                                 min={1}
                                 max={line.qtyAvailable}
-                                value={line.qtyIssued}
+                                value={line.issueQty}
                                 onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
                                 className="w-20 text-center text-sm border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono font-semibold"
                               />
@@ -566,7 +566,7 @@ export default function IssueToolPage() {
                   <div className="flex justify-between">
                     <span className="text-[var(--text-muted)] font-medium">Total Quantity</span>
                     <span className="font-bold text-[var(--text-primary)]">
-                      {stagedLines.reduce((sum, l) => sum + l.qtyIssued, 0)}
+                      {stagedLines.reduce((sum, l) => sum + l.issueQty, 0)}
                     </span>
                   </div>
                 </div>
@@ -581,7 +581,7 @@ export default function IssueToolPage() {
                           <p className="text-[10px] font-mono text-[var(--text-muted)]">{l.toolOrGaugeNo}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <span className="font-bold font-mono text-[var(--text-primary)]">{l.qtyIssued}</span>
+                          <span className="font-bold font-mono text-[var(--text-primary)]">{l.issueQty}</span>
                           <span className="text-[var(--text-muted)]"> / </span>
                           <span className="font-mono text-[var(--text-muted)]">{getAvailableStock(l.toolOrGaugeNo)} avail</span>
                         </div>

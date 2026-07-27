@@ -10,37 +10,29 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 
 interface Supplier {
-  id: number;
   supCode: string;
   supName: string;
   isApproved: boolean;
 }
 
 interface Tool {
-  id: number;
+  refNo: number;
   toolOrGaugeNo: string;
   name: string;
 }
 
 interface ScheduleLine {
-  id: number;
-  scheduleNo: string;
+  rowId: number;
+  poTransNo: number;
   toolOrGaugeNo: string;
-  expectedDate: string;
-  expectedQty: number;
-  receivedQty: number;
-  status: string;
+  qty: number;
   tool?: { name: string } | null;
 }
 
 interface PoScheduleHeader {
-  id: number;
-  scheduleNo: string;
-  poRef: string;
-  supCode: string;
-  createdDate: string;
-  overallStatus: string;
-  supplier?: { supName: string } | null;
+  rowId: number;
+  poOrderNo: string;
+  creatDt: string;
   lines: ScheduleLine[];
 }
 
@@ -52,8 +44,7 @@ const statusConfig: Record<string, { bg: string; text: string }> = {
 
 interface StagedScheduleLine {
   toolOrGaugeNo: string;
-  expectedDate: string;
-  expectedQty: number;
+  qty: number;
 }
 
 export default function PoSchedulePage() {
@@ -67,8 +58,7 @@ export default function PoSchedulePage() {
 
   // Slide-over Form State
   const [isOpen, setIsOpen] = useState(false);
-  const [poRef, setPoRef] = useState("");
-  const [supCode, setSupCode] = useState("");
+  const [poOrderNo, setPoOrderNo] = useState("");
   const [stagedLines, setStagedLines] = useState<StagedScheduleLine[]>([]);
 
   // Validation Errors
@@ -85,8 +75,6 @@ export default function PoSchedulePage() {
     if (schRes.data?.items) setSchedules(schRes.data.items);
     if (supRes.data?.items) {
       setSuppliers(supRes.data.items);
-      const firstApproved = supRes.data.items.find((s) => s.isApproved);
-      if (firstApproved) setSupCode(firstApproved.supCode);
     }
     if (tRes.data?.items) {
       setTools(tRes.data.items);
@@ -101,18 +89,12 @@ export default function PoSchedulePage() {
   const approvedSuppliers = suppliers.filter((s) => s.isApproved);
 
   const handleOpenAdd = () => {
-    setPoRef("");
-    if (approvedSuppliers.length > 0) {
-      setSupCode(approvedSuppliers[0].supCode);
-    }
+    setPoOrderNo("");
     if (tools.length > 0) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 7);
       setStagedLines([
         {
           toolOrGaugeNo: tools[0].toolOrGaugeNo,
-          expectedQty: 5,
-          expectedDate: tomorrow.toISOString().split("T")[0],
+          qty: 5,
         },
       ]);
     }
@@ -122,14 +104,11 @@ export default function PoSchedulePage() {
 
   const handleAddLine = () => {
     if (tools.length === 0) return;
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 7);
     setStagedLines((prev) => [
       ...prev,
       {
         toolOrGaugeNo: tools[0].toolOrGaugeNo,
-        expectedQty: 5,
-        expectedDate: tomorrow.toISOString().split("T")[0],
+        qty: 5,
       },
     ]);
   };
@@ -152,16 +131,12 @@ export default function PoSchedulePage() {
     e.preventDefault();
     const tempErrors: Record<string, string> = {};
 
-    if (!poRef.trim()) tempErrors.poRef = "PO Reference number is required";
-    if (!supCode) tempErrors.supCode = "Approved supplier selection is required";
+    if (!poOrderNo.trim()) tempErrors.poOrderNo = "PO Order number is required";
     if (stagedLines.length === 0) tempErrors.lines = "At least one milestone schedule line must be added";
 
     stagedLines.forEach((line, idx) => {
-      if (line.expectedQty <= 0) {
+      if (line.qty <= 0) {
         tempErrors[`qty-${idx}`] = "Quantity must be > 0";
-      }
-      if (!line.expectedDate) {
-        tempErrors[`date-${idx}`] = "Expected date is required";
       }
     });
 
@@ -171,12 +146,10 @@ export default function PoSchedulePage() {
     }
 
     const payload = {
-      poRef,
-      supCode,
+      poOrderNo,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
-        expectedQty: l.expectedQty,
-        expectedDate: l.expectedDate,
+        qty: l.qty,
       })),
     };
 
@@ -190,7 +163,7 @@ export default function PoSchedulePage() {
 
     setBannerMsg({
       type: "success",
-      text: `PO Delivery Schedule #${res.data?.item.scheduleNo} created successfully.`,
+      text: `PO Delivery Schedule for ${res.data?.item.poOrderNo} created successfully.`,
     });
     setIsOpen(false);
     loadData();
@@ -254,27 +227,21 @@ export default function PoSchedulePage() {
                 </div>
               ) : (
                 schedules.map((sch) => {
-                const sc = statusConfig[sch.overallStatus] ?? statusConfig["Pending"];
                 return (
-                  <div key={sch.id} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+                  <div key={sch.rowId} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{sch.scheduleNo}</p>
+                        <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{sch.poOrderNo}</p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          PO Ref: <span className="font-semibold text-[var(--text-primary)] font-mono">{sch.poRef}</span> · {sch.supplier?.supName ?? sch.supCode} · Created {sch.createdDate ? sch.createdDate.split("T")[0] : "—"}
+                          Created {sch.creatDt ? sch.creatDt.split("T")[0] : "—"}
                         </p>
                       </div>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
-                      >
-                        {sch.overallStatus}
-                      </span>
                     </div>
                     <div className="overflow-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                            {["Tool No", "Name", "Expected Date", "Expected Qty", "Received", "Status"].map(
+                            {["Tool No", "Name", "Qty"].map(
                               (col) => (
                                 <th
                                   key={col}
@@ -288,25 +255,13 @@ export default function PoSchedulePage() {
                         </thead>
                         <tbody className="divide-y divide-[var(--border-main)]">
                           {sch.lines.map((line) => {
-                            const lineSc = statusConfig[line.status] ?? statusConfig["Pending"];
                             return (
-                              <tr key={line.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                              <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
                                 <td className="py-2.5 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold">
                                   {line.toolOrGaugeNo}
                                 </td>
                                 <td className="py-2.5 px-3 font-medium text-[var(--text-primary)]">{line.tool?.name ?? line.toolOrGaugeNo}</td>
-                                <td className="py-2.5 px-3 font-mono text-xs text-[var(--text-muted)]">
-                                  {line.expectedDate ? line.expectedDate.split("T")[0] : "—"}
-                                </td>
-                                <td className="py-2.5 px-3 font-mono text-xs font-bold text-[var(--text-primary)]">{line.expectedQty}</td>
-                                <td className="py-2.5 px-3 font-mono text-xs font-bold text-[var(--color-success-text)]">{line.receivedQty}</td>
-                                <td className="py-2.5 px-3">
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${lineSc.bg} ${lineSc.text}`}
-                                  >
-                                    {line.status}
-                                  </span>
-                                </td>
+                                <td className="py-2.5 px-3 font-mono text-xs font-bold text-[var(--text-primary)]">{line.qty}</td>
                               </tr>
                             );
                           })}
@@ -352,30 +307,30 @@ export default function PoSchedulePage() {
             <form onSubmit={handleSaveSchedule} className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                  PO Reference Number *
+                  PO Order Number *
                 </label>
                 <input
                   id="form-po"
-                  value={poRef}
-                  onChange={(e) => setPoRef(e.target.value.toUpperCase())}
+                  value={poOrderNo}
+                  onChange={(e) => setPoOrderNo(e.target.value.toUpperCase())}
                   placeholder="e.g. PO-MEQ-2026-001"
                   className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono font-semibold"
                 />
-                {errors.poRef && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.poRef}</p>}
+                {errors.poOrderNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.poOrderNo}</p>}
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                  Sourcing Supplier *
+                  Supplier (optional)
                 </label>
                 <select
                   id="form-sup"
-                  value={supCode}
-                  onChange={(e) => setSupCode(e.target.value)}
                   className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-semibold"
+                  disabled
                 >
+                  <option value="">Select supplier (optional)</option>
                   {approvedSuppliers.map((s) => (
-                    <option key={s.id} value={s.supCode}>
+                    <option key={s.supCode} value={s.supCode}>
                       {s.supCode} · {s.supName}
                     </option>
                   ))}
@@ -420,34 +375,24 @@ export default function PoSchedulePage() {
                           className="w-full text-xs border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-card)] text-[var(--text-primary)] outline-none"
                         >
                           {tools.map((t) => (
-                            <option key={t.id} value={t.toolOrGaugeNo}>
+                            <option key={t.refNo} value={t.toolOrGaugeNo}>
                               {t.toolOrGaugeNo} · {t.name}
                             </option>
                           ))}
                         </select>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">Expected Qty</label>
                           <input
                             type="number"
                             min={1}
-                            value={line.expectedQty}
-                            onChange={(e) => handleLineChange(idx, "expectedQty", Number(e.target.value))}
+                            value={line.qty}
+                            onChange={(e) => handleLineChange(idx, "qty", Number(e.target.value))}
                             className="w-full text-xs border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-card)] text-[var(--text-primary)] font-mono font-bold"
                           />
                           {errors[`qty-${idx}`] && <p className="text-[var(--color-danger-text)] text-[9px] mt-0.5 font-semibold">{errors[`qty-${idx}`]}</p>}
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">Expected Date</label>
-                          <input
-                            type="date"
-                            value={line.expectedDate}
-                            onChange={(e) => handleLineChange(idx, "expectedDate", e.target.value)}
-                            className="w-full text-xs border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-card)] text-[var(--text-primary)] font-mono"
-                          />
-                          {errors[`date-${idx}`] && <p className="text-[var(--color-danger-text)] text-[9px] mt-0.5 font-semibold">{errors[`date-${idx}`]}</p>}
                         </div>
                       </div>
                     </div>

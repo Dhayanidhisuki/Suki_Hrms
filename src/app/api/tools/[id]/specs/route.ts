@@ -19,8 +19,9 @@ export async function GET(
   if (!check.ok) return check.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const tool = await prisma.gaugeAndTools.findUnique({
-    where: { id: Number(id) },
+    where: { refNo },
   });
 
   if (!tool) {
@@ -28,7 +29,7 @@ export async function GET(
   }
 
   const specs = await prisma.toolsSpecification.findMany({
-    where: { toolOrGaugeNo: tool.toolOrGaugeNo },
+    where: { toolRefNo: refNo },
     orderBy: { creatDt: "asc" },
   });
 
@@ -47,8 +48,9 @@ export async function POST(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
+  const refNo = Number(id);
   const tool = await prisma.gaugeAndTools.findUnique({
-    where: { id: Number(id) },
+    where: { refNo },
   });
 
   if (!tool) {
@@ -63,10 +65,9 @@ export async function POST(
 
   const spec = await prisma.toolsSpecification.create({
     data: {
-      toolOrGaugeNo: tool.toolOrGaugeNo,
-      specName: parsed.data.specName,
-      specValue: parsed.data.specValue,
-      unit: parsed.data.unit,
+      toolRefNo: refNo,
+      parameter: parsed.data.specName,
+      specification: parsed.data.specValue,
     },
   });
 

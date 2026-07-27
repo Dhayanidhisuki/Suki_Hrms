@@ -14,7 +14,7 @@ export async function GET(
 
   const { id } = await params;
   const subcontractor = await prisma.subcontractor.findUnique({
-    where: { id: Number(id) },
+    where: { subConId: id },
   });
 
   if (!subcontractor) {
@@ -43,8 +43,8 @@ export async function PUT(
   }
 
   const subcontractor = await prisma.subcontractor.update({
-    where: { id: Number(id) },
-    data: { ...parsed.data, lstUpdtUserId: authCheck.session.userId },
+    where: { subConId: id },
+    data: { ...parsed.data, lstUpdtUserIdCd: authCheck.session.userId },
   });
 
   return NextResponse.json({ ok: true, subcontractor });
@@ -62,6 +62,6 @@ export async function DELETE(
   if (!permCheck.ok) return permCheck.response;
 
   const { id } = await params;
-  await prisma.subcontractor.delete({ where: { id: Number(id) } });
+  await prisma.subcontractor.delete({ where: { subConId: id } });
   return NextResponse.json({ ok: true });
 }
