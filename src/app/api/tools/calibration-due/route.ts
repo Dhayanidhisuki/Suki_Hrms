@@ -208,11 +208,14 @@ export async function GET() {
 
     // Tools already issued for calibration must leave the due picker until receive/close.
     const blocked = new Set<string>();
+    let underCalibrationCount = 0;
     try {
+      // Live STATUS on GAUGEANDTOOLS — used for KPI + exclusion from due picker
       const underCal = await prisma.gaugeAndTools.findMany({
         where: { status: { in: ["Under Calibration", "UNDER CALIBRATION"] } },
         select: { toolOrGaugeNo: true },
       });
+      underCalibrationCount = underCal.length;
       for (const t of underCal) {
         if (t.toolOrGaugeNo) blocked.add(t.toolOrGaugeNo);
       }
@@ -245,6 +248,9 @@ export async function GET() {
       console.warn("Open calibration issue exclusion skipped:", err);
     }
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const items = Array.from(byTool.values())
       .filter((i) => i.nextCalibrationDate != null)
       .filter((i) => !blocked.has(i.toolOrGaugeNo))
@@ -254,11 +260,35 @@ export async function GET() {
       )
       .slice(0, 200);
 
-    return NextResponse.json({ items, total: items.length, alertDays });
+    // KPI splits (mutually exclusive within the alert-window due list):
+    // dueSoon  = nextCalibrationDate >= start of today (upcoming window, not overdue)
+    // overdue  = nextCalibrationDate <  start of today (past due, not yet issued/closed)
+    const dueSoonCount = items.filter(
+      (i) => i.nextCalibrationDate != null && i.nextCalibrationDate >= startOfToday
+    ).length;
+    const overdueCount = items.filter(
+      (i) => i.nextCalibrationDate != null && i.nextCalibrationDate < startOfToday
+    ).length;
+
+    return NextResponse.json({
+      items,
+      total: items.length,
+      alertDays,
+      dueSoonCount,
+      overdueCount,
+      underCalibrationCount,
+    });
   } catch (error) {
     console.error("Error fetching calibration due list:", error);
     return NextResponse.json(
-      { items: [], alertDays, error: "Failed to load calibration due list" },
+      {
+        items: [],
+        alertDays,
+        dueSoonCount: 0,
+        overdueCount: 0,
+        underCalibrationCount: 0,
+        error: "Failed to load calibration due list",
+      },
       { status: 500 }
     );
   }

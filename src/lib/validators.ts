@@ -313,21 +313,33 @@ export const CalibIssueCreateSchema = z.object({
 // ── Calibration Results Update ───────────────────────────────────
 export const CalibResultsUpdateSchema = z.object({
   toolOrGaugeNo: z.string().min(1),
-  result: z.enum(["PASSED", "FAILED", "RECALIBRATED"]),
+  result: z.enum(["PASSED", "FAILED", "RECALIBRATED", "AVAILABLE FOR USE", "OUT OF SERVICE"]),
   remarks: z.string().max(500).optional(),
   nextCDate: z.string().datetime({ offset: true }).or(z.string().date()),
+  calibratedDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  calibratedBy: z.string().max(25).optional(),
+  certificateNo: z.string().max(50).optional(),
+  referenceStandard: z.string().max(100).optional(),
+  errorNoticed: z.string().max(100).optional(),
+  comments: z.string().max(200).optional(),
+  location: z.string().max(50).optional(),
+  locationName: z.string().max(100).optional(),
 });
 
 // ── Calibration Receive ───────────────────────────────────────────
 export const CalibReceiveCreateSchema = z.object({
   dcNo: z.number().int().min(1),
   receiveDate: z.string().datetime({ offset: true }).or(z.string().date()),
+  partyDcNo: z.string().max(20).optional(),
+  receiverName: z.string().max(30).optional(),
   lines: z
     .array(
       z.object({
         toolOrGaugeNo: z.string().min(1),
         qty: z.number().min(0),
         price: z.number().min(0),
+        serialNo: z.number().int().optional().nullable(),
+        description: z.string().max(50).optional().nullable(),
       })
     )
     .min(1),

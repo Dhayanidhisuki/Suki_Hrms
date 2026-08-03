@@ -84,11 +84,18 @@ function LoginForm() {
 
       <div className="w-full max-w-md bg-[var(--bg-card,#161B22)]/95 border border-[var(--border-main,#30363d)] backdrop-blur-xl rounded-3xl shadow-2xl p-8 relative z-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <LogoSpinner size={56} className={!loading ? "logo-spin-paused" : ""} />
+          <div className="inline-flex items-center justify-center mb-5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-blue.svg"
+              alt="SUKI TOOLS"
+              width={266}
+              height={84}
+              className="h-16 w-auto max-w-[min(100%,280px)] object-contain select-none"
+              draggable={false}
+            />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">SUKI Tools Management</h1>
-          <p className="text-xs text-[var(--text-muted,#94a3b8)] font-medium mt-1">
+          <p className="text-xs text-[var(--text-muted,#94a3b8)] font-medium">
             Sign in with your Tools Management account
           </p>
         </div>

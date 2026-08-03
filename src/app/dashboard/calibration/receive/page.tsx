@@ -6,10 +6,11 @@ import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
-import { CheckCircle2, ShieldAlert, FileCheck2, RefreshCw } from "lucide-react";
+import { CheckCircle2, ShieldAlert, FileCheck2, RefreshCw, Upload, X, Search } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 
 interface CalibReceiveLine {
   rowId: number;
@@ -32,6 +33,8 @@ interface CalibReceiveHeader {
   recNo: number;
   dcNo: number;
   receiveDate: string | null;
+  partyDcNo?: string | null;
+  receiverName?: string | null;
   status: string | null;
   creatUserIdCd: string | null;
   lines: CalibReceiveLine[];
@@ -62,11 +65,23 @@ interface OpenCalibIssue {
   issueDate: string | null;
   issueFor: string | null;
   status: string | null;
-  inHouseLines?: { toolOrGaugeNo: string | null; status: string | null; issueQty: number | null }[];
+  inHouseLines?: {
+    toolOrGaugeNo: string | null;
+    status: string | null;
+    issueQty: number | null;
+    serialNo?: number | null;
+    tool?: {
+      name?: string | null;
+      description?: string | null;
+      price?: number | string | null;
+    } | null;
+  }[];
 }
 
 type ReceiveLineDraft = {
   toolOrGaugeNo: string;
+  description: string;
+  serialNo: number | null;
   qty: number;
   price: number;
   selected: boolean;
@@ -78,11 +93,19 @@ export default function CalibrationReceivePage() {
   const [openIssues, setOpenIssues] = useState<OpenCalibIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRcv, setExpandedRcv] = useState<number | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{
+    toolOrGaugeNo: string;
+    dcNo: number;
+  } | null>(null);
   const [selectedDc, setSelectedDc] = useState<number | null>(null);
   const [receiveDate, setReceiveDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [partyDcNo, setPartyDcNo] = useState("");
+  const [receiverName, setReceiverName] = useState("");
   const [lineDrafts, setLineDrafts] = useState<ReceiveLineDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [openSearch, setOpenSearch] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
 
   const loadRecords = useCallback(async () => {
     setLoading(true);
@@ -102,14 +125,18 @@ export default function CalibrationReceivePage() {
   const beginReceive = (iss: OpenCalibIssue) => {
     setSelectedDc(iss.dcNo);
     setReceiveDate(new Date().toISOString().split("T")[0]);
+    setPartyDcNo("");
+    setReceiverName("");
     setBannerMsg(null);
     setLineDrafts(
       (iss.inHouseLines ?? [])
         .filter((l) => l.toolOrGaugeNo)
         .map((l) => ({
           toolOrGaugeNo: l.toolOrGaugeNo as string,
+          description: (l.tool?.description || l.tool?.name || "").slice(0, 50),
+          serialNo: l.serialNo ?? null,
           qty: l.issueQty && l.issueQty > 0 ? l.issueQty : 1,
-          price: 0,
+          price: l.tool?.price != null ? toNum(l.tool.price) : 0,
           selected: true,
         }))
     );
@@ -120,7 +147,13 @@ export default function CalibrationReceivePage() {
     if (!selectedDc) return;
     const lines = lineDrafts
       .filter((l) => l.selected)
-      .map((l) => ({ toolOrGaugeNo: l.toolOrGaugeNo, qty: l.qty, price: l.price }));
+      .map((l) => ({
+        toolOrGaugeNo: l.toolOrGaugeNo,
+        qty: l.qty,
+        price: l.price,
+        serialNo: l.serialNo,
+        description: l.description || null,
+      }));
     if (lines.length === 0) {
       setBannerMsg({ type: "error", text: "Select at least one tool line to receive." });
       return;
@@ -130,6 +163,8 @@ export default function CalibrationReceivePage() {
     const res = await apiPost("/api/calibration/receive", {
       dcNo: selectedDc,
       receiveDate,
+      partyDcNo: partyDcNo.trim() || undefined,
+      receiverName: receiverName.trim() || undefined,
       lines,
     });
     setSubmitting(false);
@@ -147,6 +182,8 @@ export default function CalibrationReceivePage() {
       detail: `DC #${selectedDc}`,
     });
     setSelectedDc(null);
+    setPartyDcNo("");
+    setReceiverName("");
     setLineDrafts([]);
     void loadRecords();
   };
@@ -155,6 +192,47 @@ export default function CalibrationReceivePage() {
   const allLines = records.flatMap((r) => r.lines);
   const openLineCount = openIssues.reduce((n, i) => n + (i.inHouseLines?.length ?? 0), 0);
   const selectedIssue = openIssues.find((i) => i.dcNo === selectedDc) ?? null;
+
+  const openQuery = openSearch.trim().toLowerCase();
+  const filteredOpenIssues = openIssues.filter((iss) => {
+    if (!openQuery) return true;
+    const hay = [
+      String(iss.dcNo),
+      iss.receiveName,
+      iss.subCode,
+      iss.issueFor,
+      iss.issueDate,
+      iss.status,
+      ...(iss.inHouseLines ?? []).map((l) => l.toolOrGaugeNo),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(openQuery);
+  });
+
+  const historyQuery = historySearch.trim().toLowerCase();
+  const filteredRecords = records.filter((rcv) => {
+    if (!historyQuery) return true;
+    const hay = [
+      String(rcv.recNo),
+      String(rcv.dcNo),
+      rcv.partyDcNo,
+      rcv.receiverName,
+      rcv.status,
+      rcv.receiveDate,
+      rcv.calibIssue?.receiveName,
+      rcv.calibIssue?.issueFor,
+      rcv.calibIssue?.subCode,
+      ...rcv.lines.map((l) => l.toolOrGaugeNo),
+      ...rcv.lines.map((l) => l.description),
+      ...rcv.lines.map((l) => l.tool?.name),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(historyQuery);
+  });
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
@@ -250,6 +328,8 @@ export default function CalibrationReceivePage() {
                   onClick={() => {
                     setSelectedDc(null);
                     setLineDrafts([]);
+                    setPartyDcNo("");
+                    setReceiverName("");
                   }}
                 >
                   Cancel
@@ -277,7 +357,24 @@ export default function CalibrationReceivePage() {
                     No open calibration issues awaiting receive. Create one under Calibration Issue first.
                   </p>
                 ) : (
-                  <div className="overflow-auto">
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="relative flex-1 max-w-sm">
+                        <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          id="calib-receive-open-search"
+                          value={openSearch}
+                          onChange={(e) => setOpenSearch(e.target.value)}
+                          placeholder="Search DC No, lab/party, sub code, tool no…"
+                          className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                        />
+                      </div>
+                      <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
+                        Showing {filteredOpenIssues.length} of {openIssues.length} open DC
+                        {openIssues.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="overflow-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
@@ -294,7 +391,7 @@ export default function CalibrationReceivePage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
-                        {openIssues.map((iss) => (
+                        {filteredOpenIssues.map((iss) => (
                           <tr key={iss.dcNo} className="hover:bg-[var(--bg-hover)]">
                             <td className="py-2.5 px-3 font-mono text-xs">{iss.dcNo}</td>
                             <td className="py-2.5 px-3 text-xs">{iss.receiveName ?? "—"}</td>
@@ -316,25 +413,38 @@ export default function CalibrationReceivePage() {
                             </td>
                           </tr>
                         ))}
+                        {filteredOpenIssues.length === 0 && (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                              No open DCs match “{openSearch}”.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )
               ) : (
                 <form onSubmit={handleSubmitReceive} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">DC No</label>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Our DC No
+                      </label>
                       <p className="mt-1 font-mono text-sm font-bold">{selectedDc}</p>
-                      {selectedIssue && (
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          {selectedIssue.receiveName ?? "—"} · {selectedIssue.issueFor ?? "—"}
-                        </p>
-                      )}
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
-                        Receive Date
+                        DC Date
+                      </label>
+                      <p className="mt-1 text-sm font-mono">
+                        {selectedIssue?.issueDate ? selectedIssue.issueDate.split("T")[0] : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        GRN / Receive Date *
                       </label>
                       <input
                         type="date"
@@ -344,20 +454,65 @@ export default function CalibrationReceivePage() {
                         className="mt-1 w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
                       />
                     </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Party Name
+                      </label>
+                      <p className="mt-1 text-sm font-semibold truncate">
+                        {selectedIssue?.receiveName ?? "—"}
+                      </p>
+                      {selectedIssue?.subCode && (
+                        <p className="text-[10px] text-[var(--text-muted)] font-mono">
+                          Sub: {selectedIssue.subCode}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Party DC No
+                      </label>
+                      <input
+                        value={partyDcNo}
+                        onChange={(e) => setPartyDcNo(e.target.value)}
+                        placeholder="Lab / party DC reference"
+                        maxLength={20}
+                        className="mt-1 w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Receiver Name
+                      </label>
+                      <input
+                        value={receiverName}
+                        onChange={(e) => setReceiverName(e.target.value)}
+                        placeholder="Who received the tools"
+                        maxLength={30}
+                        className="mt-1 w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                        Issue For
+                      </label>
+                      <p className="mt-1 text-sm">{selectedIssue?.issueFor ?? "—"}</p>
+                    </div>
                   </div>
 
                   <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["", "Tool No", "Qty", "Price"].map((col) => (
-                            <th
-                              key={col || "chk"}
-                              className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3"
-                            >
-                              {col}
-                            </th>
-                          ))}
+                          {["", "Gauge/Tool No", "SL.No", "Description", "Qty", "Price", "Item Value"].map(
+                            (col) => (
+                              <th
+                                key={col || "chk"}
+                                className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3"
+                              >
+                                {col}
+                              </th>
+                            )
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
@@ -375,6 +530,21 @@ export default function CalibrationReceivePage() {
                               />
                             </td>
                             <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
+                            <td className="py-2 px-3 font-mono text-xs text-[var(--text-muted)]">
+                              {line.serialNo ?? "—"}
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                value={line.description}
+                                disabled={!line.selected}
+                                onChange={(e) => {
+                                  const next = [...lineDrafts];
+                                  next[idx] = { ...line, description: e.target.value.slice(0, 50) };
+                                  setLineDrafts(next);
+                                }}
+                                className="w-full min-w-[140px] text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-subtle)]"
+                              />
+                            </td>
                             <td className="py-2 px-3">
                               <input
                                 type="number"
@@ -405,11 +575,14 @@ export default function CalibrationReceivePage() {
                                 className="w-28 text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 font-mono bg-[var(--bg-subtle)]"
                               />
                             </td>
+                            <td className="py-2 px-3 font-mono text-xs tabular-nums">
+                              {(line.qty * line.price).toFixed(2)}
+                            </td>
                           </tr>
                         ))}
                         {lineDrafts.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                            <td colSpan={7} className="py-6 text-center text-xs text-[var(--text-muted)]">
                               This DC has no tool lines to receive.
                             </td>
                           </tr>
@@ -418,7 +591,17 @@ export default function CalibrationReceivePage() {
                     </table>
                   </div>
 
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Sub Total:{" "}
+                      <span className="font-mono font-bold text-[var(--text-primary)]">
+                        {lineDrafts
+                          .filter((l) => l.selected)
+                          .reduce((s, l) => s + l.qty * l.price, 0)
+                          .toFixed(2)}
+                      </span>
+                      <span className="text-[10px] ml-2">(CGST/SGST/IGST posting is handled in Finance Posting)</span>
+                    </p>
                     <Button type="submit" disabled={submitting || lineDrafts.every((l) => !l.selected)}>
                       {submitting ? "Posting…" : "Post Calibration Receive"}
                     </Button>
@@ -429,18 +612,41 @@ export default function CalibrationReceivePage() {
           </div>
 
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
-              Calibration receive history
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Calibration receive history
+              </h2>
+              {records.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 sm:justify-end">
+                  <div className="relative w-full sm:max-w-xs">
+                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      id="calib-receive-history-search"
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      placeholder="Search receive #, DC, party, tool…"
+                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    />
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
+                    {filteredRecords.length} of {records.length}
+                  </span>
+                </div>
+              )}
+            </div>
             {loading ? (
               <TableSkeleton rows={4} />
             ) : records.length === 0 ? (
               <div className="text-center text-sm text-[var(--text-muted)] py-8">
                 No rows in TOOLS_RECEIVE_FOR_CALIBRATION yet. Open issues above are ready to receive when a lab return is posted.
               </div>
+            ) : filteredRecords.length === 0 ? (
+              <div className="text-center text-sm text-[var(--text-muted)] py-8">
+                No receive history matches “{historySearch}”.
+              </div>
             ) : (
               <div className="space-y-4">
-                {records.map((rcv) => {
+                {filteredRecords.map((rcv) => {
                   const isExpanded = expandedRcv === rcv.recNo;
                   return (
                     <div key={rcv.recNo} className="border border-[var(--border-main)] rounded-xl p-4 space-y-3 bg-[var(--bg-subtle)]">
@@ -452,6 +658,8 @@ export default function CalibrationReceivePage() {
                             {" · "}From: {rcv.calibIssue?.receiveName ?? "—"}
                             {rcv.calibIssue?.issueFor ? ` · For: ${rcv.calibIssue.issueFor}` : ""}
                             {" · "}Received: {rcv.receiveDate ? rcv.receiveDate.split("T")[0] : "—"}
+                            {rcv.partyDcNo ? ` · Party DC: ${rcv.partyDcNo}` : ""}
+                            {rcv.receiverName ? ` · Receiver: ${rcv.receiverName}` : ""}
                             {rcv.status ? ` · Status: ${rcv.status}` : ""}
                           </p>
                         </div>
@@ -468,7 +676,7 @@ export default function CalibrationReceivePage() {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-[var(--text-muted)] font-bold text-[10px] uppercase bg-[var(--bg-card)]">
-                                {["Tool No", "Name & Description", "Group", "S.No", "Qty", "Price", "Calib Frq", "Tool Status"].map((col) => (
+                                {["Tool No", "Name & Description", "Group", "S.No", "Qty", "Price", "Calib Frq", "Tool Status", "Files"].map((col) => (
                                   <th key={col} className="text-left py-2 px-3">{col}</th>
                                 ))}
                               </tr>
@@ -500,11 +708,41 @@ export default function CalibrationReceivePage() {
                                         {toolStatus}
                                       </span>
                                     </td>
+                                    <td className="py-2.5 px-3">
+                                      {line.toolOrGaugeNo && (
+                                        <RoleGate permission="canManageCalibration">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() =>
+                                              setUploadTarget({
+                                                toolOrGaugeNo: line.toolOrGaugeNo as string,
+                                                dcNo: rcv.dcNo,
+                                              })
+                                            }
+                                          >
+                                            <Upload className="w-3.5 h-3.5" />
+                                            Upload
+                                          </Button>
+                                        </RoleGate>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
                             </tbody>
                           </table>
+                          <div className="mt-3">
+                            <ToolDocumentsPanel
+                              dcNo={String(rcv.dcNo)}
+                              defaultDocType="CALIB_CERTIFICATE"
+                              allowedTypes={["CALIB_CERTIFICATE", "CALIB_REPORT", "DC_ATTACHMENT", "OTHER"]}
+                              title={`DC #${rcv.dcNo} attachments`}
+                              uploadButtonLabel="Upload/Change Image"
+                              compact
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -522,6 +760,43 @@ export default function CalibrationReceivePage() {
           </div>
         </main>
       </div>
+
+      {uploadTarget && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-start justify-center p-4 sm:p-8">
+          <div className="w-full max-w-lg bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] shadow-2xl overflow-hidden animate-fade-in my-auto">
+            <div className="px-5 py-4 border-b border-[var(--border-main)] flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-[var(--text-primary)]">Upload / Change Image</h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 font-mono">
+                  {uploadTarget.toolOrGaugeNo} · DC #{uploadTarget.dcNo}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadTarget(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5">
+              <ToolDocumentsPanel
+                toolOrGaugeNo={uploadTarget.toolOrGaugeNo}
+                dcNo={String(uploadTarget.dcNo)}
+                defaultDocType="CALIB_CERTIFICATE"
+                allowedTypes={["CALIB_CERTIFICATE", "CALIB_REPORT", "OTHER"]}
+                title="Certificate / Image Files"
+                uploadButtonLabel="Upload/Change Image"
+              />
+            </div>
+            <div className="px-5 py-3 border-t border-[var(--border-main)] flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setUploadTarget(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

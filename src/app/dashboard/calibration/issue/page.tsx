@@ -121,6 +121,10 @@ function CalibrationIssuePage() {
   const [history, setHistory] = useState<CalibrationIssueHeader[]>([]);
   const [subs, setSubs] = useState<SubOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [alertDays, setAlertDays] = useState(90);
+  const [dueSoonCount, setDueSoonCount] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const [underCalibrationCount, setUnderCalibrationCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
@@ -150,12 +154,44 @@ function CalibrationIssuePage() {
     setLoading(true);
     setBannerMsg(null);
     const [tRes, hRes, sRes] = await Promise.all([
-      apiGet<{ items: Tool[] }>("/api/tools/calibration-due"),
-      apiGet<{ items: CalibrationIssueHeader[] }>("/api/calibration/issue"),
+      apiGet<{
+        items: Tool[];
+        alertDays?: number;
+        dueSoonCount?: number;
+        overdueCount?: number;
+        underCalibrationCount?: number;
+      }>("/api/tools/calibration-due"),
+      apiGet<{ items: CalibrationIssueHeader[]; total?: number }>("/api/calibration/issue"),
       apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
     ]);
 
-    if (tRes.data?.items) setTools(tRes.data.items);
+    if (tRes.data?.items) {
+      const items = tRes.data.items;
+      setTools(items);
+      const days = tRes.data.alertDays ?? 90;
+      setAlertDays(days);
+
+      // Prefer server-side KPI splits; fall back to client daysLeft if older API
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const clientDueSoon = items.filter((t) => {
+        if (!t.nextCalibrationDate) return false;
+        return new Date(t.nextCalibrationDate) >= startOfToday;
+      }).length;
+      const clientOverdue = items.filter((t) => {
+        if (!t.nextCalibrationDate) return false;
+        return new Date(t.nextCalibrationDate) < startOfToday;
+      }).length;
+
+      setDueSoonCount(tRes.data.dueSoonCount ?? clientDueSoon);
+      setOverdueCount(tRes.data.overdueCount ?? clientOverdue);
+      setUnderCalibrationCount(tRes.data.underCalibrationCount ?? 0);
+    } else {
+      setTools([]);
+      setDueSoonCount(0);
+      setOverdueCount(0);
+      setUnderCalibrationCount(0);
+    }
     if (hRes.error) {
       setHistory([]);
       setBannerMsg({
@@ -476,18 +512,20 @@ function CalibrationIssuePage() {
                   {
                     id: "due-calibration",
                     label: "Tools Due Calibration",
-                    value: tools.length,
-                    subtext: "Within alert window",
+                    value: dueSoonCount,
+                    subtext: `Next ${alertDays} days · not overdue`,
+                    title: `Count of tools with next calibration date from today through +${alertDays} days (excludes already-overdue and tools already Under Calibration).`,
                     icon: CalendarClock,
                     iconBg: "bg-[var(--primary-light)]",
                     iconColor: "text-[var(--primary)]",
-                    badge: { label: "Scheduled", type: "info" },
+                    badge: { label: `≤${alertDays}d`, type: "info" },
                   },
                   {
                     id: "in-lab",
                     label: "Under Calibration",
-                    value: tools.filter((t) => t.status === "Under Calibration").length,
-                    subtext: "Currently in process",
+                    value: underCalibrationCount,
+                    subtext: "Live in-lab status",
+                    title: "Live count of tools whose master status is Under Calibration / UNDER CALIBRATION (not derived from the due-list picker).",
                     icon: Clock,
                     iconBg: "bg-blue-50 dark:bg-blue-950/30",
                     iconColor: "text-blue-600 dark:text-blue-400",
@@ -497,7 +535,8 @@ function CalibrationIssuePage() {
                     id: "vendor-labs",
                     label: "Calibration DC Slips",
                     value: history.length,
-                    subtext: "Recent issue headers",
+                    subtext: "Same as history table",
+                    title: "Count of calibration issue headers loaded for the history table (TOOLS_ISSUE_FOR_CALIBRATION, newest 200).",
                     icon: Building2,
                     iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
                     iconColor: "text-emerald-600 dark:text-emerald-400",
@@ -506,12 +545,13 @@ function CalibrationIssuePage() {
                   {
                     id: "overdue-calib",
                     label: "Overdue Calibrations",
-                    value: tools.filter((t) => t.nextCalibrationDate && new Date(t.nextCalibrationDate) < new Date()).length,
-                    subtext: "Past due date",
+                    value: overdueCount,
+                    subtext: "Past due · not yet issued",
+                    title: "Count of tools with nextCalibrationDate < start of today that are still eligible to issue (excludes Under Calibration / open issue lines). Distinct from Due Soon.",
                     icon: AlertCircle,
                     iconBg: "bg-amber-50 dark:bg-amber-950/30",
                     iconColor: "text-amber-600 dark:text-amber-400",
-                    badge: { label: "Overdue", type: "warning" },
+                    badge: { label: "Past due", type: "warning" },
                   },
                 ]}
               />

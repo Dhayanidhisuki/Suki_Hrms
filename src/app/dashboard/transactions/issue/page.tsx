@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash, Search, ArrowUpRight, CheckCircle2, X, ShieldAlert } from "lucide-react";
+import { Plus, Trash, Search, ArrowUpRight, CheckCircle2, X, ShieldAlert, Users, CalendarClock, Truck, MessageSquareText, ChevronDown } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -159,8 +159,9 @@ export default function IssueToolPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
-  // Pagination + search
+  // Pagination + search + status tabs
   const [searchQuery, setSearchQuery] = useState("");
+  const [listStatusFilter, setListStatusFilter] = useState<"All" | "Open" | "Closed" | "Overdue">("All");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 50;
@@ -218,15 +219,16 @@ export default function IssueToolPage() {
     })();
   }, [showCreate]);
 
-  const loadIssues = useCallback(async (p = page, q = searchQuery) => {
+  const loadIssues = useCallback(async (p = page, q = searchQuery, status = listStatusFilter) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(p), pageSize: "50" });
     if (q) params.set("search", q);
+    if (status && status !== "All") params.set("status", status);
     const res = await apiGet<{ items: ToolsIssueHeader[]; total: number }>(`/api/issue?${params}`);
     if (res.data?.items) setIssues(res.data.items);
     if (res.data?.total !== undefined) setTotal(res.data.total);
     setLoading(false);
-  }, [page, searchQuery]);
+  }, [page, searchQuery, listStatusFilter]);
 
   // Debounced search handler
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,7 +236,13 @@ export default function IssueToolPage() {
     setSearchQuery(val);
     setPage(1);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => loadIssues(1, val), 400);
+    searchTimer.current = setTimeout(() => loadIssues(1, val, listStatusFilter), 400);
+  };
+
+  const handleStatusTabChange = (status: "All" | "Open" | "Closed" | "Overdue") => {
+    setListStatusFilter(status);
+    setPage(1);
+    void loadIssues(1, searchQuery, status);
   };
 
   // Tool search: on-demand via debounce (NOT pre-loaded on mount)
@@ -273,7 +281,7 @@ export default function IssueToolPage() {
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
-    loadIssues(page, searchQuery);
+    loadIssues(page, searchQuery, listStatusFilter);
   }, [page]);
 
 
@@ -473,7 +481,7 @@ export default function IssueToolPage() {
       });
       handleClearForm();
       setShowCreate(false);
-      loadIssues(1, searchQuery);
+      loadIssues(1, searchQuery, listStatusFilter);
       setPage(1);
       setTimeout(() => setSuccessBanner(""), 5000);
     }
@@ -584,27 +592,50 @@ export default function IssueToolPage() {
           {!showCreate ? (
             /* ── VIEW PREVIOUS ISSUES LIST ── */
             <div className="flex flex-col gap-4 animate-fade-in">
-              {/* Search + pagination header */}
-              <div className="flex items-center gap-3">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="issue-search-input"
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="Search DC No, name, or subcontractor…"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-                  />
+              {/* Search + status filter tabs */}
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      id="issue-search-input"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      placeholder="Search DC No, name, or subcontractor…"
+                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1">
+                      {(["All", "Open", "Closed", "Overdue"] as const).map((f) => (
+                        <button
+                          key={f}
+                          id={`issue-status-filter-${f.toLowerCase()}`}
+                          type="button"
+                          onClick={() => handleStatusTabChange(f)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                            listStatusFilter === f
+                              ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
+                              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          }`}
+                        >
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
+                      {loading ? "Loading…" : `Showing ${issues.length} of ${total.toLocaleString()} records`}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
-                  {loading ? "Loading…" : `Showing ${issues.length} of ${total.toLocaleString()} records`}
-                </span>
               </div>
               {loading ? (
                 <TableSkeleton rows={3} />
               ) : issues.length === 0 ? (
                 <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-8 text-center text-sm text-[var(--text-muted)]">
-                  {searchQuery ? `No records found for "${searchQuery}".` : "No issue records found. Create a new issue to get started."}
+                  {searchQuery || listStatusFilter !== "All"
+                    ? `No ${listStatusFilter === "All" ? "" : listStatusFilter.toLowerCase() + " "}records found${searchQuery ? ` for "${searchQuery}"` : ""}.`
+                    : "No issue records found. Create a new issue to get started."}
                 </div>
               ) : (
                 issues.map((issue) => {
@@ -729,9 +760,9 @@ export default function IssueToolPage() {
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start animate-fade-in">
               {/* LEFT FORM PANEL */}
               <form onSubmit={handleSubmit} className="space-y-3">
-                {/* Header Info Card — compact ERP field order */}
+                {/* Form title bar */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3">
-                  <div className="flex items-center justify-between gap-3 mb-2.5 pb-2 border-b border-[var(--border-main)]">
+                  <div className="flex items-center justify-between gap-3">
                     <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
                       Tools / Gauge / Other Item Issue
                     </h2>
@@ -739,8 +770,17 @@ export default function IssueToolPage() {
                       DC No: Auto
                     </span>
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-2.5 gap-y-2">
+                {/* 1. Who and what */}
+                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
+                      Who and what
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3">
                     <div className={headerFieldCls}>
                       <label className={headerLabelCls}>DC Date</label>
                       <input type="date" value={issueDate} readOnly className={`${headerInputCls} cursor-not-allowed opacity-80`} />
@@ -761,7 +801,7 @@ export default function IssueToolPage() {
                         ))}
                       </select>
                     </div>
-                    <div className={`${headerFieldCls} sm:col-span-1 xl:col-span-2`}>
+                    <div className={headerFieldCls}>
                       <label className={headerLabelCls}>Party Name</label>
                       {issueOption === "Supplier" || issueOption === "Issue to Supplier" ? (
                         <select
@@ -796,21 +836,24 @@ export default function IssueToolPage() {
                       <label className={headerLabelCls}>Ref No</label>
                       <input value={dcRefNo} onChange={(e) => setDcRefNo(e.target.value)} className={headerInputCls} placeholder="Ref No" maxLength={20} />
                     </div>
+                  </div>
+                </div>
+
+                {/* 2. Return terms */}
+                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarClock className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
+                      Return terms
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3">
                     <div className={headerFieldCls}>
                       <label className={headerLabelCls}>Is Returnable?</label>
                       <select value={returnable} onChange={(e) => setReturnable(e.target.value as "Yes" | "No")} className={headerInputCls}>
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </select>
-                    </div>
-
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Transporter Name</label>
-                      <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className={headerInputCls} maxLength={50} />
-                    </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Vehicle No</label>
-                      <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className={headerInputCls} maxLength={25} />
                     </div>
                     <div className={headerFieldCls}>
                       <label className={headerLabelCls}>Return Due Date *</label>
@@ -841,7 +884,7 @@ export default function IssueToolPage() {
                       <label className={headerLabelCls}>Receiver Name 2</label>
                       <input value={receiveNameTwo} onChange={(e) => setReceiveNameTwo(e.target.value)} className={headerInputCls} maxLength={50} />
                     </div>
-                    <div className={headerFieldCls}>
+                    <div className={`${headerFieldCls} md:col-span-2`}>
                       <label className={headerLabelCls}>LOB Type *</label>
                       <select
                         value={lobType}
@@ -857,7 +900,46 @@ export default function IssueToolPage() {
                       </select>
                       {formErrors.lobType && <p className={headerErrCls}>{formErrors.lobType}</p>}
                     </div>
+                  </div>
+                </div>
 
+                {/* 3. Transport details — collapsed unless values present */}
+                <details
+                  className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5 group"
+                  defaultOpen={Boolean(transportName.trim() || vehicleNo.trim())}
+                >
+                  <summary className="flex items-center gap-2 cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
+                    <Truck className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest flex-1">
+                      Transport details
+                    </h3>
+                    <ChevronDown className="w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3 mt-3">
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Transporter Name</label>
+                      <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className={headerInputCls} maxLength={50} />
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Vehicle No</label>
+                      <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className={headerInputCls} maxLength={25} />
+                    </div>
+                  </div>
+                </details>
+
+                {/* 4. Additional details — collapsed unless values present */}
+                <details
+                  className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5 group"
+                  defaultOpen={Boolean(poOrderNo.trim() || empId.trim() || comments.trim())}
+                >
+                  <summary className="flex items-center gap-2 cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
+                    <MessageSquareText className="w-4 h-4 text-[var(--primary)] shrink-0" />
+                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest flex-1">
+                      Additional details
+                    </h3>
+                    <ChevronDown className="w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3 mt-3">
                     <div className={headerFieldCls}>
                       <label className={headerLabelCls}>PO Number</label>
                       <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className={headerInputCls} maxLength={15} placeholder="-SELECT-" />
@@ -866,16 +948,22 @@ export default function IssueToolPage() {
                       <label className={headerLabelCls}>Employee ID</label>
                       <input id="form-emp-id" value={empId} onChange={(e) => setEmpId(e.target.value)} className={headerInputCls} placeholder="0" />
                     </div>
-                    <div className={`${headerFieldCls} col-span-2 sm:col-span-3 xl:col-span-4`}>
+                    <div className={`${headerFieldCls} md:col-span-2`}>
                       <label className={headerLabelCls}>Comments</label>
-                      <input value={comments} onChange={(e) => setComments(e.target.value)} className={headerInputCls} maxLength={100} />
+                      <textarea
+                        value={comments}
+                        onChange={(e) => setComments(e.target.value)}
+                        maxLength={100}
+                        rows={3}
+                        className={`${headerInputCls} h-auto min-h-[4.5rem] py-2 resize-y`}
+                      />
                     </div>
                   </div>
+                </details>
 
-                  <p className="mt-2 text-[10px] font-medium text-[var(--text-muted)]">
-                    Note: Stock reduces only when serial numbers are not maintained.
-                  </p>
-                </div>
+                <p className="text-[10px] font-medium text-[var(--text-muted)] px-0.5">
+                  Note: Stock reduces only when serial numbers are not maintained.
+                </p>
 
                 {/* Line Items Card */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">

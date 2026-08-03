@@ -1564,6 +1564,10 @@ export default function ToolsMasterPage() {
                     value: total,
                     subtext:
                       total > pageSize
+                        ? `Page ${page} of ${totalPages}`
+                        : "Full registry count",
+                    title:
+                      total > pageSize
                         ? `Showing page ${page} of ${totalPages} (${filtered.length} rows)`
                         : "Registry database count",
                     icon: Plus,
@@ -1575,7 +1579,8 @@ export default function ToolsMasterPage() {
                     id: "available-tools",
                     label: "In Store (Available)",
                     value: tools.filter((t) => t.computedStatus === "Available").length,
-                    subtext: "On this page — units ready for issue",
+                    subtext: "Ready for issue on this page",
+                    title: "On this page — units ready for issue",
                     icon: CheckCircle2,
                     iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
                     iconColor: "text-emerald-600 dark:text-emerald-400",
@@ -1585,7 +1590,8 @@ export default function ToolsMasterPage() {
                     id: "in-use-tools",
                     label: "In Use",
                     value: tools.filter((t) => t.computedStatus === "In Use").length,
-                    subtext: "On this page — inhouse, vendor, or new purchase",
+                    subtext: "Issued on this page",
+                    title: "On this page — inhouse, vendor, or new purchase",
                     icon: Search,
                     iconBg: "bg-blue-50 dark:bg-blue-950/30",
                     iconColor: "text-blue-600 dark:text-blue-400",
@@ -1597,7 +1603,8 @@ export default function ToolsMasterPage() {
                     value: tools.filter(
                       (t) => t.computedStatus === "In Calibration" || t.computedStatus === "Needs Attention"
                     ).length,
-                    subtext: "On this page — calibration or rejected/worn out",
+                    subtext: "Service needed on this page",
+                    title: "On this page — calibration or rejected/worn out",
                     icon: Wrench,
                     iconBg: "bg-amber-50 dark:bg-amber-950/30",
                     iconColor: "text-amber-600 dark:text-amber-400",

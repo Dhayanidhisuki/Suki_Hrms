@@ -55,6 +55,8 @@ interface ToolDocumentsPanelProps {
   canUpload?: boolean;
   compact?: boolean;
   title?: string;
+  /** Override the upload button label (ERP: Upload/Change Image) */
+  uploadButtonLabel?: string;
 }
 
 export function ToolDocumentsPanel({
@@ -66,6 +68,7 @@ export function ToolDocumentsPanel({
   canUpload = true,
   compact = false,
   title = "Documents",
+  uploadButtonLabel = "Upload",
 }: ToolDocumentsPanelProps) {
   const types = allowedTypes?.length ? allowedTypes : [...TOOL_DOC_TYPES];
   const [items, setItems] = useState<ToolDocumentItem[]>([]);
@@ -212,7 +215,7 @@ export function ToolDocumentsPanel({
               onClick={() => inputRef.current?.click()}
             >
               <Upload className="w-3.5 h-3.5" />
-              {uploading ? "Uploading…" : "Upload"}
+              {uploading ? "Uploading…" : uploadButtonLabel}
             </Button>
           </div>
         )}

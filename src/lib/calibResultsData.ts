@@ -5,15 +5,31 @@ export type CalibResultExportRow = {
   dcNo: number | null;
   toolOrGaugeNo: string;
   name: string | null;
+  description: string | null;
   grouping: string | null;
   type: string;
   status: string;
   frequency: string;
+  calibrationFrqMonths: number | null;
+  serialNo: number | null;
+  location: string | null;
+  locationName: string | null;
+  calibDueDate: Date | string | null;
   cDate: Date | string | null;
   nextCDate: Date | string | null;
   remarks: string | null;
   receiveName: string | null;
   issueFor: string | null;
+  calibratedBy: string | null;
+  // Spec snapshot from tool master (ERP Update Calibration Results)
+  gSpecUpperMin: number | string | null;
+  gSpecUpperMax: number | string | null;
+  wLimitLowerMax: number | string | null;
+  wLimitUpperMin: number | string | null;
+  wLimitUpperMax: number | string | null;
+  prodSpecLowerMax: number | string | null;
+  prodSpecUpperMin: number | string | null;
+  prodSpecUpperMax: number | string | null;
 };
 
 /** Pending / open calibration result lines (same source as Results Update list). */
@@ -26,7 +42,7 @@ export async function loadCalibResultsPending(
         { resultStatus: null },
         { resultStatus: "" },
         { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
-        { status: { in: ["Issued", "Under Calibration", "OPEN"] } },
+        { status: { in: ["Issued", "Under Calibration", "OPEN", "Received", "ISSUE FOR CALIBRATION"] } },
       ],
     },
     orderBy: { creatDt: "desc" },
@@ -35,10 +51,21 @@ export async function loadCalibResultsPending(
       tool: {
         select: {
           name: true,
+          description: true,
           grouping: true,
           type: true,
           status: true,
           calibrationFrqMonths: true,
+          location: true,
+          locationName: true,
+          gSpecUpperMin: true,
+          gSpecUpperMax: true,
+          wLimitLowerMax: true,
+          wLimitUpperMin: true,
+          wLimitUpperMax: true,
+          prodSpecLowerMax: true,
+          prodSpecUpperMin: true,
+          prodSpecUpperMax: true,
         },
       },
       calibIssue: {
@@ -54,6 +81,7 @@ export async function loadCalibResultsPending(
       dcNo: l.dcNo,
       toolOrGaugeNo: l.toolOrGaugeNo as string,
       name: l.tool?.name ?? null,
+      description: l.tool?.description ?? null,
       grouping: l.grouping ?? l.tool?.grouping ?? null,
       type: l.tool?.type ?? l.grouping ?? "General",
       status:
@@ -66,11 +94,25 @@ export async function loadCalibResultsPending(
         l.tool?.calibrationFrqMonths != null
           ? `${l.tool.calibrationFrqMonths} Months`
           : "—",
+      calibrationFrqMonths: l.tool?.calibrationFrqMonths ?? null,
+      serialNo: l.serialNo ?? null,
+      location: l.tool?.location ?? null,
+      locationName: l.tool?.locationName ?? null,
+      calibDueDate: l.calibDueDate ?? l.dueDate,
       cDate: l.calibratedDate ?? l.creatDt,
       nextCDate: l.nxtCalibDate ?? l.calibDueDate ?? l.dueDate,
       remarks: l.calibResultComments ?? l.remarks,
       receiveName: l.calibIssue?.receiveName ?? null,
       issueFor: l.calibIssue?.issueFor ?? null,
+      calibratedBy: l.calibratedBy ?? null,
+      gSpecUpperMin: l.tool?.gSpecUpperMin ?? null,
+      gSpecUpperMax: l.tool?.gSpecUpperMax ?? null,
+      wLimitLowerMax: l.tool?.wLimitLowerMax ?? null,
+      wLimitUpperMin: l.tool?.wLimitUpperMin ?? null,
+      wLimitUpperMax: l.tool?.wLimitUpperMax ?? null,
+      prodSpecLowerMax: l.tool?.prodSpecLowerMax ?? null,
+      prodSpecUpperMin: l.tool?.prodSpecUpperMin ?? null,
+      prodSpecUpperMax: l.tool?.prodSpecUpperMax ?? null,
     }));
 }
 

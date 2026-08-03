@@ -25,9 +25,33 @@ export async function GET(req: NextRequest) {
   const skip = (page - 1) * pageSize;
 
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const openStatuses = ["Active", "OPEN", "Open", "PARTIAL"];
+    const closedStatuses = ["Closed", "CLOSED", "Cancelled"];
+
+    let statusClause: Record<string, unknown> = {};
+    if (statusFilter && statusFilter !== "All") {
+      const key = statusFilter.toLowerCase();
+      if (key === "open") {
+        statusClause = { status: { in: openStatuses } };
+      } else if (key === "closed") {
+        statusClause = { status: { in: closedStatuses } };
+      } else if (key === "overdue") {
+        statusClause = {
+          status: { in: openStatuses },
+          dueDate: { not: null, lt: today },
+        };
+      } else {
+        // Exact ERP status (e.g. Active, Closed)
+        statusClause = { status: statusFilter };
+      }
+    }
+
     const where = {
       AND: [
-        statusFilter ? { status: statusFilter } : {},
+        statusClause,
         customerOnly ? { custCode: { not: null } } : {},
         search
           ? {

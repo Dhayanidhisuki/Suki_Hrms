@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { dcNo, receiveDate, lines } = parsed.data;
+  const { dcNo, receiveDate, partyDcNo, receiverName, lines } = parsed.data;
 
   try {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       where: { dcNo },
       include: {
         inHouseLines: {
-          select: { toolOrGaugeNo: true, status: true, issueQty: true },
+          select: { toolOrGaugeNo: true, status: true, issueQty: true, serialNo: true },
         },
         receiveHeaders: { select: { recNo: true }, take: 1 },
       },
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
         .filter((l) => l.toolOrGaugeNo)
         .filter((l) => {
           const s = (l.status ?? "").toUpperCase();
-          return !s || s === "ISSUED" || s === "OPEN" || s === "UNDER CALIBRATION";
+          return !s || s === "ISSUED" || s === "OPEN" || s === "UNDER CALIBRATION" || s.includes("ISSUE FOR CALIBRATION");
         })
         .map((l) => l.toolOrGaugeNo as string)
     );
@@ -111,6 +111,9 @@ export async function POST(req: NextRequest) {
         data: {
           dcNo,
           receiveDate: new Date(receiveDate),
+          partyDcNo: partyDcNo?.trim()?.slice(0, 20) || null,
+          receiverName: receiverName?.trim()?.slice(0, 30) || null,
+          vendorCd: issue.subCode?.slice(0, 20) || null,
           status: "Received",
           creatUserIdCd: erpActor,
           creatDt: new Date(),
@@ -123,17 +126,22 @@ export async function POST(req: NextRequest) {
         const tool = await tx.gaugeAndTools.findUnique({
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
         });
+        const issueLine = issue.inHouseLines.find((l) => l.toolOrGaugeNo === line.toolOrGaugeNo);
+        const serialNo = line.serialNo ?? issueLine?.serialNo ?? null;
+        const description =
+          (line.description ?? tool?.description ?? tool?.name)?.slice(0, 50) ?? null;
 
         // ROW_ID is SQL Server IDENTITY — omit it (Prisma create with stale client
         // still required rowId; explicit rowId fails with IDENTITY_INSERT OFF).
         await tx.$executeRaw`
           INSERT INTO [TOOLS_TRANS_RECEIVE_FOR_CALIBRATION]
-            ([REC_NO], [DC_NO], [TOOL_OR_GAUGE_NO], [DESCRIPTION], [QTY], [PRICE], [CREAT_DT])
+            ([REC_NO], [DC_NO], [TOOL_OR_GAUGE_NO], [DESCRIPTION], [SERIAL_NO], [QTY], [PRICE], [CREAT_DT])
           VALUES (
             ${recNo},
             ${dcNo},
             ${line.toolOrGaugeNo},
-            ${(tool?.description ?? tool?.name)?.slice(0, 50) ?? null},
+            ${description},
+            ${serialNo},
             ${line.qty},
             ${line.price},
             ${new Date()}

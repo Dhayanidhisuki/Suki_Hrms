@@ -6,6 +6,42 @@ import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibResultsUpdateSchema } from "@/lib/validators";
 import { loadCalibResultsPending } from "@/lib/calibResultsData";
 
+function normalizeResult(result: string): {
+  resultStatus: string;
+  failed: boolean;
+  toolStatus: string;
+  calibStatus: string;
+  lineStatus: string;
+} {
+  const upper = result.toUpperCase();
+  if (upper === "FAILED" || upper === "OUT OF SERVICE") {
+    return {
+      resultStatus: upper === "OUT OF SERVICE" ? "OUT OF SERVICE" : "FAILED",
+      failed: true,
+      toolStatus: "Out of Service",
+      calibStatus: "Failed",
+      lineStatus: "Failed",
+    };
+  }
+  if (upper === "AVAILABLE FOR USE" || upper === "PASSED") {
+    return {
+      resultStatus: upper === "AVAILABLE FOR USE" ? "AVAILABLE FOR USE" : "PASSED",
+      failed: false,
+      toolStatus: "Available",
+      calibStatus: "Done",
+      lineStatus: "Calibrated",
+    };
+  }
+  // RECALIBRATED
+  return {
+    resultStatus: "RECALIBRATED",
+    failed: false,
+    toolStatus: "Available",
+    calibStatus: "Done",
+    lineStatus: "Calibrated",
+  };
+}
+
 /** Pending / recent calibration issue lines for results update UI */
 export async function GET() {
   const session = await getSession();
@@ -38,10 +74,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { toolOrGaugeNo, result, remarks, nextCDate } = parsed.data;
+  const {
+    toolOrGaugeNo,
+    result,
+    remarks,
+    nextCDate,
+    calibratedDate,
+    calibratedBy,
+    certificateNo,
+    referenceStandard,
+    errorNoticed,
+    comments,
+    location,
+    locationName,
+  } = parsed.data;
 
   try {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
+    const normalized = normalizeResult(result);
 
     const tool = await prisma.gaugeAndTools.findUnique({
       where: { toolOrGaugeNo },
@@ -50,8 +100,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tool not found" }, { status: 404 });
     }
 
+    // Pack ERP-style free text into short ERP columns
+    const commentParts = [
+      certificateNo ? `Cert:${certificateNo}` : null,
+      referenceStandard ? `Std:${referenceStandard}` : null,
+      errorNoticed ? `Err:${errorNoticed}` : null,
+      comments || remarks || null,
+    ].filter(Boolean) as string[];
+    const packedComments = commentParts.join(" | ").slice(0, 50);
+    const packedRemarks = (certificateNo || remarks || comments || result).slice(0, 50);
+    const byWhom = (calibratedBy?.trim() || erpActor).slice(0, 25);
+    const calibDt = calibratedDate ? new Date(calibratedDate) : new Date();
+
     const record = await prisma.$transaction(async (tx) => {
-      // Update the most recent open issue line for this tool
       const openLine = await tx.toolsTransIssueForCalibration.findFirst({
         where: {
           toolOrGaugeNo,
@@ -59,6 +120,7 @@ export async function POST(req: NextRequest) {
             { resultStatus: null },
             { resultStatus: "" },
             { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
+            { status: { in: ["Received", "Issued", "Under Calibration", "ISSUE FOR CALIBRATION"] } },
           ],
         },
         orderBy: { creatDt: "desc" },
@@ -68,43 +130,43 @@ export async function POST(req: NextRequest) {
         await tx.toolsTransIssueForCalibration.update({
           where: { rowId: openLine.rowId },
           data: {
-            resultStatus: result,
-            calibrationStatus: result === "FAILED" ? "Failed" : "Done",
-            calibResultComments: remarks?.slice(0, 50) ?? result.slice(0, 50),
-            calibratedBy: erpActor.slice(0, 25),
-            calibratedDate: new Date(),
+            resultStatus: normalized.resultStatus.slice(0, 30),
+            calibrationStatus: normalized.calibStatus,
+            calibResultComments: packedComments || normalized.resultStatus.slice(0, 50),
+            calibratedBy: byWhom,
+            calibratedDate: calibDt,
             nxtCalibDate: new Date(nextCDate),
-            status: result === "FAILED" ? "Failed" : "Calibrated",
+            remarks: packedRemarks,
+            status: normalized.lineStatus.slice(0, 30),
           },
         });
       }
 
-      // Best-effort control card write (table may be unused / awkward PK in ERP)
       try {
-        // GAUGE_CONTROL_CARD.ROW_ID is not identity in the ERP DB.
         const nextCardRowId =
           ((await tx.gaugeControlCard.aggregate({ _max: { rowId: true } }))._max.rowId ?? 0) + 1;
         const controlCard = await tx.gaugeControlCard.upsert({
           where: { toolOrGaugeNo: toolOrGaugeNo.slice(0, 15) },
           update: {
-            status: result === "FAILED" ? "Out of Service" : "Active",
+            status: normalized.failed ? "Out of Service" : "Active",
           },
           create: {
             rowId: nextCardRowId,
             toolOrGaugeNo: toolOrGaugeNo.slice(0, 15),
             type: (tool.type ?? "General").slice(0, 25),
-            status: result === "FAILED" ? "Out of Service" : "Active",
+            status: normalized.failed ? "Out of Service" : "Active",
             frequency: String(tool.calibrationFrqMonths ?? 6).slice(0, 15),
             creatDt: new Date(),
+            creatUserIdCd: erpActor,
           },
         });
 
         await tx.gaugeControlCardTrans.create({
           data: {
             refNo: controlCard.rowId,
-            cDate: new Date(),
+            cDate: calibDt,
             nextCDate: new Date(nextCDate),
-            remarks: (remarks ? `${result}: ${remarks}` : result).slice(0, 25),
+            remarks: (certificateNo || packedComments || normalized.resultStatus).slice(0, 25),
             creatDt: new Date(),
             creatUserIdCd: erpActor,
           },
@@ -116,12 +178,22 @@ export async function POST(req: NextRequest) {
       await tx.gaugeAndTools.update({
         where: { toolOrGaugeNo },
         data: {
-          status: result === "FAILED" ? "Out of Service" : "Available",
+          status: normalized.toolStatus,
+          ...(location !== undefined
+            ? {
+                location: location?.trim() ? location.trim().slice(0, 50) : null,
+                locationName: locationName?.trim()
+                  ? locationName.trim().slice(0, 100)
+                  : location?.trim()
+                    ? location.trim().slice(0, 100)
+                    : null,
+              }
+            : {}),
           lstUpdtUserIdCd: erpActor,
         },
       });
 
-      return { toolOrGaugeNo, result, nextCDate, updatedLineId: openLine?.rowId ?? null };
+      return { toolOrGaugeNo, result: normalized.resultStatus, nextCDate, updatedLineId: openLine?.rowId ?? null };
     });
 
     return NextResponse.json({ ok: true, record }, { status: 201 });
