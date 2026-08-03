@@ -11,6 +11,7 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { useSuccessOverlay } from "@/components/SuccessOverlay";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
+import { useSession } from "@/lib/SessionContext";
 
 interface CalibReceiveLine {
   rowId: number;
@@ -89,6 +90,7 @@ type ReceiveLineDraft = {
 
 export default function CalibrationReceivePage() {
   const { showSuccess } = useSuccessOverlay();
+  const { user } = useSession();
   const [records, setRecords] = useState<CalibReceiveHeader[]>([]);
   const [openIssues, setOpenIssues] = useState<OpenCalibIssue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +113,8 @@ export default function CalibrationReceivePage() {
     setLoading(true);
     const [recvRes, issueRes] = await Promise.all([
       apiGet<{ items: CalibReceiveHeader[] }>("/api/calibration/receive"),
-      apiGet<{ items: OpenCalibIssue[] }>("/api/calibration/issue?status=OPEN"),
+      // OPEN + PARTIAL DCs; lines already filtered to still-out tools
+      apiGet<{ items: OpenCalibIssue[] }>("/api/calibration/issue?awaitingReceive=1"),
     ]);
     if (recvRes.data?.items) setRecords(recvRes.data.items);
     if (issueRes.data?.items) setOpenIssues(issueRes.data.items);
@@ -126,7 +129,8 @@ export default function CalibrationReceivePage() {
     setSelectedDc(iss.dcNo);
     setReceiveDate(new Date().toISOString().split("T")[0]);
     setPartyDcNo("");
-    setReceiverName("");
+    // Prefill store receiver from logged-in user (editable)
+    setReceiverName((user?.name || "").slice(0, 30));
     setBannerMsg(null);
     setLineDrafts(
       (iss.inHouseLines ?? [])
@@ -174,11 +178,11 @@ export default function CalibrationReceivePage() {
     }
     setBannerMsg({
       type: "success",
-      text: `Calibration receive posted for DC #${selectedDc}. Continue to Results Update for certificates.`,
+      text: `Calibration receive posted for DC #${selectedDc} (${lines.length} tool(s)). Remaining open lines stay on the DC for a later receive. Continue to Results Update for certificates.`,
     });
     showSuccess({
       title: "Calibration receive posted",
-      message: "Continue to Results Update for certificates.",
+      message: `${lines.length} tool(s) received. Unchecked lines remain open on the DC.`,
       detail: `DC #${selectedDc}`,
     });
     setSelectedDc(null);
@@ -317,7 +321,7 @@ export default function CalibrationReceivePage() {
                   Receive from open calibration DC
                 </h2>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Select an open DC, confirm lines, then post the lab return
+                  Tick only the tools returning now. Unchecked lines stay open on the DC for a later receive.
                 </p>
               </div>
               {selectedDc && (
@@ -490,6 +494,9 @@ export default function CalibrationReceivePage() {
                         maxLength={30}
                         className="mt-1 w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
                       />
+                      <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                        Defaults to your login name — edit if someone else received.
+                      </p>
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
@@ -592,16 +599,20 @@ export default function CalibrationReceivePage() {
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <p className="text-sm text-[var(--text-muted)]">
-                      Sub Total:{" "}
-                      <span className="font-mono font-bold text-[var(--text-primary)]">
-                        {lineDrafts
-                          .filter((l) => l.selected)
-                          .reduce((s, l) => s + l.qty * l.price, 0)
-                          .toFixed(2)}
-                      </span>
-                      <span className="text-[10px] ml-2">(CGST/SGST/IGST posting is handled in Finance Posting)</span>
-                    </p>
+                    <div className="text-sm text-[var(--text-muted)]">
+                      <p>
+                        Sub Total:{" "}
+                        <span className="font-mono font-bold text-[var(--text-primary)]">
+                          {lineDrafts
+                            .filter((l) => l.selected)
+                            .reduce((s, l) => s + l.qty * l.price, 0)
+                            .toFixed(2)}
+                        </span>
+                      </p>
+                      <p className="text-[10px] mt-0.5">
+                        Item Value = Qty × Price (from tool master; edit Price if lab charges differ). Tax via Finance Posting.
+                      </p>
+                    </div>
                     <Button type="submit" disabled={submitting || lineDrafts.every((l) => !l.selected)}>
                       {submitting ? "Posting…" : "Post Calibration Receive"}
                     </Button>

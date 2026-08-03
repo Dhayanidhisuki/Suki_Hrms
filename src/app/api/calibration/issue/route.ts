@@ -5,19 +5,36 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibIssueCreateSchema } from "@/lib/validators";
 
+function isCalibIssueLineOpen(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toUpperCase();
+  return (
+    !s ||
+    s === "ISSUED" ||
+    s === "OPEN" ||
+    s === "UNDER CALIBRATION" ||
+    s.includes("ISSUE FOR CALIBRATION") ||
+    s === "PENDING"
+  );
+}
+
+function isCalibIssueLineReceived(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toUpperCase();
+  return s === "RECEIVED" || s === "CLOSED" || s.includes("RECEIVED");
+}
+
+/** Header status from line receive state (supports partial receive). */
 function deriveHeaderStatus(item: {
   receiveHeaders?: { recNo: number }[];
   inHouseLines?: { resultStatus: string | null; status: string | null }[];
 }): "OPEN" | "PARTIAL" | "CLOSED" {
-  const receives = item.receiveHeaders?.length ?? 0;
   const lines = item.inHouseLines ?? [];
-  if (receives > 0) return "CLOSED";
-  const done = lines.filter((l) => {
-    const r = String(l.resultStatus ?? "").trim().toUpperCase();
-    return r.length > 0 && r !== "PENDING";
-  }).length;
-  if (done > 0 && done < lines.length) return "PARTIAL";
-  if (done > 0 && lines.length > 0 && done === lines.length) return "CLOSED";
+  if (lines.length === 0) {
+    return (item.receiveHeaders?.length ?? 0) > 0 ? "CLOSED" : "OPEN";
+  }
+  const openCount = lines.filter((l) => isCalibIssueLineOpen(l.status)).length;
+  const receivedCount = lines.filter((l) => isCalibIssueLineReceived(l.status)).length;
+  if (openCount === 0) return "CLOSED";
+  if (receivedCount > 0 && openCount > 0) return "PARTIAL";
   return "OPEN";
 }
 
@@ -28,6 +45,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const statusFilter = req.nextUrl.searchParams.get("status");
+    const awaitingReceive = req.nextUrl.searchParams.get("awaitingReceive") === "1";
     const raw = await prisma.toolsIssueForCalibration.findMany({
       include: {
         inHouseLines: { include: { tool: true } },
@@ -38,11 +56,25 @@ export async function GET(req: NextRequest) {
     });
 
     const items = raw
-      .map((item) => ({
-        ...item,
-        status: deriveHeaderStatus(item),
-      }))
-      .filter((item) => (statusFilter ? item.status === statusFilter : true));
+      .map((item) => {
+        const status = deriveHeaderStatus(item);
+        const openLines = (item.inHouseLines ?? []).filter((l) =>
+          isCalibIssueLineOpen(l.status)
+        );
+        return {
+          ...item,
+          status,
+          // Receive picker only needs still-out lines
+          inHouseLines: awaitingReceive ? openLines : item.inHouseLines,
+        };
+      })
+      .filter((item) => {
+        if (awaitingReceive) {
+          return item.status === "OPEN" || item.status === "PARTIAL";
+        }
+        if (statusFilter) return item.status === statusFilter;
+        return true;
+      });
 
     return NextResponse.json({ items, total: items.length });
   } catch (error) {

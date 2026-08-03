@@ -71,18 +71,11 @@ export async function POST(req: NextRequest) {
         inHouseLines: {
           select: { toolOrGaugeNo: true, status: true, issueQty: true, serialNo: true },
         },
-        receiveHeaders: { select: { recNo: true }, take: 1 },
       },
     });
 
     if (!issue) {
       return NextResponse.json({ error: `Calibration DC #${dcNo} not found` }, { status: 400 });
-    }
-    if (issue.receiveHeaders.length > 0) {
-      return NextResponse.json(
-        { error: `DC #${dcNo} already has a calibration receive` },
-        { status: 400 }
-      );
     }
 
     const openToolNos = new Set(
@@ -90,10 +83,24 @@ export async function POST(req: NextRequest) {
         .filter((l) => l.toolOrGaugeNo)
         .filter((l) => {
           const s = (l.status ?? "").toUpperCase();
-          return !s || s === "ISSUED" || s === "OPEN" || s === "UNDER CALIBRATION" || s.includes("ISSUE FOR CALIBRATION");
+          return (
+            !s ||
+            s === "ISSUED" ||
+            s === "OPEN" ||
+            s === "UNDER CALIBRATION" ||
+            s.includes("ISSUE FOR CALIBRATION") ||
+            s === "PENDING"
+          );
         })
         .map((l) => l.toolOrGaugeNo as string)
     );
+
+    if (openToolNos.size === 0) {
+      return NextResponse.json(
+        { error: `DC #${dcNo} has no open lines left to receive` },
+        { status: 400 }
+      );
+    }
 
     for (const line of lines) {
       if (!openToolNos.has(line.toolOrGaugeNo)) {
