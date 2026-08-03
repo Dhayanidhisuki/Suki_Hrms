@@ -8,6 +8,7 @@ import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 interface Supplier {
   supCode: string;
@@ -41,6 +42,8 @@ interface PoGrnHeader {
 
 const statusConfig: Record<string, { bg: string; text: string }> = {
   Posted: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
+  // ERP stores girStatus as "OPEN" — treat the same as Posted (already received/logged)
+  OPEN: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
   Draft: { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]" },
 };
 
@@ -52,6 +55,7 @@ interface StagedGrnLine {
 }
 
 export default function PoReceivePage() {
+  const { showSuccess } = useSuccessOverlay();
   const [grns, setGrns] = useState<PoGrnHeader[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -68,6 +72,7 @@ export default function PoReceivePage() {
   // Form Fields
   const [poOrderNo, setPoOrderNo] = useState("");
   const [girDate, setGirDate] = useState("");
+  const [supCode, setSupCode] = useState("");
   const [stagedLines, setStagedLines] = useState<StagedGrnLine[]>([]);
 
   // Validation Errors
@@ -80,7 +85,7 @@ export default function PoReceivePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     const [gRes, sRes, tRes] = await Promise.all([
-      apiGet<{ items: PoGrnHeader[] }>("/api/po-linked/receive"),
+      apiGet<{ items: PoGrnHeader[] }>("/api/po/grn"),
       apiGet<{ items: Supplier[] }>("/api/suppliers"),
       apiGet<{ items: Tool[] }>("/api/tools"),
     ]);
@@ -126,6 +131,7 @@ export default function PoReceivePage() {
 
   const handleClearForm = () => {
     setPoOrderNo("");
+    setSupCode("");
     setStagedLines([]);
     setErrors({});
   };
@@ -135,6 +141,7 @@ export default function PoReceivePage() {
     const tempErrors: Record<string, string> = {};
 
     if (!poOrderNo.trim()) tempErrors.poOrderNo = "PO Order number is required";
+    if (!supCode.trim()) tempErrors.supCode = "Supplier is required";
     if (stagedLines.length === 0) tempErrors.lines = "At least one GRN line item must be added";
 
     stagedLines.forEach((line, idx) => {
@@ -153,9 +160,10 @@ export default function PoReceivePage() {
 
     const payload = {
       poOrderNo,
+      supCode,
       girDate,
       lines: stagedLines.map((l) => ({
-        toolOrGaugeNo: l.toolOrGaugeNo,
+        itemCode: l.toolOrGaugeNo,
         invQty: l.invQty,
         recQty: l.recQty,
         price: l.price,
@@ -163,15 +171,20 @@ export default function PoReceivePage() {
     };
 
     setBannerMsg(null);
-    const res = await apiPost<{ item: PoGrnHeader }>("/api/po-linked/receive", payload);
+    const res = await apiPost<{ grn: PoGrnHeader }>("/api/po/grn", payload);
 
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
 
-    if (res.data?.item) {
-      setSuccessBanner(`GRN #${res.data.item.girNo} posted successfully! Inventory stock increased.`);
+    if (res.data?.grn) {
+      setSuccessBanner(`GRN #${res.data.grn.girNo} posted successfully! Inventory stock increased.`);
+      showSuccess({
+        title: "GRN posted",
+        message: "Inventory stock increased successfully.",
+        detail: `GRN #${res.data.grn.girNo}`,
+      });
       handleClearForm();
       setShowForm(false);
       loadData();
@@ -324,6 +337,26 @@ export default function PoReceivePage() {
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono font-semibold"
                   />
                   {errors.poOrderNo && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.poOrderNo}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    Supplier *
+                  </label>
+                  <select
+                    id="form-supplier"
+                    value={supCode}
+                    onChange={(e) => setSupCode(e.target.value)}
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+                  >
+                    <option value="">— Select Supplier —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.supCode} value={s.supCode}>
+                        {s.supCode} · {s.supName}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.supCode && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.supCode}</p>}
                 </div>
 
                 <div>

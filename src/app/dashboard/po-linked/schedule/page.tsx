@@ -8,6 +8,7 @@ import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 interface Supplier {
   supCode: string;
@@ -48,6 +49,7 @@ interface StagedScheduleLine {
 }
 
 export default function PoSchedulePage() {
+  const { showSuccess } = useSuccessOverlay();
   const [schedules, setSchedules] = useState<PoScheduleHeader[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -67,7 +69,7 @@ export default function PoSchedulePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     const [schRes, supRes, tRes] = await Promise.all([
-      apiGet<{ items: PoScheduleHeader[] }>("/api/po-linked/schedule"),
+      apiGet<{ items: PoScheduleHeader[] }>("/api/po/schedule"),
       apiGet<{ items: Supplier[] }>("/api/suppliers"),
       apiGet<{ items: Tool[] }>("/api/tools"),
     ]);
@@ -154,16 +156,22 @@ export default function PoSchedulePage() {
     };
 
     setBannerMsg(null);
-    const res = await apiPost<{ item: PoScheduleHeader }>("/api/po-linked/schedule", payload);
+    const res = await apiPost<{ schedule: PoScheduleHeader }>("/api/po/schedule", payload);
 
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
 
+    const poNo = res.data?.schedule?.poOrderNo ?? poOrderNo;
     setBannerMsg({
       type: "success",
-      text: `PO Delivery Schedule for ${res.data?.item.poOrderNo} created successfully.`,
+      text: `PO Delivery Schedule for ${poNo} created successfully.`,
+    });
+    showSuccess({
+      title: "Schedule saved",
+      message: "PO delivery schedule created successfully.",
+      detail: poNo,
     });
     setIsOpen(false);
     loadData();

@@ -12,6 +12,8 @@ import {
 import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/apiClient";
 
+import { AnimatedCountUp } from "@/components/ui/AnimatedCountUp";
+
 interface KpiData {
   totalTools: number;
   currentlyIssued: number;
@@ -52,11 +54,11 @@ function KpiCard({
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
             {label}
           </p>
-          <span className="text-3xl font-extrabold text-[var(--text-primary)] leading-none tabular-nums mt-2 block">
-            {(value ?? 0).toLocaleString()}
+          <span className="text-3xl font-medium text-[var(--text-primary)] leading-none tabular-nums mt-2 block tracking-tight">
+            <AnimatedCountUp value={value ?? 0} />
           </span>
         </div>
         <div

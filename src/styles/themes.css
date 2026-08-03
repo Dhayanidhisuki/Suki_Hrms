@@ -47,6 +47,11 @@
   --color-info: #3b82f6;
   --color-info-bg: #eff6ff;
   --color-info-text: #1d4ed8;
+
+  /* Logo spinner gradient (defaults to blue) */
+  --logo-grad-1: #071c58;
+  --logo-grad-2: #208bf8;
+  --logo-grad-3: #bfecff;
 }
 
 /* Light Mode Accent Colors */
@@ -57,6 +62,9 @@
   --primary-subtle: #b8dbff;
   --primary-foreground: #ffffff;
   --ring-color: rgba(32, 144, 255, 0.35);
+  --logo-grad-1: #071c58;
+  --logo-grad-2: #208bf8;
+  --logo-grad-3: #bfecff;
 }
 
 [data-theme="green"] {
@@ -66,6 +74,9 @@
   --primary-subtle: #d3e299;
   --primary-foreground: #ffffff;
   --ring-color: rgba(127, 158, 21, 0.35);
+  --logo-grad-1: #3d6209;
+  --logo-grad-2: #d8ec95;
+  --logo-grad-3: #f8f8f8;
 }
 
 [data-theme="purple"] {
@@ -75,6 +86,9 @@
   --primary-subtle: #f0b7f8;
   --primary-foreground: #ffffff;
   --ring-color: rgba(205, 105, 237, 0.35);
+  --logo-grad-1: #462165;
+  --logo-grad-2: #bc76d7;
+  --logo-grad-3: #bfecff;
 }
 
 [data-theme="orange"] {
@@ -84,6 +98,9 @@
   --primary-subtle: #ffc499;
   --primary-foreground: #ffffff;
   --ring-color: rgba(255, 105, 1, 0.35);
+  --logo-grad-1: #8e3200;
+  --logo-grad-2: #ff6901;
+  --logo-grad-3: #ffe0cc;
 }
 
 /* Dark Mode: One shared foundation block */

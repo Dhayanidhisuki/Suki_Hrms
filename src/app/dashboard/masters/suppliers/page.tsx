@@ -1,16 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Edit2, Trash2, X, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, CheckCircle2, XCircle, AlertTriangle, Eye } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
+import { Users, ShieldCheck, Building } from "lucide-react";
+import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { TablePager } from "@/components/TablePager";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 export interface Supplier {
-  id: number;
+  id: string;
   supCode: string;
   supName: string;
   address: string | null;
@@ -22,12 +26,18 @@ export interface Supplier {
   status: "Active" | "Inactive";
   isApproved: boolean;
   creatUserIdCd: string;
-  creatDt: string;
+  creatDt: string | null;
 }
 
 export default function SuppliersPage() {
+  const { showSuccess } = useSuccessOverlay();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
   const [loading, setLoading] = useState(true);
+  const [selectedDetail, setSelectedDetail] = useState<Supplier | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Filters
@@ -56,14 +66,21 @@ export default function SuppliersPage() {
 
   const loadSuppliers = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (query) params.set("search", query);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    if (query.trim()) params.set("search", query.trim());
     if (statusFilter !== "All") params.set("status", statusFilter);
+    if (approvalFilter === "Approved") params.set("approved", "Yes");
+    if (approvalFilter === "Pending") params.set("approved", "No");
 
-    const res = await apiGet<{ items: Supplier[] }>(`/api/suppliers?${params}`);
+    const res = await apiGet<{ items: Supplier[]; total?: number }>(`/api/suppliers?${params}`);
     if (res.data?.items) setSuppliers(res.data.items);
+    else setSuppliers([]);
+    setTotal(res.data?.total ?? 0);
     setLoading(false);
-  }, [query, statusFilter]);
+  }, [query, statusFilter, approvalFilter, page, pageSize]);
 
   useEffect(() => {
     loadSuppliers();
@@ -101,20 +118,20 @@ export default function SuppliersPage() {
     setIsOpen(true);
   };
 
-  const handleApprove = async (id: number) => {
+  const handleApprove = async (id: string) => {
     setBannerMsg(null);
-    const res = await apiPut<{ item: Supplier }>(`/api/suppliers/${id}/approve`, {});
+    const res = await apiPatch<{ supplier: Supplier }>(`/api/suppliers/${encodeURIComponent(id)}`, {});
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
-    setBannerMsg({ type: "success", text: "Supplier approved successfully." });
+    setBannerMsg({ type: "success", text: "Supplier approval toggled." });
     loadSuppliers();
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     setBannerMsg(null);
-    const res = await apiDelete(`/api/suppliers/${id}`);
+    const res = await apiDelete(`/api/suppliers/${encodeURIComponent(id)}`);
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
@@ -152,8 +169,11 @@ export default function SuppliersPage() {
 
     setBannerMsg(null);
     const res = editSupplier
-      ? await apiPut<{ item: Supplier }>(`/api/suppliers/${editSupplier.id}`, payload)
-      : await apiPost<{ item: Supplier }>("/api/suppliers", payload);
+      ? await apiPut<{ supplier: Supplier }>(
+          `/api/suppliers/${encodeURIComponent(editSupplier.supCode)}`,
+          payload
+        )
+      : await apiPost<{ supplier: Supplier }>("/api/suppliers", payload);
 
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
@@ -164,19 +184,17 @@ export default function SuppliersPage() {
       type: "success",
       text: editSupplier ? "Supplier updated successfully." : "Supplier created successfully.",
     });
+    showSuccess({
+      title: "Record saved",
+      message: editSupplier ? "Supplier updated successfully." : "Supplier created successfully.",
+      detail: supName.trim() || undefined,
+    });
     setIsOpen(false);
     loadSuppliers();
   };
 
-  const filtered = suppliers.filter((s) => {
-    const matchesApproval =
-      approvalFilter === "All"
-        ? true
-        : approvalFilter === "Approved"
-        ? s.isApproved
-        : !s.isApproved;
-    return matchesApproval;
-  });
+  // Server already filters by search / status / approval
+  const filtered = suppliers;
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
@@ -207,6 +225,55 @@ export default function SuppliersPage() {
             </RoleGate>
           </div>
 
+          {/* ── Module KPI Cards ── */}
+          <ModuleKpiRow
+            items={[
+              {
+                id: "total-suppliers",
+                label: "Total Suppliers",
+                value: total,
+                subtext:
+                  total > pageSize
+                    ? `Showing page ${page} · ${filtered.length} of ${total.toLocaleString()}`
+                    : "Registered vendor partners",
+                icon: Users,
+                iconBg: "bg-[var(--primary-light)]",
+                iconColor: "text-[var(--primary)]",
+                badge: { label: "Vendors", type: "info" },
+              },
+              {
+                id: "approved-suppliers",
+                label: "Approved Suppliers",
+                value: suppliers.filter((s) => s.isApproved || (s.status ?? "").toUpperCase() === "ACTIVE" || s.status === "Active").length,
+                subtext: "On this page — verified purchase suppliers",
+                icon: ShieldCheck,
+                iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
+                iconColor: "text-emerald-600 dark:text-emerald-400",
+                badge: { label: "Approved", type: "success" },
+              },
+              {
+                id: "gstin-verified",
+                label: "GSTIN Registered",
+                value: suppliers.filter((s) => s.gstin).length,
+                subtext: "On this page — tax registration present",
+                icon: CheckCircle2,
+                iconBg: "bg-blue-50 dark:bg-blue-950/30",
+                iconColor: "text-blue-600 dark:text-blue-400",
+                badge: { label: "Verified", type: "info" },
+              },
+              {
+                id: "contact-configured",
+                label: "Contact & Phone Set",
+                value: suppliers.filter((s) => s.phone || s.email).length,
+                subtext: "On this page — registered vendor contacts",
+                icon: Building,
+                iconBg: "bg-amber-50 dark:bg-amber-950/30",
+                iconColor: "text-amber-600 dark:text-amber-400",
+                badge: { label: "Contacts", type: "warning" },
+              },
+            ]}
+          />
+
           {bannerMsg && (
             <div
               className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
@@ -233,8 +300,11 @@ export default function SuppliersPage() {
                 <input
                   id="supplier-search-input"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search supplier name or code…"
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search supplier name, code, city, GSTIN…"
                   className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                 />
               </div>
@@ -246,7 +316,10 @@ export default function SuppliersPage() {
                     <button
                       key={f}
                       id={`supplier-status-filter-${f.toLowerCase()}`}
-                      onClick={() => setStatusFilter(f)}
+                      onClick={() => {
+                        setStatusFilter(f);
+                        setPage(1);
+                      }}
                       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                         statusFilter === f
                           ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
@@ -264,7 +337,10 @@ export default function SuppliersPage() {
                     <button
                       key={f}
                       id={`supplier-approval-filter-${f.toLowerCase()}`}
-                      onClick={() => setApprovalFilter(f)}
+                      onClick={() => {
+                        setApprovalFilter(f);
+                        setPage(1);
+                      }}
                       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                         approvalFilter === f
                           ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
@@ -303,15 +379,20 @@ export default function SuppliersPage() {
                     <tr key={s.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                       <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{s.supCode}</td>
                       <td className="py-3 px-3">
-                        <p className="font-medium text-[var(--text-primary)]">{s.supName}</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">{s.email} · {s.phone}</p>
+                        <button
+                          onClick={() => setSelectedDetail(s)}
+                          className="text-left font-medium text-[var(--text-primary)] hover:text-[var(--primary)] hover:underline cursor-pointer"
+                        >
+                          <p className="font-semibold text-[var(--text-primary)] hover:text-[var(--primary)]">{s.supName}</p>
+                          <p className="text-[11px] text-[var(--text-muted)]">{s.email || "No email"} · {s.phone || "No phone"}</p>
+                        </button>
                       </td>
                       <td className="py-3 px-3 text-[var(--text-secondary)]">{s.city}</td>
                       <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{s.gstin}</td>
                       <td className="py-3 px-3">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                            s.status === "Active"
+                            (s.status ?? "").toUpperCase() === "ACTIVE"
                               ? "bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--border-main)]"
                               : "bg-[var(--bg-subtle)] text-[var(--text-muted)] border border-[var(--border-main)]"
                           }`}
@@ -344,12 +425,19 @@ export default function SuppliersPage() {
                         )}
                       </td>
                       <td className="py-3 px-3">
-                        <RoleGate permission="canEditMaster">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedDetail(s)}
+                            title="View Details"
+                            className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <RoleGate permission="canEditMaster">
                             <button
                               id={`supplier-edit-btn-${s.id}`}
                               onClick={() => handleOpenEdit(s)}
-                              className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                              className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                               title="Edit Supplier"
                             >
                               <Edit2 className="w-4 h-4" />
@@ -357,13 +445,13 @@ export default function SuppliersPage() {
                             <button
                               id={`supplier-delete-btn-${s.id}`}
                               onClick={() => handleDelete(s.id)}
-                              className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
+                              className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors cursor-pointer"
                               title="Delete Supplier"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </div>
-                        </RoleGate>
+                          </RoleGate>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -379,11 +467,14 @@ export default function SuppliersPage() {
             </div>
             )}
 
-            <div className="mt-4 pt-3 border-t border-[var(--border-main)]">
-              <span className="text-xs text-[var(--text-muted)]">
-                Showing {filtered.length} of {suppliers.length} suppliers
-              </span>
-            </div>
+            <TablePager
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              disabled={loading}
+              idPrefix="supplier"
+            />
           </div>
         </main>
       </div>
@@ -578,6 +669,106 @@ export default function SuppliersPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ── View Detail Modal ── */}
+      {selectedDetail && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] shadow-2xl overflow-hidden animate-fade-in">
+            <div className="px-6 py-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-subtle)]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-[var(--primary)] bg-[var(--primary-light)] px-2 py-0.5 rounded">
+                    {selectedDetail.supCode}
+                  </span>
+                  {selectedDetail.isApproved && (
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                      Approved Vendor
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg font-bold text-[var(--text-primary)] mt-1">
+                  {selectedDetail.supName}
+                </h2>
+              </div>
+              <button
+                onClick={() => setSelectedDetail(null)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-sm max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4 bg-[var(--bg-subtle)] p-4 rounded-xl border border-[var(--border-main)]">
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Supplier Code</p>
+                  <p className="font-mono font-bold text-[var(--text-primary)] mt-1">{selectedDetail.supCode}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Supplier Name</p>
+                  <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedDetail.supName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Contact Email</p>
+                  <p className="font-medium text-[var(--text-primary)] mt-1">{selectedDetail.email || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Phone Number</p>
+                  <p className="font-mono font-medium text-[var(--text-primary)] mt-1">{selectedDetail.phone || "—"}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Address & Location</h3>
+                <div className="p-4 border border-[var(--border-main)] rounded-xl space-y-2">
+                  <p className="text-sm text-[var(--text-primary)]">{selectedDetail.address || "No address on file"}</p>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border-main)] text-xs">
+                    <div><span className="text-[var(--text-muted)]">City:</span> <span className="font-semibold">{selectedDetail.city || "—"}</span></div>
+                    <div><span className="text-[var(--text-muted)]">State:</span> <span className="font-semibold">{selectedDetail.state || "—"}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Tax & Vendor Registration</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">GSTIN Number</p>
+                    <p className="font-mono font-bold text-[var(--text-primary)] mt-1">{selectedDetail.gstin || "—"}</p>
+                  </div>
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Vendor Status</p>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary)] mt-1">
+                      {selectedDetail.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-[var(--border-main)] bg-[var(--bg-subtle)] flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSelectedDetail(null)}
+                className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Close
+              </button>
+              <RoleGate permission="canEditMaster">
+                <Button
+                  onClick={() => {
+                    const item = selectedDetail;
+                    setSelectedDetail(null);
+                    handleOpenEdit(item);
+                  }}
+                  variant="primary"
+                  size="sm"
+                >
+                  <Edit2 className="w-4 h-4" /> Edit Supplier
+                </Button>
+              </RoleGate>
+            </div>
           </div>
         </div>
       )}

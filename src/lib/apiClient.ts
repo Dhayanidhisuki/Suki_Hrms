@@ -11,18 +11,43 @@ export interface ApiResponse<T> {
   status: number;
 }
 
+/** Normalize string | Zod flatten | unknown into a readable banner message. */
+function formatApiError(error: unknown, fieldErrors?: Record<string, string[]>): string {
+  if (typeof error === "string" && error.trim()) return error;
+
+  if (error && typeof error === "object") {
+    const obj = error as {
+      message?: unknown;
+      formErrors?: string[];
+      fieldErrors?: Record<string, string[]>;
+    };
+    if (typeof obj.message === "string" && obj.message.trim()) return obj.message;
+
+    const fields = fieldErrors ?? obj.fieldErrors;
+    const parts: string[] = [];
+    if (obj.formErrors?.length) parts.push(...obj.formErrors.filter(Boolean));
+    if (fields) {
+      for (const [key, msgs] of Object.entries(fields)) {
+        if (msgs?.length) parts.push(`${key}: ${msgs.join(", ")}`);
+      }
+    }
+    if (parts.length) return parts.join("; ");
+  }
+  return "Request failed";
+}
+
 export async function apiGet<T>(url: string): Promise<ApiResponse<T>> {
   try {
     const res = await fetch(url, { credentials: "include" });
-    if (res.status === 401) {
-      window.location.href = "/auth/session-expired";
-      return { data: null, error: { message: "Session expired" }, status: 401 };
-    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
+      const rawError = body.error ?? body.message ?? body;
       return {
         data: null,
-        error: { message: body.error ?? "Request failed" },
+        error: {
+          message: formatApiError(rawError, body.error?.fieldErrors),
+          fieldErrors: body.error?.fieldErrors,
+        },
         status: res.status,
       };
     }
@@ -44,16 +69,12 @@ export async function apiPost<T>(
       credentials: "include",
       body: JSON.stringify(body),
     });
-    if (res.status === 401) {
-      window.location.href = "/auth/session-expired";
-      return { data: null, error: { message: "Session expired" }, status: 401 };
-    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return {
         data: null,
         error: {
-          message: data.error ?? "Request failed",
+          message: formatApiError(data.error, data.error?.fieldErrors),
           fieldErrors: data.error?.fieldErrors,
         },
         status: res.status,
@@ -76,13 +97,16 @@ export async function apiPut<T>(
       credentials: "include",
       body: JSON.stringify(body),
     });
-    if (res.status === 401) {
-      window.location.href = "/auth/session-expired";
-      return { data: null, error: { message: "Session expired" }, status: 401 };
-    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { data: null, error: { message: data.error ?? "Request failed" }, status: res.status };
+      return {
+        data: null,
+        error: {
+          message: formatApiError(data.error, data.error?.fieldErrors),
+          fieldErrors: data.error?.fieldErrors,
+        },
+        status: res.status,
+      };
     }
     return { data, error: null, status: res.status };
   } catch {
@@ -101,13 +125,16 @@ export async function apiPatch<T>(
       credentials: "include",
       body: JSON.stringify(body),
     });
-    if (res.status === 401) {
-      window.location.href = "/auth/session-expired";
-      return { data: null, error: { message: "Session expired" }, status: 401 };
-    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { data: null, error: { message: data.error ?? "Request failed" }, status: res.status };
+      return {
+        data: null,
+        error: {
+          message: formatApiError(data.error, data.error?.fieldErrors),
+          fieldErrors: data.error?.fieldErrors,
+        },
+        status: res.status,
+      };
     }
     return { data, error: null, status: res.status };
   } catch {
@@ -118,13 +145,16 @@ export async function apiPatch<T>(
 export async function apiDelete<T>(url: string): Promise<ApiResponse<T>> {
   try {
     const res = await fetch(url, { method: "DELETE", credentials: "include" });
-    if (res.status === 401) {
-      window.location.href = "/auth/session-expired";
-      return { data: null, error: { message: "Session expired" }, status: 401 };
-    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { data: null, error: { message: data.error ?? "Request failed" }, status: res.status };
+      return {
+        data: null,
+        error: {
+          message: formatApiError(data.error, data.error?.fieldErrors),
+          fieldErrors: data.error?.fieldErrors,
+        },
+        status: res.status,
+      };
     }
     return { data, error: null, status: res.status };
   } catch {

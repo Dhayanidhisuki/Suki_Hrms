@@ -1,7 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { apiGet } from "./apiClient";
+import { rolePermissions, type UserRole } from "./rolePermissions";
 
 export interface SessionUser {
   userId: string;
@@ -24,66 +31,22 @@ export type PermissionKey =
 interface SessionContextValue {
   user: SessionUser | null;
   loading: boolean;
+  refreshSession: () => Promise<void>;
   can: (permission: PermissionKey) => boolean;
 }
 
-// Mirror the backend role permission matrix exactly
-const rolePermissions: Record<string, Record<PermissionKey, boolean>> = {
-  "Tools Admin": {
-    canApproveSupplier: true,
-    canCreateIssue: true,
-    canReceiveTool: true,
-    canLogConsumption: true,
-    canManageCalibration: true,
-    canRaisePO: true,
-    canEditMaster: true,
-    canDeleteMaster: true,
-  },
-  "Store Keeper": {
-    canApproveSupplier: false,
-    canCreateIssue: true,
-    canReceiveTool: true,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  "Calibration Engineer": {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: true,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  "Purchase Coordinator": {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: true,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  Viewer: {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-};
+/** Roles that receive full app access (no DB/table changes — code matrix only). */
+const FULL_ACCESS_ROLES = new Set([
+  "Tools Admin",
+  "Administrator",
+  "Admin",
+  "admin",
+]);
 
 const SessionContext = createContext<SessionContextValue>({
   user: null,
   loading: true,
+  refreshSession: async () => {},
   can: () => false,
 });
 
@@ -91,20 +54,36 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    apiGet<{ user: SessionUser }>("/api/auth/me").then((res) => {
-      if (res.data?.user) setUser(res.data.user);
-      setLoading(false);
-    });
+  const refreshSession = useCallback(async () => {
+    const res = await apiGet<{ user: SessionUser }>("/api/auth/me");
+    if (res.data?.user) {
+      setUser(res.data.user);
+    } else {
+      setUser(null);
+    }
+    setLoading(false);
   }, []);
 
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
+
   const can = (permission: PermissionKey): boolean => {
-    if (!user) return false;
-    return rolePermissions[user.roleName]?.[permission] ?? false;
+    if (!user?.userId) return false;
+    // Seed / app admin + admin-equivalent role names → full access
+    if (
+      user.userId.toLowerCase() === "admin" ||
+      FULL_ACCESS_ROLES.has(user.roleName)
+    ) {
+      return true;
+    }
+    const perms =
+      rolePermissions[user.roleName as UserRole] ?? rolePermissions.Viewer;
+    return Boolean(perms[permission]);
   };
 
   return (
-    <SessionContext.Provider value={{ user, loading, can }}>
+    <SessionContext.Provider value={{ user, loading, refreshSession, can }}>
       {children}
     </SessionContext.Provider>
   );

@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import { SessionProvider } from "@/lib/SessionContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { NavigationLoader } from "@/components/NavigationLoader";
+import { SuccessOverlayProvider } from "@/components/SuccessOverlay";
 import { parseCookieString, THEME_COOKIE_NAME, MODE_COOKIE_NAME } from "@/lib/theme-cookies";
 
-const inter = Inter({
+const poppins = Poppins({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
   display: "swap",
 });
@@ -52,7 +55,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${mode === "dark" ? "dark" : ""}`.trim()}
+      className={`${poppins.variable} ${mode === "dark" ? "dark" : ""}`.trim()}
       data-theme={theme}
       data-mode={mode}
       suppressHydrationWarning
@@ -64,7 +67,12 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeProvider initialTheme={theme} initialMode={mode}>
-          <SessionProvider>{children}</SessionProvider>
+          <SessionProvider>
+            <SuccessOverlayProvider>
+              <NavigationLoader />
+              {children}
+            </SuccessOverlayProvider>
+          </SessionProvider>
         </ThemeProvider>
       </body>
     </html>

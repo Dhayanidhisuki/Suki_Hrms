@@ -8,6 +8,7 @@ import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 interface ToolConsumption {
   rowId: number;
@@ -42,6 +43,7 @@ interface ToolsIssueHeader {
 }
 
 export default function ConsumptionPage() {
+  const { showSuccess } = useSuccessOverlay();
   const [consumptionList, setConsumptionList] = useState<ToolConsumption[]>([]);
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +138,11 @@ export default function ConsumptionPage() {
     }
 
     setSuccessBanner("Consumption logged successfully.");
+    showSuccess({
+      title: "Record saved",
+      message: "Consumption logged successfully.",
+      detail: toolOrGaugeNo || `DC #${dcNo}`,
+    });
     setTimeout(() => setSuccessBanner(""), 3000);
 
     setDcNo("");

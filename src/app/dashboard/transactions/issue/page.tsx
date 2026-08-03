@@ -6,17 +6,43 @@ import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
+import { FileText, Clock, PackageCheck, AlertCircle } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
-type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL";
+// ERP uses "Active" for open DCs, "Cancelled"/"Closed" for closed DCs
+type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL" | "Active" | "Closed" | "Cancelled";
+
+interface ToolMasterPreview {
+  toolOrGaugeNo: string | null;
+  name: string | null;
+  description: string | null;
+  type: string | null;
+  grouping: string | null;
+  uom: string | null;
+}
 
 interface ToolsIssueLine {
   rowId: number;
   dcNo: string;
-  toolOrGaugeNo: string;
-  issueQty: number;
+  toolOrGaugeNo: string | null;
+  issueQty: number | string;
   partNo: string | null;
+  name?: string | null;
+  description?: string | null;
+  type?: string | null;
+  groupName?: string | null;
+  serialNo?: number | null;
+  uom?: string | null;
+  issueToItemNo?: string | null;
+  issueEmpName?: string | null;
+  machine?: string | null;
+  status?: string | null;
+  toolRefNo?: number | null;
+  tool?: ToolMasterPreview | null;
+  toolByRef?: ToolMasterPreview | null;
 }
 
 interface ToolsIssueHeader {
@@ -37,39 +63,130 @@ interface Tool {
   toolOrGaugeNo: string;
   name: string;
   grouping: string;
+  type?: string | null;
   qtyIn: number;
+  totQty?: number;
+  location?: string | null;
+  returnable?: string | null;
+  serialNoGenReq?: string | null;
   status: string;
+  machines?: string[];
+}
+
+interface SubOption {
+  id: string;
+  subCode: string;
+  subName: string;
+}
+
+interface SupOption {
+  id: string;
+  supCode: string;
+  supName: string;
 }
 
 const statusConfig: Record<string, { bg: string; text: string }> = {
   OPEN: { bg: "bg-[var(--primary-light)] border border-[var(--border-main)]", text: "text-[var(--primary)]" },
+  // ERP uses 'Active' for open issue DCs
+  Active: { bg: "bg-[var(--primary-light)] border border-[var(--border-main)]", text: "text-[var(--primary)]" },
   CLOSED: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
+  Closed: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
+  Cancelled: { bg: "bg-[var(--bg-subtle)] border border-[var(--border-main)]", text: "text-[var(--text-muted)]" },
   PARTIAL: { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]" },
 };
 
 interface StagedLine {
   toolOrGaugeNo: string;
   toolName: string;
+  description: string;
+  grouping: string;
+  type: string;
   issueQty: number;
   qtyAvailable: number;
+  totQty: number;
+  location: string;
+  returnable: string;
+  serialNo: string;
+  machine: string;
+  processName: string;
+  partNo: string;
+  price: number;
+  maintainsSerial: boolean;
+  machineOptions: string[];
+}
+
+const ISSUE_OPTIONS = [
+  "SubContractor",
+  "Supplier",
+  "Customer",
+  "Inhouse or SubContractor",
+  "Issue to Supplier",
+] as const;
+
+const LOB_TYPES = ["AUTOMOTIVE", "ALL", "OTHERS"] as const;
+
+const inputCls =
+  "w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium";
+const labelCls = "block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1";
+
+/** Compact controls for the ERP issue header card */
+const headerInputCls =
+  "w-full h-8 text-xs border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]";
+const headerLabelCls =
+  "block text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-0.5 leading-none";
+const headerFieldCls = "min-w-0";
+const headerErrCls = "text-[10px] text-[var(--color-danger-text)] mt-0.5 font-semibold leading-tight";
+
+function toolMaintainsSerial(flag: string | null | undefined): boolean {
+  const v = (flag ?? "").trim().toLowerCase();
+  return v === "yes" || v === "y" || v === "1" || v === "true";
+}
+
+/** YYYY-MM-DD in the user's local timezone (avoids UTC off-by-one). */
+function localToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export default function IssueToolPage() {
+  const { showSuccess } = useSuccessOverlay();
+  // List state
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
+  // Pagination + search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 50;
+
   // Success Banner
   const [successBanner, setSuccessBanner] = useState("");
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Form Header State
+  // Form Header State (ERP Tools Issue fields)
   const [receiveName, setReceiveName] = useState("");
+  const [receiveNameTwo, setReceiveNameTwo] = useState("");
   const [subCode, setSubCode] = useState("");
+  const [supCode, setSupCode] = useState("");
   const [empId, setEmpId] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [issueOption, setIssueOption] = useState<string>("SubContractor");
+  const [dcRefNo, setDcRefNo] = useState("");
+  const [returnable, setReturnable] = useState<"Yes" | "No">("Yes");
+  const [transportName, setTransportName] = useState("");
+  const [vehicleNo, setVehicleNo] = useState("");
+  const [comments, setComments] = useState("");
+  const [lobType, setLobType] = useState<string>("AUTOMOTIVE");
+  const [poOrderNo, setPoOrderNo] = useState("");
+  const [subs, setSubs] = useState<SubOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupOption[]>([]);
 
   // Staged lines
   const [stagedLines, setStagedLines] = useState<StagedLine[]>([]);
@@ -83,27 +200,82 @@ export default function IssueToolPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Default dates
-    setIssueDate(new Date().toISOString().split("T")[0]);
-    setDueDate("");
+    // Default both dates to today (local) so Return Due Date isn't left blank
+    const today = localToday();
+    setIssueDate(today);
+    setDueDate(today);
   }, [showCreate]);
 
-  const loadIssues = useCallback(async () => {
-    setLoading(true);
-    const res = await apiGet<{ items: ToolsIssueHeader[] }>("/api/issue");
-    if (res.data?.items) setIssues(res.data.items);
-    setLoading(false);
-  }, []);
+  useEffect(() => {
+    if (!showCreate) return;
+    void (async () => {
+      const [subRes, supRes] = await Promise.all([
+        apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
+        apiGet<{ items?: SupOption[] }>("/api/suppliers?pageSize=200"),
+      ]);
+      setSubs(subRes.data?.items ?? []);
+      setSuppliers(supRes.data?.items ?? []);
+    })();
+  }, [showCreate]);
 
-  const loadTools = useCallback(async () => {
-    const res = await apiGet<{ items: Tool[] }>("/api/tools");
-    if (res.data?.items) setTools(res.data.items);
+  const loadIssues = useCallback(async (p = page, q = searchQuery) => {
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(p), pageSize: "50" });
+    if (q) params.set("search", q);
+    const res = await apiGet<{ items: ToolsIssueHeader[]; total: number }>(`/api/issue?${params}`);
+    if (res.data?.items) setIssues(res.data.items);
+    if (res.data?.total !== undefined) setTotal(res.data.total);
+    setLoading(false);
+  }, [page, searchQuery]);
+
+  // Debounced search handler
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setPage(1);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => loadIssues(1, val), 400);
+  };
+
+  // Tool search: on-demand via debounce (NOT pre-loaded on mount)
+  const toolSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [zeroStockHints, setZeroStockHints] = useState<Tool[]>([]);
+  const fetchToolsForSearch = useCallback(async (q: string) => {
+    if (!q || q.length < 2) {
+      setTools([]);
+      setZeroStockHints([]);
+      return;
+    }
+    // Prefer in-stock tools. If none, show zero-stock matches as disabled hints.
+    const inStock = await apiGet<{ items: Tool[] }>(
+      `/api/tools?search=${encodeURIComponent(q)}&pageSize=15&availableOnly=1`
+    );
+    const stocked = (inStock.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) > 0);
+    setTools(stocked);
+    if (stocked.length > 0) {
+      setZeroStockHints([]);
+      return;
+    }
+    const any = await apiGet<{ items: Tool[] }>(
+      `/api/tools?search=${encodeURIComponent(q)}&pageSize=8`
+    );
+    setZeroStockHints(
+      (any.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) <= 0).slice(0, 6)
+    );
   }, []);
 
   useEffect(() => {
     loadIssues();
-    loadTools();
-  }, [loadIssues, loadTools]);
+    // No loadTools() here — tools fetched on demand when user types in search
+  }, []);
+
+  // Re-fetch when page changes (but NOT on first render, handled above)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    loadIssues(page, searchQuery);
+  }, [page]);
+
 
   // Click outside listener to close search dropdown
   useEffect(() => {
@@ -116,12 +288,14 @@ export default function IssueToolPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter tools for dropdown
+  // API already filters availableOnly; keep a client safety filter on qtyIn
+  const queryLower = searchVal.toLowerCase().trim();
   const searchResults = tools.filter((t) => {
-    const query = searchVal.toLowerCase();
-    const matchesQuery = t.name.toLowerCase().includes(query) || t.toolOrGaugeNo.toLowerCase().includes(query);
-    const isAvailable = t.qtyIn > 0 && t.status === "Available";
-    return matchesQuery && isAvailable;
+    if (!queryLower) return false;
+    const matches =
+      t.name?.toLowerCase().includes(queryLower) ||
+      t.toolOrGaugeNo.toLowerCase().includes(queryLower);
+    return matches && Number(t.qtyIn ?? 0) > 0;
   });
 
   const getAvailableStock = (toolNo: string) => {
@@ -133,19 +307,46 @@ export default function IssueToolPage() {
     return Math.max(0, inStock - alreadyStaged);
   };
 
-  const handleSelectTool = (toolNo: string, name: string, stock: number) => {
+  const handleSelectTool = (tool: Tool) => {
+    const toolNo = tool.toolOrGaugeNo;
     const currentAvail = getAvailableStock(toolNo);
-    if (currentAvail <= 0) return;
+    const serialTracked = toolMaintainsSerial(tool.serialNoGenReq);
+    if (!serialTracked && currentAvail <= 0) return;
 
     const existingIdx = stagedLines.findIndex((l) => l.toolOrGaugeNo === toolNo);
     if (existingIdx >= 0) {
       const updated = [...stagedLines];
-      updated[existingIdx].issueQty += 1;
+      if (!serialTracked) {
+        updated[existingIdx].issueQty = Math.min(
+          updated[existingIdx].issueQty + 1,
+          Math.max(1, updated[existingIdx].qtyAvailable)
+        );
+      }
       setStagedLines(updated);
     } else {
+      const displayName =
+        !tool.name || tool.name.trim().toUpperCase() === "N/A" ? toolNo : tool.name;
       setStagedLines((prev) => [
         ...prev,
-        { toolOrGaugeNo: toolNo, toolName: name, issueQty: 1, qtyAvailable: stock },
+        {
+          toolOrGaugeNo: toolNo,
+          toolName: displayName,
+          description: tool.name || "",
+          grouping: tool.grouping || "",
+          type: tool.type || "",
+          issueQty: 1,
+          qtyAvailable: Number(tool.qtyIn ?? 0),
+          totQty: Number(tool.totQty ?? tool.qtyIn ?? 0),
+          location: tool.location || "",
+          returnable: tool.returnable === "No" ? "No" : returnable,
+          serialNo: "",
+          machine: tool.machines?.[0] || "",
+          processName: "",
+          partNo: toolNo,
+          price: 0,
+          maintainsSerial: serialTracked,
+          machineOptions: tool.machines ?? [],
+        },
       ]);
     }
     setSearchVal("");
@@ -153,11 +354,31 @@ export default function IssueToolPage() {
     setFormErrors((prev) => ({ ...prev, lines: "" }));
   };
 
+  const patchLine = (index: number, patch: Partial<StagedLine>) => {
+    setStagedLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  };
+
   const handleUpdateQty = (index: number, newQty: number) => {
     const updated = [...stagedLines];
-    const maxVal = updated[index].qtyAvailable;
-    updated[index].issueQty = Math.min(Math.max(1, newQty), maxVal);
+    const line = updated[index];
+    const maxVal = line.maintainsSerial ? 9999 : line.qtyAvailable;
+    const raw = Number.isFinite(newQty) ? newQty : 1;
+    if (!line.maintainsSerial && raw > maxVal) {
+      setFormErrors((prev) => ({
+        ...prev,
+        lines: `Only ${maxVal} available for ${line.toolOrGaugeNo}. Raise Qty In on Item/Asset Master to issue more.`,
+      }));
+    } else {
+      setFormErrors((prev) => ({ ...prev, lines: "" }));
+    }
+    updated[index].issueQty = Math.min(Math.max(1, raw), Math.max(1, maxVal));
     setStagedLines(updated);
+  };
+
+  const bumpQty = (index: number, delta: number) => {
+    const line = stagedLines[index];
+    if (!line) return;
+    handleUpdateQty(index, line.issueQty + delta);
   };
 
   const handleRemoveLine = (index: number) => {
@@ -166,9 +387,21 @@ export default function IssueToolPage() {
 
   const handleClearForm = () => {
     setReceiveName("");
+    setReceiveNameTwo("");
     setSubCode("");
+    setSupCode("");
     setEmpId("");
-    setDueDate("");
+    const today = localToday();
+    setIssueDate(today);
+    setDueDate(today);
+    setIssueOption("SubContractor");
+    setDcRefNo("");
+    setReturnable("Yes");
+    setTransportName("");
+    setVehicleNo("");
+    setComments("");
+    setLobType("AUTOMOTIVE");
+    setPoOrderNo("");
     setStagedLines([]);
     setFormErrors({});
   };
@@ -177,8 +410,15 @@ export default function IssueToolPage() {
     e.preventDefault();
     const errors: Record<string, string> = {};
 
-    if (!receiveName.trim()) errors.receiveName = "Receive Name is required";
+    if (!receiveName.trim()) errors.receiveName = "Receiver Name 1 is required";
     if (!dueDate) errors.dueDate = "Return due date is required";
+    if (!lobType || lobType === "-Select-") errors.lobType = "LOB Type is required";
+    if (issueOption === "SubContractor" && !subCode.trim()) {
+      errors.party = "Select Party Name (SubContractor)";
+    }
+    if ((issueOption === "Supplier" || issueOption === "Issue to Supplier") && !supCode.trim()) {
+      errors.party = "Select Party Name (Supplier)";
+    }
     if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
 
     if (Object.keys(errors).length > 0) {
@@ -186,31 +426,55 @@ export default function IssueToolPage() {
       return;
     }
 
+    const empParsed = empId.trim() ? Number(empId) : 0;
     const payload = {
       receiveName,
+      receiveNameTwo: receiveNameTwo || undefined,
       subCode: subCode || undefined,
-      empId: empId || undefined,
+      supCode: supCode || undefined,
+      empId: Number.isFinite(empParsed) ? empParsed : 0,
+      issueDate,
       dueDate,
+      issueOption,
+      dcRefNo: dcRefNo || undefined,
+      returnable,
+      transportName: transportName || undefined,
+      vehicleNo: vehicleNo || undefined,
+      comments: comments || undefined,
+      lobType,
+      poOrderNo: poOrderNo || undefined,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
         issueQty: l.issueQty,
+        partNo: l.partNo || l.toolOrGaugeNo,
+        machine: l.machine || undefined,
+        processName: l.processName || undefined,
+        serialNo: l.serialNo.trim() ? Number(l.serialNo) : undefined,
+        returnable: l.returnable,
+        price: l.price > 0 ? l.price : undefined,
       })),
     };
 
     setBannerMsg(null);
-    const res = await apiPost<{ item: ToolsIssueHeader }>("/api/issue", payload);
+    const res = await apiPost<{ issue: ToolsIssueHeader }>("/api/issue", payload);
 
     if (res.error) {
       setBannerMsg({ type: "error", text: res.error.message });
       return;
     }
 
-    if (res.data?.item) {
-      setSuccessBanner(`DC #${res.data.item.dcNo} issued successfully to ${receiveName}!`);
+    if (res.data?.issue) {
+      const msg = `DC #${res.data.issue.dcNo} issued successfully to ${receiveName}!`;
+      setSuccessBanner(msg);
+      showSuccess({
+        title: "Issue DC created",
+        message: `Tools issued successfully to ${receiveName}.`,
+        detail: `DC #${res.data.issue.dcNo}`,
+      });
       handleClearForm();
       setShowCreate(false);
-      loadIssues();
-      loadTools();
+      loadIssues(1, searchQuery);
+      setPage(1);
       setTimeout(() => setSuccessBanner(""), 5000);
     }
   };
@@ -250,7 +514,7 @@ export default function IssueToolPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-                Issue Tool
+                Tools Issue
               </h1>
               <p className="text-sm text-[var(--text-muted)] mt-0.5">
                 Issue tools/gauges to department or employee (GAUGE_TOOLS_ISSUE)
@@ -271,154 +535,355 @@ export default function IssueToolPage() {
             </RoleGate>
           </div>
 
+          {/* ── Module KPI Cards ── */}
+          <ModuleKpiRow
+            items={[
+              {
+                id: "total-dc-slips",
+                label: "Total Issue Slips",
+                value: total,
+                subtext: "DC vouchers generated",
+                icon: FileText,
+                iconBg: "bg-[var(--primary-light)]",
+                iconColor: "text-[var(--primary)]",
+                badge: { label: "DC Slips", type: "info" },
+              },
+              {
+                id: "open-slips",
+                label: "Active Open Slips",
+                value: issues.filter((i) => i.status === "OPEN" || i.status === "Active").length,
+                subtext: "Tools currently out on DC",
+                icon: Clock,
+                iconBg: "bg-blue-50 dark:bg-blue-950/30",
+                iconColor: "text-blue-600 dark:text-blue-400",
+                badge: { label: "Open", type: "info" },
+              },
+              {
+                id: "closed-slips",
+                label: "Closed Returns",
+                value: issues.filter((i) => i.status === "CLOSED" || i.status === "Closed").length,
+                subtext: "Fully returned vouchers",
+                icon: PackageCheck,
+                iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
+                iconColor: "text-emerald-600 dark:text-emerald-400",
+                badge: { label: "Closed", type: "success" },
+              },
+              {
+                id: "overdue-slips",
+                label: "Overdue Pending",
+                value: issues.filter((i) => (i.status === "OPEN" || i.status === "Active") && i.dueDate && new Date(i.dueDate) < new Date()).length,
+                subtext: "Past return due date",
+                icon: AlertCircle,
+                iconBg: "bg-amber-50 dark:bg-amber-950/30",
+                iconColor: "text-amber-600 dark:text-amber-400",
+                badge: { label: "Overdue", type: "warning" },
+              },
+            ]}
+          />
+
           {!showCreate ? (
             /* ── VIEW PREVIOUS ISSUES LIST ── */
             <div className="flex flex-col gap-4 animate-fade-in">
+              {/* Search + pagination header */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="issue-search-input"
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    placeholder="Search DC No, name, or subcontractor…"
+                    className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                  />
+                </div>
+                <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
+                  {loading ? "Loading…" : `Showing ${issues.length} of ${total.toLocaleString()} records`}
+                </span>
+              </div>
               {loading ? (
                 <TableSkeleton rows={3} />
               ) : issues.length === 0 ? (
                 <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-8 text-center text-sm text-[var(--text-muted)]">
-                  No issue records found. Create a new issue to get started.
+                  {searchQuery ? `No records found for "${searchQuery}".` : "No issue records found. Create a new issue to get started."}
                 </div>
               ) : (
-              issues.map((issue) => {
-                const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
-                return (
-                  <div key={issue.dcNo} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                          {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
-                        </p>
+                issues.map((issue) => {
+                  const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
+                  return (
+                    <div key={issue.dcNo} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                            {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
+                        >
+                          {issue.status}
+                        </span>
                       </div>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
-                      >
-                        {issue.status}
-                      </span>
-                    </div>
-                    <div className="overflow-auto">
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                            {["Tool No", "Qty Issued"].map(
-                              (col) => (
-                                <th
-                                  key={col}
-                                  className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4"
-                                >
-                                  {col}
-                                </th>
-                              )
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[var(--border-main)]">
-                          {issue.lines.map((line) => (
-                            <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
-                              <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)] font-medium">
-                                {line.toolOrGaugeNo}
-                              </td>
-                              <td className="py-3 px-4 align-middle text-[var(--text-secondary)] font-mono text-xs">{line.issueQty}</td>
+                      <div className="overflow-auto">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                              {["Tool / Item No", "Name & Description", "Type / Group", "S.No", "Qty", "UOM", "Issued To"].map(
+                                (col) => (
+                                  <th
+                                    key={col}
+                                    className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4"
+                                  >
+                                    {col}
+                                  </th>
+                                )
+                              )}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-[var(--border-main)]">
+                            {issue.lines.map((line) => {
+                              const master = line.tool ?? line.toolByRef;
+                              const itemNo =
+                                line.toolOrGaugeNo || master?.toolOrGaugeNo || line.issueToItemNo || line.partNo;
+                              const lineName = line.name || master?.name || "";
+                              const lineDesc = line.description || master?.description || "";
+                              const lineType = line.type || master?.type;
+                              const lineGroup = line.groupName || master?.grouping;
+                              return (
+                                <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
+                                  <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-primary)] font-semibold">
+                                    {itemNo || "—"}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle max-w-md">
+                                    <p className="text-[var(--text-primary)] font-medium truncate">
+                                      {lineName && lineName.trim().toUpperCase() !== "N/A" ? lineName : lineDesc || "—"}
+                                    </p>
+                                    {lineName && lineName.trim().toUpperCase() !== "N/A" && lineDesc && (
+                                      <p className="text-[11px] text-[var(--text-muted)] truncate">{lineDesc}</p>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                    {lineType || lineGroup ? (
+                                      <>
+                                        <span>{lineType || "—"}</span>
+                                        {lineGroup && (
+                                          <span className="block text-[11px] text-[var(--text-muted)]">{lineGroup}</span>
+                                        )}
+                                      </>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)]">
+                                    {line.serialNo ?? "—"}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle text-[var(--text-primary)] font-mono text-xs font-semibold">
+                                    {Number(line.issueQty) || 0}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                    {line.uom || master?.uom || "Nos"}
+                                  </td>
+                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                    {line.issueEmpName || line.machine || issue.receiveName || "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
+                  );
+                })
+              )}
+
+              {/* Pagination controls */}
+              {total > pageSize && (
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--border-main)]">
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Page {page} of {Math.ceil(total / pageSize).toLocaleString()}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="issue-prev-page"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      id="issue-next-page"
+                      disabled={page >= Math.ceil(total / pageSize)}
+                      onClick={() => setPage((p) => p + 1)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Next →
+                    </button>
                   </div>
-                );
-              })
+                </div>
               )}
             </div>
           ) : (
             /* ── ACTIVE CREATE ISSUE MODE (60% / 40% side by side) ── */
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start animate-fade-in">
-              {/* LEFT FORM PANEL (60%) */}
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Header Info Card */}
-                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)]">
-                    <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Issue Slip Header</h2>
-                    <span className="font-mono text-xs text-[var(--text-muted)] font-bold bg-[var(--bg-subtle)] px-2.5 py-1 rounded-md">
-                      DC No: Auto-generated
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start animate-fade-in">
+              {/* LEFT FORM PANEL */}
+              <form onSubmit={handleSubmit} className="space-y-3">
+                {/* Header Info Card — compact ERP field order */}
+                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 mb-2.5 pb-2 border-b border-[var(--border-main)]">
+                    <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
+                      Tools / Gauge / Other Item Issue
+                    </h2>
+                    <span className="font-mono text-[10px] text-[var(--text-muted)] font-bold bg-[var(--bg-subtle)] px-2 py-0.5 rounded">
+                      DC No: Auto
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Receive Name *
-                      </label>
-                      <input
-                        id="form-receive-name"
-                        value={receiveName}
-                        onChange={(e) => setReceiveName(e.target.value)}
-                        placeholder="e.g. Machining / QC"
-                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
-                      />
-                      {formErrors.receiveName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.receiveName}</p>}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-2.5 gap-y-2">
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>DC Date</label>
+                      <input type="date" value={issueDate} readOnly className={`${headerInputCls} cursor-not-allowed opacity-80`} />
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Subcontractor Code
-                      </label>
-                      <input
-                        id="form-sub-code"
-                        value={subCode}
-                        onChange={(e) => setSubCode(e.target.value)}
-                        placeholder="e.g. S001"
-                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
-                      />
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Search By</label>
+                      <select
+                        value={issueOption}
+                        onChange={(e) => {
+                          setIssueOption(e.target.value);
+                          setSubCode("");
+                          setSupCode("");
+                        }}
+                        className={headerInputCls}
+                      >
+                        {ISSUE_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Employee ID
-                      </label>
-                      <input
-                        id="form-emp-id"
-                        value={empId}
-                        onChange={(e) => setEmpId(e.target.value)}
-                        placeholder="Employee ID"
-                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
-                      />
+                    <div className={`${headerFieldCls} sm:col-span-1 xl:col-span-2`}>
+                      <label className={headerLabelCls}>Party Name</label>
+                      {issueOption === "Supplier" || issueOption === "Issue to Supplier" ? (
+                        <select
+                          value={supCode}
+                          onChange={(e) => setSupCode(e.target.value)}
+                          className={headerInputCls}
+                        >
+                          <option value="">-SELECT-</option>
+                          {suppliers.map((s) => (
+                            <option key={s.supCode || s.id} value={s.supCode}>
+                              {s.supCode} — {s.supName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          value={subCode}
+                          onChange={(e) => setSubCode(e.target.value)}
+                          className={headerInputCls}
+                        >
+                          <option value="">-SELECT-</option>
+                          {subs.map((s) => (
+                            <option key={s.subCode || s.id} value={s.subCode}>
+                              {s.subCode} — {s.subName}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {formErrors.party && <p className={headerErrCls}>{formErrors.party}</p>}
                     </div>
-                  </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Ref No</label>
+                      <input value={dcRefNo} onChange={(e) => setDcRefNo(e.target.value)} className={headerInputCls} placeholder="Ref No" maxLength={20} />
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Is Returnable?</label>
+                      <select value={returnable} onChange={(e) => setReturnable(e.target.value as "Yes" | "No")} className={headerInputCls}>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Issue Date
-                      </label>
-                      <input
-                        type="date"
-                        value={issueDate}
-                        readOnly
-                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-hover)] outline-none font-mono text-[var(--text-muted)] cursor-not-allowed"
-                      />
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Transporter Name</label>
+                      <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className={headerInputCls} maxLength={50} />
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                        Return Due Date *
-                      </label>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Vehicle No</label>
+                      <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className={headerInputCls} maxLength={25} />
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Return Due Date *</label>
                       <input
                         id="form-duedate"
                         type="date"
                         value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono font-medium"
+                        onChange={(e) => {
+                          setDueDate(e.target.value);
+                          setFormErrors((prev) => ({ ...prev, dueDate: "" }));
+                        }}
+                        className={headerInputCls}
                       />
-                      {formErrors.dueDate && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{formErrors.dueDate}</p>}
+                      {formErrors.dueDate && <p className={headerErrCls}>{formErrors.dueDate}</p>}
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Receiver Name 1 *</label>
+                      <input
+                        id="form-receive-name"
+                        value={receiveName}
+                        onChange={(e) => setReceiveName(e.target.value)}
+                        className={headerInputCls}
+                        maxLength={50}
+                      />
+                      {formErrors.receiveName && <p className={headerErrCls}>{formErrors.receiveName}</p>}
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Receiver Name 2</label>
+                      <input value={receiveNameTwo} onChange={(e) => setReceiveNameTwo(e.target.value)} className={headerInputCls} maxLength={50} />
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>LOB Type *</label>
+                      <select
+                        value={lobType}
+                        onChange={(e) => {
+                          setLobType(e.target.value);
+                          setFormErrors((prev) => ({ ...prev, lobType: "" }));
+                        }}
+                        className={headerInputCls}
+                      >
+                        {LOB_TYPES.map((lob) => (
+                          <option key={lob} value={lob}>{lob}</option>
+                        ))}
+                      </select>
+                      {formErrors.lobType && <p className={headerErrCls}>{formErrors.lobType}</p>}
+                    </div>
+
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>PO Number</label>
+                      <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className={headerInputCls} maxLength={15} placeholder="-SELECT-" />
+                    </div>
+                    <div className={headerFieldCls}>
+                      <label className={headerLabelCls}>Employee ID</label>
+                      <input id="form-emp-id" value={empId} onChange={(e) => setEmpId(e.target.value)} className={headerInputCls} placeholder="0" />
+                    </div>
+                    <div className={`${headerFieldCls} col-span-2 sm:col-span-3 xl:col-span-4`}>
+                      <label className={headerLabelCls}>Comments</label>
+                      <input value={comments} onChange={(e) => setComments(e.target.value)} className={headerInputCls} maxLength={100} />
                     </div>
                   </div>
+
+                  <p className="mt-2 text-[10px] font-medium text-[var(--text-muted)]">
+                    Note: Stock reduces only when serial numbers are not maintained.
+                  </p>
                 </div>
 
                 {/* Line Items Card */}
-                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
-                  <div className="pb-3 border-b border-[var(--border-main)]">
-                    <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Tool Line Items</h2>
+                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">
+                  <div className="pb-2 border-b border-[var(--border-main)]">
+                    <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">Tool Line Items</h2>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                      Search and click a tool to add a line. Same tool increases qty (up to Available).
+                    </p>
                   </div>
 
                   {/* Smart Tool Search Input */}
@@ -428,11 +893,19 @@ export default function IssueToolPage() {
                       id="tool-select-search"
                       value={searchVal}
                       onChange={(e) => {
-                        setSearchVal(e.target.value);
+                        const val = e.target.value;
+                        setSearchVal(val);
                         setShowSearchDropdown(true);
+                        // Debounced on-demand fetch — no pre-loaded tool list
+                        if (toolSearchTimer.current) clearTimeout(toolSearchTimer.current);
+                        toolSearchTimer.current = setTimeout(() => fetchToolsForSearch(val), 300);
                       }}
                       onFocus={() => setShowSearchDropdown(true)}
-                      placeholder="Type tool name or registry number to add line item…"
+                      placeholder={
+                        stagedLines.length > 0
+                          ? "Search another in-stock tool to add a 2nd line…"
+                          : "Search in-stock tools — e.g. OTH_J-0001 or TEST-CAL-001"
+                      }
                       className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                     />
 
@@ -442,12 +915,19 @@ export default function IssueToolPage() {
                         {searchResults.map((t) => (
                           <div
                             key={t.refNo}
-                            onClick={() => handleSelectTool(t.toolOrGaugeNo, t.name, t.qtyIn)}
+                            onClick={() => handleSelectTool(t)}
                             className="p-3 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors flex items-center justify-between text-sm"
                           >
                             <div>
-                              <p className="font-semibold text-[var(--text-primary)]">{t.name}</p>
-                              <p className="text-xs font-mono text-[var(--text-muted)]">{t.toolOrGaugeNo} · {t.grouping}</p>
+                              <p className="font-semibold text-[var(--text-primary)]">
+                                {!t.name || t.name.trim().toUpperCase() === "N/A"
+                                  ? t.toolOrGaugeNo
+                                  : t.name}
+                              </p>
+                              <p className="text-xs font-mono text-[var(--text-muted)]">
+                                {t.toolOrGaugeNo} · {t.grouping}
+                                {toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}
+                              </p>
                             </div>
                             <span className="text-xs font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
                               {getAvailableStock(t.toolOrGaugeNo)} in-stock
@@ -455,9 +935,43 @@ export default function IssueToolPage() {
                           </div>
                         ))}
                         {searchResults.length === 0 && (
-                          <p className="p-4 text-center text-xs text-[var(--text-muted)]">
-                            No available tools match your query.
-                          </p>
+                          <div className="p-3 text-xs text-[var(--text-muted)] space-y-2">
+                            <p className="font-semibold text-[var(--text-primary)] text-center">
+                              No in-stock tools match “{searchVal}”.
+                            </p>
+                            {zeroStockHints.length > 0 && (
+                              <div className="rounded-lg border border-[var(--border-main)] divide-y divide-[var(--border-main)] overflow-hidden">
+                                {zeroStockHints.map((t) => (
+                                  <div
+                                    key={t.refNo}
+                                    className="px-3 py-2 flex items-center justify-between bg-[var(--bg-subtle)] opacity-80"
+                                  >
+                                    <div>
+                                      <p className="font-mono text-[var(--text-secondary)]">{t.toolOrGaugeNo}</p>
+                                      <p className="text-[11px]">{t.name || t.grouping}</p>
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+                                      0 stock — cannot issue
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <p className="text-center">
+                              Use a tool with Qty In &gt; 0, or create one with Tot Qty ≥ 1. Live stock:{" "}
+                              <button
+                                type="button"
+                                className="font-mono font-semibold text-[var(--primary)] underline"
+                                onClick={() => {
+                                  setSearchVal("OTH_J-0001");
+                                  setShowSearchDropdown(true);
+                                  void fetchToolsForSearch("OTH_J-0001");
+                                }}
+                              >
+                                OTH_J-0001
+                              </button>
+                            </p>
+                          </div>
                         )}
                       </div>
                     )}
@@ -470,13 +984,27 @@ export default function IssueToolPage() {
                     </div>
                   )}
 
-                  {/* Line list table */}
+                  {/* Issue List — ERP columns */}
                   <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Tool No", "Name", "Requested Qty", "Available Qty", ""].map((col) => (
-                            <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4">
+                          {[
+                            "#",
+                            "Item No",
+                            "Description",
+                            "Qty",
+                            "Avl",
+                            "Price",
+                            "Amount",
+                            "Machine",
+                            "Part No",
+                            "Process",
+                            "Ret.?",
+                            "Sl.No",
+                            "",
+                          ].map((col) => (
+                            <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                               {col}
                             </th>
                           ))}
@@ -485,20 +1013,112 @@ export default function IssueToolPage() {
                       <tbody className="divide-y divide-[var(--border-main)]">
                         {stagedLines.map((line, idx) => (
                           <tr key={idx}>
-                            <td className="py-2.5 px-4 font-mono text-xs text-[var(--text-secondary)] font-semibold">{line.toolOrGaugeNo}</td>
-                            <td className="py-2.5 px-4 font-medium text-[var(--text-primary)]">{line.toolName}</td>
-                            <td className="py-2.5 px-4">
+                            <td className="py-2 px-3 text-xs text-[var(--text-muted)]">{idx + 1}</td>
+                            <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
+                            <td className="py-2 px-3 text-xs">{line.toolName}</td>
+                            <td className="py-2 px-3">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  aria-label="Decrease qty"
+                                  disabled={line.issueQty <= 1}
+                                  onClick={() => bumpQty(idx, -1)}
+                                  className="w-6 h-6 rounded-md border border-[var(--border-main)] text-xs font-bold disabled:opacity-40 hover:bg-[var(--bg-hover)]"
+                                >
+                                  −
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={line.maintainsSerial ? undefined : line.qtyAvailable}
+                                  value={line.issueQty}
+                                  onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
+                                  className="w-14 text-center text-xs border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] font-mono font-semibold"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="Increase qty"
+                                  disabled={!line.maintainsSerial && line.issueQty >= line.qtyAvailable}
+                                  onClick={() => bumpQty(idx, 1)}
+                                  className="w-6 h-6 rounded-md border border-[var(--border-main)] text-xs font-bold disabled:opacity-40 hover:bg-[var(--bg-hover)]"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 font-mono text-xs text-[var(--color-success-text)] font-bold">
+                              {line.maintainsSerial ? "Serial" : line.qtyAvailable}
+                            </td>
+                            <td className="py-2 px-3">
                               <input
                                 type="number"
-                                min={1}
-                                max={line.qtyAvailable}
-                                value={line.issueQty}
-                                onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
-                                className="w-20 text-center text-sm border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-mono font-semibold"
+                                min={0}
+                                step="0.01"
+                                value={line.price}
+                                onChange={(e) => patchLine(idx, { price: Number(e.target.value) || 0 })}
+                                className="w-20 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
                               />
                             </td>
-                            <td className="py-2.5 px-4 font-mono text-xs text-[var(--color-success-text)] font-bold">{line.qtyAvailable}</td>
-                            <td className="py-2.5 px-4 text-right">
+                            <td className="py-2 px-3 font-mono text-xs">
+                              {(line.price * line.issueQty).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-3">
+                              {line.machineOptions.length > 0 ? (
+                                <select
+                                  value={line.machine}
+                                  onChange={(e) => patchLine(idx, { machine: e.target.value })}
+                                  className="min-w-[100px] text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                >
+                                  <option value="">-SELECT-</option>
+                                  {line.machineOptions.map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  value={line.machine}
+                                  onChange={(e) => patchLine(idx, { machine: e.target.value })}
+                                  placeholder="MAC"
+                                  className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                  maxLength={50}
+                                />
+                              )}
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                value={line.partNo}
+                                onChange={(e) => patchLine(idx, { partNo: e.target.value })}
+                                className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                maxLength={50}
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                value={line.processName}
+                                onChange={(e) => patchLine(idx, { processName: e.target.value })}
+                                className="w-28 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
+                                maxLength={100}
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <select
+                                value={line.returnable}
+                                onChange={(e) => patchLine(idx, { returnable: e.target.value })}
+                                className="text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
+                              >
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                value={line.serialNo}
+                                onChange={(e) => patchLine(idx, { serialNo: e.target.value })}
+                                className="w-16 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                placeholder={line.maintainsSerial ? "Req" : "—"}
+                              />
+                            </td>
+                            <td className="py-2 px-3 text-right">
                               <button
                                 type="button"
                                 onClick={() => handleRemoveLine(idx)}
@@ -511,8 +1131,8 @@ export default function IssueToolPage() {
                         ))}
                         {stagedLines.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
-                              No staged tool lines yet. Search and select above to add.
+                            <td colSpan={13} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
+                              No records found. Search Tools Or Gauge No above to add.
                             </td>
                           </tr>
                         )}
@@ -583,7 +1203,7 @@ export default function IssueToolPage() {
                         <div className="text-right shrink-0">
                           <span className="font-bold font-mono text-[var(--text-primary)]">{l.issueQty}</span>
                           <span className="text-[var(--text-muted)]"> / </span>
-                          <span className="font-mono text-[var(--text-muted)]">{getAvailableStock(l.toolOrGaugeNo)} avail</span>
+                          <span className="font-mono text-[var(--text-muted)]">{l.qtyAvailable} stock</span>
                         </div>
                       </div>
                     ))}

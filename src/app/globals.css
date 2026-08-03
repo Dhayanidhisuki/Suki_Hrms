@@ -4,7 +4,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-sans: "Poppins", system-ui, sans-serif;
 
   --color-primary-50: var(--primary-light);
   --color-primary-100: var(--primary-light);
@@ -40,10 +40,31 @@
 }
 
 body {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Poppins", system-ui, sans-serif;
   background-color: var(--bg-app);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Typography: headings stay medium, numbers stay normal weight */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 500 !important;
+}
+
+.font-mono {
+  font-weight: 400 !important;
+}
+
+/*
+ * Data tables: keep every cell value on one line.
+ * Content must not wrap mid-value (dates, prefixes, codes).
+ * Wide tables scroll horizontally via their overflow-auto wrappers.
+ * Opt out per-cell with Tailwind `whitespace-normal` if needed.
+ */
+table th,
+table td {
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 /* Scrollbar */
@@ -60,4 +81,101 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Logo spinner */
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.logo-spin {
+  animation: logo-spin 1.6s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.logo-spin-paused {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-spin {
+    animation: none;
+  }
+}
+
+/* Success overlay */
+@keyframes success-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes success-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes success-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes success-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.success-overlay-enter {
+  animation: success-overlay-in 180ms ease-out both;
+}
+
+.success-overlay-leave {
+  animation: success-overlay-out 200ms ease-in both;
+  pointer-events: none;
+}
+
+.success-overlay-enter .success-overlay-card {
+  animation: success-card-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.success-overlay-enter .success-overlay-check {
+  animation: success-check-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .success-overlay-enter,
+  .success-overlay-leave,
+  .success-overlay-enter .success-overlay-card,
+  .success-overlay-enter .success-overlay-check {
+    animation: none;
+  }
 }

@@ -11,9 +11,17 @@ export async function GET() {
 
   const items = await prisma.toolsPoReceive.findMany({
     orderBy: { creatDt: "desc" },
-    include: { lines: true, supplier: true },
+    take: 100,
+    include: {
+      supplier: true,
+      lines: {
+        include: {
+          tool: { select: { toolOrGaugeNo: true, name: true } },
+        },
+      },
+    },
   });
-  return NextResponse.json({ items });
+  return NextResponse.json({ items, total: items.length });
 }
 
 export async function POST(req: NextRequest) {

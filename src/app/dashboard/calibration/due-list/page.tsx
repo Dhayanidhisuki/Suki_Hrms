@@ -1,17 +1,24 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
+import { History, CalendarClock, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { apiGet } from "@/lib/apiClient";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface Tool {
   refNo: number | null;
   toolOrGaugeNo: string;
   name: string | null;
   grouping: string | null;
+  type?: string | null;
+  frequency?: string | null;
+  cDate?: string | null;
   nextCalibrationDate: string | null;
   status: string | null;
 }
@@ -65,9 +72,64 @@ export default function CalibrationDueListPage() {
               Calibration Due List
             </h1>
             <p className="text-sm text-[var(--text-muted)] mt-0.5">
-              Tools/gauges due or overdue for calibration (GAUGEANDTOOLS)
+              Tools/gauges due or overdue for calibration (issue line NXT_CALIB_DATE / CALIB_DUE_DATE)
             </p>
           </div>
+
+          {/* ── Module KPI Cards ── */}
+          <ModuleKpiRow
+            items={[
+              {
+                id: "total-due",
+                label: "Total Due Tools",
+                value: tools.length,
+                subtext: "Within alert window",
+                icon: History,
+                iconBg: "bg-[var(--primary-light)]",
+                iconColor: "text-[var(--primary)]",
+                badge: { label: "Due", type: "info" },
+              },
+              {
+                id: "overdue-count",
+                label: "Currently Overdue",
+                value: tools.filter((t) => {
+                  const d = daysUntil(t.nextCalibrationDate);
+                  return d !== null && d < 0;
+                }).length,
+                subtext: "Past calibration date",
+                icon: ShieldAlert,
+                iconBg: "bg-amber-50 dark:bg-amber-950/30",
+                iconColor: "text-amber-600 dark:text-amber-400",
+                badge: { label: "Overdue", type: "warning" },
+              },
+              {
+                id: "due-7-days",
+                label: "Due in 7 Days",
+                value: tools.filter((t) => {
+                  const d = daysUntil(t.nextCalibrationDate);
+                  return d !== null && d >= 0 && d <= 7;
+                }).length,
+                subtext: "Immediate attention required",
+                icon: CalendarClock,
+                iconBg: "bg-blue-50 dark:bg-blue-950/30",
+                iconColor: "text-blue-600 dark:text-blue-400",
+                badge: { label: "7 Days", type: "info" },
+              },
+              {
+                id: "due-30-days",
+                label: "Due in 30 Days",
+                value: tools.filter((t) => {
+                  const d = daysUntil(t.nextCalibrationDate);
+                  return d !== null && d >= 0 && d <= 30;
+                }).length,
+                subtext: "Upcoming this month",
+                icon: CheckCircle2,
+                iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
+                iconColor: "text-emerald-600 dark:text-emerald-400",
+                badge: { label: "30 Days", type: "success" },
+              },
+            ]}
+          />
 
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
             <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1 mb-4 w-fit">
@@ -94,10 +156,10 @@ export default function CalibrationDueListPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                    {["Tool No", "Name", "Grouping", "Next Due", "Days Left"].map(
+                    {["Tool No", "Name", "Grouping", "Type", "Freq", "Last Calib", "Status", "Next Due", "Days Left", ""].map(
                       (col) => (
                         <th
-                          key={col}
+                          key={col || "action"}
                           className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0"
                         >
                           {col}
@@ -114,6 +176,12 @@ export default function CalibrationDueListPage() {
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{t.toolOrGaugeNo}</td>
                         <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{t.name}</td>
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{t.grouping ?? "—"}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{t.type ?? "—"}</td>
+                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">{t.frequency ? `${t.frequency} mo` : "—"}</td>
+                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">
+                          {t.cDate ? t.cDate.split("T")[0] : "—"}
+                        </td>
+                        <td className="py-3 px-3"><StatusBadge status={t.status} /></td>
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-muted)]">
                           {t.nextCalibrationDate ? t.nextCalibrationDate.split("T")[0] : "—"}
                         </td>
@@ -133,12 +201,20 @@ export default function CalibrationDueListPage() {
                               : `${t.daysLeft}d left`}
                           </span>
                         </td>
+                        <td className="py-3 px-3 text-right">
+                          <Link
+                            href={`/dashboard/calibration/issue?tool=${encodeURIComponent(t.toolOrGaugeNo)}`}
+                            className="text-xs font-semibold text-[var(--primary)] hover:underline whitespace-nowrap"
+                          >
+                            Issue now
+                          </Link>
+                        </td>
                       </tr>
                     );
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                      <td colSpan={10} className="py-8 text-center text-sm text-[var(--text-muted)]">
                         No tools match this filter.
                       </td>
                     </tr>

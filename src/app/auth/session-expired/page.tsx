@@ -1,28 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { LogIn, ShieldAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ShieldAlert } from "lucide-react";
 
 export default function SessionExpiredPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-      <div className="max-w-sm w-full bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 flex items-center justify-center mb-5">
-          <ShieldAlert className="w-7 h-7 text-amber-500" />
+    <div className="min-h-screen bg-[var(--bg-app,#0D1117)] flex items-center justify-center px-4">
+      <div className="max-w-md w-full bg-[var(--bg-card,#161B22)] border border-[var(--border-main,#30363d)] rounded-2xl p-8 text-center shadow-xl">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-400 mb-4">
+          <ShieldAlert className="w-7 h-7" />
         </div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-          Session Expired
+        <h1 className="text-xl font-bold text-[var(--text-primary,#fff)] tracking-tight">
+          Session expired
         </h1>
-        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-          Your session has ended due to inactivity. Please sign in again to
-          continue using SUKI ERP Tools Management.
+        <p className="text-sm text-[var(--text-muted,#94a3b8)] mt-2">
+          Your sign-in session is no longer valid. Please log in again to continue.
         </p>
-        <Link href="/" id="session-expired-signin-btn" className="mt-6 block w-full">
-          <Button variant="primary" className="w-full">
-            <LogIn className="w-4 h-4" />
-            Sign In Again
-          </Button>
+        <Link
+          href="/login"
+          className="mt-6 inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-sm font-semibold bg-[var(--primary,#2563eb)] text-white hover:opacity-90 transition-opacity"
+        >
+          Back to login
         </Link>
       </div>
     </div>

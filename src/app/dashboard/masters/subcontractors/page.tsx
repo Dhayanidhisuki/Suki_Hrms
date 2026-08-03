@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Edit2, Trash2, X, Check, Minus } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, Check, Minus, Eye } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
+import { Building2, Home, Store, FileText } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 export interface Subcontractor {
-  id: number;
+  id: string;
   subCode: string;
   subName: string;
   natureOfWork: string;
@@ -25,8 +28,10 @@ export interface Subcontractor {
 }
 
 export default function SubcontractorsPage() {
+  const { showSuccess } = useSuccessOverlay();
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDetail, setSelectedDetail] = useState<Subcontractor | null>(null);
   const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Filters
@@ -53,12 +58,21 @@ export default function SubcontractorsPage() {
 
   const loadSubcontractors = useCallback(async () => {
     setLoading(true);
+    setBannerMsg(null);
     const params = new URLSearchParams();
     if (query) params.set("search", query);
     if (statusFilter !== "All") params.set("status", statusFilter);
 
-    const res = await apiGet<{ items: Subcontractor[] }>(`/api/subcontractors?${params}`);
-    if (res.data?.items) setSubcontractors(res.data.items);
+    const res = await apiGet<{ items: Subcontractor[]; error?: string }>(`/api/subcontractors?${params}`);
+    if (res.error) {
+      setSubcontractors([]);
+      setBannerMsg({
+        type: "error",
+        text: typeof res.error.message === "string" ? res.error.message : "Failed to load subcontractors",
+      });
+    } else if (res.data?.items) {
+      setSubcontractors(res.data.items);
+    }
     setLoading(false);
   }, [query, statusFilter]);
 
@@ -96,7 +110,7 @@ export default function SubcontractorsPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     setBannerMsg(null);
     const res = await apiDelete(`/api/subcontractors/${id}`);
     if (res.error) {
@@ -145,6 +159,11 @@ export default function SubcontractorsPage() {
       type: "success",
       text: editSub ? "Subcontractor updated successfully." : "Subcontractor created successfully.",
     });
+    showSuccess({
+      title: "Record saved",
+      message: editSub ? "Subcontractor updated successfully." : "Subcontractor created successfully.",
+      detail: subName.trim() || undefined,
+    });
     setIsOpen(false);
     loadSubcontractors();
   };
@@ -185,6 +204,52 @@ export default function SubcontractorsPage() {
               </Button>
             </RoleGate>
           </div>
+
+          {/* ── Module KPI Cards ── */}
+          <ModuleKpiRow
+            items={[
+              {
+                id: "total-subcontractors",
+                label: "Total Subcontractors",
+                value: subcontractors.length,
+                subtext: "Job-work & vendor partners",
+                icon: Building2,
+                iconBg: "bg-[var(--primary-light)]",
+                iconColor: "text-[var(--primary)]",
+                badge: { label: "Vendors", type: "info" },
+              },
+              {
+                id: "inhouse-vendors",
+                label: "In-House Vendors",
+                value: subcontractors.filter((s) => s.isInhouse).length,
+                subtext: "Internal job-work units",
+                icon: Home,
+                iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
+                iconColor: "text-emerald-600 dark:text-emerald-400",
+                badge: { label: "In-House", type: "success" },
+              },
+              {
+                id: "store-vendors",
+                label: "Store Vendors",
+                value: subcontractors.filter((s) => s.isStoreVendor).length,
+                subtext: "Store supply partners",
+                icon: Store,
+                iconBg: "bg-blue-50 dark:bg-blue-950/30",
+                iconColor: "text-blue-600 dark:text-blue-400",
+                badge: { label: "Store", type: "info" },
+              },
+              {
+                id: "dc-vendors",
+                label: "DC Issue Vendors",
+                value: subcontractors.filter((s) => s.isIssueDC).length,
+                subtext: "DC issue authorized",
+                icon: FileText,
+                iconBg: "bg-amber-50 dark:bg-amber-950/30",
+                iconColor: "text-amber-600 dark:text-amber-400",
+                badge: { label: "DC Slip", type: "warning" },
+              },
+            ]}
+          />
 
           {bannerMsg && (
             <div
@@ -269,8 +334,13 @@ export default function SubcontractorsPage() {
                     <tr key={s.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                       <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{s.subCode}</td>
                       <td className="py-3 px-3">
-                        <p className="font-medium text-[var(--text-primary)]">{s.subName}</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">{s.address}</p>
+                        <button
+                          onClick={() => setSelectedDetail(s)}
+                          className="text-left group cursor-pointer"
+                        >
+                          <p className="font-semibold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors">{s.subName}</p>
+                          <p className="text-[11px] text-[var(--text-muted)]">{s.address || "No address specified"}</p>
+                        </button>
                       </td>
                       <td className="py-3 px-3 text-[var(--text-secondary)]">{s.natureOfWork}</td>
                       <td className="py-3 px-3">
@@ -291,26 +361,33 @@ export default function SubcontractorsPage() {
                         </span>
                       </td>
                       <td className="py-3 px-3">
-                        <RoleGate permission="canEditMaster">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedDetail(s)}
+                            title="View Details"
+                            className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <RoleGate permission="canEditMaster">
                             <button
-                              id={`subcontractor-edit-btn-${s.id}`}
+                              id={`subcon-edit-btn-${s.id}`}
                               onClick={() => handleOpenEdit(s)}
-                              className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                              className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                               title="Edit Subcontractor"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              id={`subcontractor-delete-btn-${s.id}`}
+                              id={`subcon-delete-btn-${s.id}`}
                               onClick={() => handleDelete(s.id)}
-                              className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors"
+                              className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors cursor-pointer"
                               title="Delete Subcontractor"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </div>
-                        </RoleGate>
+                          </RoleGate>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -492,6 +569,95 @@ export default function SubcontractorsPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ── View Detail Modal ── */}
+      {selectedDetail && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] shadow-2xl overflow-hidden animate-fade-in">
+            <div className="px-6 py-4 border-b border-[var(--border-main)] flex items-center justify-between bg-[var(--bg-subtle)]">
+              <div>
+                <span className="font-mono text-xs font-bold text-[var(--primary)] bg-[var(--primary-light)] px-2 py-0.5 rounded">
+                  {selectedDetail.subCode}
+                </span>
+                <h2 className="text-lg font-bold text-[var(--text-primary)] mt-1">
+                  {selectedDetail.subName}
+                </h2>
+              </div>
+              <button
+                onClick={() => setSelectedDetail(null)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-sm max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4 bg-[var(--bg-subtle)] p-4 rounded-xl border border-[var(--border-main)]">
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Subcontractor Code</p>
+                  <p className="font-mono font-bold text-[var(--text-primary)] mt-1">{selectedDetail.subCode}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Subcontractor Name</p>
+                  <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedDetail.subName}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Nature of Work</p>
+                  <p className="font-medium text-[var(--text-primary)] mt-1">{selectedDetail.natureOfWork || "General"}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Address & Location</h3>
+                <div className="p-4 border border-[var(--border-main)] rounded-xl">
+                  <p className="text-sm text-[var(--text-primary)]">{selectedDetail.address || "No address specified"}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Classification & Flags</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">In-House Unit</p>
+                    <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedDetail.isInhouse ? "Yes" : "No"}</p>
+                  </div>
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Store Vendor</p>
+                    <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedDetail.isStoreVendor ? "Yes" : "No"}</p>
+                  </div>
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Status</p>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary)] mt-1">
+                      {selectedDetail.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-[var(--border-main)] bg-[var(--bg-subtle)] flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSelectedDetail(null)}
+                className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Close
+              </button>
+              <RoleGate permission="canEditMaster">
+                <Button
+                  onClick={() => {
+                    const item = selectedDetail;
+                    setSelectedDetail(null);
+                    handleOpenEdit(item);
+                  }}
+                  variant="primary"
+                  size="sm"
+                >
+                  <Edit2 className="w-4 h-4" /> Edit Subcontractor
+                </Button>
+              </RoleGate>
+            </div>
           </div>
         </div>
       )}

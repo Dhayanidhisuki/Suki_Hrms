@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export default function PageHeader() {
@@ -17,10 +18,12 @@ export default function PageHeader() {
       </div>
 
       {/* ── Primary CTA ── */}
-      <Button id="page-add-tool-btn" variant="primary" className="group">
-        <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-        Add Tool
-      </Button>
+      <Link href="/dashboard/masters/tools?action=add">
+        <Button id="page-add-tool-btn" variant="primary" className="group">
+          <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+          Add Tool
+        </Button>
+      </Link>
     </div>
   );
 }

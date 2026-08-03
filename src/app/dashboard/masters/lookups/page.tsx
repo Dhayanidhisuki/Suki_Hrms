@@ -8,6 +8,7 @@ import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { useSuccessOverlay } from "@/components/SuccessOverlay";
 
 type Tab = "Tool Types" | "Gauge Types" | "Tools Groups" | "Tools Subgroups" | "Calib Frequency";
 
@@ -53,6 +54,7 @@ interface CalibFrequency {
 const tabs: Tab[] = ["Tool Types", "Gauge Types", "Tools Groups", "Tools Subgroups", "Calib Frequency"];
 
 export default function LookupsPage() {
+  const { showSuccess } = useSuccessOverlay();
   const [tab, setTab] = useState<Tab>("Tool Types");
 
   // Reactivity states
@@ -94,17 +96,73 @@ export default function LookupsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     const [tt, gt, gr, sg, cf] = await Promise.all([
-      apiGet<{ items: ToolType[] }>("/api/lookups/tool-types"),
-      apiGet<{ items: GaugeType[] }>("/api/lookups/gauge-types"),
-      apiGet<{ items: ToolsGroup[] }>("/api/lookups/groups"),
-      apiGet<{ items: ToolsSubgroup[] }>("/api/lookups/subgroups"),
-      apiGet<{ items: CalibFrequency[] }>("/api/lookups/calib-frequency"),
+      apiGet<{ items: any[] }>("/api/lookups/tool-types"),
+      apiGet<{ items: any[] }>("/api/lookups/gauge-types"),
+      apiGet<{ items: any[] }>("/api/lookups/groups"),
+      apiGet<{ items: any[] }>("/api/lookups/subgroups"),
+      apiGet<{ items: any[] }>("/api/lookups/calib-frequency"),
     ]);
-    if (tt.data?.items) setToolTypes(tt.data.items);
-    if (gt.data?.items) setGaugeTypes(gt.data.items);
-    if (gr.data?.items) setToolsGroups(gr.data.items);
-    if (sg.data?.items) setToolsSubgroups(sg.data.items);
-    if (cf.data?.items) setCalibFreqs(cf.data.items);
+
+    if (tt.data?.items) {
+      setToolTypes(
+        tt.data.items.map((item: any) => ({
+          id: item.id ?? item.rowId ?? Math.random(),
+          code: item.code ?? item.prefixItemNo ?? `TT-${item.rowId || item.id}`,
+          name: item.name ?? item.typeOfTools ?? "Unnamed Tool Type",
+          description: item.description ?? (item.isAutoGenCd ? `Auto Gen: ${item.isAutoGenCd}` : null),
+        }))
+      );
+    }
+    if (gt.data?.items) {
+      setGaugeTypes(
+        gt.data.items.map((item: any) => ({
+          id: item.id ?? item.rowId ?? Math.random(),
+          code: item.code ?? `GT-${item.rowId || item.id}`,
+          name: item.name ?? item.typeOfGauge ?? "Unnamed Gauge Type",
+          description: item.description ?? null,
+        }))
+      );
+    }
+    if (gr.data?.items) {
+      setToolsGroups(
+        gr.data.items.map((item: any) => ({
+          id: item.id ?? item.rowId ?? Math.random(),
+          code: item.code ?? item.prefixToolsNo ?? `GRP-${item.rowId || item.id}`,
+          name: item.name ?? item.otherType ?? "Unnamed Group",
+          prefixToolsNo: item.prefixToolsNo ?? item.code,
+          poPrefix: item.poPrefix,
+          grnPrefix: item.grnPrefix,
+          indentPrefix: item.indentPrefix,
+        }))
+      );
+    }
+    if (sg.data?.items) {
+      setToolsSubgroups(
+        sg.data.items.map((item: any) => ({
+          id: item.id ?? item.rowId ?? Math.random(),
+          code: item.code ?? item.prefixToolsNo ?? `SUB-${item.rowId || item.id}`,
+          name: item.name ?? item.qmsOtherTypeOfTools ?? "Unnamed Subgroup",
+          refGroupId: item.refGroupId,
+          group: item.group
+            ? {
+                id: item.group.id ?? item.group.rowId,
+                code: item.group.code ?? item.group.prefixToolsNo,
+                name: item.group.name ?? item.group.otherType,
+              }
+            : null,
+        }))
+      );
+    }
+    if (cf.data?.items) {
+      setCalibFreqs(
+        cf.data.items.map((item: any) => ({
+          id: item.id ?? item.rowId ?? Math.random(),
+          prodToleranceMin: item.prodToleranceMin,
+          prodToleranceMax: item.prodToleranceMax,
+          calibFrequency: item.calibFrequency,
+        }))
+      );
+    }
     setLoading(false);
   }, []);
 
@@ -133,6 +191,11 @@ export default function LookupsPage() {
     }
 
     setBannerMsg({ type: "success", text: `${tab.slice(0, -1)} added successfully.` });
+    showSuccess({
+      title: "Record saved",
+      message: `${tab.slice(0, -1)} added successfully.`,
+      detail: inlineName.trim() || inlineCode.trim() || undefined,
+    });
     setIsInlineAdding(false);
     loadAll();
   };
@@ -236,6 +299,10 @@ export default function LookupsPage() {
     }
 
     setBannerMsg({ type: "success", text: "Calibration frequency added." });
+    showSuccess({
+      title: "Record saved",
+      message: "Calibration frequency added successfully.",
+    });
     setCfAdding(false);
     setCfMin(""); setCfMax(""); setCfFreq("");
     loadAll();
@@ -285,6 +352,11 @@ export default function LookupsPage() {
       }
 
       setBannerMsg({ type: "success", text: editGroup ? "Group updated." : "Group created." });
+      showSuccess({
+        title: "Record saved",
+        message: editGroup ? "Tools group updated successfully." : "Tools group created successfully.",
+        detail: groupName.trim() || groupCode.trim() || undefined,
+      });
       setIsSlideOpen(false);
       loadAll();
     } else {
@@ -315,6 +387,13 @@ export default function LookupsPage() {
       }
 
       setBannerMsg({ type: "success", text: editSubgroup ? "Subgroup updated." : "Subgroup created." });
+      showSuccess({
+        title: "Record saved",
+        message: editSubgroup
+          ? "Tools subgroup updated successfully."
+          : "Tools subgroup created successfully.",
+        detail: subName.trim() || subCode.trim() || undefined,
+      });
       setIsSlideOpen(false);
       loadAll();
     }

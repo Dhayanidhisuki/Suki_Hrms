@@ -63,8 +63,13 @@ export async function POST(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  // TOOLS_SPECIFICATION.ROW_ID is not identity in the ERP DB.
+  const nextRowId =
+    ((await prisma.toolsSpecification.aggregate({ _max: { rowId: true } }))._max.rowId ?? 0) + 1;
+
   const spec = await prisma.toolsSpecification.create({
     data: {
+      rowId: nextRowId,
       toolRefNo: refNo,
       parameter: parsed.data.specName,
       specification: parsed.data.specValue,

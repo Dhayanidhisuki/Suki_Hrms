@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
+import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibReceiveCreateSchema } from "@/lib/validators";
 
 export async function GET() {
@@ -9,11 +10,40 @@ export async function GET() {
   const check = await requireSession(session);
   if (!check.ok) return check.response;
 
-  const items = await prisma.toolsReceiveForCalibration.findMany({
-    orderBy: { creatDt: "desc" },
-    include: { lines: { include: { tool: true } }, calibIssue: true },
-  });
-  return NextResponse.json({ items });
+  try {
+    const items = await prisma.toolsReceiveForCalibration.findMany({
+      orderBy: { creatDt: "desc" },
+      take: 200,
+      include: {
+        lines: { include: { tool: true } },
+        calibIssue: {
+          select: {
+            dcNo: true,
+            receiveName: true,
+            subCode: true,
+            issueDate: true,
+            issueFor: true,
+          },
+        },
+      },
+    });
+
+    // Derive open issue status for UI that still expects calibIssue.status
+    const mapped = items.map((item) => ({
+      ...item,
+      calibIssue: item.calibIssue
+        ? { ...item.calibIssue, status: "CLOSED" }
+        : null,
+    }));
+
+    return NextResponse.json({ items: mapped, total: mapped.length });
+  } catch (error) {
+    console.error("Error fetching calibration receives:", error);
+    return NextResponse.json(
+      { items: [], error: "Failed to load calibration receives" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -33,25 +63,92 @@ export async function POST(req: NextRequest) {
   const { dcNo, receiveDate, lines } = parsed.data;
 
   try {
+    const erpActor = await resolveErpAuditUserId(authCheck.session);
+
+    const issue = await prisma.toolsIssueForCalibration.findUnique({
+      where: { dcNo },
+      include: {
+        inHouseLines: {
+          select: { toolOrGaugeNo: true, status: true, issueQty: true },
+        },
+        receiveHeaders: { select: { recNo: true }, take: 1 },
+      },
+    });
+
+    if (!issue) {
+      return NextResponse.json({ error: `Calibration DC #${dcNo} not found` }, { status: 400 });
+    }
+    if (issue.receiveHeaders.length > 0) {
+      return NextResponse.json(
+        { error: `DC #${dcNo} already has a calibration receive` },
+        { status: 400 }
+      );
+    }
+
+    const openToolNos = new Set(
+      issue.inHouseLines
+        .filter((l) => l.toolOrGaugeNo)
+        .filter((l) => {
+          const s = (l.status ?? "").toUpperCase();
+          return !s || s === "ISSUED" || s === "OPEN" || s === "UNDER CALIBRATION";
+        })
+        .map((l) => l.toolOrGaugeNo as string)
+    );
+
+    for (const line of lines) {
+      if (!openToolNos.has(line.toolOrGaugeNo)) {
+        return NextResponse.json(
+          {
+            error: `Tool ${line.toolOrGaugeNo} is not an open line on DC #${dcNo}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const header = await tx.toolsReceiveForCalibration.create({
         data: {
           dcNo,
           receiveDate: new Date(receiveDate),
-          creatUserIdCd: authCheck.session.userId,
+          status: "Received",
+          creatUserIdCd: erpActor,
+          creatDt: new Date(),
         },
       });
 
       const recNo = header.recNo;
 
       for (const line of lines) {
-        await tx.toolsTransReceiveForCalibration.create({
-          data: {
-            recNo,
+        const tool = await tx.gaugeAndTools.findUnique({
+          where: { toolOrGaugeNo: line.toolOrGaugeNo },
+        });
+
+        // ROW_ID is SQL Server IDENTITY — omit it (Prisma create with stale client
+        // still required rowId; explicit rowId fails with IDENTITY_INSERT OFF).
+        await tx.$executeRaw`
+          INSERT INTO [TOOLS_TRANS_RECEIVE_FOR_CALIBRATION]
+            ([REC_NO], [DC_NO], [TOOL_OR_GAUGE_NO], [DESCRIPTION], [QTY], [PRICE], [CREAT_DT])
+          VALUES (
+            ${recNo},
+            ${dcNo},
+            ${line.toolOrGaugeNo},
+            ${(tool?.description ?? tool?.name)?.slice(0, 50) ?? null},
+            ${line.qty},
+            ${line.price},
+            ${new Date()}
+          )
+        `;
+
+        // Mark matching open issue lines as received (certificate/result still via Results Update)
+        await tx.toolsTransIssueForCalibration.updateMany({
+          where: {
             dcNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
-            qty: line.qty,
-            price: line.price,
+          },
+          data: {
+            status: "Received",
+            calibrationStatus: "Pending",
           },
         });
 
@@ -59,20 +156,15 @@ export async function POST(req: NextRequest) {
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
             status: "Available",
-            lstUpdtUserIdCd: authCheck.session.userId,
+            lstUpdtUserIdCd: erpActor,
           },
         });
       }
 
-      await tx.toolsIssueForCalibration.update({
-        where: { dcNo },
-        data: { status: "CLOSED" },
-      });
-
       return header;
     });
 
-    return NextResponse.json({ ok: true, header: result }, { status: 201 });
+    return NextResponse.json({ ok: true, item: result, header: result }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Transaction failed";
     return NextResponse.json({ error: message }, { status: 400 });

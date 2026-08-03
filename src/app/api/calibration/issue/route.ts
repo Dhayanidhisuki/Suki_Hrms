@@ -2,20 +2,56 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
+import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibIssueCreateSchema } from "@/lib/validators";
+
+function deriveHeaderStatus(item: {
+  receiveHeaders?: { recNo: number }[];
+  inHouseLines?: { resultStatus: string | null; status: string | null }[];
+}): "OPEN" | "PARTIAL" | "CLOSED" {
+  const receives = item.receiveHeaders?.length ?? 0;
+  const lines = item.inHouseLines ?? [];
+  if (receives > 0) return "CLOSED";
+  const done = lines.filter((l) => {
+    const r = String(l.resultStatus ?? "").trim().toUpperCase();
+    return r.length > 0 && r !== "PENDING";
+  }).length;
+  if (done > 0 && done < lines.length) return "PARTIAL";
+  if (done > 0 && lines.length > 0 && done === lines.length) return "CLOSED";
+  return "OPEN";
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
 
-  const statusFilter = req.nextUrl.searchParams.get("status");
-  const items = await prisma.toolsIssueForCalibration.findMany({
-    where: statusFilter ? { status: statusFilter } : {},
-    include: { inHouseLines: { include: { tool: true } } },
-    orderBy: { creatDt: "desc" },
-  });
-  return NextResponse.json({ items });
+  try {
+    const statusFilter = req.nextUrl.searchParams.get("status");
+    const raw = await prisma.toolsIssueForCalibration.findMany({
+      include: {
+        inHouseLines: { include: { tool: true } },
+        receiveHeaders: { select: { recNo: true } },
+      },
+      orderBy: { creatDt: "desc" },
+      take: 200,
+    });
+
+    const items = raw
+      .map((item) => ({
+        ...item,
+        status: deriveHeaderStatus(item),
+      }))
+      .filter((item) => (statusFilter ? item.status === statusFilter : true));
+
+    return NextResponse.json({ items, total: items.length });
+  } catch (error) {
+    console.error("Error fetching calibration issues:", error);
+    return NextResponse.json(
+      { items: [], error: "Failed to load calibration issues" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -32,21 +68,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { receiveName, subCode, issueDate, issueFor, lines } = parsed.data;
+  const { receiveName, subCode, issueDate, issueFor, toolsPoNo, lines } = parsed.data;
 
   try {
+    // CREAT_USER_ID_CD FK → ERP_USER.USER_ID (app username "admin" is not an ERP user)
+    const erpActor = await resolveErpAuditUserId(authCheck.session);
+
     const result = await prisma.$transaction(async (tx) => {
+      const max = await tx.toolsIssueForCalibration.aggregate({ _max: { dcNo: true } });
+      const dcNo = (max._max.dcNo ?? 0) + 1;
+
       const header = await tx.toolsIssueForCalibration.create({
         data: {
-          receiveName,
-          subCode,
+          dcNo,
+          receiveName: receiveName?.slice(0, 25) || null,
+          subCode: subCode?.slice(0, 10) || null,
           issueDate: new Date(issueDate),
-          issueFor,
-          creatUserIdCd: authCheck.session.userId,
+          issueFor: issueFor?.slice(0, 25) || "Calibration",
+          toolsPoNo: toolsPoNo?.slice(0, 20) || null,
+          creatUserIdCd: erpActor,
+          creatDt: new Date(),
         },
       });
 
-      const dcNo = header.dcNo;
+      let nextRowId =
+        ((await tx.toolsTransIssueForCalibration.aggregate({ _max: { rowId: true } }))
+          ._max.rowId ?? 0) + 1;
 
       for (const line of lines) {
         const tool = await tx.gaugeAndTools.findUnique({
@@ -55,10 +102,19 @@ export async function POST(req: NextRequest) {
 
         await tx.toolsTransIssueForCalibration.create({
           data: {
+            rowId: nextRowId++,
             dcNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
             issueQty: line.issueQty,
-            creatUserIdCd: authCheck.session.userId,
+            serialNo: line.serialNo ?? null,
+            grouping: tool?.grouping?.slice(0, 25) ?? null,
+            calibDueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
+            dueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
+            status: "ISSUE FOR CALIBRATION",
+            calibrationStatus: "Pending",
+            toolRefNo: tool?.refNo ?? null,
+            creatUserIdCd: erpActor,
+            creatDt: new Date(),
           },
         });
 
@@ -66,7 +122,7 @@ export async function POST(req: NextRequest) {
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
             status: "Under Calibration",
-            lstUpdtUserIdCd: authCheck.session.userId,
+            lstUpdtUserIdCd: erpActor,
           },
         });
       }
@@ -74,7 +130,10 @@ export async function POST(req: NextRequest) {
       return header;
     });
 
-    return NextResponse.json({ ok: true, header: result }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, item: { ...result, status: "OPEN" }, header: result },
+      { status: 201 }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Transaction failed";
     return NextResponse.json({ error: message }, { status: 400 });

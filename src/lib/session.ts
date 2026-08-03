@@ -1,6 +1,6 @@
-import { getIronSession, type IronSession } from "iron-session";
 import { cookies } from "next/headers";
-import type { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { AUTH_COOKIE_NAME, verifyAuthToken } from "./authToken";
 
 export interface SessionData {
   userId: string;
@@ -9,103 +9,47 @@ export interface SessionData {
   roleName: string;
   addRoleName: string | null;
   isLoggedIn: boolean;
+  /** Numeric TOOLS_APP_USER.id when authenticated via JWT */
+  userDbId: number | null;
 }
 
-const sessionOptions = {
-  password: process.env.SESSION_SECRET as string,
-  cookieName: process.env.SESSION_COOKIE_NAME ?? "suki_tools_session",
-  ttl: Number(process.env.SESSION_TTL_SECONDS ?? 28800),
-  cookieOptions: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-  },
-};
+function emptySession(): SessionData {
+  return {
+    userId: "",
+    name: "",
+    empCd: null,
+    roleName: "",
+    addRoleName: null,
+    isLoggedIn: false,
+    userDbId: null,
+  };
+}
 
-// Use in Server Components and Route Handlers
-export async function getSession(): Promise<IronSession<SessionData>> {
+function sessionFromToken(token: string | undefined): SessionData {
+  if (!token) return emptySession();
+  const payload = verifyAuthToken(token);
+  if (!payload) return emptySession();
+  return {
+    userId: payload.username,
+    name: payload.name,
+    empCd: null,
+    roleName: payload.role,
+    addRoleName: null,
+    isLoggedIn: true,
+    userDbId: payload.sub,
+  };
+}
+
+/** Read authenticated session from the JWT auth cookie (Node route handlers). */
+export async function getSession(): Promise<SessionData> {
   const cookieStore = await cookies();
-  return getIronSession<SessionData>(cookieStore, sessionOptions);
+  return sessionFromToken(cookieStore.get(AUTH_COOKIE_NAME)?.value);
 }
 
-// Use in middleware
-export async function getSessionFromRequest(
-  req: NextRequest,
-  res: NextResponse
-): Promise<IronSession<SessionData>> {
-  return getIronSession<SessionData>(req, res, sessionOptions);
+/** Read authenticated session from a request cookie jar (middleware / edge-adjacent). */
+export async function getSessionFromRequest(req: NextRequest): Promise<SessionData> {
+  return sessionFromToken(req.cookies.get(AUTH_COOKIE_NAME)?.value);
 }
 
-// Role permission matrix — single source of truth for backend checks
-export type UserRole =
-  | "Tools Admin"
-  | "Store Keeper"
-  | "Calibration Engineer"
-  | "Purchase Coordinator"
-  | "Viewer";
-
-export const rolePermissions: Record<
-  string,
-  {
-    canApproveSupplier: boolean;
-    canCreateIssue: boolean;
-    canReceiveTool: boolean;
-    canLogConsumption: boolean;
-    canManageCalibration: boolean;
-    canRaisePO: boolean;
-    canEditMaster: boolean;
-    canDeleteMaster: boolean;
-  }
-> = {
-  "Tools Admin": {
-    canApproveSupplier: true,
-    canCreateIssue: true,
-    canReceiveTool: true,
-    canLogConsumption: true,
-    canManageCalibration: true,
-    canRaisePO: true,
-    canEditMaster: true,
-    canDeleteMaster: true,
-  },
-  "Store Keeper": {
-    canApproveSupplier: false,
-    canCreateIssue: true,
-    canReceiveTool: true,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  "Calibration Engineer": {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: true,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  "Purchase Coordinator": {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: true,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-  Viewer: {
-    canApproveSupplier: false,
-    canCreateIssue: false,
-    canReceiveTool: false,
-    canLogConsumption: false,
-    canManageCalibration: false,
-    canRaisePO: false,
-    canEditMaster: false,
-    canDeleteMaster: false,
-  },
-};
+// Re-export role matrix for server callers
+export { rolePermissions, type UserRole } from "./rolePermissions";

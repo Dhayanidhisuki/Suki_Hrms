@@ -1,0 +1,95 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
+import { requireSession } from "@/lib/auth";
+import { buildCalibDcPdfBuffer } from "@/lib/calibDcPdf";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  const check = await requireSession(session);
+  if (!check.ok) return check.response;
+
+  const { id } = await params;
+  const dcNo = Number(id);
+  if (!Number.isFinite(dcNo) || dcNo < 1) {
+    return NextResponse.json({ error: "Invalid DC number" }, { status: 400 });
+  }
+
+  try {
+    const issue = await prisma.toolsIssueForCalibration.findUnique({
+      where: { dcNo },
+      include: {
+        inHouseLines: { include: { tool: true }, orderBy: { rowId: "asc" } },
+        receiveHeaders: { select: { recNo: true } },
+      },
+    });
+
+    if (!issue) {
+      return NextResponse.json({ error: "Calibration issue not found" }, { status: 404 });
+    }
+
+    const receives = issue.receiveHeaders?.length ?? 0;
+    const lines = issue.inHouseLines ?? [];
+    const done = lines.filter((l) => {
+      const r = String(l.resultStatus ?? "").trim().toUpperCase();
+      return r.length > 0 && r !== "PENDING";
+    }).length;
+    const status =
+      receives > 0 || (done > 0 && done === lines.length)
+        ? "CLOSED"
+        : done > 0
+          ? "PARTIAL"
+          : "OPEN";
+
+    let companyName: string | null = null;
+    try {
+      const companies = await prisma.$queryRawUnsafe<
+        Array<{ COMPANY_NAME?: string; DISP_COMPANY_NAME?: string }>
+      >(`SELECT TOP 1 COMPANY_NAME, DISP_COMPANY_NAME FROM COMPANY_DETAILS ORDER BY COMPANY_NAME`);
+      companyName =
+        companies[0]?.DISP_COMPANY_NAME?.trim() ||
+        companies[0]?.COMPANY_NAME?.trim() ||
+        null;
+    } catch {
+      // company table optional
+    }
+
+    const buffer = buildCalibDcPdfBuffer({
+      dcNo: issue.dcNo,
+      receiveName: issue.receiveName,
+      subCode: issue.subCode,
+      issueDate: issue.issueDate,
+      issueFor: issue.issueFor,
+      toolsPoNo: issue.toolsPoNo,
+      status,
+      companyName,
+      lines: lines.map((l) => ({
+        toolOrGaugeNo: l.toolOrGaugeNo,
+        name: l.tool?.name ?? null,
+        grouping: l.grouping,
+        issueQty: l.issueQty,
+        serialNo: l.serialNo,
+        dueDate: l.dueDate,
+        calibDueDate: l.calibDueDate,
+        status: l.status,
+      })),
+    });
+
+    const filename = `Calibration_DC_${dcNo}.pdf`;
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/calibration/issue/[id]/pdf failed:", err);
+    const message = err instanceof Error ? err.message : "Failed to generate DC PDF";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

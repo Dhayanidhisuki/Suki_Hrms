@@ -24,5 +24,15 @@ export async function GET(
     return NextResponse.json({ error: "Calibration issue not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ issue });
+  const receives = issue.receiveHeaders?.length ?? 0;
+  const lines = issue.inHouseLines ?? [];
+  const done = lines.filter((l) => String(l.resultStatus ?? "").trim()).length;
+  const status =
+    receives > 0 || (done > 0 && done === lines.length)
+      ? "CLOSED"
+      : done > 0
+        ? "PARTIAL"
+        : "OPEN";
+
+  return NextResponse.json({ issue: { ...issue, status } });
 }
