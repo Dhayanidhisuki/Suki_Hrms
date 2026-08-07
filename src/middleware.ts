@@ -8,6 +8,9 @@ function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/static")) return true;
   if (pathname === "/favicon.ico") return true;
+  // Next metadata file conventions (app/icon.*, app/apple-icon.*)
+  if (pathname === "/icon" || pathname.startsWith("/icon/")) return true;
+  if (pathname === "/apple-icon" || pathname.startsWith("/apple-icon/")) return true;
   if (/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(pathname)) return true;
   return false;
 }

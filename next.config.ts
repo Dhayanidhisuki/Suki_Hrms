@@ -7,6 +7,28 @@ const nextConfig: NextConfig = {
   images: {
     dangerouslyAllowSVG: true,
   },
+  async headers() {
+    return [
+      {
+        source: "/favicon.ico",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
+      {
+        source: "/suki-favicon.ico",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
+      {
+        source: "/suki-favicon-32.png",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

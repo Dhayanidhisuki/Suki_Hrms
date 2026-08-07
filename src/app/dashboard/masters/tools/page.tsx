@@ -668,6 +668,11 @@ export default function ToolsMasterPage() {
   const [leavePrompt, setLeavePrompt] = useState<LeaveTarget | null>(null);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [formEntryKey, setFormEntryKey] = useState("");
+  /** Search labels inside Add/Edit tool form */
+  const [formFieldQuery, setFormFieldQuery] = useState("");
+  const [formFieldHitCount, setFormFieldHitCount] = useState(0);
+  const [formFieldActiveIdx, setFormFieldActiveIdx] = useState(0);
+  const formFieldHitsRef = useRef<HTMLElement[]>([]);
 
   // Core
   const [toolOrGaugeNo, setToolOrGaugeNo] = useState("");
@@ -1443,6 +1448,7 @@ export default function ToolsMasterPage() {
     setSelectedTool(null);
     resetForm();
     setFormEntryKey(`create-${Date.now()}`);
+    setFormFieldQuery("");
     setViewState("create");
   }, [resetForm]);
 
@@ -1455,6 +1461,7 @@ export default function ToolsMasterPage() {
     fillForm(t);
     setSelectedTool(t);
     setFormEntryKey(`edit-${t.refNo}`);
+    setFormFieldQuery("");
     setViewState("edit");
   }, []);
 
@@ -1877,6 +1884,142 @@ export default function ToolsMasterPage() {
     toastSuccess("Tool deleted.");
     loadTools();
   };
+
+  const clearFormFieldHighlights = useCallback(() => {
+    const form = document.getElementById("tool-master-form");
+    if (!form) return;
+    form.querySelectorAll("[data-field-hit]").forEach((el) => {
+      el.removeAttribute("data-field-hit");
+      el.classList.remove("tool-field-hit", "tool-field-hit-active");
+    });
+    form.querySelectorAll("[data-field-dim]").forEach((el) => {
+      el.removeAttribute("data-field-dim");
+      el.classList.remove("tool-field-dim");
+    });
+    form.querySelectorAll("[data-section-hit]").forEach((el) => {
+      el.removeAttribute("data-section-hit");
+      el.classList.remove("tool-section-hit");
+    });
+    formFieldHitsRef.current = [];
+  }, []);
+
+  const collectFormFieldHits = useCallback((needle: string): HTMLElement[] => {
+    const form = document.getElementById("tool-master-form");
+    if (!form || !needle) return [];
+    const q = needle.trim().toLowerCase();
+    if (!q) return [];
+
+    const hits: HTMLElement[] = [];
+    const seen = new Set<HTMLElement>();
+
+    form.querySelectorAll("label.form-label").forEach((label) => {
+      const text = (label.textContent || "").replace(/\*/g, "").trim().toLowerCase();
+      if (!text.includes(q)) return;
+      const cell = label.parentElement;
+      if (!(cell instanceof HTMLElement) || seen.has(cell)) return;
+      seen.add(cell);
+      hits.push(cell);
+    });
+
+    // Section headings (e.g. "Calibration", "Stock")
+    form.querySelectorAll(".form-modal-section").forEach((section) => {
+      if (!(section instanceof HTMLElement)) return;
+      const titleEl = section.querySelector("h3");
+      const title = (titleEl?.textContent || "").trim().toLowerCase();
+      if (!title.includes(q)) return;
+      section.setAttribute("data-section-hit", "1");
+      section.classList.add("tool-section-hit");
+    });
+
+    return hits;
+  }, []);
+
+  const applyFormFieldSearch = useCallback(
+    (needle: string, preferredIdx = 0) => {
+      clearFormFieldHighlights();
+      const q = needle.trim();
+      if (!q) {
+        setFormFieldHitCount(0);
+        setFormFieldActiveIdx(0);
+        return;
+      }
+
+      const hits = collectFormFieldHits(q);
+      formFieldHitsRef.current = hits;
+      hits.forEach((cell) => {
+        cell.setAttribute("data-field-hit", "1");
+        cell.classList.add("tool-field-hit");
+      });
+
+      // Dim non-matching field cells that have a label
+      const form = document.getElementById("tool-master-form");
+      form?.querySelectorAll("label.form-label").forEach((label) => {
+        const cell = label.parentElement;
+        if (!(cell instanceof HTMLElement)) return;
+        if (cell.hasAttribute("data-field-hit")) return;
+        cell.setAttribute("data-field-dim", "1");
+        cell.classList.add("tool-field-dim");
+      });
+
+      setFormFieldHitCount(hits.length);
+      if (hits.length === 0) {
+        setFormFieldActiveIdx(0);
+        return;
+      }
+      const idx = ((preferredIdx % hits.length) + hits.length) % hits.length;
+      setFormFieldActiveIdx(idx);
+      hits.forEach((cell, i) => {
+        cell.classList.toggle("tool-field-hit-active", i === idx);
+      });
+      hits[idx]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable = hits[idx]?.querySelector(
+        "input, select, textarea, button"
+      ) as HTMLElement | null;
+      focusable?.focus({ preventScroll: true });
+    },
+    [clearFormFieldHighlights, collectFormFieldHits]
+  );
+
+  const jumpFormFieldHit = (dir: 1 | -1) => {
+    const hits = formFieldHitsRef.current;
+    if (hits.length === 0) return;
+    const next = (formFieldActiveIdx + dir + hits.length) % hits.length;
+    hits.forEach((cell, i) => {
+      cell.classList.toggle("tool-field-hit-active", i === next);
+    });
+    setFormFieldActiveIdx(next);
+    hits[next]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const focusable = hits[next]?.querySelector(
+      "input, select, textarea, button"
+    ) as HTMLElement | null;
+    focusable?.focus({ preventScroll: true });
+  };
+
+  // When searching fields, expand every section then highlight matches
+  useEffect(() => {
+    if (viewState !== "create" && viewState !== "edit") {
+      clearFormFieldHighlights();
+      return;
+    }
+    const q = formFieldQuery.trim();
+    if (!q) {
+      clearFormFieldHighlights();
+      setFormFieldHitCount(0);
+      setFormFieldActiveIdx(0);
+      return;
+    }
+    setFormSectionsOpen({
+      core: true,
+      stock: true,
+      details: true,
+      calibration: true,
+      preventive: true,
+      specs: true,
+      units: true,
+    });
+    const t = window.setTimeout(() => applyFormFieldSearch(q, 0), 60);
+    return () => window.clearTimeout(t);
+  }, [formFieldQuery, viewState, applyFormFieldSearch, clearFormFieldHighlights]);
 
   const scrollToToolSection = (id: string) => {
     requestAnimationFrame(() => {
@@ -3549,15 +3692,76 @@ export default function ToolsMasterPage() {
                 onSubmit={handleSave}
                 className="space-y-6"
               >
-                <div className="flex justify-end -mb-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between -mb-1 sticky top-0 z-20 bg-[var(--bg-card)] py-2 -mx-1 px-1 border-b border-[var(--border-main)]/60">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)] pointer-events-none" />
+                    <input
+                      type="search"
+                      value={formFieldQuery}
+                      onChange={(e) => setFormFieldQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (e.shiftKey) jumpFormFieldHit(-1);
+                          else jumpFormFieldHit(1);
+                        }
+                        if (e.key === "Escape") {
+                          setFormFieldQuery("");
+                        }
+                      }}
+                      placeholder="Search fields (e.g. serial, price, calib)…"
+                      className="w-full h-9 text-sm border border-[var(--border-main)] rounded-lg pl-8 pr-20 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] placeholder:text-[var(--text-muted)]"
+                      aria-label="Search form fields"
+                    />
+                    {formFieldQuery.trim() ? (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                        <span className="text-[10px] font-semibold tabular-nums text-[var(--text-muted)] mr-0.5">
+                          {formFieldHitCount === 0
+                            ? "0"
+                            : `${formFieldActiveIdx + 1}/${formFieldHitCount}`}
+                        </span>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] disabled:opacity-40"
+                          disabled={formFieldHitCount === 0}
+                          onClick={() => jumpFormFieldHit(-1)}
+                          title="Previous match (Shift+Enter)"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] disabled:opacity-40"
+                          disabled={formFieldHitCount === 0}
+                          onClick={() => jumpFormFieldHit(1)}
+                          title="Next match (Enter)"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                          onClick={() => setFormFieldQuery("")}
+                          title="Clear search"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     onClick={toggleAllFormSections}
-                    className="text-xs font-semibold text-[var(--primary)] hover:underline"
+                    className="text-xs font-semibold text-[var(--primary)] hover:underline shrink-0 self-end sm:self-auto"
                   >
                     {allFormSectionsOpen ? "▲ Collapse All Sections" : "▼ Expand All Sections"}
                   </button>
                 </div>
+                {formFieldQuery.trim() && formFieldHitCount === 0 ? (
+                  <p className="text-xs text-[var(--color-warning-text)] -mt-2">
+                    No fields match “{formFieldQuery.trim()}”. Try another keyword.
+                  </p>
+                ) : null}
                 <FormModalSection
                   id="tool-section-core"
                   title="Tool details"

@@ -61,6 +61,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/* Next.js automatically injects icons from metadata and app/icon.svg */}
         <script
           dangerouslySetInnerHTML={{ __html: antiFoucScript }}
         />

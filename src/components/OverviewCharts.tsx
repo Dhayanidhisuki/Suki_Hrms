@@ -95,64 +95,75 @@ type VelocityPoint = {
   issue: number | null;
   receive: number | null;
   trend: number;
+  /** Soft area under the trend line — must differ from `trend` (Recharts series key) */
+  trendArea: number;
 };
 
 const ISSUE_BAR = "#3b82f6";
 const RECEIVE_BAR = "#ec4899";
 const TREND_STROKE = "#94a3b8";
 
+function vp(
+  label: string,
+  issue: number | null,
+  receive: number | null,
+  trend: number
+): VelocityPoint {
+  return { label, issue, receive, trend, trendArea: trend };
+}
+
 const VELOCITY_BY_PERIOD: Record<PeriodId, VelocityPoint[]> = {
   "1d": [
-    { label: "6a", issue: 420, receive: 210, trend: 310 },
-    { label: "9a", issue: 1180, receive: 820, trend: 980 },
-    { label: "12p", issue: 1640, receive: 1320, trend: 1420 },
-    { label: "3p", issue: 1920, receive: 1680, trend: 1700 },
-    { label: "6p", issue: 1480, receive: 1540, trend: 1280 },
-    { label: "9p", issue: 640, receive: 880, trend: 720 },
+    vp("6a", 420, 210, 310),
+    vp("9a", 1180, 820, 980),
+    vp("12p", 1640, 1320, 1420),
+    vp("3p", 1920, 1680, 1700),
+    vp("6p", 1480, 1540, 1280),
+    vp("9p", 640, 880, 720),
   ],
   "1w": [
-    { label: "M", issue: 1820, receive: 1140, trend: 980 },
-    { label: "T", issue: 1240, receive: 860, trend: 1320 },
-    { label: "W", issue: 1560, receive: 1420, trend: 1100 },
-    { label: "T", issue: 980, receive: 740, trend: 860 },
-    { label: "F", issue: 2100, receive: 1280, trend: 1180 },
-    { label: "S", issue: 620, receive: 540, trend: 720 },
-    { label: "S", issue: 380, receive: 290, trend: 540 },
+    vp("M", 1820, 1140, 980),
+    vp("T", 1240, 860, 1320),
+    vp("W", 1560, 1420, 1100),
+    vp("Th", 980, 740, 860),
+    vp("F", 2100, 1280, 1180),
+    vp("Sa", 620, 540, 720),
+    vp("Su", 380, 290, 540),
   ],
   "1m": [
-    { label: "W1", issue: 1680, receive: 920, trend: 880 },
-    { label: "W2", issue: 2140, receive: 1480, trend: 1260 },
-    { label: "W3", issue: 1920, receive: 1360, trend: 1420 },
-    { label: "W4", issue: 2380, receive: 1620, trend: 1580 },
+    vp("W1", 1680, 920, 880),
+    vp("W2", 2140, 1480, 1260),
+    vp("W3", 1920, 1360, 1420),
+    vp("W4", 2380, 1620, 1580),
   ],
   // Matches reference: bars Jan–Aug, dashed trend through Dec
   "1y": [
-    { label: "JAN", issue: 2250, receive: 1150, trend: 900 },
-    { label: "FEB", issue: 1200, receive: 800, trend: 1400 },
-    { label: "MAR", issue: 1300, receive: 1400, trend: 900 },
-    { label: "APR", issue: 1000, receive: 700, trend: 720 },
-    { label: "MAY", issue: 750, receive: 400, trend: 820 },
-    { label: "JUN", issue: 1100, receive: 700, trend: 600 },
-    { label: "JUL", issue: 2400, receive: 1200, trend: 920 },
-    { label: "AUG", issue: 2150, receive: 1400, trend: 1500 },
-    { label: "SEP", issue: null, receive: null, trend: 1100 },
-    { label: "OCT", issue: null, receive: null, trend: 1450 },
-    { label: "NOV", issue: null, receive: null, trend: 900 },
-    { label: "DEC", issue: null, receive: null, trend: 700 },
+    vp("JAN", 2250, 1150, 900),
+    vp("FEB", 1200, 800, 1400),
+    vp("MAR", 1300, 1400, 900),
+    vp("APR", 1000, 700, 720),
+    vp("MAY", 750, 400, 820),
+    vp("JUN", 1100, 700, 600),
+    vp("JUL", 2400, 1200, 920),
+    vp("AUG", 2150, 1400, 1500),
+    vp("SEP", null, null, 1100),
+    vp("OCT", null, null, 1450),
+    vp("NOV", null, null, 900),
+    vp("DEC", null, null, 700),
   ],
   all: [
-    { label: "JAN", issue: 2250, receive: 1150, trend: 900 },
-    { label: "FEB", issue: 1200, receive: 800, trend: 1400 },
-    { label: "MAR", issue: 1300, receive: 1400, trend: 900 },
-    { label: "APR", issue: 1000, receive: 700, trend: 720 },
-    { label: "MAY", issue: 750, receive: 400, trend: 820 },
-    { label: "JUN", issue: 1100, receive: 700, trend: 600 },
-    { label: "JUL", issue: 2400, receive: 1200, trend: 920 },
-    { label: "AUG", issue: 2150, receive: 1400, trend: 1500 },
-    { label: "SEP", issue: null, receive: null, trend: 1100 },
-    { label: "OCT", issue: null, receive: null, trend: 1450 },
-    { label: "NOV", issue: null, receive: null, trend: 900 },
-    { label: "DEC", issue: null, receive: null, trend: 700 },
+    vp("JAN", 2250, 1150, 900),
+    vp("FEB", 1200, 800, 1400),
+    vp("MAR", 1300, 1400, 900),
+    vp("APR", 1000, 700, 720),
+    vp("MAY", 750, 400, 820),
+    vp("JUN", 1100, 700, 600),
+    vp("JUL", 2400, 1200, 920),
+    vp("AUG", 2150, 1400, 1500),
+    vp("SEP", null, null, 1100),
+    vp("OCT", null, null, 1450),
+    vp("NOV", null, null, 900),
+    vp("DEC", null, null, 700),
   ],
 };
 
@@ -172,7 +183,7 @@ function VelocityTooltip({
 }) {
   if (!active || !payload?.length) return null;
   const rows = payload.filter(
-    (item) => item.value != null && item.dataKey !== "trendFill"
+    (item) => item.value != null && item.dataKey !== "trendArea"
   );
   if (!rows.length) return null;
 
@@ -180,8 +191,11 @@ function VelocityTooltip({
     <div className="rounded-xl bg-white border border-black/5 px-3 py-2.5 shadow-[0_12px_28px_-8px_rgba(15,23,42,0.22)] min-w-[150px]">
       <p className="text-[11px] font-semibold text-slate-500 mb-1.5">{label}</p>
       <div className="space-y-1">
-        {rows.map((item) => (
-          <div key={String(item.dataKey)} className="flex items-center justify-between gap-4">
+        {rows.map((item, idx) => (
+          <div
+            key={`${String(item.dataKey)}-${String(item.name)}-${idx}`}
+            className="flex items-center justify-between gap-4"
+          >
             <div className="flex items-center gap-1.5">
               <span
                 className="w-2 h-2 rounded-full"
@@ -223,7 +237,7 @@ export function TransactionVelocityChart({
           issue != null || receive != null
             ? Math.round(((issue ?? 0) + (receive ?? 0)) / 2)
             : 0;
-        return { label, issue, receive, trend };
+        return { label, issue, receive, trend, trendArea: trend };
       });
     }
     return VELOCITY_BY_PERIOD[period];
@@ -357,11 +371,11 @@ export function TransactionVelocityChart({
               )}
             />
 
-            {/* Soft area under trend */}
+            {/* Soft area under trend — separate dataKey so it doesn't clash with Line */}
             <Area
               type="monotone"
-              dataKey="trend"
-              name="trendFill"
+              dataKey="trendArea"
+              name="trendArea"
               stroke="none"
               fill="url(#txTrendFill)"
               fillOpacity={1}

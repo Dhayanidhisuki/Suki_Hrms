@@ -975,10 +975,14 @@ function CalibrationIssuePage() {
                         type="date"
                         value={dueFromDate}
                         max={dueToDate || undefined}
-                        onChange={(e) => setDueFromDate(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDueFromDate(v);
+                          // Picking a date implies ERP "Consider Date = Yes"
+                          if (v) setConsiderDate("Yes");
+                        }}
                         className={headerInputCls}
-                        title="Filter by Cali.Due.Dt. from (only when Consider Date = Yes)"
-                        disabled={considerDate === "No"}
+                        title="Filter by Cali.Due.Dt. from (sets Consider Date = Yes)"
                       />
                     </div>
                     <div className="min-w-0">
@@ -987,17 +991,28 @@ function CalibrationIssuePage() {
                         type="date"
                         value={dueToDate}
                         min={dueFromDate || undefined}
-                        onChange={(e) => setDueToDate(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDueToDate(v);
+                          if (v) setConsiderDate("Yes");
+                        }}
                         className={headerInputCls}
-                        title="Filter by Cali.Due.Dt. to (only when Consider Date = Yes)"
-                        disabled={considerDate === "No"}
+                        title="Filter by Cali.Due.Dt. to (sets Consider Date = Yes)"
                       />
                     </div>
                     <div className="min-w-0">
                       <label className={headerLabelCls}>Consider Date</label>
                       <select
                         value={considerDate}
-                        onChange={(e) => setConsiderDate(e.target.value as "Yes" | "No")}
+                        onChange={(e) => {
+                          const v = e.target.value as "Yes" | "No";
+                          setConsiderDate(v);
+                          // ERP No = ignore range; clear so fields don't look "stuck"
+                          if (v === "No") {
+                            setDueFromDate("");
+                            setDueToDate("");
+                          }
+                        }}
                         className={headerInputCls}
                         title="ERP: No = list all due tools ignoring From/To (default)"
                       >
@@ -1028,6 +1043,7 @@ function CalibrationIssuePage() {
                         onClick={() => {
                           setDueFromDate("");
                           setDueToDate("");
+                          setConsiderDate("No");
                         }}
                       >
                         Clear dates
