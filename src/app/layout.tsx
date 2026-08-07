@@ -5,7 +5,7 @@ import "./globals.css";
 import { SessionProvider } from "@/lib/SessionContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NavigationLoader } from "@/components/NavigationLoader";
-import { SuccessOverlayProvider } from "@/components/SuccessOverlay";
+import { AppToaster } from "@/components/AppToaster";
 import { parseCookieString, THEME_COOKIE_NAME, MODE_COOKIE_NAME } from "@/lib/theme-cookies";
 
 const poppins = Poppins({
@@ -68,10 +68,9 @@ export default async function RootLayout({
       <body className="antialiased">
         <ThemeProvider initialTheme={theme} initialMode={mode}>
           <SessionProvider>
-            <SuccessOverlayProvider>
-              <NavigationLoader />
-              {children}
-            </SuccessOverlayProvider>
+            <NavigationLoader />
+            <AppToaster />
+            {children}
           </SessionProvider>
         </ThemeProvider>
       </body>

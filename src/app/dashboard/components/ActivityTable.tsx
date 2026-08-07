@@ -6,10 +6,11 @@ import Link from "next/link";
 import { ArrowUpRight, ArrowRight } from "lucide-react";
 
 interface ActivityRecord {
-  id: number;
   dcNo: string;
-  deptName: string;
-  partyName: string;
+  /** Prefer party / receiver name from KPI payload */
+  receiveName?: string | null;
+  deptName?: string | null;
+  partyName?: string | null;
   issueDate: string | null;
   dueDate: string | null;
   status: string;
@@ -72,22 +73,27 @@ export default function ActivityTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-main)]">
-              {items.map((row) => {
+              {items.map((row, idx) => {
                 const isOverdue = row.status === "OPEN" && row.dueDate ? new Date(row.dueDate) < new Date() : false;
-                const hasParty = row.partyName && row.partyName !== "-";
+                const party =
+                  (row.partyName && row.partyName !== "-" ? row.partyName : null) ||
+                  (row.receiveName && row.receiveName !== "-" ? row.receiveName : null);
+                const dept = row.deptName && row.deptName !== "-" ? row.deptName : null;
+                const primary = party || dept || "—";
                 const dateStr = row.issueDate ? row.issueDate.split("T")[0] : "—";
+                const rowKey = row.dcNo ? `${row.dcNo}-${idx}` : `activity-${idx}`;
 
                 return (
-                  <tr key={row.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                  <tr key={rowKey} className="hover:bg-[var(--bg-hover)] transition-colors">
                     <td className="py-3 px-3 align-middle font-mono text-xs font-semibold text-[var(--text-secondary)]">
-                      {row.dcNo}
+                      {row.dcNo || "—"}
                     </td>
                     <td className="py-3 px-3 align-middle">
                       <p className="font-semibold text-[var(--text-primary)] text-xs truncate max-w-[150px]">
-                        {hasParty ? row.partyName : row.deptName}
+                        {primary}
                       </p>
-                      {hasParty && (
-                        <p className="text-[10px] text-[var(--text-muted)] font-medium">{row.deptName}</p>
+                      {party && dept && (
+                        <p className="text-[10px] text-[var(--text-muted)] font-medium">{dept}</p>
                       )}
                     </td>
                     <td className="py-3 px-3 align-middle font-mono text-xs text-[var(--text-muted)]">

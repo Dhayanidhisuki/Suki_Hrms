@@ -1,7 +1,7 @@
 # SUKI Tools Management — Module-Wise Testing Guide
 
 **Product:** SUKI Tools Management  
-**Date:** 1 Aug 2026 (Module 0 auth updated for standalone JWT login)  
+**Date:** 4 Aug 2026 (Modules 4–8 reconciled against codebase; Module 0 auth = standalone JWT)  
 **Purpose:** Reference guide for what each module does, build status, business flows, and what to test.
 
 ---
@@ -115,8 +115,8 @@ Tool Group → Tool Subgroup → Item/Asset Master
 | Tools Name for Type | `/dashboard/masters/tool-types` | ✅ | `TOOLS_TYPE` | CRUD names linked to Group + Type; used on tool create |
 | Tool Pricing Master | `/dashboard/masters/pricing` | 👁 | `TOOLS_PRICE_MASTER` | Tool + supplier rate list |
 | Reorder Level | `/dashboard/masters/reorder-level` | 👁 | `MIN_ORDER_LEVEL` | Tools at / below ROL |
-| Tool Mapping | `/dashboard/masters/tool-mapping` | ✅ | TOOLS_MAPPING | Tool ↔ supplier list with ERP-style pager |
-| Consolidated Lookups | `/dashboard/masters/lookups` | ✅ | Multiple lookup tables | CRUD on gauge types, calib frequency, groups, subgroups, tool types |
+| Tool Mapping | `/dashboard/masters/tool-mapping` | ✅ | `TOOLS_MAPPING` | Create / list / delete tool ↔ supplier maps (no edit of existing row); ERP-style pager |
+| Consolidated Lookups | `/dashboard/masters/lookups` | ✅ ⚠️ | Multiple lookup tables | CRUD on gauge types, calib frequency, groups, subgroups, tool types — **not in sidebar** (direct URL) |
 | Item Name (legacy redirect) | `/dashboard/masters/item-name` | → | redirects to tool-types | Keep bookmarks working |
 
 ### Item/Asset Master — detailed checklist
@@ -210,10 +210,10 @@ Tool in stock
 
 | Screen | Route | Status | ERP / source | What to check |
 |--------|-------|--------|--------------|---------------|
-| Calibration Issue | `/dashboard/calibration/issue` | ✅ | `TOOLS_ISSUE_FOR_CALIBRATION` | Create DC; select due tools; lab / subcontractor |
-| Calibration Receive | `/dashboard/calibration/receive` | 👁 ⚠️ | `TOOLS_RECEIVE_FOR_CALIBRATION` | **List only** — POST API exists; **no create form in UI** |
-| Results Update | `/dashboard/calibration/results-update` | ✅ | Calib result lines | PASSED / FAILED / RECALIBRATED + next date |
-| Due List | `/dashboard/calibration/due-list` | 👁 | Next calib / due dates | Filters: All / Overdue / 7 days / 30 days |
+| Calibration Issue | `/dashboard/calibration/issue` | ✅ | `TOOLS_ISSUE_FOR_CALIBRATION`, `TOOLS_TRANS_ISSUE_FOR_CALIBRATION`; updates `GAUGEANDTOOLS` | Create DC; stage due tools; lab / subcontractor; PDF; detail + attachment |
+| Calibration Receive | `/dashboard/calibration/receive` | ✅ | `TOOLS_RECEIVE_FOR_CALIBRATION`, `TOOLS_TRANS_RECEIVE_FOR_CALIBRATION` | **Create form** — pick open DC, select lines, partial/full receive; history + certificate upload |
+| Results Update | `/dashboard/calibration/results-update` | ✅ | `TOOLS_TRANS_ISSUE_FOR_CALIBRATION` + `GAUGE_CONTROL_CARD_TRANS` / `GAUGEANDTOOLS` | PASSED / FAILED / RECALIBRATED + next date; Excel / PDF export of pending set |
+| Due List | `/dashboard/calibration/due-list` | 👁 | Calib due via `/api/tools/calibration-due` | Filters: All / Overdue / 7 days / 30 days; “Issue now” → Issue with `?tool=` |
 
 ### Flow
 
@@ -221,7 +221,7 @@ Tool in stock
 Tool with HISTORY_CARD_REQ = Yes
   → Due List
   → Calibration Issue (DC OPEN)
-  → Calibration Receive (tools back)   ← UI create gap
+  → Calibration Receive (partial / full)
   → Results Update (Pass/Fail + next due)
   → Due List refreshes
 ```
@@ -229,10 +229,11 @@ Tool with HISTORY_CARD_REQ = Yes
 ### Checklist
 
 - [ ] Only calib-flagged tools appear on Due List
-- [ ] Issue creates DC; status OPEN
-- [ ] Results update changes next calib date
+- [ ] Issue creates DC; status OPEN / Under Calibration
+- [ ] Partial receive leaves remaining lines awaiting receive
+- [ ] Full receive then Results Update changes next calib date / tool status
 - [ ] Due List / Overview counts stay consistent
-- [ ] ⚠️ Receive create cannot be tested from UI today
+- [ ] Certificate / document upload on receive (if used)
 
 **Suggested test time:** ~half day
 
@@ -244,9 +245,9 @@ Purchase in this app is **not** full ERP purchasing. PO creation is owned by the
 
 | Screen | Route | In sidebar? | Status | ERP / source | What to check |
 |--------|-------|-------------|--------|--------------|---------------|
-| Purchase Order | `/dashboard/po-linked/purchase-order` | Yes | 🚧 | `COMMON_PURCHASE_ORDER` | Placeholder — not owned by Tools Management |
-| Goods Receipt Note (GRN) | `/dashboard/po-linked/receive` | Yes | ✅ | `TOOLS_PO_RECEIVE` | **Main purchase screen to test** |
-| PO Schedule | `/dashboard/po-linked/schedule` | No (hidden) | ✅ | PO schedule | Create schedule lines vs PO number |
+| Purchase Order | `/dashboard/po-linked/purchase-order` | Yes | 🚧 | `COMMON_PURCHASE_ORDER` (out of scope) | `PendingFeature` — not owned by Tools Management |
+| Goods Receipt Note (GRN) | `/dashboard/po-linked/receive` | Yes | ✅ | `TOOLS_PO_RECEIVE`, `TOOLS_PO_RECEIVE_TRANS`; updates `GAUGEANDTOOLS` qty | **Main purchase screen to test** — PO no is free-text (not live-linked to ERP PO rows) |
+| PO Schedule | `/dashboard/po-linked/schedule` | No (hidden) | ✅ ⚠️ | `TOOLS_PO_SCH_MASTER`, `TOOLS_PO_SCH_TRANS` | Create + list; not in menu. Supplier select disabled in form. |
 | Purchase Overview | `/dashboard/overview/purchase` | Via Dashboard | 🔗 | — | Link hub |
 
 ### What you can / cannot do
@@ -254,7 +255,7 @@ Purchase in this app is **not** full ERP purchasing. PO creation is owned by the
 | Action | In this app? |
 |--------|--------------|
 | Create / edit Purchase Order | ❌ — ERP Purchasing module |
-| Create GRN against an existing PO number | ✅ |
+| Create GRN against an existing PO number | ✅ (PO number entered as text) |
 | Maintain Supplier / Subcontractor | ✅ (Masters) |
 | View Tool Pricing | 👁 |
 | PO Schedule | ✅ (hidden route) |
@@ -296,19 +297,19 @@ PO created in ERP (external)
 
 ## Module 6 — Tools History Card
 
-| Screen | Route | Status | What to check |
-|--------|-------|--------|---------------|
-| History Card hub | `/dashboard/tools-history-card` | ✅ | Search tool; open detail |
-| Current Status | `/dashboard/tools-history-card/status` | 👁 | Status snapshot |
-| Current Holder | `/dashboard/tools-history-card/holder` | 👁 | Open issue DCs |
-| Issue History | `/dashboard/tools-history-card/issue` | 👁 | Recent issue DCs |
-| Receive History | `/dashboard/tools-history-card/receive` | 👁 | Receive records |
-| Calibration Records | `/dashboard/tools-history-card/calibration` | 👁 | Calib issue DCs |
-| Calibration Results | `/dashboard/tools-history-card/calibration-results` | 👁 | Pending / done results |
-| GRN History | `/dashboard/tools-history-card/grn` | 👁 | PO receive history |
-| Purchase Orders | `/dashboard/tools-history-card/purchase-orders` | 🚧 | Placeholder |
+| Screen | Route | Status | ERP / source | What to check |
+|--------|-------|--------|--------------|---------------|
+| History Card hub | `/dashboard/tools-history-card` | ✅ | `GAUGEANDTOOLS`, `GAUGE_SERIAL_NO`; PM write + docs | Search tool; unit history; Complete Preventive MNT; documents |
+| Current Status | `/dashboard/tools-history-card/status` | 👁 | `GAUGEANDTOOLS` (pageSize 100) | Status snapshot; note 100-row cap vs ERP total |
+| Current Holder | `/dashboard/tools-history-card/holder` | 👁 | Open `GAUGE_TOOLS_ISSUE` | Open issue DCs after shop-floor issue |
+| Issue History | `/dashboard/tools-history-card/issue` | 👁 | `GAUGE_TOOLS_ISSUE` / lines | Recent issue DCs match Tool Issue |
+| Receive History | `/dashboard/tools-history-card/receive` | 👁 ⚠️ | `/api/receive` — **open / pending returns** | Not a closed-receive archive; subtitle = awaiting Tool Receive |
+| Calibration Records | `/dashboard/tools-history-card/calibration` | 👁 | `TOOLS_ISSUE_FOR_CALIBRATION` | Calib issue DCs |
+| Calibration Results | `/dashboard/tools-history-card/calibration-results` | 👁 ⚠️ | Same pending queue as Results Update | Pending/open lines — completed results may leave the list after save |
+| GRN History | `/dashboard/tools-history-card/grn` | 👁 | `TOOLS_PO_RECEIVE` / lines | PO receive history |
+| Purchase Orders | `/dashboard/tools-history-card/purchase-orders` | 🔗 / 🚧 | None | Scope panel + links to GRN History / PO-linked Receive — no PO table |
 
-**Purpose:** Read-only lifecycle views used to **cross-check** after Issue / Receive / Calibration / GRN.
+**Purpose:** Mostly read-only lifecycle views used to **cross-check** after Issue / Receive / Calibration / GRN (hub also writes Preventive MNT complete).
 
 **Suggested test time:** ~1 hour
 
@@ -316,22 +317,25 @@ PO created in ERP (external)
 
 - [ ] Search finds a known tool
 - [ ] After a Tool Issue, Issue History / Current Holder update
-- [ ] After Calibration Issue / Results, calib sub-pages update
+- [ ] After Calibration Issue / Receive / Results, calib sub-pages update (results page = pending queue)
 - [ ] After GRN, GRN History updates
+- [ ] Receive History shows pending open returns (not posted archive)
 
 ---
 
 ## Module 7 — Reports & Analytics
 
-| Screen | Route | Status | What to check |
-|--------|-------|--------|---------------|
-| Reports hub | `/dashboard/reports` | ✅ | Category counts |
-| All Tool Reports | `/dashboard/reports/tools` | ✅ | KPIs, preview, Excel / PDF |
-| Calibration Reports | `/dashboard/reports/calibration` | ✅ | Due / overdue, export |
-| Supplier Report | `/dashboard/reports/suppliers` | ✅ | List + export |
-| Subcontractor Report | `/dashboard/reports/subcontractors` | ✅ | List + export |
-| Tools History Report | `/dashboard/reports/tools-history` | ✅ | History export |
-| Purchase Order Report | `/dashboard/reports/purchase-orders` | 🚧 | Skip |
+| Screen | Route | Status | ERP / source | What to check |
+|--------|-------|--------|--------------|---------------|
+| Reports hub | `/dashboard/reports` | 🔗 | Live KPIs from tools / due / suppliers / issues | Category cards + counts — **hub not in sidebar** (children are) |
+| All Tool Reports | `/dashboard/reports/tools` | 👁 (+ export) | `GAUGEANDTOOLS`; `/api/reports/tools` | KPIs, preview (≤100), Excel / PDF full export |
+| Calibration Reports | `/dashboard/reports/calibration` | 👁 (+ export) | Calib due + issue + pending; `/api/reports/calibration` | Due / overdue, export |
+| Supplier Report | `/dashboard/reports/suppliers` | 👁 (+ export) | `SUPPLIER` | List + export |
+| Subcontractor Report | `/dashboard/reports/subcontractors` | 👁 (+ export) | `SUBCONTRACTOR` | List + export |
+| Tools History Report | `/dashboard/reports/tools-history` | 👁 (+ export) | Issue / receive / calib cross-cut | History export |
+| Purchase Order Report | `/dashboard/reports/purchase-orders` | 🚧 | None — no export category | Skip |
+
+Export categories that exist: `tools`, `calibration`, `suppliers`, `subcontractors`, `tools-history`.
 
 ### Checklist (per active report)
 
@@ -347,20 +351,21 @@ PO created in ERP (external)
 
 ## Module 8 — Settings
 
-| Screen | Route | Status | What to check |
-|--------|-------|--------|---------------|
-| Company Settings | `/dashboard/settings/company` | 👁 | Company profile from ERP |
-| Branch Settings | `/dashboard/settings/branches` | 👁 | Locations, company IDs |
-| Tool Numbering | `/dashboard/settings/tool-numbering` | 👁 | Group prefix reference |
-| Transaction Numbering | `/dashboard/settings/transaction-numbering` | 👁 | Numbering config view |
-| Audit Trail | `/dashboard/settings/audit-trail` | 👁 | Created / updated metadata |
-| Users | `/dashboard/settings/users` | 🚧 | Skip |
-| Roles | `/dashboard/settings/roles` | 🚧 | Skip |
-| Permissions | `/dashboard/settings/permissions` | 🚧 | Skip |
-| Approval Workflow | `/dashboard/settings/approval-workflow` | 🚧 | Skip |
-| Email Notifications | `/dashboard/settings/notifications/email` | 🚧 | Skip |
-| System Notifications | `/dashboard/settings/notifications/system` | 🚧 | Skip |
-| Activity Logs | `/dashboard/settings/activity-logs` | 🚧 | Skip |
+| Screen | Route | Status | ERP / source | What to check |
+|--------|-------|--------|--------------|---------------|
+| Settings hub | `/dashboard/settings` | 🔗 | — | Link grid — **hub not in sidebar** (children are) |
+| Company Settings | `/dashboard/settings/company` | 👁 | `COMPANY_DETAILS` | Company profile from ERP; no save |
+| Branch Settings | `/dashboard/settings/branches` | 👁 | `LOCATION_MASTER`, distinct company / from-unit | Locations, company IDs |
+| Tool Numbering | `/dashboard/settings/tool-numbering` | 👁 | Group prefixes (`OTHER_TOOLS_TYPE`) | Group prefix reference; no edit |
+| Transaction Numbering | `/dashboard/settings/transaction-numbering` | 👁 | Same groups API | PO / GRN / Indent prefixes view |
+| Audit Trail | `/dashboard/settings/audit-trail` | 👁 | Creat/update metadata on tools / issues / groups | Who last touched — **not** field-level diffs |
+| Users | `/dashboard/settings/users` | 🚧 | — | Skip UI. Note: app auth already uses `TOOLS_APP_USER` (page copy may still say ERP-only — stale) |
+| Roles | `/dashboard/settings/roles` | 🚧 | — | Skip UI; runtime roles via `rolePermissions.ts` |
+| Permissions | `/dashboard/settings/permissions` | 🚧 | — | Skip |
+| Approval Workflow | `/dashboard/settings/approval-workflow` | 🚧 | — | Skip |
+| Email Notifications | `/dashboard/settings/notifications/email` | 🚧 | — | Skip |
+| System Notifications | `/dashboard/settings/notifications/system` | 🚧 | — | Skip |
+| Activity Logs | `/dashboard/settings/activity-logs` | 🚧 | — | Skip — needs new table; use Audit Trail for who-touched |
 
 **Suggested test time:** ~30 minutes smoke test
 
@@ -371,13 +376,15 @@ PO created in ERP (external)
 | Phase | Modules | Approx. time | Priority |
 |-------|---------|--------------|----------|
 | 1 | Auth + Tool Group / Subgroup + Item/Asset Master | 1–2 days | **Must** |
-| 2 | Calibration (Issue, Results, Due List) + Calib masters | 1 day | **Must** |
-| 3 | Supplier / Subcontractor + Lookups | 0.5 day | **Must** |
+| 2 | Calibration (Issue, **Receive**, Results, Due List) + Calib masters | 1 day | **Must** |
+| 3 | Supplier / Subcontractor + Lookups + Tool Mapping | 0.5 day | **Must** |
 | 4 | GRN (Purchase receive) | 0.5 day | **Should** |
 | 5 | Tool Issue + Tool Receive | 0.5 day | **Should** |
 | 6 | History Card + Reports | 0.5 day | **Should** |
 | 7 | Dashboard overviews + Settings read-only | 0.25 day | Nice |
-| — | PO create, Tool Mapping, Requisition, Users/Roles, PO Report | — | **Skip (not built)** |
+| — | PO create, Requisition, Users/Roles UI, Notifications, PO Report | — | **Skip (not built / out of scope)** |
+
+**Hidden routes (optional):** Consumption (`/dashboard/transactions/consumption`), PO Schedule, Lookups, Settings/Reports hubs.
 
 ---
 
@@ -387,30 +394,34 @@ PO created in ERP (external)
 |---------|--------|
 | Create Tool Master | ✅ |
 | Bulk import / export tools | ✅ |
-| Unsaved-changes guard on tool edit | ✅ |
+| Unsaved-changes guard on tool edit | ✅ (Item/Asset Master only — not a shared component) |
 | Create Calibration Issue | ✅ |
-| Create Calibration Receive (UI) | ❌ (list only; API exists) |
+| Create Calibration Receive (UI) | ✅ |
 | Update Calibration Results | ✅ |
 | Create Tool Issue DC | ✅ |
 | Return tools (Tool Receive) | ✅ |
 | Create GRN against PO | ✅ |
 | Create Purchase Order | ❌ (ERP Purchasing module) |
 | PO Schedule | ✅ (hidden URL; not in menu) |
-| Tool Mapping | ❌ |
-| User / Role management | ❌ |
+| Tool Mapping | ✅ (create / list / delete; no edit) |
+| User / Role management UI | ❌ (auth users exist in `TOOLS_APP_USER`; Settings pages are placeholders) |
 | Purchase Order Report | ❌ |
+| jose JWT edge verify | ✅ (`src/lib/authTokenEdge.ts` + middleware) |
 
 ---
 
 ## Known gaps while testing
 
-1. **Calibration Receive** — no create form in UI (biggest calibration gap).
-2. **Purchase Order** — intentionally unavailable; create POs in ERP Purchasing.
-3. **Tool Mapping / Requisition / Users / Roles / Notifications** — placeholders.
-4. Several dedicated master screens are **view-only**; edits may live on **Lookups** or Group / Subgroup pages.
-5. Export status filter on tools may not fully match list rollup status.
-6. Rack / Area dropdowns may be empty if ERP `LOCATION_MASTER` has null area/rack.
-7. Tool Master list / view / edit is still largely in-page state (browser Back / URL deep-link limited).
+1. **Purchase Order / PO Report** — intentionally unavailable; create POs in ERP Purchasing.
+2. **Requisition / Users–Roles UI / Notifications / Activity Logs** — placeholders (`PendingFeature`).
+3. **Settings Users/Roles page copy** may still claim “ERP-only users” — outdated vs standalone `TOOLS_APP_USER` login.
+4. **History Card “Receive History”** shows **pending** open returns, not closed receive vouchers.
+5. **History Card “Calibration Results”** uses the **pending** results queue (same as Results Update), not a completed archive.
+6. Several dedicated master screens are **view-only**; edits may live on **Lookups** or Group / Subgroup pages. Lookups itself is **not in the sidebar**.
+7. Export status filter on tools may not fully match list rollup status.
+8. Rack / Area dropdowns may be empty if ERP `LOCATION_MASTER` has null area/rack.
+9. Tool Master list / view / edit is still largely in-page state (browser Back / URL deep-link limited).
+10. GRN supplier dropdown may list all suppliers (approved filter computed but not clearly applied).
 
 ---
 
@@ -418,19 +429,20 @@ PO created in ERP (external)
 
 | Area | Screens |
 |------|---------|
-| **Masters** | Group ✅ · Subgroup ✅ · Tool ✅ · Lookups ✅ · Supplier ✅ · Subcontractor ✅ · Gauge/Calib freq 👁 · Mapping 🚧 |
-| **Calibration** | Due List 👁 · Issue ✅ · Receive 👁⚠️ · Results ✅ |
+| **Masters** | Group ✅ · Subgroup ✅ · Tool ✅ · Lookups ✅ (no menu) · Supplier ✅ · Subcontractor ✅ · Gauge/Calib freq 👁 · Mapping ✅ |
+| **Calibration** | Due List 👁 · Issue ✅ · Receive ✅ · Results ✅ |
 | **Purchase** | PO 🚧 · GRN ✅ · Schedule ✅ (hidden) |
-| **Transactions** | Issue ✅ · Receive ✅ · Customer 👁 · Requisition 🚧 |
-| **History** | Hub ✅ · sub-pages 👁 · PO history 🚧 |
-| **Reports** | Tools / Calib / Supplier / Subcon / History ✅ · PO Report 🚧 |
-| **Settings** | Company / Branch / Numbering / Audit 👁 · Users / Roles / Notifications 🚧 |
+| **Transactions** | Issue ✅ · Receive ✅ · Customer 👁 · Requisition 🚧 · Consumption ✅ (hidden) |
+| **History** | Hub ✅ · most sub-pages 👁 · Receive/Results 👁⚠️ (pending queues) · PO history 🔗/🚧 |
+| **Reports** | Hub 🔗 · Tools / Calib / Supplier / Subcon / History 👁+export · PO Report 🚧 |
+| **Settings** | Hub 🔗 · Company / Branch / Numbering / Audit 👁 · Users / Roles / Notifications 🚧 |
 
 ---
 
 ## Related docs
 
 - Reports module detail: [`docs/reports-and-analytics.md`](./reports-and-analytics.md)
+- Codebase audit (4 Aug 2026): [`docs/modules-4-8-codebase-audit-2026-08-04.md`](./modules-4-8-codebase-audit-2026-08-04.md)
 
 ---
 

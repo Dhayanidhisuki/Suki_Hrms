@@ -46,7 +46,42 @@ export async function GET(req: NextRequest) {
   try {
     const statusFilter = req.nextUrl.searchParams.get("status");
     const awaitingReceive = req.nextUrl.searchParams.get("awaitingReceive") === "1";
+    const issueFor = (req.nextUrl.searchParams.get("issueFor") ?? "").trim();
+    const party = (req.nextUrl.searchParams.get("party") ?? "").trim();
+    const search = (req.nextUrl.searchParams.get("search") ?? "").trim();
+    const fromDate = (req.nextUrl.searchParams.get("fromDate") ?? "").trim();
+    const toDate = (req.nextUrl.searchParams.get("toDate") ?? "").trim();
+
+    const where = {
+      AND: [
+        issueFor && issueFor !== "ALL" ? { issueFor: { contains: issueFor } } : {},
+        party
+          ? {
+              OR: [
+                { receiveName: { contains: party } },
+                { subCode: { contains: party } },
+              ],
+            }
+          : {},
+        search
+          ? {
+              OR: [
+                { receiveName: { contains: search } },
+                { subCode: { contains: search } },
+                { toolsPoNo: { contains: search } },
+                { issueFor: { contains: search } },
+              ],
+            }
+          : {},
+        fromDate ? { issueDate: { gte: new Date(fromDate) } } : {},
+        toDate
+          ? { issueDate: { lte: new Date(`${toDate}T23:59:59.999`) } }
+          : {},
+      ],
+    };
+
     const raw = await prisma.toolsIssueForCalibration.findMany({
+      where,
       include: {
         inHouseLines: { include: { tool: true } },
         receiveHeaders: { select: { recNo: true } },
@@ -75,6 +110,47 @@ export async function GET(req: NextRequest) {
         if (statusFilter) return item.status === statusFilter;
         return true;
       });
+
+    // Attach latest lab rate from TOOLS_PRICE_MASTER for receive prefill
+    if (awaitingReceive && items.length > 0) {
+      const refNos = Array.from(
+        new Set(
+          items.flatMap((item) =>
+            (item.inHouseLines ?? [])
+              .map((l) => l.tool?.refNo ?? l.toolRefNo)
+              .filter((n): n is number => typeof n === "number")
+          )
+        )
+      );
+      const rateByRef = new Map<number, number>();
+      if (refNos.length > 0) {
+        try {
+          const rates = await prisma.toolsPriceMaster.findMany({
+            where: { toolRefNo: { in: refNos } },
+            orderBy: [{ revDate: "desc" }, { creatDt: "desc" }],
+            select: { toolRefNo: true, rate: true },
+          });
+          for (const row of rates) {
+            if (row.toolRefNo == null || rateByRef.has(row.toolRefNo)) continue;
+            const rate = Number(row.rate);
+            if (Number.isFinite(rate) && rate > 0) rateByRef.set(row.toolRefNo, rate);
+          }
+        } catch (err) {
+          console.warn("Price master enrichment skipped:", err);
+        }
+      }
+
+      for (const item of items) {
+        item.inHouseLines = (item.inHouseLines ?? []).map((line) => {
+          const ref = line.tool?.refNo ?? line.toolRefNo;
+          const labRate = ref != null ? rateByRef.get(ref) ?? null : null;
+          return {
+            ...line,
+            tool: line.tool ? { ...line.tool, labRate } : line.tool,
+          };
+        });
+      }
+    }
 
     return NextResponse.json({ items, total: items.length });
   } catch (error) {
@@ -132,13 +208,29 @@ export async function POST(req: NextRequest) {
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
         });
 
+        let serialNo = line.serialNo ?? null;
+        if (serialNo == null) {
+          try {
+            const serialRow = await tx.gaugeSerialNo.findFirst({
+              where: { toolOrGaugeNo: line.toolOrGaugeNo },
+              orderBy: { serialNo: "asc" },
+              select: { serialNo: true },
+            });
+            serialNo = serialRow?.serialNo ?? null;
+          } catch (err) {
+            console.warn("Serial lookup on issue skipped:", err);
+          }
+        }
+
+        const issueQty = Math.max(1, Math.floor(Number(line.issueQty) || 1));
+
         await tx.toolsTransIssueForCalibration.create({
           data: {
             rowId: nextRowId++,
             dcNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
-            issueQty: line.issueQty,
-            serialNo: line.serialNo ?? null,
+            issueQty,
+            serialNo,
             grouping: tool?.grouping?.slice(0, 25) ?? null,
             calibDueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
             dueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
@@ -157,6 +249,49 @@ export async function POST(req: NextRequest) {
             lstUpdtUserIdCd: erpActor,
           },
         });
+
+        // ERP: unit grid STATUS on Tools Master comes from GAUGE_SERIAL_NO
+        const serialWhereBase = {
+          OR: [
+            { toolOrGaugeNo: line.toolOrGaugeNo },
+            ...(tool?.refNo != null ? [{ toolRefNo: tool.refNo }] : []),
+          ],
+        };
+        try {
+          const updated =
+            serialNo != null
+              ? await tx.gaugeSerialNo.updateMany({
+                  where: { AND: [serialWhereBase, { serialNo }] },
+                  data: { status: "ISSUE FOR CALIBRATION" },
+                })
+              : await tx.gaugeSerialNo.updateMany({
+                  where: serialWhereBase,
+                  data: { status: "ISSUE FOR CALIBRATION" },
+                });
+          if (updated.count === 0 && serialNo != null) {
+            // Fallback: any available unit for this tool
+            await tx.gaugeSerialNo.updateMany({
+              where: {
+                AND: [
+                  serialWhereBase,
+                  {
+                    OR: [
+                      { status: null },
+                      {
+                        status: {
+                          in: ["AVAILABLE FOR USE", "Available", "NEW PURCHASE"],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              data: { status: "ISSUE FOR CALIBRATION" },
+            });
+          }
+        } catch (err) {
+          console.warn("Serial status update on calib issue skipped:", err);
+        }
       }
 
       return header;

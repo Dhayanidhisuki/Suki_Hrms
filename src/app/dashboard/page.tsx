@@ -3,10 +3,8 @@ import PageHeader from "./components/PageHeader";
 import KpiRow from "./components/KpiRow";
 import ToolsByGroup from "./components/ToolsByGroup";
 import ActivityTable from "./components/ActivityTable";
-import ToolStatusDonut from "./components/ToolStatusDonut";
 import QuickActions from "./components/QuickActions";
 import MonthlyMovementsBarChart from "./components/MonthlyMovementsBarChart";
-import CumulativeGrowthAreaChart from "./components/CumulativeGrowthAreaChart";
 import RecentCalibrationTable from "./components/RecentCalibrationTable";
 import TopBar from "./components/TopBar";
 
@@ -36,21 +34,15 @@ export default function DashboardPage() {
 
           {/* ── Main Content Grid (Charts + Quick Actions) ── */}
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
-            {/* LEFT 2-COLUMN CHARTS GRID */}
+            {/* LEFT COLUMN */}
             <div className="space-y-6">
-              {/* Row 1 Charts: Monthly Bar & Cumulative Area */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <MonthlyMovementsBarChart />
-                <CumulativeGrowthAreaChart />
-              </div>
+              {/* Full-width mirrored movements chart */}
+              <MonthlyMovementsBarChart />
 
-              {/* Row 2 Charts: Tools By Group & Tool Status Donut */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ToolsByGroup />
-                <ToolStatusDonut />
-              </div>
+              {/* Tools By Group — list + pie in one card */}
+              <ToolsByGroup />
 
-              {/* Row 3 Data Tables: Recent Calibration Due & Recent Activity */}
+              {/* Data Tables: Recent Calibration Due & Recent Activity */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <RecentCalibrationTable />
                 <ActivityTable />

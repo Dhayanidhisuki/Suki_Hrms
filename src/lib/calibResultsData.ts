@@ -116,6 +116,83 @@ export async function loadCalibResultsPending(
     }));
 }
 
+/** Closed / completed calibration result lines for Open/Closed filter. */
+export async function loadCalibResultsClosed(
+  take = 500
+): Promise<CalibResultExportRow[]> {
+  const lines = await prisma.toolsTransIssueForCalibration.findMany({
+    where: {
+      AND: [
+        { resultStatus: { not: null } },
+        { NOT: { resultStatus: "" } },
+      ],
+    },
+    orderBy: { calibratedDate: "desc" },
+    take,
+    include: {
+      tool: {
+        select: {
+          name: true,
+          description: true,
+          grouping: true,
+          type: true,
+          status: true,
+          calibrationFrqMonths: true,
+          location: true,
+          locationName: true,
+          gSpecUpperMin: true,
+          gSpecUpperMax: true,
+          wLimitLowerMax: true,
+          wLimitUpperMin: true,
+          wLimitUpperMax: true,
+          prodSpecLowerMax: true,
+          prodSpecUpperMin: true,
+          prodSpecUpperMax: true,
+        },
+      },
+      calibIssue: {
+        select: { dcNo: true, receiveName: true, issueDate: true, issueFor: true },
+      },
+    },
+  });
+
+  return lines
+    .filter((l) => l.toolOrGaugeNo)
+    .map((l) => ({
+      refNo: l.rowId,
+      dcNo: l.dcNo,
+      toolOrGaugeNo: l.toolOrGaugeNo as string,
+      name: l.tool?.name ?? null,
+      description: l.tool?.description ?? null,
+      grouping: l.grouping ?? l.tool?.grouping ?? null,
+      type: l.tool?.type ?? l.grouping ?? "General",
+      status: l.resultStatus || l.calibrationStatus || l.status || "Closed",
+      frequency:
+        l.tool?.calibrationFrqMonths != null
+          ? `${l.tool.calibrationFrqMonths} Months`
+          : "—",
+      calibrationFrqMonths: l.tool?.calibrationFrqMonths ?? null,
+      serialNo: l.serialNo ?? null,
+      location: l.tool?.location ?? null,
+      locationName: l.tool?.locationName ?? null,
+      calibDueDate: l.calibDueDate ?? l.dueDate,
+      cDate: l.calibratedDate ?? l.creatDt,
+      nextCDate: l.nxtCalibDate ?? l.calibDueDate ?? l.dueDate,
+      remarks: l.calibResultComments ?? l.remarks,
+      receiveName: l.calibIssue?.receiveName ?? null,
+      issueFor: l.calibIssue?.issueFor ?? null,
+      calibratedBy: l.calibratedBy ?? null,
+      gSpecUpperMin: l.tool?.gSpecUpperMin ?? null,
+      gSpecUpperMax: l.tool?.gSpecUpperMax ?? null,
+      wLimitLowerMax: l.tool?.wLimitLowerMax ?? null,
+      wLimitUpperMin: l.tool?.wLimitUpperMin ?? null,
+      wLimitUpperMax: l.tool?.wLimitUpperMax ?? null,
+      prodSpecLowerMax: l.tool?.prodSpecLowerMax ?? null,
+      prodSpecUpperMin: l.tool?.prodSpecUpperMin ?? null,
+      prodSpecUpperMax: l.tool?.prodSpecUpperMax ?? null,
+    }));
+}
+
 export const CALIB_RESULTS_EXPORT_COLUMNS = [
   { key: "dcNo", label: "DC No" },
   { key: "toolOrGaugeNo", label: "Tool No" },

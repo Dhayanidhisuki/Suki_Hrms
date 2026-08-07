@@ -189,3 +189,59 @@ export async function POST(
     { status: 201 }
   );
 }
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  const authCheck = await requireSession(session);
+  if (!authCheck.ok) return authCheck.response;
+
+  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
+  if (!permCheck.ok) return permCheck.response;
+
+  const { id } = await params;
+  const toolRefNo = Number(id);
+  const tool = await prisma.gaugeAndTools.findUnique({ where: { refNo: toolRefNo } });
+  if (!tool) {
+    return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  }
+
+  const body = await req.json();
+  const serialRefNo = Number(body.refNo);
+  if (!Number.isInteger(serialRefNo)) {
+    return NextResponse.json({ error: "Invalid serial refNo" }, { status: 400 });
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (body.purchaseDt !== undefined) {
+    updateData.purchaseDt = body.purchaseDt ? new Date(String(body.purchaseDt)) : null;
+  }
+  if (body.make !== undefined) {
+    updateData.make = String(body.make).slice(0, 50);
+  }
+  if (body.status !== undefined) {
+    updateData.status = String(body.status).slice(0, 30);
+  }
+  if (body.serialNo !== undefined && body.serialNo !== "" && body.serialNo !== "—") {
+    const sNo = Number(body.serialNo);
+    if (Number.isInteger(sNo)) updateData.serialNo = sNo;
+  }
+  if (body.nextPreMntDt !== undefined) {
+    updateData.nextPreDate = body.nextPreMntDt ? new Date(String(body.nextPreMntDt)) : null;
+  }
+
+  await prisma.gaugeSerialNo.update({
+    where: { refNo: serialRefNo },
+    data: updateData,
+  });
+
+  const unitHistory = await buildToolUnitHistory({
+    refNo: tool.refNo,
+    toolOrGaugeNo: tool.toolOrGaugeNo,
+    calibrationFrqMonths: tool.calibrationFrqMonths,
+  });
+
+  return NextResponse.json({ ok: true, unitHistory });
+}

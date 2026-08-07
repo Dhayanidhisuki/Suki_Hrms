@@ -38,7 +38,7 @@ export default function BranchSettingsPage() {
         <TableSkeleton rows={4} />
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="form-grid">
             <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
               <h2 className="text-sm font-medium text-[var(--text-primary)] mb-3">GAUGEANDTOOLS.COMPANY_ID values</h2>
               <div className="flex flex-wrap gap-2">

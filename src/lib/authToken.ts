@@ -40,12 +40,36 @@ export function verifyAuthToken(token: string): AuthTokenPayload | null {
   }
 }
 
-export function authCookieOptions(maxAge: number) {
+/**
+ * Cookie flags for the JWT session.
+ * Prefer request-derived `secure` (HTTPS / x-forwarded-proto) so public tunnels
+ * work in development without breaking plain http://localhost.
+ */
+export function authCookieOptions(
+  maxAge: number,
+  options?: { secure?: boolean }
+) {
+  const secure =
+    options?.secure ??
+    (process.env.AUTH_COOKIE_SECURE === "true" ||
+      process.env.NODE_ENV === "production");
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax" as const,
     path: "/",
     maxAge,
   };
+}
+
+/** True when the incoming request is HTTPS (incl. Cloudflare / reverse proxies). */
+export function requestIsHttps(req: {
+  headers: { get(name: string): string | null };
+  nextUrl?: { protocol?: string };
+}): boolean {
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (proto) return proto.toLowerCase() === "https";
+  const urlProto = req.nextUrl?.protocol;
+  if (urlProto) return urlProto === "https:";
+  return false;
 }

@@ -30,7 +30,6 @@ export default function Page() {
   const [pendingResults, setPendingResults] = useState(0);
   const [overdue, setOverdue] = useState(0);
   const [rows, setRows] = useState<DueRow[]>([]);
-  const [dueItems, setDueItems] = useState<DueRow[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -42,7 +41,6 @@ export default function Page() {
       ]);
 
       const items = due.data?.items ?? [];
-      setDueItems(items);
       setDueCount(due.data?.total ?? items.length);
       setIssueCount(issues.data?.total ?? issues.data?.items?.length ?? 0);
       setPendingResults(results.data?.total ?? results.data?.items?.length ?? 0);
@@ -60,30 +58,15 @@ export default function Page() {
   }, []);
 
   const pieData = useMemo(() => {
-    const now = new Date();
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    let overdueCount = 0;
-    let dueThisMonth = 0;
-    let dueLater = 0;
-
-    for (const r of dueItems) {
-      const raw = r.nextCalibrationDate ?? r.nextCDate;
-      if (!raw) {
-        dueLater += 1;
-        continue;
-      }
-      const dt = new Date(raw);
-      if (dt.getTime() < now.getTime()) overdueCount += 1;
-      else if (dt.getTime() <= monthEnd.getTime()) dueThisMonth += 1;
-      else dueLater += 1;
-    }
-
+    // Mutually exclusive mix: upcoming due (window − overdue) + overdue + open calib issues.
+    // Pending Results stays out — different pipeline stage, not a due-mix bucket.
+    const dueUpcoming = Math.max(0, dueCount - overdue);
     return [
-      { name: "Overdue", value: overdueCount, color: "#f43f5e" },
-      { name: "Due this month", value: dueThisMonth, color: "#f59e0b" },
-      { name: "Due later (in window)", value: dueLater, color: "#38bdf8" },
+      { name: "Due", value: dueUpcoming, color: "#38bdf8" },
+      { name: "Overdue", value: overdue, color: "#f43f5e" },
+      { name: "Calib Issues", value: issueCount, color: "#3b82f6" },
     ];
-  }, [dueItems]);
+  }, [dueCount, overdue, issueCount]);
 
   return (
     <ReportHub
@@ -131,12 +114,14 @@ export default function Page() {
           badge: { label: "Results", type: "success" },
         },
       ]}
+      chartBesideLinks
       chart={
         <ReportChartCard
           title="Calibration due mix"
-          subtitle="Overdue vs due this month vs later in the alert window"
+          subtitle="Due soon vs overdue vs open calibration issues"
+          className="mb-0 h-full"
         >
-          <ReportDonutChart data={pieData} />
+          <ReportDonutChart data={pieData} centerSubtext="total" />
         </ReportChartCard>
       }
       links={[
@@ -183,6 +168,18 @@ export default function Page() {
         ...r,
         nextCalibrationDate: r.nextCalibrationDate ?? r.nextCDate,
       })) as Record<string, unknown>[]}
+      previewRowDownload={{
+        label: "PDF",
+        getUrl: (row) => {
+          const toolNo = String(row.toolOrGaugeNo ?? "").trim();
+          if (!toolNo) return null;
+          return `/api/tools/calibration-due/pdf?toolOrGaugeNo=${encodeURIComponent(toolNo)}`;
+        },
+        getFilename: (row) => {
+          const safe = String(row.toolOrGaugeNo ?? "tool").replace(/[^\w\-]+/g, "_");
+          return `Calibration_Record_${safe}.pdf`;
+        },
+      }}
       exportCategory="calibration"
     />
   );

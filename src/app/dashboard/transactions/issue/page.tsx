@@ -1,16 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash, Search, ArrowUpRight, CheckCircle2, X, ShieldAlert, Users, CalendarClock, Truck, MessageSquareText, ChevronDown } from "lucide-react";
+import { Plus, Trash, Save, FileSpreadsheet } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { FileText, Clock, PackageCheck, AlertCircle } from "lucide-react";
-import { apiGet, apiPost } from "@/lib/apiClient";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { OverlayModal } from "@/components/ui/OverlayModal";
+import { FormModalSection } from "@/components/ui/form";
+import { SearchSelect, type SearchSelectItem } from "@/components/ui/SearchSelect";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
+import { useRouter, useSearchParams } from "next/navigation";
 
 // ERP uses "Active" for open DCs, "Cancelled"/"Closed" for closed DCs
 type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL" | "Active" | "Closed" | "Cancelled";
@@ -48,10 +55,23 @@ interface ToolsIssueLine {
 interface ToolsIssueHeader {
   dcNo: string;
   receiveName: string | null;
+  receiveNameTwo?: string | null;
   subCode: string | null;
+  supCode?: string | null;
+  custCode?: string | null;
   empId: string | null;
   issueDate: string | null;
   dueDate: string | null;
+  issueOption?: string | null;
+  transportName?: string | null;
+  vehicleNo?: string | null;
+  comments?: string | null;
+  lobType?: string | null;
+  poOrderNo?: string | null;
+  fromUnit?: string | null;
+  issuePurpose?: string | null;
+  matType?: string | null;
+  returnable?: string | null;
   status: IssueStatus;
   creatUserIdCd: string;
   creatDt: string;
@@ -125,17 +145,14 @@ const ISSUE_OPTIONS = [
 
 const LOB_TYPES = ["AUTOMOTIVE", "ALL", "OTHERS"] as const;
 
-const inputCls =
-  "w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium";
-const labelCls = "block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1";
+const inputCls = "form-control";
+const labelCls = "form-label";
 
 /** Compact controls for the ERP issue header card */
-const headerInputCls =
-  "w-full h-8 text-xs border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]";
-const headerLabelCls =
-  "block text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-0.5 leading-none";
+const headerInputCls = "form-control h-10";
+const headerLabelCls = "form-label";
 const headerFieldCls = "min-w-0";
-const headerErrCls = "text-[10px] text-[var(--color-danger-text)] mt-0.5 font-semibold leading-tight";
+const headerErrCls = "form-error";
 
 function toolMaintainsSerial(flag: string | null | undefined): boolean {
   const v = (flag ?? "").trim().toLowerCase();
@@ -152,7 +169,8 @@ function localToday() {
 }
 
 export default function IssueToolPage() {
-  const { showSuccess } = useSuccessOverlay();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // List state
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -166,15 +184,12 @@ export default function IssueToolPage() {
   const [total, setTotal] = useState(0);
   const pageSize = 50;
 
-  // Success Banner
-  const [successBanner, setSuccessBanner] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
   // Form Header State (ERP Tools Issue fields)
   const [receiveName, setReceiveName] = useState("");
   const [receiveNameTwo, setReceiveNameTwo] = useState("");
   const [subCode, setSubCode] = useState("");
   const [supCode, setSupCode] = useState("");
+  const [custCode, setCustCode] = useState("");
   const [empId, setEmpId] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -186,6 +201,12 @@ export default function IssueToolPage() {
   const [comments, setComments] = useState("");
   const [lobType, setLobType] = useState<string>("AUTOMOTIVE");
   const [poOrderNo, setPoOrderNo] = useState("");
+  const [fromUnit, setFromUnit] = useState("");
+  const [issuePurpose, setIssuePurpose] = useState("");
+  const [matType, setMatType] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [editIssue, setEditIssue] = useState<ToolsIssueHeader | null>(null);
   const [subs, setSubs] = useState<SubOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupOption[]>([]);
 
@@ -194,8 +215,8 @@ export default function IssueToolPage() {
 
   // Search/Dropdown selection state
   const [searchVal, setSearchVal] = useState("");
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [partyQuery, setPartyQuery] = useState("");
+  const [toolSearching, setToolSearching] = useState(false);
 
   // Validation Error State
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -219,16 +240,24 @@ export default function IssueToolPage() {
     })();
   }, [showCreate]);
 
-  const loadIssues = useCallback(async (p = page, q = searchQuery, status = listStatusFilter) => {
+  const loadIssues = useCallback(async (
+    p = page,
+    q = searchQuery,
+    status = listStatusFilter,
+    from = fromDate,
+    to = toDate
+  ) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(p), pageSize: "50" });
     if (q) params.set("search", q);
     if (status && status !== "All") params.set("status", status);
+    if (from) params.set("fromDate", from);
+    if (to) params.set("toDate", to);
     const res = await apiGet<{ items: ToolsIssueHeader[]; total: number }>(`/api/issue?${params}`);
     if (res.data?.items) setIssues(res.data.items);
     if (res.data?.total !== undefined) setTotal(res.data.total);
     setLoading(false);
-  }, [page, searchQuery, listStatusFilter]);
+  }, [page, searchQuery, listStatusFilter, fromDate, toDate]);
 
   // Debounced search handler
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -252,24 +281,30 @@ export default function IssueToolPage() {
     if (!q || q.length < 2) {
       setTools([]);
       setZeroStockHints([]);
+      setToolSearching(false);
       return;
     }
-    // Prefer in-stock tools. If none, show zero-stock matches as disabled hints.
-    const inStock = await apiGet<{ items: Tool[] }>(
-      `/api/tools?search=${encodeURIComponent(q)}&pageSize=15&availableOnly=1`
-    );
-    const stocked = (inStock.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) > 0);
-    setTools(stocked);
-    if (stocked.length > 0) {
-      setZeroStockHints([]);
-      return;
+    setToolSearching(true);
+    try {
+      // Prefer in-stock tools. If none, show zero-stock matches as disabled hints.
+      const inStock = await apiGet<{ items: Tool[] }>(
+        `/api/tools?search=${encodeURIComponent(q)}&pageSize=15&availableOnly=1`
+      );
+      const stocked = (inStock.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) > 0);
+      setTools(stocked);
+      if (stocked.length > 0) {
+        setZeroStockHints([]);
+        return;
+      }
+      const any = await apiGet<{ items: Tool[] }>(
+        `/api/tools?search=${encodeURIComponent(q)}&pageSize=8`
+      );
+      setZeroStockHints(
+        (any.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) <= 0).slice(0, 6)
+      );
+    } finally {
+      setToolSearching(false);
     }
-    const any = await apiGet<{ items: Tool[] }>(
-      `/api/tools?search=${encodeURIComponent(q)}&pageSize=8`
-    );
-    setZeroStockHints(
-      (any.data?.items ?? []).filter((t) => Number(t.qtyIn ?? 0) <= 0).slice(0, 6)
-    );
   }, []);
 
   useEffect(() => {
@@ -283,18 +318,6 @@ export default function IssueToolPage() {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     loadIssues(page, searchQuery, listStatusFilter);
   }, [page]);
-
-
-  // Click outside listener to close search dropdown
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowSearchDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   // API already filters availableOnly; keep a client safety filter on qtyIn
   const queryLower = searchVal.toLowerCase().trim();
@@ -314,6 +337,70 @@ export default function IssueToolPage() {
       .reduce((sum, l) => sum + l.issueQty, 0);
     return Math.max(0, inStock - alreadyStaged);
   };
+
+  const partySelectItems: SearchSelectItem[] = (() => {
+    const q = partyQuery.trim().toLowerCase();
+    if (issueOption === "Customer") {
+      return custCode.trim()
+        ? [{ id: custCode.trim(), primary: custCode.trim(), secondary: "Customer code" }]
+        : [];
+    }
+    if (issueOption === "Supplier" || issueOption === "Issue to Supplier") {
+      return suppliers
+        .filter(
+          (s) =>
+            !q ||
+            s.supCode.toLowerCase().includes(q) ||
+            (s.supName ?? "").toLowerCase().includes(q)
+        )
+        .slice(0, 50)
+        .map((s) => ({
+          id: s.supCode,
+          primary: s.supCode,
+          secondary: s.supName,
+        }));
+    }
+    return subs
+      .filter(
+        (s) =>
+          !q ||
+          s.subCode.toLowerCase().includes(q) ||
+          (s.subName ?? "").toLowerCase().includes(q)
+      )
+      .slice(0, 50)
+      .map((s) => ({
+        id: s.subCode,
+        primary: s.subCode,
+        secondary: s.subName,
+      }));
+  })();
+
+  const toolSelectItems: SearchSelectItem[] = [
+    ...searchResults.map((t) => ({
+      id: String(t.refNo),
+      primary: t.toolOrGaugeNo,
+      secondary:
+        !t.name || t.name.trim().toUpperCase() === "N/A"
+          ? t.grouping
+          : `${t.name}${toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}`,
+      right: (
+        <span className="text-[10px] font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
+          {getAvailableStock(t.toolOrGaugeNo)} in-stock
+        </span>
+      ),
+    })),
+    ...zeroStockHints.map((t) => ({
+      id: `zero-${t.refNo}`,
+      primary: t.toolOrGaugeNo,
+      secondary: t.name || t.grouping,
+      disabled: true,
+      right: (
+        <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+          0 stock
+        </span>
+      ),
+    })),
+  ];
 
   const handleSelectTool = (tool: Tool) => {
     const toolNo = tool.toolOrGaugeNo;
@@ -358,7 +445,6 @@ export default function IssueToolPage() {
       ]);
     }
     setSearchVal("");
-    setShowSearchDropdown(false);
     setFormErrors((prev) => ({ ...prev, lines: "" }));
   };
 
@@ -398,6 +484,7 @@ export default function IssueToolPage() {
     setReceiveNameTwo("");
     setSubCode("");
     setSupCode("");
+    setCustCode("");
     setEmpId("");
     const today = localToday();
     setIssueDate(today);
@@ -410,9 +497,133 @@ export default function IssueToolPage() {
     setComments("");
     setLobType("AUTOMOTIVE");
     setPoOrderNo("");
+    setFromUnit("");
+    setIssuePurpose("");
+    setMatType("");
     setStagedLines([]);
     setFormErrors({});
+    setPartyQuery("");
+    setSearchVal("");
+    setTools([]);
+    setZeroStockHints([]);
   };
+
+  const isOpenIssue = (status: string | null | undefined) =>
+    ["Active", "OPEN", "Open", "PARTIAL"].includes(status ?? "");
+
+  const handleCancelIssue = async (dcNo: string) => {
+    if (!confirm(`Cancel open DC ${dcNo}? Stock will be restored for non-serial tools.`)) return;
+    const res = await apiDelete(`/api/issue/${encodeURIComponent(dcNo)}`);
+    if (res.error) {
+      toastError(res.error.message);
+      return;
+    }
+    toastSuccess(`DC ${dcNo} cancelled.`);
+    void loadIssues();
+  };
+
+  const openEditIssue = (issue: ToolsIssueHeader) => {
+    setEditIssue(issue);
+    setReceiveName(issue.receiveName ?? "");
+    setReceiveNameTwo(issue.receiveNameTwo ?? "");
+    setSubCode(issue.subCode ?? "");
+    setSupCode(issue.supCode ?? "");
+    setCustCode(issue.custCode ?? "");
+    setIssueOption(issue.issueOption || "SubContractor");
+    setDueDate(issue.dueDate ? String(issue.dueDate).split("T")[0] : localToday());
+    setTransportName(issue.transportName ?? "");
+    setVehicleNo(issue.vehicleNo ?? "");
+    setComments(issue.comments ?? "");
+    setLobType(issue.lobType || "AUTOMOTIVE");
+    setPoOrderNo(issue.poOrderNo ?? "");
+    setFromUnit(issue.fromUnit ?? "");
+    setIssuePurpose(issue.issuePurpose ?? "");
+    setMatType(issue.matType ?? "");
+    setReturnable(issue.returnable === "No" ? "No" : "Yes");
+    setFormErrors({});
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editIssue) return;
+    if (issueOption === "Customer" && !custCode.trim()) {
+      setFormErrors({ party: "Enter Customer Code" });
+      return;
+    }
+    const res = await apiPut(`/api/issue/${encodeURIComponent(editIssue.dcNo)}`, {
+      receiveName: receiveName.trim(),
+      receiveNameTwo: receiveNameTwo || null,
+      subCode: issueOption === "Customer" ? null : subCode || null,
+      supCode:
+        issueOption === "Supplier" || issueOption === "Issue to Supplier" ? supCode || null : null,
+      custCode: issueOption === "Customer" ? custCode.trim() : null,
+      dueDate,
+      issueOption,
+      returnable,
+      transportName: transportName || null,
+      vehicleNo: vehicleNo || null,
+      comments: comments || null,
+      lobType,
+      poOrderNo: poOrderNo || null,
+      fromUnit: fromUnit || null,
+      issuePurpose: issuePurpose || null,
+      matType: matType || null,
+    });
+    if (res.error) {
+      toastError(res.error.message);
+      return;
+    }
+    toastSuccess(`DC ${editIssue.dcNo} updated.`);
+    setEditIssue(null);
+    handleClearForm();
+    void loadIssues();
+  };
+
+  const handleExportExcel = () => {
+    downloadExcel({
+      filename: "tools_issue",
+      sheetName: "Issues",
+      columns: [
+        { key: "dcNo", label: "DC No" },
+        { key: "issueDate", label: "Issue Date", value: (r) => (r.issueDate ? String(r.issueDate).split("T")[0] : "") },
+        { key: "dueDate", label: "Due Date", value: (r) => (r.dueDate ? String(r.dueDate).split("T")[0] : "") },
+        { key: "receiveName", label: "Issued To" },
+        { key: "issueOption", label: "Search By" },
+        { key: "subCode", label: "Sub Code" },
+        { key: "supCode", label: "Sup Code" },
+        { key: "custCode", label: "Cust Code" },
+        { key: "status", label: "Status" },
+        { key: "lines", label: "Lines", value: (r) => r.lines?.length ?? 0 },
+      ],
+      rows: issues,
+    });
+    toastSuccess("Excel downloaded (current page).");
+  };
+
+  const openCreate = useCallback(() => {
+    setShowCreate(true);
+    router.replace("/dashboard/transactions/issue?action=add", { scroll: false });
+  }, [router]);
+
+  const closeCreate = useCallback(() => {
+    handleClearForm();
+    setShowCreate(false);
+    router.replace("/dashboard/transactions/issue", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "add") {
+      if (!showCreate) setShowCreate(true);
+      return;
+    }
+    if (showCreate) {
+      setShowCreate(false);
+      handleClearForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -427,6 +638,9 @@ export default function IssueToolPage() {
     if ((issueOption === "Supplier" || issueOption === "Issue to Supplier") && !supCode.trim()) {
       errors.party = "Select Party Name (Supplier)";
     }
+    if (issueOption === "Customer" && !custCode.trim()) {
+      errors.party = "Enter Customer Code";
+    }
     if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
 
     if (Object.keys(errors).length > 0) {
@@ -438,8 +652,12 @@ export default function IssueToolPage() {
     const payload = {
       receiveName,
       receiveNameTwo: receiveNameTwo || undefined,
-      subCode: subCode || undefined,
-      supCode: supCode || undefined,
+      subCode: issueOption === "Customer" ? undefined : subCode || undefined,
+      supCode:
+        issueOption === "Supplier" || issueOption === "Issue to Supplier"
+          ? supCode || undefined
+          : undefined,
+      custCode: issueOption === "Customer" ? custCode.trim() : undefined,
       empId: Number.isFinite(empParsed) ? empParsed : 0,
       issueDate,
       dueDate,
@@ -451,6 +669,9 @@ export default function IssueToolPage() {
       comments: comments || undefined,
       lobType,
       poOrderNo: poOrderNo || undefined,
+      fromUnit: fromUnit || undefined,
+      issuePurpose: issuePurpose || undefined,
+      matType: matType || undefined,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
         issueQty: l.issueQty,
@@ -463,27 +684,24 @@ export default function IssueToolPage() {
       })),
     };
 
-    setBannerMsg(null);
     const res = await apiPost<{ issue: ToolsIssueHeader }>("/api/issue", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
     if (res.data?.issue) {
-      const msg = `DC #${res.data.issue.dcNo} issued successfully to ${receiveName}!`;
-      setSuccessBanner(msg);
-      showSuccess({
+      toastSuccess({
         title: "Issue DC created",
         message: `Tools issued successfully to ${receiveName}.`,
         detail: `DC #${res.data.issue.dcNo}`,
       });
       handleClearForm();
       setShowCreate(false);
+      router.replace("/dashboard/transactions/issue", { scroll: false });
       loadIssues(1, searchQuery, listStatusFilter);
       setPage(1);
-      setTimeout(() => setSuccessBanner(""), 5000);
     }
   };
 
@@ -493,31 +711,6 @@ export default function IssueToolPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {successBanner && (
-            <div className="mb-4 p-4 bg-[var(--color-success-bg)] border border-[var(--border-main)] rounded-2xl flex items-center gap-2.5 text-[var(--color-success-text)] text-sm font-semibold shadow-sm">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              <span>{successBanner}</span>
-            </div>
-          )}
-
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button
-                onClick={() => setBannerMsg(null)}
-                className="ml-auto text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
           {/* ── Header ── */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -528,19 +721,30 @@ export default function IssueToolPage() {
                 Issue tools/gauges to department or employee (GAUGE_TOOLS_ISSUE)
               </p>
             </div>
-            <RoleGate permission="canCreateIssue">
-              {!showCreate && (
-                <Button
-                  id="issue-create-btn"
-                  onClick={() => setShowCreate(true)}
-                  variant="primary"
-                  className="group"
-                >
-                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                  New Issue (DC)
-                </Button>
-              )}
-            </RoleGate>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleExportExcel}
+                disabled={loading || issues.length === 0}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </Button>
+              <RoleGate permission="canCreateIssue">
+                {!showCreate && (
+                  <Button
+                    id="issue-create-btn"
+                    onClick={openCreate}
+                    variant="primary"
+                    className="group"
+                  >
+                    <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+                    New Issue (DC)
+                  </Button>
+                )}
+              </RoleGate>
+            </div>
           </div>
 
           {/* ── Module KPI Cards ── */}
@@ -589,274 +793,368 @@ export default function IssueToolPage() {
             ]}
           />
 
-          {!showCreate ? (
-            /* ── VIEW PREVIOUS ISSUES LIST ── */
-            <div className="flex flex-col gap-4 animate-fade-in">
-              {/* Search + status filter tabs */}
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-4">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+          {/* ── Issue list (stays mounted under overlay) ── */}
+            <StatusPillTabs
+              className="mb-3"
+              idPrefix="issue-status-pill"
+              value={listStatusFilter}
+              onChange={handleStatusTabChange}
+              items={[
+                { value: "All", label: "All", count: total },
+                {
+                  value: "Open",
+                  label: "Open",
+                  count: issues.filter((i) => i.status === "OPEN" || i.status === "Active").length,
+                },
+                {
+                  value: "Closed",
+                  label: "Closed",
+                  count: issues.filter((i) => i.status === "CLOSED" || i.status === "Closed").length,
+                },
+                {
+                  value: "Overdue",
+                  label: "Overdue",
+                  count: issues.filter(
+                    (i) =>
+                      (i.status === "OPEN" || i.status === "Active") &&
+                      i.dueDate &&
+                      new Date(i.dueDate) < new Date()
+                  ).length,
+                },
+              ]}
+            />
+
+            <MasterTableCard
+              toolbar={
+                <>
+                  <MasterSearchInput
+                    id="issue-search-input"
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    placeholder="Search DC, party…"
+                    widthClass="w-52"
+                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <input
-                      id="issue-search-input"
-                      value={searchQuery}
-                      onChange={(e) => handleSearchChange(e.target.value)}
-                      placeholder="Search DC No, name, or subcontractor…"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                      type="date"
+                      aria-label="From date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
                     />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1">
-                      {(["All", "Open", "Closed", "Overdue"] as const).map((f) => (
-                        <button
-                          key={f}
-                          id={`issue-status-filter-${f.toLowerCase()}`}
-                          type="button"
-                          onClick={() => handleStatusTabChange(f)}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                            listStatusFilter === f
-                              ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-                              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                          }`}
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-xs text-[var(--text-muted)] font-medium whitespace-nowrap">
-                      {loading ? "Loading…" : `Showing ${issues.length} of ${total.toLocaleString()} records`}
+                    <input
+                      type="date"
+                      aria-label="To date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 !rounded-md !px-2 !text-[11px]"
+                      onClick={() => {
+                        setPage(1);
+                        void loadIssues(1, searchQuery, listStatusFilter, fromDate, toDate);
+                      }}
+                    >
+                      Apply
+                    </Button>
+                    <span className="text-[11px] text-[var(--text-muted)] font-medium whitespace-nowrap pl-1">
+                      {loading ? "Loading…" : `${issues.length} of ${total.toLocaleString()}`}
                     </span>
                   </div>
-                </div>
-              </div>
+                </>
+              }
+              footer={
+                total > pageSize ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Page {page} of {Math.ceil(total / pageSize).toLocaleString()}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        id="issue-prev-page"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                      >
+                        ← Prev
+                      </button>
+                      <button
+                        id="issue-next-page"
+                        disabled={page >= Math.ceil(total / pageSize)}
+                        onClick={() => setPage((p) => p + 1)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </div>
+                ) : undefined
+              }
+            >
               {loading ? (
-                <TableSkeleton rows={3} />
+                <div className="p-4">
+                  <TableSkeleton rows={3} />
+                </div>
               ) : issues.length === 0 ? (
-                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-8 text-center text-sm text-[var(--text-muted)]">
+                <div className="p-8 text-center text-sm text-[var(--text-muted)]">
                   {searchQuery || listStatusFilter !== "All"
                     ? `No ${listStatusFilter === "All" ? "" : listStatusFilter.toLowerCase() + " "}records found${searchQuery ? ` for "${searchQuery}"` : ""}.`
                     : "No issue records found. Create a new issue to get started."}
                 </div>
               ) : (
-                issues.map((issue) => {
-                  const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
-                  return (
-                    <div key={issue.dcNo} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
-                          </p>
-                        </div>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
-                        >
-                          {issue.status}
-                        </span>
-                      </div>
-                      <div className="overflow-auto">
-                        <table className="w-full text-sm border-collapse">
-                          <thead>
-                            <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                              {["Tool / Item No", "Name & Description", "Type / Group", "S.No", "Qty", "UOM", "Issued To"].map(
-                                (col) => (
-                                  <th
-                                    key={col}
-                                    className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4"
-                                  >
-                                    {col}
-                                  </th>
-                                )
+                <div className="divide-y divide-[var(--border-main)]">
+                  {issues.map((issue) => {
+                    const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
+                    return (
+                      <div key={issue.dcNo} className="p-4">
+                        <div className="flex items-center justify-between mb-3 gap-3">
+                          <div>
+                            <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">{issue.dcNo}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
+                              {issue.custCode ? ` · Cust ${issue.custCode}` : ""}
+                              {issue.supCode ? ` · Sup ${issue.supCode}` : ""}
+                              {issue.subCode ? ` · Sub ${issue.subCode}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <RoleGate permission="canCreateIssue">
+                              {isOpenIssue(issue.status) && (
+                                <>
+                                  <Button type="button" size="sm" variant="outline" onClick={() => openEditIssue(issue)}>
+                                    Edit
+                                  </Button>
+                                  <Button type="button" size="sm" variant="outline" onClick={() => void handleCancelIssue(issue.dcNo)}>
+                                    Cancel DC
+                                  </Button>
+                                </>
                               )}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[var(--border-main)]">
-                            {issue.lines.map((line) => {
-                              const master = line.tool ?? line.toolByRef;
-                              const itemNo =
-                                line.toolOrGaugeNo || master?.toolOrGaugeNo || line.issueToItemNo || line.partNo;
-                              const lineName = line.name || master?.name || "";
-                              const lineDesc = line.description || master?.description || "";
-                              const lineType = line.type || master?.type;
-                              const lineGroup = line.groupName || master?.grouping;
-                              return (
-                                <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
-                                  <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-primary)] font-semibold">
-                                    {itemNo || "—"}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle max-w-md">
-                                    <p className="text-[var(--text-primary)] font-medium truncate">
-                                      {lineName && lineName.trim().toUpperCase() !== "N/A" ? lineName : lineDesc || "—"}
-                                    </p>
-                                    {lineName && lineName.trim().toUpperCase() !== "N/A" && lineDesc && (
-                                      <p className="text-[11px] text-[var(--text-muted)] truncate">{lineDesc}</p>
-                                    )}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
-                                    {lineType || lineGroup ? (
-                                      <>
-                                        <span>{lineType || "—"}</span>
-                                        {lineGroup && (
-                                          <span className="block text-[11px] text-[var(--text-muted)]">{lineGroup}</span>
-                                        )}
-                                      </>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)]">
-                                    {line.serialNo ?? "—"}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle text-[var(--text-primary)] font-mono text-xs font-semibold">
-                                    {Number(line.issueQty) || 0}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
-                                    {line.uom || master?.uom || "Nos"}
-                                  </td>
-                                  <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
-                                    {line.issueEmpName || line.machine || issue.receiveName || "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                            </RoleGate>
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}
+                            >
+                              {issue.status}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="overflow-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                                {["Tool / Item No", "Name & Description", "Type / Group", "S.No", "Qty", "UOM", "Issued To"].map(
+                                  (col) => (
+                                    <th
+                                      key={col}
+                                      className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-4"
+                                    >
+                                      {col}
+                                    </th>
+                                  )
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--border-main)]">
+                              {issue.lines.map((line) => {
+                                const master = line.tool ?? line.toolByRef;
+                                const itemNo =
+                                  line.toolOrGaugeNo || master?.toolOrGaugeNo || line.issueToItemNo || line.partNo;
+                                const lineName = line.name || master?.name || "";
+                                const lineDesc = line.description || master?.description || "";
+                                const lineType = line.type || master?.type;
+                                const lineGroup = line.groupName || master?.grouping;
+                                return (
+                                  <tr key={line.rowId} className="hover:bg-[var(--bg-hover)] transition-colors">
+                                    <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-primary)] font-semibold">
+                                      {itemNo || "—"}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle max-w-md">
+                                      <p className="text-[var(--text-primary)] font-medium truncate">
+                                        {lineName && lineName.trim().toUpperCase() !== "N/A" ? lineName : lineDesc || "—"}
+                                      </p>
+                                      {lineName && lineName.trim().toUpperCase() !== "N/A" && lineDesc && (
+                                        <p className="text-[11px] text-[var(--text-muted)] truncate">{lineDesc}</p>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                      {lineType || lineGroup ? (
+                                        <>
+                                          <span>{lineType || "—"}</span>
+                                          {lineGroup && (
+                                            <span className="block text-[11px] text-[var(--text-muted)]">{lineGroup}</span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle font-mono text-xs text-[var(--text-secondary)]">
+                                      {line.serialNo ?? "—"}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle text-[var(--text-primary)] font-mono text-xs font-semibold">
+                                      {Number(line.issueQty) || 0}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                      {line.uom || master?.uom || "Nos"}
+                                    </td>
+                                    <td className="py-3 px-4 align-middle text-xs text-[var(--text-secondary)]">
+                                      {line.issueEmpName || line.machine || issue.receiveName || "—"}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-
-              {/* Pagination controls */}
-              {total > pageSize && (
-                <div className="flex items-center justify-between pt-2 border-t border-[var(--border-main)]">
-                  <span className="text-xs text-[var(--text-muted)]">
-                    Page {page} of {Math.ceil(total / pageSize).toLocaleString()}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      id="issue-prev-page"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    >
-                      ← Prev
-                    </button>
-                    <button
-                      id="issue-next-page"
-                      disabled={page >= Math.ceil(total / pageSize)}
-                      onClick={() => setPage((p) => p + 1)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    >
-                      Next →
-                    </button>
-                  </div>
+                    );
+                  })}
                 </div>
               )}
-            </div>
-          ) : (
-            /* ── ACTIVE CREATE ISSUE MODE (60% / 40% side by side) ── */
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start animate-fade-in">
-              {/* LEFT FORM PANEL */}
-              <form onSubmit={handleSubmit} className="space-y-3">
-                {/* Form title bar */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
-                      Tools / Gauge / Other Item Issue
-                    </h2>
-                    <span className="font-mono text-[10px] text-[var(--text-muted)] font-bold bg-[var(--bg-subtle)] px-2 py-0.5 rounded">
-                      DC No: Auto
-                    </span>
-                  </div>
-                </div>
-
-                {/* 1. Who and what */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4 text-[var(--primary)] shrink-0" />
-                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
-                      Who and what
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3">
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>DC Date</label>
-                      <input type="date" value={issueDate} readOnly className={`${headerInputCls} cursor-not-allowed opacity-80`} />
+            </MasterTableCard>
+          {showCreate && (
+            <OverlayModal
+              open
+              size="5xl"
+              title="Add Issue"
+              subtitle="Issue tools / gauges · DC No Auto"
+              onClose={closeCreate}
+              footer={
+                <>
+                  <button type="button" onClick={closeCreate} className="form-btn-cancel">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleClearForm} className="form-btn-cancel">
+                    Clear Form
+                  </button>
+                  <button type="submit" form="issue-create-form" id="submit-issue-btn" className="form-btn-save">
+                    <Save className="w-4 h-4" /> Save Now
+                  </button>
+                </>
+              }
+            >
+              <form id="issue-create-form" onSubmit={handleSubmit} className="space-y-0">
+                <FormModalSection title="Who and what">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">DC Date</label>
+                      <input type="date" value={issueDate} readOnly className="form-control cursor-not-allowed opacity-80" />
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Search By</label>
+                    <div>
+                      <label className="form-label">Search By</label>
                       <select
                         value={issueOption}
                         onChange={(e) => {
                           setIssueOption(e.target.value);
                           setSubCode("");
                           setSupCode("");
+                          setCustCode("");
+                          setPartyQuery("");
                         }}
-                        className={headerInputCls}
+                        className="form-control"
                       >
                         {ISSUE_OPTIONS.map((opt) => (
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Party Name</label>
-                      {issueOption === "Supplier" || issueOption === "Issue to Supplier" ? (
-                        <select
-                          value={supCode}
-                          onChange={(e) => setSupCode(e.target.value)}
-                          className={headerInputCls}
-                        >
-                          <option value="">-SELECT-</option>
-                          {suppliers.map((s) => (
-                            <option key={s.supCode || s.id} value={s.supCode}>
-                              {s.supCode} — {s.supName}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <select
-                          value={subCode}
-                          onChange={(e) => setSubCode(e.target.value)}
-                          className={headerInputCls}
-                        >
-                          <option value="">-SELECT-</option>
-                          {subs.map((s) => (
-                            <option key={s.subCode || s.id} value={s.subCode}>
-                              {s.subCode} — {s.subName}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {formErrors.party && <p className={headerErrCls}>{formErrors.party}</p>}
+                    {issueOption === "Customer" ? (
+                      <div>
+                        <label className="form-label">Customer Code *</label>
+                        <input
+                          value={custCode}
+                          onChange={(e) => {
+                            setCustCode(e.target.value.toUpperCase());
+                            setFormErrors((prev) => ({ ...prev, party: "" }));
+                          }}
+                          className="form-control font-mono uppercase"
+                          placeholder="Enter customer code"
+                          maxLength={12}
+                        />
+                        {formErrors.party && <p className="form-error">{formErrors.party}</p>}
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                          No CUSTOMER master in app schema — enter ERP cust code freely.
+                        </p>
+                      </div>
+                    ) : (
+                    <SearchSelect
+                      label="Party Name"
+                      placeholder={
+                        issueOption === "Supplier" || issueOption === "Issue to Supplier"
+                          ? "Search supplier code / name…"
+                          : "Search subcontractor code / name…"
+                      }
+                      query={partyQuery}
+                      onQueryChange={setPartyQuery}
+                      selected={
+                        issueOption === "Supplier" || issueOption === "Issue to Supplier"
+                          ? supCode
+                            ? {
+                                primary: supCode,
+                                secondary: suppliers.find((s) => s.supCode === supCode)?.supName,
+                              }
+                            : null
+                          : subCode
+                            ? {
+                                primary: subCode,
+                                secondary: subs.find((s) => s.subCode === subCode)?.subName,
+                              }
+                            : null
+                      }
+                      onClear={() => {
+                        setSubCode("");
+                        setSupCode("");
+                        setPartyQuery("");
+                      }}
+                      items={partySelectItems}
+                      onSelect={(item) => {
+                        if (issueOption === "Supplier" || issueOption === "Issue to Supplier") {
+                          setSupCode(item.id);
+                          setSubCode("");
+                        } else {
+                          setSubCode(item.id);
+                          setSupCode("");
+                        }
+                        setPartyQuery("");
+                        setFormErrors((prev) => ({ ...prev, party: "" }));
+                      }}
+                      error={formErrors.party}
+                      emptyText="No parties match your search"
+                    />
+                    )}
+                    <div>
+                      <label className="form-label">Issue Purpose</label>
+                      <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} className="form-control" maxLength={100} />
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Ref No</label>
-                      <input value={dcRefNo} onChange={(e) => setDcRefNo(e.target.value)} className={headerInputCls} placeholder="Ref No" maxLength={20} />
+                    <div>
+                      <label className="form-label">From Unit</label>
+                      <input value={fromUnit} onChange={(e) => setFromUnit(e.target.value)} className="form-control" maxLength={15} />
+                    </div>
+                    <div>
+                      <label className="form-label">Mat Type</label>
+                      <input value={matType} onChange={(e) => setMatType(e.target.value)} className="form-control" maxLength={20} />
+                    </div>
+                    <div>
+                      <label className="form-label">Ref No</label>
+                      <input value={dcRefNo} onChange={(e) => setDcRefNo(e.target.value)} className="form-control" placeholder="Ref No" maxLength={20} />
                     </div>
                   </div>
-                </div>
+                </FormModalSection>
 
-                {/* 2. Return terms */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <CalendarClock className="w-4 h-4 text-[var(--primary)] shrink-0" />
-                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
-                      Return terms
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3">
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Is Returnable?</label>
-                      <select value={returnable} onChange={(e) => setReturnable(e.target.value as "Yes" | "No")} className={headerInputCls}>
+                <FormModalSection title="Return terms">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">Is Returnable?</label>
+                      <select value={returnable} onChange={(e) => setReturnable(e.target.value as "Yes" | "No")} className="form-control">
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </select>
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Return Due Date *</label>
+                    <div>
+                      <label className="form-label">Return Due Date *</label>
                       <input
                         id="form-duedate"
                         type="date"
@@ -865,233 +1163,126 @@ export default function IssueToolPage() {
                           setDueDate(e.target.value);
                           setFormErrors((prev) => ({ ...prev, dueDate: "" }));
                         }}
-                        className={headerInputCls}
+                        className="form-control"
                       />
-                      {formErrors.dueDate && <p className={headerErrCls}>{formErrors.dueDate}</p>}
+                      {formErrors.dueDate && <p className="form-error">{formErrors.dueDate}</p>}
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Receiver Name 1 *</label>
+                    <div>
+                      <label className="form-label">Receiver Name 1 *</label>
                       <input
                         id="form-receive-name"
                         value={receiveName}
                         onChange={(e) => setReceiveName(e.target.value)}
-                        className={headerInputCls}
+                        className="form-control"
                         maxLength={50}
                       />
-                      {formErrors.receiveName && <p className={headerErrCls}>{formErrors.receiveName}</p>}
+                      {formErrors.receiveName && <p className="form-error">{formErrors.receiveName}</p>}
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Receiver Name 2</label>
-                      <input value={receiveNameTwo} onChange={(e) => setReceiveNameTwo(e.target.value)} className={headerInputCls} maxLength={50} />
+                    <div>
+                      <label className="form-label">Receiver Name 2</label>
+                      <input value={receiveNameTwo} onChange={(e) => setReceiveNameTwo(e.target.value)} className="form-control" maxLength={50} />
                     </div>
-                    <div className={`${headerFieldCls} md:col-span-2`}>
-                      <label className={headerLabelCls}>LOB Type *</label>
+                    <div className="md:col-span-2">
+                      <label className="form-label">LOB Type *</label>
                       <select
                         value={lobType}
                         onChange={(e) => {
                           setLobType(e.target.value);
                           setFormErrors((prev) => ({ ...prev, lobType: "" }));
                         }}
-                        className={headerInputCls}
+                        className="form-control"
                       >
                         {LOB_TYPES.map((lob) => (
                           <option key={lob} value={lob}>{lob}</option>
                         ))}
                       </select>
-                      {formErrors.lobType && <p className={headerErrCls}>{formErrors.lobType}</p>}
+                      {formErrors.lobType && <p className="form-error">{formErrors.lobType}</p>}
                     </div>
                   </div>
-                </div>
+                </FormModalSection>
 
-                {/* 3. Transport details — collapsed unless values present */}
-                <details
-                  className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5 group"
-                  defaultOpen={Boolean(transportName.trim() || vehicleNo.trim())}
-                >
-                  <summary className="flex items-center gap-2 cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
-                    <Truck className="w-4 h-4 text-[var(--primary)] shrink-0" />
-                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest flex-1">
-                      Transport details
-                    </h3>
-                    <ChevronDown className="w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3 mt-3">
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Transporter Name</label>
-                      <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className={headerInputCls} maxLength={50} />
+                <FormModalSection title="Transport details">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">Transporter Name</label>
+                      <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className="form-control" maxLength={50} />
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Vehicle No</label>
-                      <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className={headerInputCls} maxLength={25} />
+                    <div>
+                      <label className="form-label">Vehicle No</label>
+                      <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="form-control" maxLength={25} />
                     </div>
                   </div>
-                </details>
+                </FormModalSection>
 
-                {/* 4. Additional details — collapsed unless values present */}
-                <details
-                  className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-5 group"
-                  defaultOpen={Boolean(poOrderNo.trim() || empId.trim() || comments.trim())}
-                >
-                  <summary className="flex items-center gap-2 cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
-                    <MessageSquareText className="w-4 h-4 text-[var(--primary)] shrink-0" />
-                    <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest flex-1">
-                      Additional details
-                    </h3>
-                    <ChevronDown className="w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-3 mt-3">
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>PO Number</label>
-                      <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className={headerInputCls} maxLength={15} placeholder="-SELECT-" />
+                <FormModalSection title="Additional details">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">PO Number</label>
+                      <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className="form-control" maxLength={15} placeholder="-SELECT-" />
                     </div>
-                    <div className={headerFieldCls}>
-                      <label className={headerLabelCls}>Employee ID</label>
-                      <input id="form-emp-id" value={empId} onChange={(e) => setEmpId(e.target.value)} className={headerInputCls} placeholder="0" />
+                    <div>
+                      <label className="form-label">Employee ID</label>
+                      <input id="form-emp-id" value={empId} onChange={(e) => setEmpId(e.target.value)} className="form-control" placeholder="0" />
                     </div>
-                    <div className={`${headerFieldCls} md:col-span-2`}>
-                      <label className={headerLabelCls}>Comments</label>
+                    <div className="md:col-span-2">
+                      <label className="form-label">Comments</label>
                       <textarea
                         value={comments}
                         onChange={(e) => setComments(e.target.value)}
                         maxLength={100}
                         rows={3}
-                        className={`${headerInputCls} h-auto min-h-[4.5rem] py-2 resize-y`}
+                        className="form-control min-h-[4.5rem] h-auto py-2 resize-y"
                       />
                     </div>
                   </div>
-                </details>
+                </FormModalSection>
 
-                <p className="text-[10px] font-medium text-[var(--text-muted)] px-0.5">
-                  Note: Stock reduces only when serial numbers are not maintained.
-                </p>
+                <FormModalSection
+                  title="Tool line items"
+                  action={
+                    <span className="text-xs font-semibold text-[var(--text-muted)]">
+                      {stagedLines.length} staged · qty {stagedLines.reduce((sum, l) => sum + l.issueQty, 0)}
+                    </span>
+                  }
+                >
+                  <p className="text-xs text-[var(--text-muted)] -mt-1">
+                    Search an in-stock tool, then click to add a line. Same tool increases qty (up to Available).
+                    Stock reduces only when serial numbers are not maintained.
+                  </p>
 
-                {/* Line Items Card */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">
-                  <div className="pb-2 border-b border-[var(--border-main)]">
-                    <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">Tool Line Items</h2>
-                    <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                      Search and click a tool to add a line. Same tool increases qty (up to Available).
-                    </p>
-                  </div>
+                  <SearchSelect
+                    id="tool-select-search"
+                    label="Tool / Gauge"
+                    placeholder="Search tool number…"
+                    query={searchVal}
+                    onQueryChange={(val) => {
+                      setSearchVal(val);
+                      if (toolSearchTimer.current) clearTimeout(toolSearchTimer.current);
+                      toolSearchTimer.current = setTimeout(() => fetchToolsForSearch(val), 300);
+                    }}
+                    minQueryLength={2}
+                    loading={toolSearching}
+                    items={toolSelectItems}
+                    onSelect={(item) => {
+                      const tool = tools.find((t) => String(t.refNo) === item.id);
+                      if (tool) handleSelectTool(tool);
+                      setSearchVal("");
+                      setTools([]);
+                      setZeroStockHints([]);
+                    }}
+                    emptyText={
+                      searchVal.trim().length < 2
+                        ? "Type at least 2 characters"
+                        : `No in-stock tools match “${searchVal}”`
+                    }
+                    error={formErrors.lines}
+                  />
 
-                  {/* Smart Tool Search Input */}
-                  <div className="relative" ref={dropdownRef}>
-                    <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      id="tool-select-search"
-                      value={searchVal}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSearchVal(val);
-                        setShowSearchDropdown(true);
-                        // Debounced on-demand fetch — no pre-loaded tool list
-                        if (toolSearchTimer.current) clearTimeout(toolSearchTimer.current);
-                        toolSearchTimer.current = setTimeout(() => fetchToolsForSearch(val), 300);
-                      }}
-                      onFocus={() => setShowSearchDropdown(true)}
-                      placeholder={
-                        stagedLines.length > 0
-                          ? "Search another in-stock tool to add a 2nd line…"
-                          : "Search in-stock tools — e.g. OTH_J-0001 or TEST-CAL-001"
-                      }
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-                    />
-
-                    {/* Popover results */}
-                    {showSearchDropdown && searchVal.trim().length > 0 && (
-                      <div className="absolute z-10 w-full bg-[var(--bg-surface)] border border-[var(--border-main)] shadow-lg rounded-xl mt-1 max-h-56 overflow-y-auto divide-y divide-[var(--border-main)]">
-                        {searchResults.map((t) => (
-                          <div
-                            key={t.refNo}
-                            onClick={() => handleSelectTool(t)}
-                            className="p-3 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors flex items-center justify-between text-sm"
-                          >
-                            <div>
-                              <p className="font-semibold text-[var(--text-primary)]">
-                                {!t.name || t.name.trim().toUpperCase() === "N/A"
-                                  ? t.toolOrGaugeNo
-                                  : t.name}
-                              </p>
-                              <p className="text-xs font-mono text-[var(--text-muted)]">
-                                {t.toolOrGaugeNo} · {t.grouping}
-                                {toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}
-                              </p>
-                            </div>
-                            <span className="text-xs font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
-                              {getAvailableStock(t.toolOrGaugeNo)} in-stock
-                            </span>
-                          </div>
-                        ))}
-                        {searchResults.length === 0 && (
-                          <div className="p-3 text-xs text-[var(--text-muted)] space-y-2">
-                            <p className="font-semibold text-[var(--text-primary)] text-center">
-                              No in-stock tools match “{searchVal}”.
-                            </p>
-                            {zeroStockHints.length > 0 && (
-                              <div className="rounded-lg border border-[var(--border-main)] divide-y divide-[var(--border-main)] overflow-hidden">
-                                {zeroStockHints.map((t) => (
-                                  <div
-                                    key={t.refNo}
-                                    className="px-3 py-2 flex items-center justify-between bg-[var(--bg-subtle)] opacity-80"
-                                  >
-                                    <div>
-                                      <p className="font-mono text-[var(--text-secondary)]">{t.toolOrGaugeNo}</p>
-                                      <p className="text-[11px]">{t.name || t.grouping}</p>
-                                    </div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
-                                      0 stock — cannot issue
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <p className="text-center">
-                              Use a tool with Qty In &gt; 0, or create one with Tot Qty ≥ 1. Live stock:{" "}
-                              <button
-                                type="button"
-                                className="font-mono font-semibold text-[var(--primary)] underline"
-                                onClick={() => {
-                                  setSearchVal("OTH_J-0001");
-                                  setShowSearchDropdown(true);
-                                  void fetchToolsForSearch("OTH_J-0001");
-                                }}
-                              >
-                                OTH_J-0001
-                              </button>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {formErrors.lines && (
-                    <div className="p-3 bg-[var(--color-danger-bg)] border border-[var(--border-main)] rounded-xl text-xs text-[var(--color-danger-text)] font-semibold flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-red-500" />
-                      <span>{formErrors.lines}</span>
-                    </div>
-                  )}
-
-                  {/* Issue List — ERP columns */}
                   <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {[
-                            "#",
-                            "Item No",
-                            "Description",
-                            "Qty",
-                            "Avl",
-                            "Price",
-                            "Amount",
-                            "Machine",
-                            "Part No",
-                            "Process",
-                            "Ret.?",
-                            "Sl.No",
-                            "",
-                          ].map((col) => (
+                          {["#", "Item No", "Description", "Qty", "Avl", "Price", "Amount", "Machine", "Part No", "Process", "Ret.?", "Sl.No", ""].map((col) => (
                             <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                               {col}
                             </th>
@@ -1121,7 +1312,7 @@ export default function IssueToolPage() {
                                   max={line.maintainsSerial ? undefined : line.qtyAvailable}
                                   value={line.issueQty}
                                   onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
-                                  className="w-14 text-center text-xs border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-subtle)] font-mono font-semibold"
+                                  className="w-14 text-center text-xs border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-card)] font-mono font-semibold"
                                 />
                                 <button
                                   type="button"
@@ -1144,7 +1335,7 @@ export default function IssueToolPage() {
                                 step="0.01"
                                 value={line.price}
                                 onChange={(e) => patchLine(idx, { price: Number(e.target.value) || 0 })}
-                                className="w-20 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                className="w-20 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
                               />
                             </td>
                             <td className="py-2 px-3 font-mono text-xs">
@@ -1155,7 +1346,7 @@ export default function IssueToolPage() {
                                 <select
                                   value={line.machine}
                                   onChange={(e) => patchLine(idx, { machine: e.target.value })}
-                                  className="min-w-[100px] text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                  className="min-w-[100px] text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
                                 >
                                   <option value="">-SELECT-</option>
                                   {line.machineOptions.map((m) => (
@@ -1167,7 +1358,7 @@ export default function IssueToolPage() {
                                   value={line.machine}
                                   onChange={(e) => patchLine(idx, { machine: e.target.value })}
                                   placeholder="MAC"
-                                  className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                  className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
                                   maxLength={50}
                                 />
                               )}
@@ -1176,7 +1367,7 @@ export default function IssueToolPage() {
                               <input
                                 value={line.partNo}
                                 onChange={(e) => patchLine(idx, { partNo: e.target.value })}
-                                className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                className="w-24 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
                                 maxLength={50}
                               />
                             </td>
@@ -1184,7 +1375,7 @@ export default function IssueToolPage() {
                               <input
                                 value={line.processName}
                                 onChange={(e) => patchLine(idx, { processName: e.target.value })}
-                                className="w-28 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
+                                className="w-28 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)]"
                                 maxLength={100}
                               />
                             </td>
@@ -1192,7 +1383,7 @@ export default function IssueToolPage() {
                               <select
                                 value={line.returnable}
                                 onChange={(e) => patchLine(idx, { returnable: e.target.value })}
-                                className="text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
+                                className="text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)]"
                               >
                                 <option value="Yes">Yes</option>
                                 <option value="No">No</option>
@@ -1202,7 +1393,7 @@ export default function IssueToolPage() {
                               <input
                                 value={line.serialNo}
                                 onChange={(e) => patchLine(idx, { serialNo: e.target.value })}
-                                className="w-16 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
+                                className="w-16 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
                                 placeholder={line.maintainsSerial ? "Req" : "—"}
                               />
                             </td>
@@ -1227,83 +1418,116 @@ export default function IssueToolPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </FormModalSection>
+              </form>
+            </OverlayModal>
+          )}
 
-                {/* Form submit/reset buttons */}
-                <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-[var(--bg-app)] py-4 border-t border-[var(--border-main)]">
+          {editIssue && (
+            <OverlayModal
+              open
+              size="xl"
+              title={`Edit DC ${editIssue.dcNo}`}
+              subtitle="Update open issue header fields"
+              onClose={() => {
+                setEditIssue(null);
+                handleClearForm();
+              }}
+              footer={
+                <>
                   <button
                     type="button"
                     onClick={() => {
+                      setEditIssue(null);
                       handleClearForm();
-                      setShowCreate(false);
                     }}
-                    className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-all"
+                    className="form-btn-cancel"
                   >
-                    Cancel
+                    Close
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleClearForm}
-                    className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-all"
-                  >
-                    Clear Form
+                  <button type="submit" form="issue-edit-form" className="form-btn-save">
+                    <Save className="w-4 h-4" /> Save Changes
                   </button>
-                  <Button
-                    type="submit"
-                    id="submit-issue-btn"
-                    variant="primary"
-                    size="lg"
-                  >
-                    <ArrowUpRight className="w-4 h-4" /> Submit Issue
-                  </Button>
+                </>
+              }
+            >
+              <form id="issue-edit-form" onSubmit={handleSaveEdit} className="space-y-4">
+                <div className="form-grid">
+                  <div>
+                    <label className="form-label">Receiver Name *</label>
+                    <input value={receiveName} onChange={(e) => setReceiveName(e.target.value)} className="form-control" required />
+                  </div>
+                  <div>
+                    <label className="form-label">Due Date *</label>
+                    <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="form-control" required />
+                  </div>
+                  <div>
+                    <label className="form-label">Search By</label>
+                    <select
+                      value={issueOption}
+                      onChange={(e) => {
+                        setIssueOption(e.target.value);
+                        setSubCode("");
+                        setSupCode("");
+                        setCustCode("");
+                      }}
+                      className="form-control"
+                    >
+                      {ISSUE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {issueOption === "Customer" ? (
+                    <div>
+                      <label className="form-label">Customer Code *</label>
+                      <input
+                        value={custCode}
+                        onChange={(e) => setCustCode(e.target.value.toUpperCase())}
+                        className="form-control font-mono uppercase"
+                        maxLength={12}
+                        required
+                      />
+                      {formErrors.party && <p className="form-error">{formErrors.party}</p>}
+                    </div>
+                  ) : issueOption === "Supplier" || issueOption === "Issue to Supplier" ? (
+                    <div>
+                      <label className="form-label">Supplier Code</label>
+                      <input value={supCode} onChange={(e) => setSupCode(e.target.value)} className="form-control font-mono" maxLength={10} />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="form-label">SubContractor Code</label>
+                      <input value={subCode} onChange={(e) => setSubCode(e.target.value)} className="form-control font-mono" maxLength={10} />
+                    </div>
+                  )}
+                  <div>
+                    <label className="form-label">Issue Purpose</label>
+                    <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} className="form-control" maxLength={100} />
+                  </div>
+                  <div>
+                    <label className="form-label">From Unit</label>
+                    <input value={fromUnit} onChange={(e) => setFromUnit(e.target.value)} className="form-control" maxLength={15} />
+                  </div>
+                  <div>
+                    <label className="form-label">Mat Type</label>
+                    <input value={matType} onChange={(e) => setMatType(e.target.value)} className="form-control" maxLength={20} />
+                  </div>
+                  <div>
+                    <label className="form-label">Transport</label>
+                    <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className="form-control" />
+                  </div>
+                  <div>
+                    <label className="form-label">Vehicle No</label>
+                    <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="form-control" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="form-label">Comments</label>
+                    <input value={comments} onChange={(e) => setComments(e.target.value)} className="form-control" maxLength={100} />
+                  </div>
                 </div>
               </form>
-
-              {/* RIGHT STOCK QUICK-VIEW PANEL (40%) */}
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4 sticky top-6">
-                <div>
-                  <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Current Stock View</h2>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Live staging impact summary</p>
-                </div>
-
-                <div className="border-y border-[var(--border-main)] py-3 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-muted)] font-medium">Tools Staged</span>
-                    <span className="font-bold text-[var(--text-primary)]">{stagedLines.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-muted)] font-medium">Total Quantity</span>
-                    <span className="font-bold text-[var(--text-primary)]">
-                      {stagedLines.reduce((sum, l) => sum + l.issueQty, 0)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Live Staged Impact</p>
-                  <div className="space-y-2.5 max-h-64 overflow-y-auto">
-                    {stagedLines.map((l, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs font-sans">
-                        <div className="min-w-0 pr-3">
-                          <p className="font-semibold text-[var(--text-primary)] truncate">{l.toolName}</p>
-                          <p className="text-[10px] font-mono text-[var(--text-muted)]">{l.toolOrGaugeNo}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-bold font-mono text-[var(--text-primary)]">{l.issueQty}</span>
-                          <span className="text-[var(--text-muted)]"> / </span>
-                          <span className="font-mono text-[var(--text-muted)]">{l.qtyAvailable} stock</span>
-                        </div>
-                      </div>
-                    ))}
-                    {stagedLines.length === 0 && (
-                      <p className="text-center text-xs text-[var(--text-muted)] py-4 font-medium">
-                        No staged lines to summarize.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            </OverlayModal>
           )}
         </main>
       </div>

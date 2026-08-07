@@ -1,14 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash, CheckCircle2, ChevronDown, ChevronUp, ShieldAlert } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Plus,
+  Trash,
+  ShieldAlert,
+  Package,
+  CircleDot,
+  CheckCircle2,
+  Users,
+  Search,
+} from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
-import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 interface Supplier {
   supCode: string;
@@ -29,23 +41,18 @@ interface PoGrnLine {
   invQty: number;
   recQty: number;
   price: number;
-  tool?: { name: string } | null;
+  tool?: { name: string; toolOrGaugeNo?: string } | null;
 }
 
 interface PoGrnHeader {
   girNo: number;
-  poOrderNo: string;
-  girDate: string;
-  girStatus: string;
+  poOrderNo: string | null;
+  girDate: string | null;
+  girStatus: string | null;
+  supCode?: string | null;
+  supplier?: { supCode: string; supName: string | null } | null;
   lines: PoGrnLine[];
 }
-
-const statusConfig: Record<string, { bg: string; text: string }> = {
-  Posted: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
-  // ERP stores girStatus as "OPEN" — treat the same as Posted (already received/logged)
-  OPEN: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
-  Draft: { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]" },
-};
 
 interface StagedGrnLine {
   toolOrGaugeNo: string;
@@ -54,33 +61,88 @@ interface StagedGrnLine {
   price: number;
 }
 
+function toNum(v: number | string | null | undefined): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function dateKey(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return iso.includes("T") ? iso.split("T")[0]! : iso.slice(0, 10);
+}
+
+function isSameMonth(iso: string | null | undefined, ref = new Date()): boolean {
+  const key = dateKey(iso);
+  if (!key) return false;
+  const d = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth();
+}
+
+/** ERP uses OPEN; app create uses Posted. Partial/Closed rare but supported. */
+function isOpenStatus(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toLowerCase();
+  return s === "open" || s === "draft" || s.includes("partial");
+}
+
+function isClosedStatus(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toLowerCase();
+  return s === "posted" || s.includes("closed") || s === "complete" || s === "completed";
+}
+
+function grnAmount(grn: PoGrnHeader): number {
+  return (grn.lines ?? []).reduce(
+    (sum, line) => sum + toNum(line.recQty) * toNum(line.price),
+    0
+  );
+}
+
+function supplierLabel(grn: PoGrnHeader): string {
+  const name = grn.supplier?.supName?.trim();
+  const code = grn.supCode ?? grn.supplier?.supCode;
+  if (name && code) return `${code} · ${name}`;
+  if (name) return name;
+  if (code) return code;
+  return "—";
+}
+
+function formatInr(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function PoReceivePage() {
-  const { showSuccess } = useSuccessOverlay();
+  const searchParams = useSearchParams();
   const [grns, setGrns] = useState<PoGrnHeader[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Success Banner
-  const [successBanner, setSuccessBanner] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  // Mode state
   const [showForm, setShowForm] = useState(false);
   const [expandedGrn, setExpandedGrn] = useState<number | null>(null);
 
-  // Form Fields
   const [poOrderNo, setPoOrderNo] = useState("");
   const [girDate, setGirDate] = useState("");
   const [supCode, setSupCode] = useState("");
   const [stagedLines, setStagedLines] = useState<StagedGrnLine[]>([]);
-
-  // Validation Errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // List filters (client-side over API window ≤100)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [supplierFilter, setSupplierFilter] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     setGirDate(new Date().toISOString().split("T")[0]);
   }, [showForm]);
+
+  useEffect(() => {
+    const po = searchParams.get("po")?.trim();
+    if (!po) return;
+    setPoOrderNo(po);
+    setShowForm(true);
+  }, [searchParams]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -91,12 +153,8 @@ export default function PoReceivePage() {
     ]);
 
     if (gRes.data?.items) setGrns(gRes.data.items);
-    if (sRes.data?.items) {
-      setSuppliers(sRes.data.items);
-    }
-    if (tRes.data?.items) {
-      setTools(tRes.data.items);
-    }
+    if (sRes.data?.items) setSuppliers(sRes.data.items);
+    if (tRes.data?.items) setTools(tRes.data.items);
     setLoading(false);
   }, []);
 
@@ -104,7 +162,167 @@ export default function PoReceivePage() {
     loadData();
   }, [loadData]);
 
-  const approvedSuppliers = suppliers.filter((s) => s.isApproved);
+  const statusOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of grns) {
+      const s = (g.girStatus ?? "").trim();
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [grns]);
+
+  const supplierOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of grns) {
+      const code = (g.supCode ?? g.supplier?.supCode ?? "").trim();
+      if (!code) continue;
+      const name = g.supplier?.supName?.trim();
+      if (!map.has(code)) map.set(code, name ? `${code} · ${name}` : code);
+    }
+    return Array.from(map.entries())
+      .map(([code, label]) => ({ code, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [grns]);
+
+  const filteredGrns = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return grns.filter((g) => {
+      if (statusFilter !== "ALL" && (g.girStatus ?? "").trim() !== statusFilter) {
+        return false;
+      }
+      const code = (g.supCode ?? g.supplier?.supCode ?? "").trim();
+      if (supplierFilter !== "ALL" && code !== supplierFilter) return false;
+
+      const d = dateKey(g.girDate);
+      if (dateFrom && (!d || d < dateFrom)) return false;
+      if (dateTo && (!d || d > dateTo)) return false;
+
+      if (!q) return true;
+      const hay = [
+        String(g.girNo),
+        g.poOrderNo ?? "",
+        code,
+        g.supplier?.supName ?? "",
+        g.girStatus ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [grns, searchQuery, statusFilter, supplierFilter, dateFrom, dateTo]);
+
+  const kpis = useMemo(() => {
+    const openCount = grns.filter((g) => isOpenStatus(g.girStatus)).length;
+    const closedThisMonth = grns.filter(
+      (g) => isClosedStatus(g.girStatus) && isSameMonth(g.girDate)
+    ).length;
+    const suppliersThisMonth = new Set(
+      grns
+        .filter((g) => isSameMonth(g.girDate))
+        .map((g) => (g.supCode ?? g.supplier?.supCode ?? "").trim())
+        .filter(Boolean)
+    ).size;
+
+    return [
+      {
+        id: "grn-total",
+        label: "Total GRNs",
+        value: grns.length,
+        subtext: "Loaded window (API ≤100)",
+        title: "Count of GRNs returned by GET /api/po/grn (hard-capped at 100).",
+        icon: Package,
+        iconBg: "bg-[var(--primary-light)]",
+        iconColor: "text-[var(--primary)]",
+      },
+      {
+        id: "grn-open",
+        label: "Open",
+        value: openCount,
+        subtext: "OPEN / Draft / Partial",
+        icon: CircleDot,
+        iconBg: "bg-blue-50 dark:bg-blue-950/40",
+        iconColor: "text-blue-600 dark:text-blue-400",
+        badge: { label: "Open", type: "info" as const },
+      },
+      {
+        id: "grn-closed-month",
+        label: "Closed this month",
+        value: closedThisMonth,
+        subtext: "Posted / Closed · current month",
+        icon: CheckCircle2,
+        iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
+        iconColor: "text-emerald-600 dark:text-emerald-400",
+        badge: { label: "Month", type: "success" as const },
+      },
+      {
+        id: "grn-suppliers-month",
+        label: "Suppliers this month",
+        value: suppliersThisMonth,
+        subtext: "Distinct SUP_CODE",
+        icon: Users,
+        iconBg: "bg-violet-50 dark:bg-violet-950/40",
+        iconColor: "text-violet-600 dark:text-violet-400",
+      },
+    ];
+  }, [grns]);
+
+  const columns: DataTableColumn<PoGrnHeader>[] = useMemo(
+    () => [
+      {
+        id: "girNo",
+        header: "GRN no",
+        mono: true,
+        cell: (g) => (
+          <span className="font-semibold text-[var(--text-primary)]">{g.girNo}</span>
+        ),
+      },
+      {
+        id: "poOrderNo",
+        header: "PO no",
+        mono: true,
+        cell: (g) => g.poOrderNo || "—",
+      },
+      {
+        id: "supplier",
+        header: "Supplier",
+        cell: (g) => (
+          <span className="text-[var(--text-primary)] font-medium">{supplierLabel(g)}</span>
+        ),
+      },
+      {
+        id: "girDate",
+        header: "Date",
+        mono: true,
+        cell: (g) => dateKey(g.girDate) || "—",
+      },
+      {
+        id: "lines",
+        header: "Lines",
+        mono: true,
+        cell: (g) => (
+          <span className="font-semibold text-[var(--text-primary)]">
+            {(g.lines ?? []).length}
+          </span>
+        ),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        mono: true,
+        cell: (g) => (
+          <span className="font-semibold text-[var(--text-primary)]">
+            {formatInr(grnAmount(g))}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (g) => <StatusBadge status={g.girStatus || "—"} />,
+      },
+    ],
+    []
+  );
 
   const handleAddLine = () => {
     if (tools.length === 0) return;
@@ -170,17 +388,15 @@ export default function PoReceivePage() {
       })),
     };
 
-    setBannerMsg(null);
     const res = await apiPost<{ grn: PoGrnHeader }>("/api/po/grn", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
     if (res.data?.grn) {
-      setSuccessBanner(`GRN #${res.data.grn.girNo} posted successfully! Inventory stock increased.`);
-      showSuccess({
+      toastSuccess({
         title: "GRN posted",
         message: "Inventory stock increased successfully.",
         detail: `GRN #${res.data.grn.girNo}`,
@@ -188,74 +404,15 @@ export default function PoReceivePage() {
       handleClearForm();
       setShowForm(false);
       loadData();
-      setTimeout(() => setSuccessBanner(""), 5000);
     }
   };
 
-  const renderGrnList = () => {
-    if (loading) return <TableSkeleton rows={4} />;
-    if (grns.length === 0)
-      return (
-        <div className="text-center text-sm text-[var(--text-muted)] py-8">
-          No GRN records found. Create a new GRN to get started.
-        </div>
-      );
-    return grns.map((grn) => {
-      const sc = statusConfig[grn.girStatus] ?? statusConfig["Draft"];
-      const isExpanded = expandedGrn === grn.girNo;
-      return (
-        <div key={grn.girNo} className="border border-[var(--border-main)] rounded-xl p-4 space-y-3 bg-[var(--bg-subtle)]">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{grn.girNo}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                PO: <span className="font-semibold text-[var(--text-primary)] font-mono">{grn.poOrderNo}</span> · Date: {grn.girDate ? grn.girDate.split("T")[0] : "—"}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}>
-                {grn.girStatus}
-              </span>
-              <button
-                onClick={() => setExpandedGrn(isExpanded ? null : grn.girNo)}
-                className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 text-xs font-semibold"
-              >
-                {isExpanded ? "Hide details" : "View lines"}
-                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {isExpanded && (
-            <div className="overflow-auto border-t border-[var(--border-main)] pt-3 animate-fade-in">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-[var(--text-muted)] font-bold text-[10px] uppercase bg-[var(--bg-card)]">
-                    {["Tool No", "Name", "Inv Qty", "Received", "Unit Price"].map((col) => (
-                      <th key={col} className="text-left py-2 px-3">
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-main)]">
-                  {grn.lines.map((line) => (
-                    <tr key={line.rowId} className="text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-hover)]">
-                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-secondary)]">{line.itemCode}</td>
-                      <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)]">{line.tool?.name ?? line.itemCode}</td>
-                      <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{line.invQty}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--color-success-text)]">{line.recQty}</td>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-primary)]">₹{Number(line.price).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      );
-    });
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("ALL");
+    setSupplierFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
   };
 
   return (
@@ -264,32 +421,6 @@ export default function PoReceivePage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {successBanner && (
-            <div className="mb-4 p-4 bg-[var(--color-success-bg)] border border-[var(--border-main)] rounded-2xl flex items-center gap-2.5 text-[var(--color-success-text)] text-sm font-semibold shadow-sm">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              <span>{successBanner}</span>
-            </div>
-          )}
-
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button
-                onClick={() => setBannerMsg(null)}
-                className="ml-auto text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* ── Header ── */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -314,7 +445,7 @@ export default function PoReceivePage() {
             </RoleGate>
           </div>
 
-          {/* ── ACTIVE GRN FORM (TOP) ── */}
+          {/* ── ACTIVE GRN FORM (TOP) — unchanged create flow ── */}
           {showForm && (
             <form onSubmit={handlePostGRN} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-5 mb-6 animate-fade-in">
               <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)]">
@@ -326,7 +457,7 @@ export default function PoReceivePage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     PO Order Number *
                   </label>
                   <input
@@ -340,14 +471,14 @@ export default function PoReceivePage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Supplier *
                   </label>
                   <select
                     id="form-supplier"
                     value={supCode}
                     onChange={(e) => setSupCode(e.target.value)}
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+                    className="form-control outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                   >
                     <option value="">— Select Supplier —</option>
                     {suppliers.map((s) => (
@@ -360,7 +491,7 @@ export default function PoReceivePage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     GRN Date
                   </label>
                   <input
@@ -372,7 +503,6 @@ export default function PoReceivePage() {
                 </div>
               </div>
 
-              {/* Line items details */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Receipt Line Items</p>
@@ -465,7 +595,6 @@ export default function PoReceivePage() {
                 </div>
               </div>
 
-              {/* Form Buttons */}
               <div className="border-t border-[var(--border-main)] pt-4 flex items-center justify-end gap-3 bg-[var(--bg-card)]">
                 <button
                   type="button"
@@ -477,26 +606,172 @@ export default function PoReceivePage() {
                 >
                   Cancel
                 </button>
-                <Button
-                  type="submit"
-                  id="grn-submit-btn"
-                  variant="primary"
-                >
+                <Button type="submit" id="grn-submit-btn" variant="primary">
                   Post GRN (Posted)
                 </Button>
               </div>
             </form>
           )}
 
-          {/* ── EXISTING GRNS LIST (BELOW) ── */}
+          {/* ── LIST: KPIs + filters + table ── */}
+          <ModuleKpiRow items={kpis} />
+
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-            <div className="pb-3 border-b border-[var(--border-main)] mb-4">
-              <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Posted Goods Receipt Notes</h2>
+            <div className="pb-3 border-b border-[var(--border-main)] mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">
+                  Goods Receipt Notes
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Showing{" "}
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {filteredGrns.length}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {grns.length}
+                  </span>{" "}
+                  loaded
+                  <span className="text-[var(--text-muted)]"> · filters are client-side (API window ≤100)</span>
+                </p>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-4">
-              {renderGrnList()}
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+              <div className="relative xl:col-span-2">
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search GRN no / PO no / supplier…"
+                  className="w-full h-9 pl-8 pr-3 text-xs border border-[var(--border-main)] rounded-lg bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-9 text-xs border border-[var(--border-main)] rounded-lg px-3 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+              >
+                <option value="ALL">All statuses</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={supplierFilter}
+                onChange={(e) => setSupplierFilter(e.target.value)}
+                className="h-9 text-xs border border-[var(--border-main)] rounded-lg px-3 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+              >
+                <option value="ALL">All suppliers</option>
+                {supplierOptions.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  title="From date"
+                  className="h-9 flex-1 min-w-0 text-xs border border-[var(--border-main)] rounded-lg px-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+                />
+                <span className="text-[10px] text-[var(--text-muted)] shrink-0">→</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  title="To date"
+                  className="h-9 flex-1 min-w-0 text-xs border border-[var(--border-main)] rounded-lg px-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+                />
+              </div>
             </div>
+
+            {(searchQuery || statusFilter !== "ALL" || supplierFilter !== "ALL" || dateFrom || dateTo) && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-xs font-semibold text-[var(--primary)] hover:underline"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
+
+            <DataTable
+              columns={columns}
+              rows={filteredGrns}
+              loading={loading}
+              rowKey={(g) => g.girNo}
+              emptyText="No GRN records match the current filters."
+              expandedKey={expandedGrn}
+              onToggleExpand={(g) =>
+                setExpandedGrn((prev) => (prev === g.girNo ? null : g.girNo))
+              }
+              renderExpanded={(g) => (
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-[var(--text-muted)] font-bold text-[10px] uppercase bg-[var(--bg-subtle)] border-b border-[var(--border-main)]">
+                        {["Tool No", "Name", "Inv Qty", "Received", "Unit Price", "Line amount"].map(
+                          (col) => (
+                            <th key={col} className="text-left py-2 px-3">
+                              {col}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {(g.lines ?? []).length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="py-6 text-center text-xs text-[var(--text-muted)]"
+                          >
+                            No line items on this GRN.
+                          </td>
+                        </tr>
+                      ) : (
+                        (g.lines ?? []).map((line) => {
+                          const amt = toNum(line.recQty) * toNum(line.price);
+                          return (
+                            <tr
+                              key={line.rowId}
+                              className="text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-hover)]"
+                            >
+                              <td className="py-2.5 px-3 font-mono font-semibold">
+                                {line.itemCode}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)]">
+                                {line.tool?.name ?? line.itemCode}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">
+                                {toNum(line.invQty)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-[var(--color-success-text)]">
+                                {toNum(line.recQty)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-primary)]">
+                                {formatInr(toNum(line.price))}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-semibold text-[var(--text-primary)]">
+                                {formatInr(amt)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            />
           </div>
         </main>
       </div>

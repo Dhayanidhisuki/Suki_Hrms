@@ -6,6 +6,7 @@ import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet } from "@/lib/apiClient";
+import { MasterTableCard } from "@/components/ui/MasterTableCard";
 import { ArrowDownLeft, Building2, FileText } from "lucide-react";
 
 interface IssueLine {
@@ -41,14 +42,19 @@ export default function CustomerReceivePage() {
 
   return (
     <SimpleMasterShell
-      title="Tool Receive From Customer"
-      subtitle="Filtered view of GAUGE_TOOLS_ISSUE where CUST_CODE is present — not a separate table"
+      title="Customer Tool Issues"
+      subtitle="Filtered GAUGE_TOOLS_ISSUE where CUST_CODE is set — not a separate Customer GIR table (Path B)"
       actions={
-        <Link href="/dashboard/transactions/issue" className="text-xs font-semibold text-[var(--primary)] hover:underline">
-          Open full Tool Issue →
+        <Link href="/dashboard/transactions/issue?action=add" className="text-xs font-semibold text-[var(--primary)] hover:underline">
+          Create Customer Issue →
         </Link>
       }
     >
+      <div className="mb-4 rounded-xl border border-[var(--border-main)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+        No customer GIR receive tables are mapped in this app schema. This page lists{" "}
+        <strong className="text-[var(--text-primary)]">customer-linked tool issues</strong> only.
+        Use Tool Issue with Search By = Customer to create; use Tool Receive to return tools.
+      </div>
       <ModuleKpiRow
         items={[
           {
@@ -84,11 +90,19 @@ export default function CustomerReceivePage() {
         ]}
       />
 
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+      <MasterTableCard
+        toolbar={
+          <span className="text-[11px] text-[var(--text-muted)]">
+            {items.length} customer-linked DC{items.length === 1 ? "" : "s"}
+          </span>
+        }
+      >
         {loading ? (
-          <TableSkeleton rows={4} />
+          <div className="p-4">
+            <TableSkeleton rows={4} />
+          </div>
         ) : items.length === 0 ? (
-          <div className="py-10 text-center space-y-2">
+          <div className="py-10 text-center space-y-2 px-4">
             <p className="text-sm text-[var(--text-muted)]">
               No customer-linked DCs in the current issue page load.
             </p>
@@ -124,7 +138,7 @@ export default function CustomerReceivePage() {
             </table>
           </div>
         )}
-      </div>
+      </MasterTableCard>
     </SimpleMasterShell>
   );
 }

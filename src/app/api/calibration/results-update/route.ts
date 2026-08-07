@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibResultsUpdateSchema } from "@/lib/validators";
-import { loadCalibResultsPending } from "@/lib/calibResultsData";
+import { loadCalibResultsPending, loadCalibResultsClosed } from "@/lib/calibResultsData";
 
 function normalizeResult(result: string): {
   resultStatus: string;
@@ -13,16 +13,25 @@ function normalizeResult(result: string): {
   calibStatus: string;
   lineStatus: string;
 } {
-  const upper = result.toUpperCase();
-  if (upper === "FAILED" || upper === "OUT OF SERVICE") {
+  const upper = result.toUpperCase().trim();
+  // Failed / out-of-service family (ERP + legacy)
+  if (
+    upper === "FAILED" ||
+    upper === "OUT OF SERVICE" ||
+    upper === "WORN OUT" ||
+    upper === "BROKEN" ||
+    upper === "REJECTED" ||
+    upper === "NOT IN USE"
+  ) {
     return {
-      resultStatus: upper === "OUT OF SERVICE" ? "OUT OF SERVICE" : "FAILED",
+      resultStatus: upper.slice(0, 30),
       failed: true,
-      toolStatus: "Out of Service",
+      toolStatus: upper === "NOT IN USE" ? "Not In Use" : "Out of Service",
       calibStatus: "Failed",
-      lineStatus: "Failed",
+      lineStatus: upper.slice(0, 30),
     };
   }
+  // Fit for use family (ERP AVAILABLE FOR USE + legacy PASSED)
   if (upper === "AVAILABLE FOR USE" || upper === "PASSED") {
     return {
       resultStatus: upper === "AVAILABLE FOR USE" ? "AVAILABLE FOR USE" : "PASSED",
@@ -43,13 +52,58 @@ function normalizeResult(result: string): {
 }
 
 /** Pending / recent calibration issue lines for results update UI */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
 
   try {
-    const items = await loadCalibResultsPending(200);
+    const search = (req.nextUrl.searchParams.get("search") ?? "").trim().toLowerCase();
+    const openClosed = (req.nextUrl.searchParams.get("openClosed") ?? "open").toLowerCase();
+    const fromDue = (req.nextUrl.searchParams.get("fromDue") ?? "").trim();
+    const toDue = (req.nextUrl.searchParams.get("toDue") ?? "").trim();
+    const take = Math.min(500, Number(req.nextUrl.searchParams.get("take") ?? 200));
+
+    let items = await loadCalibResultsPending(take);
+
+    if (openClosed === "closed") {
+      items = await loadCalibResultsClosed(take);
+    } else if (openClosed === "all") {
+      const closed = await loadCalibResultsClosed(take);
+      items = [...items, ...closed];
+    }
+
+    if (fromDue) {
+      const from = new Date(fromDue).getTime();
+      items = items.filter((i) => {
+        if (!i.calibDueDate) return false;
+        return new Date(i.calibDueDate).getTime() >= from;
+      });
+    }
+    if (toDue) {
+      const to = new Date(`${toDue}T23:59:59.999`).getTime();
+      items = items.filter((i) => {
+        if (!i.calibDueDate) return false;
+        return new Date(i.calibDueDate).getTime() <= to;
+      });
+    }
+    if (search) {
+      items = items.filter((i) => {
+        const blob = [
+          i.toolOrGaugeNo,
+          i.name,
+          i.type,
+          i.receiveName,
+          String(i.dcNo ?? ""),
+          i.remarks,
+          i.issueFor,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return blob.includes(search);
+      });
+    }
+
     return NextResponse.json({ items, total: items.length });
   } catch (error) {
     console.error("Error fetching calibration results pending:", error);
@@ -87,6 +141,7 @@ export async function POST(req: NextRequest) {
     comments,
     location,
     locationName,
+    observedSpecs,
   } = parsed.data;
 
   try {
@@ -100,15 +155,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tool not found" }, { status: 404 });
     }
 
+    const obsPacked =
+      observedSpecs && observedSpecs.length > 0
+        ? observedSpecs
+            .filter((o) => o.obsMin || o.obsMax || o.note)
+            .map((o) => `${o.parameter}:${o.obsMin ?? ""}-${o.obsMax ?? ""}`)
+            .join(";")
+            .slice(0, 50)
+        : null;
+
     // Pack ERP-style free text into short ERP columns
     const commentParts = [
       certificateNo ? `Cert:${certificateNo}` : null,
       referenceStandard ? `Std:${referenceStandard}` : null,
       errorNoticed ? `Err:${errorNoticed}` : null,
+      obsPacked ? `Obs:${obsPacked}` : null,
       comments || remarks || null,
     ].filter(Boolean) as string[];
     const packedComments = commentParts.join(" | ").slice(0, 50);
-    const packedRemarks = (certificateNo || remarks || comments || result).slice(0, 50);
+    const packedRemarks = (obsPacked || certificateNo || remarks || comments || result).slice(0, 50);
     const byWhom = (calibratedBy?.trim() || erpActor).slice(0, 25);
     const calibDt = calibratedDate ? new Date(calibratedDate) : new Date();
 
@@ -192,6 +257,32 @@ export async function POST(req: NextRequest) {
           lstUpdtUserIdCd: erpActor,
         },
       });
+
+      // ERP unit grid STATUS — result drives GAUGE_SERIAL_NO
+      const unitStatus = normalized.failed
+        ? normalized.resultStatus.slice(0, 30)
+        : "AVAILABLE FOR USE";
+      try {
+        const sn = openLine?.serialNo ?? null;
+        if (sn != null) {
+          await tx.gaugeSerialNo.updateMany({
+            where: { toolOrGaugeNo, serialNo: sn },
+            data: { status: unitStatus },
+          });
+        } else {
+          await tx.gaugeSerialNo.updateMany({
+            where: {
+              toolOrGaugeNo,
+              status: {
+                in: ["ISSUE FOR CALIBRATION", "Under Calibration", "Received"],
+              },
+            },
+            data: { status: unitStatus },
+          });
+        }
+      } catch (err) {
+        console.warn("Serial status update on results skipped:", err);
+      }
 
       return { toolOrGaugeNo, result: normalized.resultStatus, nextCDate, updatedLineId: openLine?.rowId ?? null };
     });

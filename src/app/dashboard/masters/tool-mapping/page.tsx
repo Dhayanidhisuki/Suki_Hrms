@@ -1,15 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Trash2, X, Link2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Plus, Search, Trash2, X, Link2, FileSpreadsheet } from "lucide-react";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TablePager } from "@/components/TablePager";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { apiGet, apiPost, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
 
 type MappingRow = {
   rowId: number;
@@ -19,6 +22,7 @@ type MappingRow = {
   grouping: string | null;
   type: string | null;
   toolStatus: string | null;
+  vendorType?: string | null;
   supCode: string | null;
   supplierName: string | null;
   city: string | null;
@@ -36,32 +40,33 @@ type ToolOption = {
   grouping: string;
 };
 
-type SupplierOption = {
+type VendorOption = {
   id: string;
-  supCode: string;
-  supName: string;
+  code: string;
+  name: string;
 };
 
 const pageSize = 20;
 
 export default function ToolMappingPage() {
-  const { showSuccess } = useSuccessOverlay();
+  const searchParams = useSearchParams();
+  const toolFromUrl = (searchParams.get("tool") ?? "").trim();
+
   const [items, setItems] = useState<MappingRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(toolFromUrl);
+  const [vendorFilter, setVendorFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(
-    null
-  );
 
-  const [showAdd, setShowAdd] = useState(false);
-  const [toolSearch, setToolSearch] = useState("");
+  const [showAdd, setShowAdd] = useState(Boolean(toolFromUrl));
+  const [vendorType, setVendorType] = useState<"Supplier" | "SubContractor">("Supplier");
+  const [toolSearch, setToolSearch] = useState(toolFromUrl);
   const [toolOptions, setToolOptions] = useState<ToolOption[]>([]);
   const [selectedTool, setSelectedTool] = useState<ToolOption | null>(null);
-  const [supSearch, setSupSearch] = useState("");
-  const [supOptions, setSupOptions] = useState<SupplierOption[]>([]);
-  const [selectedSup, setSelectedSup] = useState<SupplierOption | null>(null);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
+  const [selectedVendor, setSelectedVendor] = useState<VendorOption | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -71,13 +76,14 @@ export default function ToolMappingPage() {
       pageSize: String(pageSize),
     });
     if (query.trim()) params.set("search", query.trim());
+    if (vendorFilter.trim()) params.set("vendorCode", vendorFilter.trim());
     const res = await apiGet<{ items: MappingRow[]; total?: number }>(
       `/api/tools-mapping?${params}`
     );
     setItems(res.data?.items ?? []);
     setTotal(res.data?.total ?? 0);
     setLoading(false);
-  }, [page, query]);
+  }, [page, query, vendorFilter]);
 
   useEffect(() => {
     void load();
@@ -92,69 +98,116 @@ export default function ToolMappingPage() {
       const res = await apiGet<{ items: ToolOption[] }>(
         `/api/tools?search=${encodeURIComponent(toolSearch.trim())}&pageSize=12`
       );
-      setToolOptions(res.data?.items ?? []);
+      const opts = res.data?.items ?? [];
+      setToolOptions(opts);
+      if (toolFromUrl && !selectedTool) {
+        const match = opts.find(
+          (o) => o.toolOrGaugeNo.toUpperCase() === toolFromUrl.toUpperCase()
+        );
+        if (match) setSelectedTool(match);
+      }
     }, 250);
     return () => clearTimeout(t);
-  }, [toolSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on toolSearch / deep-link tool
+  }, [toolSearch, toolFromUrl]);
 
   useEffect(() => {
-    if (!supSearch.trim() || supSearch.trim().length < 2) {
-      setSupOptions([]);
+    if (!vendorSearch.trim() || vendorSearch.trim().length < 2) {
+      setVendorOptions([]);
       return;
     }
     const t = setTimeout(async () => {
-      const res = await apiGet<{ items: SupplierOption[] }>(
-        `/api/suppliers?search=${encodeURIComponent(supSearch.trim())}&pageSize=12`
-      );
-      setSupOptions(res.data?.items ?? []);
+      if (vendorType === "SubContractor") {
+        const res = await apiGet<{
+          items: Array<{ subCode: string; subName: string; id: string }>;
+        }>(`/api/subcontractors?search=${encodeURIComponent(vendorSearch.trim())}`);
+        setVendorOptions(
+          (res.data?.items ?? []).slice(0, 12).map((s) => ({
+            id: s.subCode || s.id,
+            code: s.subCode || s.id,
+            name: s.subName,
+          }))
+        );
+      } else {
+        const res = await apiGet<{ items: Array<{ id: string; supCode: string; supName: string }> }>(
+          `/api/suppliers?search=${encodeURIComponent(vendorSearch.trim())}&pageSize=12`
+        );
+        setVendorOptions(
+          (res.data?.items ?? []).map((s) => ({
+            id: s.supCode || s.id,
+            code: s.supCode || s.id,
+            name: s.supName,
+          }))
+        );
+      }
     }, 250);
     return () => clearTimeout(t);
-  }, [supSearch]);
+  }, [vendorSearch, vendorType]);
 
   const handleDelete = async (rowId: number) => {
-    setBannerMsg(null);
     const res = await apiDelete(`/api/tools-mapping/${rowId}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Mapping removed." });
+    toastSuccess("Mapping removed.");
     void load();
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTool || !selectedSup) {
-      setBannerMsg({ type: "error", text: "Select both a tool and a supplier." });
+    if (!selectedTool || !selectedVendor) {
+      toastError("Select both a tool and a vendor.");
       return;
     }
     setSaving(true);
-    setBannerMsg(null);
     const res = await apiPost("/api/tools-mapping", {
       toolRefNo: selectedTool.refNo,
-      supCode: selectedSup.supCode,
+      supCode: selectedVendor.code,
+      vendorType,
     });
     setSaving(false);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({
-      type: "success",
-      text: `Mapped ${selectedTool.toolOrGaugeNo} → ${selectedSup.supCode}`,
-    });
-    showSuccess({
+    toastSuccess({
       title: "Mapping saved",
-      message: "Tool–supplier mapping created successfully.",
-      detail: `${selectedTool.toolOrGaugeNo} → ${selectedSup.supCode}`,
+      message: `Tool–${vendorType} mapping created successfully.`,
+      detail: `${selectedTool.toolOrGaugeNo} → ${selectedVendor.code}`,
     });
     setShowAdd(false);
     setSelectedTool(null);
-    setSelectedSup(null);
+    setSelectedVendor(null);
     setToolSearch("");
-    setSupSearch("");
+    setVendorSearch("");
     setPage(1);
     void load();
+  };
+
+  const handleExportExcel = () => {
+    downloadExcel({
+      filename: "tool_mapping",
+      sheetName: "Tool Mapping",
+      columns: [
+        { key: "toolOrGaugeNo", label: "Tool No" },
+        { key: "toolName", label: "Tool Name" },
+        { key: "grouping", label: "Group" },
+        { key: "vendorType", label: "Vendor Type" },
+        { key: "supCode", label: "Vendor Code" },
+        { key: "supplierName", label: "Vendor Name" },
+        { key: "city", label: "City" },
+        { key: "gstin", label: "GSTIN" },
+        { key: "approvedSupplier", label: "Approved?" },
+        {
+          key: "creatDt",
+          label: "Mapped On",
+          value: (r) => (r.creatDt ? String(r.creatDt).split("T")[0] : ""),
+        },
+      ],
+      rows: items,
+    });
+    toastSuccess("Excel downloaded (current page).");
   };
 
   const approvedCount = items.filter(
@@ -164,31 +217,27 @@ export default function ToolMappingPage() {
   return (
     <SimpleMasterShell
       title="Tool Mapping"
-      subtitle="Approved tool ↔ supplier links (TOOLS_MAPPING) — same data ERP uses for purchase"
+      subtitle="Tool ↔ Supplier / SubContractor links (TOOLS_MAPPING.SUP_CODE)"
       actions={
-        <RoleGate permission="canEditMaster">
-          <Button type="button" onClick={() => setShowAdd(true)} className="group">
-            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-            Add Mapping
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={loading || items.length === 0}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Excel
           </Button>
-        </RoleGate>
+          <RoleGate permission="canEditMaster">
+            <Button type="button" onClick={() => setShowAdd(true)} className="group">
+              <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+              Add Mapping
+            </Button>
+          </RoleGate>
+        </div>
       }
     >
-      {bannerMsg && (
-        <div
-          className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-            bannerMsg.type === "success"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : "bg-red-50 text-red-700 border border-red-200"
-          }`}
-        >
-          {bannerMsg.text}
-          <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60">
-            ✕
-          </button>
-        </div>
-      )}
-
       <ModuleKpiRow
         items={[
           {
@@ -224,24 +273,47 @@ export default function ToolMappingPage() {
         ]}
       />
 
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6">
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search tool no, tool name, supplier code / name…"
-            className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
+      <MasterTableCard
+        toolbar={
+          <>
+            <MasterSearchInput
+              id="tool-map-search"
+              value={query}
+              onChange={(v) => {
+                setQuery(v);
+                setPage(1);
+              }}
+              placeholder="Search tool, vendor…"
+              widthClass="w-52"
+            />
+            <input
+              id="tool-map-vendor-filter"
+              value={vendorFilter}
+              onChange={(e) => {
+                setVendorFilter(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Vendor code"
+              aria-label="Vendor code filter"
+              className="h-7 w-32 shrink-0 text-[11px] font-mono border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+            />
+          </>
+        }
+        footer={
+          <TablePager
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            disabled={loading}
+            idPrefix="tool-map"
           />
-        </div>
-      </div>
-
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+        }
+      >
         {loading ? (
-          <TableSkeleton rows={8} />
+          <div className="p-4">
+            <TableSkeleton rows={8} />
+          </div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -252,8 +324,9 @@ export default function ToolMappingPage() {
                     "Tool No",
                     "Tool Name",
                     "Group",
-                    "Supplier Code",
-                    "Supplier Name",
+                    "Vendor Type",
+                    "Vendor Code",
+                    "Vendor Name",
                     "City",
                     "GSTIN",
                     "Approved?",
@@ -284,6 +357,7 @@ export default function ToolMappingPage() {
                     <td className="py-2.5 px-3 text-xs text-[var(--text-muted)]">
                       {row.grouping ?? "—"}
                     </td>
+                    <td className="py-2.5 px-3 text-xs">{row.vendorType || "—"}</td>
                     <td className="py-2.5 px-3 font-mono text-xs font-semibold">
                       {row.supCode ?? "—"}
                     </td>
@@ -298,7 +372,9 @@ export default function ToolMappingPage() {
                       {(row.approvedSupplier ?? "").toUpperCase() === "YES" ||
                       row.approvedSupplier === "Y"
                         ? "Yes"
-                        : "No"}
+                        : row.vendorType === "SubContractor"
+                          ? "—"
+                          : "No"}
                     </td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-muted)]">
                       {row.creatDt ? String(row.creatDt).split("T")[0] : "—"}
@@ -319,8 +395,8 @@ export default function ToolMappingPage() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="py-10 text-center text-sm text-[var(--text-muted)]">
-                      No tool ↔ supplier mappings found.
+                    <td colSpan={12} className="py-10 text-center text-sm text-[var(--text-muted)]">
+                      No tool ↔ vendor mappings found.
                     </td>
                   </tr>
                 )}
@@ -328,22 +404,13 @@ export default function ToolMappingPage() {
             </table>
           </div>
         )}
-
-        <TablePager
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={setPage}
-          disabled={loading}
-          idPrefix="tool-map"
-        />
-      </div>
+      </MasterTableCard>
 
       {showAdd && (
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
           <div className="w-full max-w-md h-full bg-[var(--bg-card)] border-l border-[var(--border-main)] flex flex-col">
             <div className="px-5 py-4 border-b border-[var(--border-main)] flex items-center justify-between">
-              <h2 className="text-base font-bold">Add Tool ↔ Supplier Mapping</h2>
+              <h2 className="text-base font-bold">Add Tool ↔ Vendor Mapping</h2>
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}
@@ -353,6 +420,28 @@ export default function ToolMappingPage() {
               </button>
             </div>
             <form onSubmit={handleCreate} className="flex-1 overflow-y-auto p-5 space-y-5">
+              <div>
+                <label className="text-[11px] font-semibold uppercase text-[var(--text-muted)]">
+                  Vendor Type
+                </label>
+                <select
+                  value={vendorType}
+                  onChange={(e) => {
+                    setVendorType(e.target.value as "Supplier" | "SubContractor");
+                    setSelectedVendor(null);
+                    setVendorSearch("");
+                    setVendorOptions([]);
+                  }}
+                  className="mt-1 form-control font-medium"
+                >
+                  <option value="Supplier">Supplier</option>
+                  <option value="SubContractor">SubContractor</option>
+                </select>
+                <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                  Both store the vendor id in SUP_CODE (ERP schema has no separate vendor-type column).
+                </p>
+              </div>
+
               <div>
                 <label className="text-[11px] font-semibold uppercase text-[var(--text-muted)]">
                   Tool
@@ -408,18 +497,18 @@ export default function ToolMappingPage() {
 
               <div>
                 <label className="text-[11px] font-semibold uppercase text-[var(--text-muted)]">
-                  Supplier
+                  {vendorType}
                 </label>
-                {selectedSup ? (
+                {selectedVendor ? (
                   <div className="mt-1 flex items-center justify-between gap-2 rounded-lg border border-[var(--border-main)] px-3 py-2 bg-[var(--bg-subtle)]">
                     <div>
-                      <p className="font-mono text-sm font-semibold">{selectedSup.supCode}</p>
-                      <p className="text-xs text-[var(--text-muted)]">{selectedSup.supName}</p>
+                      <p className="font-mono text-sm font-semibold">{selectedVendor.code}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{selectedVendor.name}</p>
                     </div>
                     <button
                       type="button"
                       className="text-xs text-[var(--primary)]"
-                      onClick={() => setSelectedSup(null)}
+                      onClick={() => setSelectedVendor(null)}
                     >
                       Change
                     </button>
@@ -427,26 +516,26 @@ export default function ToolMappingPage() {
                 ) : (
                   <div className="mt-1 relative">
                     <input
-                      value={supSearch}
-                      onChange={(e) => setSupSearch(e.target.value)}
-                      placeholder="Search supplier code / name…"
+                      value={vendorSearch}
+                      onChange={(e) => setVendorSearch(e.target.value)}
+                      placeholder={`Search ${vendorType.toLowerCase()} code / name…`}
                       className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
                     />
-                    {supOptions.length > 0 && (
+                    {vendorOptions.length > 0 && (
                       <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto rounded-lg border border-[var(--border-main)] bg-[var(--bg-surface)] shadow-lg divide-y divide-[var(--border-main)]">
-                        {supOptions.map((s) => (
+                        {vendorOptions.map((s) => (
                           <button
-                            key={s.supCode}
+                            key={s.code}
                             type="button"
                             className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--bg-hover)]"
                             onClick={() => {
-                              setSelectedSup(s);
-                              setSupSearch("");
-                              setSupOptions([]);
+                              setSelectedVendor(s);
+                              setVendorSearch("");
+                              setVendorOptions([]);
                             }}
                           >
-                            <span className="font-mono font-semibold">{s.supCode}</span>
-                            <span className="text-xs text-[var(--text-muted)] block">{s.supName}</span>
+                            <span className="font-mono font-semibold">{s.code}</span>
+                            <span className="text-xs text-[var(--text-muted)] block">{s.name}</span>
                           </button>
                         ))}
                       </div>
@@ -455,7 +544,7 @@ export default function ToolMappingPage() {
                 )}
               </div>
 
-              <Button type="submit" disabled={saving || !selectedTool || !selectedSup} className="w-full">
+              <Button type="submit" disabled={saving || !selectedTool || !selectedVendor} className="w-full">
                 {saving ? "Saving…" : "Save Mapping"}
               </Button>
             </form>

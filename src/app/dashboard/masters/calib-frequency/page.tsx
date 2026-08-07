@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { apiGet } from "@/lib/apiClient";
 
 const COLUMNS = [
@@ -22,6 +23,7 @@ function cell(v: unknown) {
 export default function Page() {
   const [items, setItems] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -36,11 +38,31 @@ export default function Page() {
     return () => { cancelled = true; };
   }, []);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((row) =>
+      COLUMNS.some((col) => cell(row[col.key]).toLowerCase().includes(q))
+    );
+  }, [items, query]);
+
   return (
     <SimpleMasterShell title="Calibration Frequency Master" subtitle="CALIBRATION_FREQUENCY_MASTER — frequency by product tolerance">
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+      <MasterTableCard
+        toolbar={
+          <MasterSearchInput
+            id="calib-freq-search"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search tolerance, frequency…"
+            widthClass="w-52"
+          />
+        }
+      >
         {loading ? (
-          <TableSkeleton rows={5} />
+          <div className="p-4">
+            <TableSkeleton rows={5} />
+          </div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -54,7 +76,7 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-main)]">
-                {items.map((row, idx) => (
+                {filtered.map((row, idx) => (
                   <tr key={String(row["id"] ?? idx)} className="hover:bg-[var(--bg-hover)]">
                     {COLUMNS.map((col) => (
                       <td key={col.key} className={`py-3 px-3 text-[var(--text-secondary)] ${col.mono ? "font-mono text-xs" : ""}`}>
@@ -63,7 +85,7 @@ export default function Page() {
                     ))}
                   </tr>
                 ))}
-                {items.length === 0 && (
+                {filtered.length === 0 && (
                   <tr>
                     <td colSpan={COLUMNS.length} className="py-8 text-center text-sm text-[var(--text-muted)]">No records found.</td>
                   </tr>
@@ -72,7 +94,7 @@ export default function Page() {
             </table>
           </div>
         )}
-      </div>
+      </MasterTableCard>
     </SimpleMasterShell>
   );
 }

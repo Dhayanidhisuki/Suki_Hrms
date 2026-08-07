@@ -13,7 +13,7 @@ const LINKS = [
   { href: "/dashboard/settings/users", label: "Users" },
   { href: "/dashboard/settings/roles", label: "Roles" },
   { href: "/dashboard/settings/permissions", label: "Permissions" },
-  { href: "/dashboard/settings/approval-workflow", label: "Approval Workflow" },
+  { href: "/dashboard/settings/approval-workflow", label: "Approval Centre" },
   { href: "/dashboard/settings/audit-trail", label: "Audit Trail" },
   { href: "/dashboard/settings/activity-logs", label: "Activity Logs" },
 ];

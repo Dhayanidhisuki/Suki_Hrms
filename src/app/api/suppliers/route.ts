@@ -3,45 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { SupplierCreateSchema } from "@/lib/validators";
-
-function mapSupplier(s: {
-  supCode: string;
-  supName: string | null;
-  add1: string | null;
-  city: string | null;
-  state: string | null;
-  phone1: string | null;
-  emailId: string | null;
-  gstin: string | null;
-  approvedSupplier: string | null;
-  status: string | null;
-  creatUserIdCd: string;
-  creatDt: Date | null;
-}) {
-  const approved =
-    (s.approvedSupplier ?? "").toUpperCase() === "YES" ||
-    (s.approvedSupplier ?? "").toUpperCase() === "Y";
-  const rawStatus = (s.status ?? "").toUpperCase();
-  const uiStatus =
-    rawStatus === "BLOCKED" || rawStatus === "INACTIVE" ? "Inactive" : rawStatus ? "Active" : "Active";
-
-  return {
-    id: s.supCode,
-    supCode: s.supCode,
-    supName: s.supName ?? "",
-    address: s.add1,
-    city: s.city,
-    state: s.state,
-    phone: s.phone1,
-    email: s.emailId,
-    gstin: s.gstin,
-    status: uiStatus as "Active" | "Inactive",
-    erpStatus: s.status,
-    isApproved: approved,
-    creatUserIdCd: s.creatUserIdCd,
-    creatDt: s.creatDt,
-  };
-}
+import { mapSupplierRow, normalizeSupplierBody, toErpSupplierStatus } from "@/lib/supplierMap";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -53,17 +15,10 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status") ?? "";
   const approved = searchParams.get("approved") ?? ""; // Yes | No | ""
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
+  const pageSize = Math.min(500, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
   const skip = (page - 1) * pageSize;
 
-  // ERP stores status as "ACTIVE"/"BLOCKED"; map app UI values to ERP equivalents
-  const statusMap: Record<string, string> = {
-    Active: "ACTIVE",
-    Inactive: "BLOCKED",
-    active: "ACTIVE",
-    inactive: "BLOCKED",
-  };
-  const erpStatus = status ? (statusMap[status] ?? status) : null;
+  const erpStatus = status ? toErpSupplierStatus(status) : null;
 
   const where = {
     AND: [
@@ -74,6 +29,9 @@ export async function GET(req: NextRequest) {
               { supName: { contains: search } },
               { city: { contains: search } },
               { gstin: { contains: search } },
+              { bankName: { contains: search } },
+              { accountNumber: { contains: search } },
+              { ifscCode: { contains: search } },
             ],
           }
         : {},
@@ -104,7 +62,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   return NextResponse.json({
-    items: rows.map(mapSupplier),
+    items: rows.map(mapSupplierRow),
     total,
     page,
     pageSize,
@@ -120,30 +78,7 @@ export async function POST(req: NextRequest) {
   if (!permCheck.ok) return permCheck.response;
 
   const body = await req.json();
-
-  // Accept UI-friendly field names as well as ERP column names
-  const normalized = {
-    supCode: body.supCode,
-    supName: body.supName,
-    add1: body.add1 ?? body.address,
-    city: body.city,
-    state: body.state,
-    gstin: body.gstin,
-    phone1: body.phone1 ?? body.phone,
-    emailId: body.emailId ?? body.email ?? "",
-    bankName: body.bankName,
-    accountNumber: body.accountNumber,
-    ifscCode: body.ifscCode,
-    approvedSupplier: body.approvedSupplier
-      ?? (body.isApproved === true ? "Yes" : body.isApproved === false ? "No" : undefined),
-    status:
-      body.status === "Inactive" || body.status === "BLOCKED"
-        ? "BLOCKED"
-        : body.status === "Active"
-          ? "ACTIVE"
-          : body.status,
-  };
-
+  const normalized = normalizeSupplierBody(body as Record<string, unknown>);
   const parsed = SupplierCreateSchema.safeParse(normalized);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -157,5 +92,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ ok: true, supplier: mapSupplier(supplier) }, { status: 201 });
+  return NextResponse.json({ ok: true, supplier: mapSupplierRow(supplier) }, { status: 201 });
 }

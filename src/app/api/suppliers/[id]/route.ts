@@ -3,68 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { SupplierUpdateSchema } from "@/lib/validators";
-
-function mapSupplier(s: {
-  supCode: string;
-  supName: string | null;
-  add1: string | null;
-  city: string | null;
-  state: string | null;
-  phone1: string | null;
-  emailId: string | null;
-  gstin: string | null;
-  approvedSupplier: string | null;
-  status: string | null;
-  creatUserIdCd: string;
-  creatDt: Date | null;
-}) {
-  const approved =
-    (s.approvedSupplier ?? "").toUpperCase() === "YES" ||
-    (s.approvedSupplier ?? "").toUpperCase() === "Y";
-  const rawStatus = (s.status ?? "").toUpperCase();
-  const uiStatus =
-    rawStatus === "BLOCKED" || rawStatus === "INACTIVE" ? "Inactive" : "Active";
-
-  return {
-    id: s.supCode,
-    supCode: s.supCode,
-    supName: s.supName ?? "",
-    address: s.add1,
-    city: s.city,
-    state: s.state,
-    phone: s.phone1,
-    email: s.emailId,
-    gstin: s.gstin,
-    status: uiStatus as "Active" | "Inactive",
-    isApproved: approved,
-    creatUserIdCd: s.creatUserIdCd,
-    creatDt: s.creatDt,
-  };
-}
-
-function normalizeBody(body: Record<string, unknown>, id: string) {
-  return {
-    supCode: id,
-    supName: body.supName,
-    add1: body.add1 ?? body.address,
-    city: body.city,
-    state: body.state,
-    gstin: body.gstin,
-    phone1: body.phone1 ?? body.phone,
-    emailId: body.emailId ?? body.email ?? "",
-    bankName: body.bankName,
-    accountNumber: body.accountNumber,
-    ifscCode: body.ifscCode,
-    approvedSupplier: body.approvedSupplier
-      ?? (body.isApproved === true ? "Yes" : body.isApproved === false ? "No" : undefined),
-    status:
-      body.status === "Inactive" || body.status === "BLOCKED"
-        ? "BLOCKED"
-        : body.status === "Active"
-          ? "ACTIVE"
-          : body.status,
-  };
-}
+import { mapSupplierRow, normalizeSupplierBody } from "@/lib/supplierMap";
 
 export async function GET(
   _req: NextRequest,
@@ -83,7 +22,7 @@ export async function GET(
     return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ supplier: mapSupplier(supplier) });
+  return NextResponse.json({ supplier: mapSupplierRow(supplier) });
 }
 
 export async function PUT(
@@ -99,7 +38,9 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
-  const parsed = SupplierUpdateSchema.safeParse(normalizeBody(body, id));
+  const parsed = SupplierUpdateSchema.safeParse(
+    normalizeSupplierBody(body as Record<string, unknown>, id)
+  );
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
@@ -110,7 +51,7 @@ export async function PUT(
     data: { ...data, lstUpdtUserIdCd: authCheck.session.userId.slice(0, 10) },
   });
 
-  return NextResponse.json({ ok: true, supplier: mapSupplier(supplier) });
+  return NextResponse.json({ ok: true, supplier: mapSupplierRow(supplier) });
 }
 
 export async function DELETE(
@@ -160,5 +101,5 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json({ ok: true, supplier: mapSupplier(updated) });
+  return NextResponse.json({ ok: true, supplier: mapSupplierRow(updated) });
 }

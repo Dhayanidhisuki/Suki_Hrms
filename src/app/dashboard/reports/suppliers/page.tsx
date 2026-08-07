@@ -99,12 +99,14 @@ export default function Page() {
           badge: { label: "Other", type: "warning" },
         },
       ]}
+      chartBesideKpis
       chart={
         <ReportChartCard
           title="Suppliers by state"
           subtitle="Top 8 states (+ Other) — STATE field from supplier master"
+          className="mb-0 h-full"
         >
-          <ReportBarChart data={stateChart} horizontal />
+          <ReportBarChart data={stateChart} horizontal loading={loading} />
         </ReportChartCard>
       }
       links={[

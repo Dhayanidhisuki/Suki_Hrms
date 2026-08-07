@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, X, Trash2, Edit2, Check } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
 
 type Tab = "Tool Types" | "Gauge Types" | "Tools Groups" | "Tools Subgroups" | "Calib Frequency";
 
@@ -54,8 +56,8 @@ interface CalibFrequency {
 const tabs: Tab[] = ["Tool Types", "Gauge Types", "Tools Groups", "Tools Subgroups", "Calib Frequency"];
 
 export default function LookupsPage() {
-  const { showSuccess } = useSuccessOverlay();
   const [tab, setTab] = useState<Tab>("Tool Types");
+  const [query, setQuery] = useState("");
 
   // Reactivity states
   const [toolTypes, setToolTypes] = useState<ToolType[]>([]);
@@ -64,7 +66,6 @@ export default function LookupsPage() {
   const [toolsSubgroups, setToolsSubgroups] = useState<ToolsSubgroup[]>([]);
   const [calibFreqs, setCalibFreqs] = useState<CalibFrequency[]>([]);
   const [loading, setLoading] = useState(true);
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Inline Row Editor States (for Tool & Gauge Types)
   const [isInlineAdding, setIsInlineAdding] = useState(false);
@@ -190,8 +191,7 @@ export default function LookupsPage() {
       return;
     }
 
-    setBannerMsg({ type: "success", text: `${tab.slice(0, -1)} added successfully.` });
-    showSuccess({
+    toastSuccess({
       title: "Record saved",
       message: `${tab.slice(0, -1)} added successfully.`,
       detail: inlineName.trim() || inlineCode.trim() || undefined,
@@ -204,10 +204,10 @@ export default function LookupsPage() {
     const endpoint = tab === "Tool Types" ? `/api/lookups/tool-types/${id}` : `/api/lookups/gauge-types/${id}`;
     const res = await apiDelete(endpoint);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Record deleted." });
+    toastSuccess("Record deleted.");
     loadAll();
   };
 
@@ -246,10 +246,10 @@ export default function LookupsPage() {
   const handleDeleteGroup = async (id: number) => {
     const res = await apiDelete(`/api/lookups/groups/${id}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Group deleted." });
+    toastSuccess("Group deleted.");
     loadAll();
   };
 
@@ -266,10 +266,10 @@ export default function LookupsPage() {
   const handleDeleteSubgroup = async (id: number) => {
     const res = await apiDelete(`/api/lookups/subgroups/${id}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Subgroup deleted." });
+    toastSuccess("Subgroup deleted.");
     loadAll();
   };
 
@@ -298,8 +298,7 @@ export default function LookupsPage() {
       return;
     }
 
-    setBannerMsg({ type: "success", text: "Calibration frequency added." });
-    showSuccess({
+    toastSuccess({
       title: "Record saved",
       message: "Calibration frequency added successfully.",
     });
@@ -311,10 +310,10 @@ export default function LookupsPage() {
   const handleDeleteCalibFreq = async (id: number) => {
     const res = await apiDelete(`/api/lookups/calib-frequency/${id}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Calibration frequency deleted." });
+    toastSuccess("Calibration frequency deleted.");
     loadAll();
   };
 
@@ -341,18 +340,16 @@ export default function LookupsPage() {
         indentPrefix: groupIndentPrefix,
       };
 
-      setBannerMsg(null);
       const res = editGroup
         ? await apiPut<{ item: ToolsGroup }>(`/api/lookups/groups/${editGroup.id}`, payload)
         : await apiPost<{ item: ToolsGroup }>("/api/lookups/groups", payload);
 
       if (res.error) {
-        setBannerMsg({ type: "error", text: res.error.message });
+        toastError(res.error.message);
         return;
       }
 
-      setBannerMsg({ type: "success", text: editGroup ? "Group updated." : "Group created." });
-      showSuccess({
+      toastSuccess({
         title: "Record saved",
         message: editGroup ? "Tools group updated successfully." : "Tools group created successfully.",
         detail: groupName.trim() || groupCode.trim() || undefined,
@@ -376,18 +373,16 @@ export default function LookupsPage() {
         refGroupId: Number(subParentId),
       };
 
-      setBannerMsg(null);
       const res = editSubgroup
         ? await apiPut<{ item: ToolsSubgroup }>(`/api/lookups/subgroups/${editSubgroup.id}`, payload)
         : await apiPost<{ item: ToolsSubgroup }>("/api/lookups/subgroups", payload);
 
       if (res.error) {
-        setBannerMsg({ type: "error", text: res.error.message });
+        toastError(res.error.message);
         return;
       }
 
-      setBannerMsg({ type: "success", text: editSubgroup ? "Subgroup updated." : "Subgroup created." });
-      showSuccess({
+      toastSuccess({
         title: "Record saved",
         message: editSubgroup
           ? "Tools subgroup updated successfully."
@@ -397,6 +392,50 @@ export default function LookupsPage() {
       setIsSlideOpen(false);
       loadAll();
     }
+  };
+
+  const q = query.trim().toLowerCase();
+  const matchesQuery = (...parts: (string | null | undefined | number)[]) => {
+    if (!q) return true;
+    return parts.some((p) => p != null && String(p).toLowerCase().includes(q));
+  };
+
+  const filteredToolTypes = useMemo(
+    () => toolTypes.filter((r) => matchesQuery(r.code, r.name, r.description)),
+    [toolTypes, q]
+  );
+  const filteredGaugeTypes = useMemo(
+    () => gaugeTypes.filter((r) => matchesQuery(r.code, r.name, r.description)),
+    [gaugeTypes, q]
+  );
+  const filteredToolsGroups = useMemo(
+    () =>
+      toolsGroups.filter((g) =>
+        matchesQuery(g.code, g.name, g.prefixToolsNo, g.poPrefix, g.grnPrefix, g.indentPrefix)
+      ),
+    [toolsGroups, q]
+  );
+  const filteredToolsSubgroups = useMemo(
+    () =>
+      toolsSubgroups.filter((sg) =>
+        matchesQuery(sg.code, sg.name, sg.group?.name, sg.group?.code)
+      ),
+    [toolsSubgroups, q]
+  );
+  const filteredCalibFreqs = useMemo(
+    () =>
+      calibFreqs.filter((cf) =>
+        matchesQuery(cf.prodToleranceMin, cf.prodToleranceMax, cf.calibFrequency)
+      ),
+    [calibFreqs, q]
+  );
+
+  const tabCounts: Record<Tab, number> = {
+    "Tool Types": toolTypes.length,
+    "Gauge Types": gaugeTypes.length,
+    "Tools Groups": toolsGroups.length,
+    "Tools Subgroups": toolsSubgroups.length,
+    "Calib Frequency": calibFreqs.length,
   };
 
   return (
@@ -430,203 +469,205 @@ export default function LookupsPage() {
             </RoleGate>
           </div>
 
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button
-                onClick={() => setBannerMsg(null)}
-                className="ml-auto text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          <StatusPillTabs
+            className="mb-3"
+            idPrefix="lookup-tab"
+            value={tab}
+            onChange={(t) => {
+              setTab(t);
+              setIsInlineAdding(false);
+              setQuery("");
+            }}
+            items={tabs.map((t) => ({
+              value: t,
+              label: t,
+              count: tabCounts[t],
+            }))}
+          />
 
-          {/* ── Tabs & Card ── */}
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-            <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1 mb-6 w-fit">
-              {tabs.map((t) => (
-                <button
-                  key={t}
-                  id={`lookup-tab-${t.toLowerCase().replace(/\s/g, "-")}`}
-                  onClick={() => {
-                    setTab(t);
-                    setIsInlineAdding(false);
-                  }}
-                  className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${
-                    tab === t
-                      ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            {/* Tab Content 1: Tool Types */}
+          <MasterTableCard
+            toolbar={
+              <MasterSearchInput
+                id="lookup-search"
+                value={query}
+                onChange={setQuery}
+                placeholder="Search"
+                widthClass="w-44"
+              />
+            }
+          >
             {tab === "Tool Types" && (
-              <div className="space-y-4">
+              <div>
                 {loading ? (
-                  <TableSkeleton rows={4} />
+                  <div className="p-4">
+                    <TableSkeleton rows={4} />
+                  </div>
                 ) : (
-                  <SimpleTypesTable
-                    rows={toolTypes}
-                    onDelete={handleDeleteInline}
-                  />
+                  <SimpleTypesTable rows={filteredToolTypes} onDelete={handleDeleteInline} />
                 )}
-                {renderInlineEditor()}
               </div>
             )}
 
-            {/* Tab Content 2: Gauge Types */}
             {tab === "Gauge Types" && (
-              <div className="space-y-4">
+              <div>
                 {loading ? (
-                  <TableSkeleton rows={4} />
+                  <div className="p-4">
+                    <TableSkeleton rows={4} />
+                  </div>
                 ) : (
-                  <SimpleTypesTable
-                    rows={gaugeTypes}
-                    onDelete={handleDeleteInline}
-                  />
+                  <SimpleTypesTable rows={filteredGaugeTypes} onDelete={handleDeleteInline} />
                 )}
-                {renderInlineEditor()}
               </div>
             )}
 
-            {/* Tab Content 3: Tools Groups */}
-            {tab === "Tools Groups" && (
-              loading ? (
-                <TableSkeleton rows={4} />
+            {tab === "Tools Groups" &&
+              (loading ? (
+                <div className="p-4">
+                  <TableSkeleton rows={4} />
+                </div>
               ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                      {["Code", "Group Name", "Prefix Tools No", "PO Prefix", "GRN Prefix", "Indent Prefix", "Actions"].map((col) => (
-                        <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border-main)]">
-                    {toolsGroups.map((g) => (
-                      <tr key={g.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.code}</td>
-                        <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{g.name}</td>
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.prefixToolsNo}</td>
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.poPrefix}</td>
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.grnPrefix}</td>
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.indentPrefix}</td>
-                        <td className="py-3 px-3">
-                          <RoleGate permission="canEditMaster">
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => handleOpenEditGroup(g)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={() => handleDeleteGroup(g.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </RoleGate>
-                        </td>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                        {["Code", "Group Name", "Prefix Tools No", "PO Prefix", "GRN Prefix", "Indent Prefix", "Actions"].map((col) => (
+                          <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
+                            {col}
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )
-            )}
-
-            {/* Tab Content 5: Calib Frequency */}
-            {tab === "Calib Frequency" && (
-              loading ? (
-                <TableSkeleton rows={4} />
-              ) : (
-                <div className="space-y-4">
-                  <div className="overflow-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Prod Tolerance Min", "Prod Tolerance Max", "Calib Frequency (months)", "Actions"].map((col) => (
-                            <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-main)]">
-                        {calibFreqs.map((cf) => (
-                          <tr key={cf.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                            <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMin ?? "-"}</td>
-                            <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMax ?? "-"}</td>
-                            <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{cf.calibFrequency ?? "-"}</td>
-                            <td className="py-3 px-3">
-                              <RoleGate permission="canDeleteMaster">
-                                <button onClick={() => handleDeleteCalibFreq(cf.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {filteredToolsGroups.map((g) => (
+                        <tr key={g.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.code}</td>
+                          <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{g.name}</td>
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.prefixToolsNo}</td>
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.poPrefix}</td>
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.grnPrefix}</td>
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.indentPrefix}</td>
+                          <td className="py-3 px-3">
+                            <RoleGate permission="canEditMaster">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => handleOpenEditGroup(g)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => handleDeleteGroup(g.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              </RoleGate>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {renderCalibFreqEditor()}
-                </div>
-              )
-            )}
-
-            {/* Tab Content 4: Tools Subgroups */}
-            {tab === "Tools Subgroups" && (
-              loading ? (
-                <TableSkeleton rows={4} />
-              ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                      {["Code", "Subgroup Name", "Parent Group Name", "Actions"].map((col) => (
-                        <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
-                          {col}
-                        </th>
+                              </div>
+                            </RoleGate>
+                          </td>
+                        </tr>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border-main)]">
-                    {toolsSubgroups.map((sg) => (
-                      <tr key={sg.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                        <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{sg.code}</td>
-                        <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{sg.name}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{sg.group?.name ?? "-"}</td>
-                        <td className="py-3 px-3">
-                          <RoleGate permission="canEditMaster">
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => handleOpenEditSubgroup(sg)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={() => handleDeleteSubgroup(sg.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
+                      {filteredToolsGroups.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                            No groups found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+            {tab === "Calib Frequency" &&
+              (loading ? (
+                <div className="p-4">
+                  <TableSkeleton rows={4} />
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                        {["Prod Tolerance Min", "Prod Tolerance Max", "Calib Frequency (months)", "Actions"].map((col) => (
+                          <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {filteredCalibFreqs.map((cf) => (
+                        <tr key={cf.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMin ?? "-"}</td>
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMax ?? "-"}</td>
+                          <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{cf.calibFrequency ?? "-"}</td>
+                          <td className="py-3 px-3">
+                            <RoleGate permission="canDeleteMaster">
+                              <button onClick={() => handleDeleteCalibFreq(cf.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            </div>
-                          </RoleGate>
-                        </td>
+                            </RoleGate>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredCalibFreqs.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                            No calibration frequency rows found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+            {tab === "Tools Subgroups" &&
+              (loading ? (
+                <div className="p-4">
+                  <TableSkeleton rows={4} />
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                        {["Code", "Subgroup Name", "Parent Group Name", "Actions"].map((col) => (
+                          <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0">
+                            {col}
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )
-            )}
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {filteredToolsSubgroups.map((sg) => (
+                        <tr key={sg.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                          <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{sg.code}</td>
+                          <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{sg.name}</td>
+                          <td className="py-3 px-3 text-[var(--text-secondary)]">{sg.group?.name ?? "-"}</td>
+                          <td className="py-3 px-3">
+                            <RoleGate permission="canEditMaster">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => handleOpenEditSubgroup(sg)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => handleDeleteSubgroup(sg.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </RoleGate>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredToolsSubgroups.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                            No subgroups found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+          </MasterTableCard>
+
+          {(tab === "Tool Types" || tab === "Gauge Types") && renderInlineEditor()}
+          {tab === "Calib Frequency" && renderCalibFreqEditor()}
         </main>
       </div>
 
@@ -652,11 +693,11 @@ export default function LookupsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveSlide} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <form onSubmit={handleSaveSlide} className="flex-1 overflow-y-auto p-5 space-y-5">
               {tab === "Tools Groups" ? (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Group Code *
                     </label>
                     <input
@@ -664,12 +705,12 @@ export default function LookupsPage() {
                       value={groupCode}
                       onChange={(e) => setGroupCode(e.target.value)}
                       placeholder="e.g. MEQ"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono uppercase"
+                      className="form-control placeholder-[var(--text-muted)] font-mono uppercase"
                     />
                     {slideErrors.groupCode && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupCode}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Group Name *
                     </label>
                     <input
@@ -677,12 +718,12 @@ export default function LookupsPage() {
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
                       placeholder="e.g. Measuring Equip"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                      className="form-control placeholder-[var(--text-muted)]"
                     />
                     {slideErrors.groupName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupName}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Prefix Tools Number *
                     </label>
                     <input
@@ -690,12 +731,12 @@ export default function LookupsPage() {
                       value={groupPrefix}
                       onChange={(e) => setGroupPrefix(e.target.value)}
                       placeholder="e.g. TL-MIC"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                      className="form-control placeholder-[var(--text-muted)] font-mono"
                     />
                     {slideErrors.groupPrefix && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupPrefix}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       PO Prefix *
                     </label>
                     <input
@@ -703,12 +744,12 @@ export default function LookupsPage() {
                       value={groupPoPrefix}
                       onChange={(e) => setGroupPoPrefix(e.target.value)}
                       placeholder="e.g. PO-MEQ"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                      className="form-control placeholder-[var(--text-muted)] font-mono"
                     />
                     {slideErrors.groupPoPrefix && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupPoPrefix}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       GRN Prefix *
                     </label>
                     <input
@@ -716,12 +757,12 @@ export default function LookupsPage() {
                       value={groupGrnPrefix}
                       onChange={(e) => setGroupGrnPrefix(e.target.value)}
                       placeholder="e.g. GRN-MEQ"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                      className="form-control placeholder-[var(--text-muted)] font-mono"
                     />
                     {slideErrors.groupGrnPrefix && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupGrnPrefix}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Indent Prefix *
                     </label>
                     <input
@@ -729,7 +770,7 @@ export default function LookupsPage() {
                       value={groupIndentPrefix}
                       onChange={(e) => setGroupIndentPrefix(e.target.value)}
                       placeholder="e.g. IND-MEQ"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                      className="form-control placeholder-[var(--text-muted)] font-mono"
                     />
                     {slideErrors.groupIndentPrefix && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.groupIndentPrefix}</p>}
                   </div>
@@ -737,7 +778,7 @@ export default function LookupsPage() {
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Subgroup Code *
                     </label>
                     <input
@@ -745,12 +786,12 @@ export default function LookupsPage() {
                       value={subCode}
                       onChange={(e) => setSubCode(e.target.value)}
                       placeholder="e.g. MIC"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono uppercase"
+                      className="form-control placeholder-[var(--text-muted)] font-mono uppercase"
                     />
                     {slideErrors.subCode && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.subCode}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Subgroup Name *
                     </label>
                     <input
@@ -758,19 +799,19 @@ export default function LookupsPage() {
                       value={subName}
                       onChange={(e) => setSubName(e.target.value)}
                       placeholder="e.g. Micrometers"
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                      className="form-control placeholder-[var(--text-muted)]"
                     />
                     {slideErrors.subName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{slideErrors.subName}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                    <label className="form-label">
                       Parent Group *
                     </label>
                     <select
                       id="form-subg-parent"
                       value={subParentId}
                       onChange={(e) => setSubParentId(Number(e.target.value))}
-                      className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                      className="form-control"
                     >
                       {toolsGroups.map((g) => (
                         <option key={g.id} value={g.id}>
@@ -811,7 +852,7 @@ export default function LookupsPage() {
                     value={inlineCode}
                     onChange={(e) => setInlineCode(e.target.value)}
                     placeholder="Code (e.g. TT05)"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono uppercase"
+                    className="form-control placeholder-[var(--text-muted)] font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -820,7 +861,7 @@ export default function LookupsPage() {
                     value={inlineName}
                     onChange={(e) => setInlineName(e.target.value)}
                     placeholder="Name (e.g. Pneumatic Tool)"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    className="form-control placeholder-[var(--text-muted)]"
                   />
                 </div>
                 <div>
@@ -829,7 +870,7 @@ export default function LookupsPage() {
                     value={inlineDesc}
                     onChange={(e) => setInlineDesc(e.target.value)}
                     placeholder="Description"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    className="form-control placeholder-[var(--text-muted)]"
                   />
                 </div>
               </div>
@@ -884,7 +925,7 @@ export default function LookupsPage() {
                     value={cfMin}
                     onChange={(e) => setCfMin(e.target.value)}
                     placeholder="Prod Tolerance Min"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                    className="form-control placeholder-[var(--text-muted)] font-mono"
                   />
                 </div>
                 <div>
@@ -894,7 +935,7 @@ export default function LookupsPage() {
                     onChange={(e) => setCfMax(e.target.value)}
                     placeholder="Prod Tolerance Max"
                     type="number"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                    className="form-control placeholder-[var(--text-muted)] font-mono"
                   />
                 </div>
                 <div>
@@ -904,7 +945,7 @@ export default function LookupsPage() {
                     onChange={(e) => setCfFreq(e.target.value)}
                     placeholder="Frequency (months)"
                     type="number"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                    className="form-control placeholder-[var(--text-muted)] font-mono"
                   />
                 </div>
               </div>

@@ -2,20 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  Eye,
-  History,
-  Package,
-  CheckCircle2,
-  ArrowUpRight,
-  Layers,
-  ExternalLink,
-} from "lucide-react";
+import { Eye, Package, ExternalLink, FileText } from "lucide-react";
 import {
   HistoryCardShell,
   HistoryCardSearch,
   HistoryCardPanel,
-  HISTORY_CARD_NAV,
+  HISTORY_CARD_DETAIL_ACTIONS,
   fmtCell,
 } from "@/components/HistoryCardShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
@@ -23,6 +15,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 import { apiGet, apiPost } from "@/lib/apiClient";
+import { toastSuccess, toastError } from "@/lib/appToast";
 
 interface ToolHistoryItem {
   refNo: number;
@@ -66,6 +59,9 @@ function toolLabel(t: ToolHistoryItem) {
   return !n || n.toUpperCase() === "N/A" ? t.toolOrGaugeNo : n;
 }
 
+/** Fixed column template — header + rows share the same tracks */
+const CARD_LIST_COLS = "minmax(0, 2.2fr) minmax(0, 1.1fr) 4.5rem 5.5rem";
+
 export default function ToolsHistoryCardPage() {
   const [tools, setTools] = useState<ToolHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -75,7 +71,8 @@ export default function ToolsHistoryCardPage() {
   const [units, setUnits] = useState<UnitHistoryRow[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsError, setUnitsError] = useState("");
-  const [pmMsg, setPmMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [docCount, setDocCount] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadTools = useCallback(async (q = "") => {
@@ -101,9 +98,10 @@ export default function ToolsHistoryCardPage() {
 
   const selectTool = async (tool: ToolHistoryItem, scroll = true) => {
     setSelected(tool);
+    setDocsOpen(false);
+    setDocCount(0);
     setUnits([]);
     setUnitsError("");
-    setPmMsg(null);
     setUnitsLoading(true);
     const res = await apiGet<{ unitHistory?: UnitHistoryRow[]; serials?: UnitHistoryRow[] }>(
       `/api/tools/${tool.refNo}/serials`
@@ -131,18 +129,16 @@ export default function ToolsHistoryCardPage() {
   };
 
   const handleCompletePm = async (unitRefNo: number) => {
-    setPmMsg(null);
     const res = await apiPost<{ nextPreDate?: string }>("/api/tools/preventive-complete", {
       unitRefNo,
     });
     if (res.error) {
-      setPmMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setPmMsg({
-      type: "success",
-      text: `Preventive MNT completed. Next due: ${res.data?.nextPreDate ?? "updated"}.`,
-    });
+    toastSuccess(
+      `Preventive MNT completed. Next due: ${res.data?.nextPreDate ?? "updated"}.`
+    );
     if (selected) void selectTool(selected, false);
   };
 
@@ -153,46 +149,31 @@ export default function ToolsHistoryCardPage() {
     <HistoryCardShell
       title="History Card"
       subtitle="Lifecycle card for tools with HISTORY_CARD_REQ = Yes — physical units, calibration dates, and current holder"
+      kpiVariant="simple"
       kpis={[
         {
           id: "hc-total",
           label: "History Card Tools",
           value: total,
           subtext: "HISTORY_CARD_REQ = Yes",
-          icon: History,
-          iconBg: "bg-[var(--primary-light)]",
-          iconColor: "text-[var(--primary)]",
-          badge: { label: "Cards", type: "info" },
         },
         {
           id: "hc-page-stock",
-          label: "In Stock (page)",
+          label: "In Stock",
           value: tools.reduce((a, t) => a + toNum(t.qtyIn), 0),
           subtext: "Master qty in on this page",
-          icon: CheckCircle2,
-          iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
-          iconColor: "text-emerald-600 dark:text-emerald-400",
-          badge: { label: "Crib", type: "success" },
         },
         {
           id: "hc-page-out",
-          label: "Issued Out (page)",
+          label: "Issued Out",
           value: tools.reduce((a, t) => a + toNum(t.qtyOut), 0),
           subtext: "Master qty out on this page",
-          icon: ArrowUpRight,
-          iconBg: "bg-blue-50 dark:bg-blue-950/30",
-          iconColor: "text-blue-600 dark:text-blue-400",
-          badge: { label: "Issued", type: "info" },
         },
         {
           id: "hc-units",
-          label: "Units On Card",
+          label: "Units on Card",
           value: selected ? units.length : 0,
           subtext: selected ? selected.toolOrGaugeNo : "Select a tool",
-          icon: Layers,
-          iconBg: "bg-amber-50 dark:bg-amber-950/30",
-          iconColor: "text-amber-600 dark:text-amber-400",
-          badge: { label: "Units", type: "warning" },
         },
       ]}
       toolbar={
@@ -210,77 +191,88 @@ export default function ToolsHistoryCardPage() {
           title="Registered Cards"
           subtitle={`Showing ${tools.length} of ${total.toLocaleString()}`}
           className="xl:col-span-5"
+          bodyClassName="p-0"
         >
           {loading ? (
-            <TableSkeleton rows={8} />
+            <div className="p-5">
+              <TableSkeleton rows={8} />
+            </div>
           ) : (
-            <div className="overflow-auto max-h-[62vh] -mx-1">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-[var(--bg-card)] z-10">
-                  <tr className="border-b border-[var(--border-main)]">
-                    {["Tool No", "Group", "Stock", ""].map((c) => (
-                      <th
-                        key={c || "a"}
-                        className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2"
-                      >
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-main)]">
-                  {tools.map((t) => {
-                    const active = selected?.refNo === t.refNo;
-                    return (
-                      <tr
-                        key={t.refNo}
-                        onClick={() => void selectTool(t)}
-                        className={`cursor-pointer transition-colors ${
-                          active
-                            ? "bg-[var(--primary-light)]/60"
-                            : "hover:bg-[var(--bg-hover)]"
-                        }`}
-                      >
-                        <td className="py-2.5 px-2">
-                          <p className="font-mono text-xs font-bold text-[var(--text-primary)]">
-                            {t.toolOrGaugeNo}
-                          </p>
-                          <p className="text-[11px] text-[var(--text-muted)] truncate max-w-[160px]">
-                            {toolLabel(t)}
-                          </p>
-                        </td>
-                        <td className="py-2.5 px-2 text-[11px] text-[var(--text-secondary)]">
-                          {t.grouping}
-                        </td>
-                        <td className="py-2.5 px-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                          {toNum(t.qtyIn)}/{toNum(t.totQty)}
-                        </td>
-                        <td className="py-2.5 px-2 text-right">
-                          <Button
-                            type="button"
-                            variant={active ? "primary" : "outline"}
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void selectTool(t);
-                            }}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            {active ? "Open" : "View"}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {tools.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-sm text-[var(--text-muted)]">
-                        No history-card tools match. Try <span className="font-mono">MP-QRG-174</span>.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="overflow-auto max-h-[62vh]">
+              <div
+                className="sticky top-0 z-10 grid items-center gap-x-3 border-b-[0.5px] border-[var(--border-main)] bg-[var(--bg-card)] px-5 py-2.5"
+                style={{ gridTemplateColumns: CARD_LIST_COLS }}
+              >
+                {["Tool No", "Group", "Stock", "Action"].map((c) => (
+                  <div
+                    key={c}
+                    className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider"
+                  >
+                    {c}
+                  </div>
+                ))}
+              </div>
+
+              <div className="divide-y divide-[var(--border-main)]">
+                {tools.map((t) => {
+                  const active = selected?.refNo === t.refNo;
+                  return (
+                    <div
+                      key={t.refNo}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => void selectTool(t)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void selectTool(t);
+                        }
+                      }}
+                      className={`grid items-center gap-x-3 px-5 py-2.5 cursor-pointer transition-colors ${
+                        active
+                          ? "bg-[var(--primary-light)]/60"
+                          : "hover:bg-[var(--bg-hover)]"
+                      }`}
+                      style={{ gridTemplateColumns: CARD_LIST_COLS }}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-[var(--text-primary)] truncate">
+                          {t.toolOrGaugeNo}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-muted)] truncate">
+                          {toolLabel(t)}
+                        </p>
+                      </div>
+                      <div className="min-w-0 text-[11px] text-[var(--text-secondary)] truncate">
+                        {t.grouping}
+                      </div>
+                      <div className="font-mono text-xs text-[var(--text-secondary)] tabular-nums">
+                        {toNum(t.qtyIn)}/{toNum(t.totQty)}
+                      </div>
+                      <div className="flex justify-start">
+                        <Button
+                          type="button"
+                          variant={active ? "primary" : "outline"}
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void selectTool(t);
+                          }}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          {active ? "Open" : "View"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {tools.length === 0 && (
+                  <div className="py-10 text-center text-sm text-[var(--text-muted)] px-5">
+                    No history-card tools match. Try{" "}
+                    <span className="font-mono">MP-QRG-174</span>.
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </HistoryCardPanel>
@@ -311,74 +303,119 @@ export default function ToolsHistoryCardPage() {
                   </Link>
                 }
               >
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                  {[
-                    { label: "Total Qty", value: toNum(selected.totQty) },
-                    { label: "In Stock", value: toNum(selected.qtyIn), tone: "text-emerald-600 dark:text-emerald-400" },
-                    { label: "Issued Out", value: toNum(selected.qtyOut), tone: "text-[var(--primary)]" },
-                    {
-                      label: "Calib Freq",
-                      value: selected.calibrationFrqMonths
-                        ? `${selected.calibrationFrqMonths} mo`
-                        : "—",
-                    },
-                  ].map((m) => (
-                    <div
-                      key={m.label}
-                      className="rounded-xl border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2.5"
-                    >
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                        {m.label}
-                      </p>
-                      <p className={`text-sm font-bold font-mono mt-0.5 ${m.tone ?? "text-[var(--text-primary)]"}`}>
-                        {m.value}
-                      </p>
-                    </div>
-                  ))}
+                {/* Qty metrics — one card, 2×2 grid */}
+                <div className="rounded-[12px] border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] p-4 mb-5">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                    {[
+                      { label: "Total Qty", value: toNum(selected.totQty) },
+                      {
+                        label: "In Stock",
+                        value: toNum(selected.qtyIn),
+                        tone: "text-emerald-600 dark:text-emerald-400",
+                      },
+                      {
+                        label: "Issued Out",
+                        value: toNum(selected.qtyOut),
+                        tone: "text-[var(--primary)]",
+                      },
+                      {
+                        label: "Calib Freq",
+                        value: selected.calibrationFrqMonths
+                          ? `${selected.calibrationFrqMonths} mo`
+                          : "—",
+                      },
+                    ].map((m) => (
+                      <div key={m.label} className="min-w-0">
+                        <p className="text-[12px] font-medium text-[var(--text-muted)] leading-tight">
+                          {m.label}
+                        </p>
+                        <p
+                          className={`mt-1 text-[22px] font-medium font-mono leading-none tabular-nums ${m.tone ?? "text-[var(--text-primary)]"}`}
+                        >
+                          {m.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-5">
-                  <span className="text-[11px] text-[var(--text-muted)] self-center mr-1">
+                {/* Status pills — one row, uniform height */}
+                <div className="flex flex-wrap items-center gap-2 mb-5">
+                  <span className="inline-flex h-7 items-center px-2.5 rounded-full text-[11px] font-semibold border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
                     Location: {selected.location || "Tool Crib"}
                   </span>
-                  <StatusBadge status={selected.computedStatus || selected.status || "Tracked"} />
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border bg-[var(--bg-subtle)] text-[var(--text-secondary)] border-[var(--border-main)]">
+                  <span className="inline-flex h-7 items-center">
+                    <StatusBadge status={selected.computedStatus || selected.status || "Tracked"} />
+                  </span>
+                  <span className="inline-flex h-7 items-center px-2.5 rounded-full text-[11px] font-semibold border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
                     Units in crib: {inStore}
                   </span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200">
+                  <span className="inline-flex h-7 items-center px-2.5 rounded-full text-[11px] font-semibold border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
                     Units held out: {outHeld}
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {HISTORY_CARD_NAV.filter((n) => n.href !== "/dashboard/tools-history-card").map(
-                    (n) => {
-                      const Icon = n.icon;
-                      const href = `${n.href}?tool=${encodeURIComponent(selected.toolOrGaugeNo)}`;
-                      return (
-                        <Link
-                          key={n.href}
-                          href={href}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-[var(--border-main)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--primary)] transition-colors"
-                        >
-                          <Icon className="w-3 h-3" />
+                {/* Module actions — 4-col icon+label grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {HISTORY_CARD_DETAIL_ACTIONS.map((n) => {
+                    const Icon = n.icon;
+                    const href = `${n.href}?tool=${encodeURIComponent(selected.toolOrGaugeNo)}`;
+                    return (
+                      <Link
+                        key={n.href}
+                        href={href}
+                        title={n.description}
+                        className="flex flex-col items-center justify-center gap-1.5 rounded-[12px] border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] px-2 py-3 text-center transition-colors hover:border-[var(--primary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <Icon className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <span className="text-[11px] font-semibold text-[var(--text-secondary)] leading-tight">
                           {n.short}
-                        </Link>
-                      );
-                    }
-                  )}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    title="Upload / download certificates, manuals, and drawings"
+                    aria-expanded={docsOpen}
+                    onClick={() => setDocsOpen((o) => !o)}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-[12px] border-[0.5px] px-2 py-3 text-center transition-colors ${
+                      docsOpen
+                        ? "border-[var(--primary)] bg-[var(--primary-light)]/50"
+                        : "border-[var(--border-main)] bg-[var(--bg-subtle)] hover:border-[var(--primary)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    <span className="relative inline-flex">
+                      <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
+                      {docCount > 0 && (
+                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--primary)] text-[9px] font-bold text-white font-mono leading-none">
+                          {docCount > 99 ? "99+" : docCount}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[11px] font-semibold text-[var(--text-secondary)] leading-tight">
+                      Documents
+                    </span>
+                  </button>
                 </div>
-              </HistoryCardPanel>
 
-              <HistoryCardPanel
-                title="Tool Documents"
-                subtitle="Upload / download certificates, manuals, and drawings for this tool"
-              >
-                <ToolDocumentsPanel
-                  toolOrGaugeNo={selected.toolOrGaugeNo}
-                  defaultDocType="CALIB_CERTIFICATE"
-                  title="Files"
-                />
+                <div
+                  className={
+                    docsOpen
+                      ? "mt-3 rounded-[12px] border-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)] p-4"
+                      : undefined
+                  }
+                >
+                  <ToolDocumentsPanel
+                    key={selected.toolOrGaugeNo}
+                    toolOrGaugeNo={selected.toolOrGaugeNo}
+                    defaultDocType="CALIB_CERTIFICATE"
+                    variant="form"
+                    collapsed={!docsOpen}
+                    onCountChange={setDocCount}
+                    onClose={() => setDocsOpen(false)}
+                  />
+                </div>
               </HistoryCardPanel>
 
               <HistoryCardPanel
@@ -395,24 +432,13 @@ export default function ToolsHistoryCardPage() {
                     {unitsError}
                   </p>
                 )}
-                {pmMsg && (
-                  <p
-                    className={`mb-3 text-xs font-semibold ${
-                      pmMsg.type === "success"
-                        ? "text-[var(--color-success-text)]"
-                        : "text-[var(--color-danger-text)]"
-                    }`}
-                  >
-                    {pmMsg.text}
-                  </p>
-                )}
                 {unitsLoading ? (
                   <TableSkeleton rows={4} />
                 ) : (
                   <div className="overflow-auto -mx-1">
                     <table className="w-full text-sm min-w-[720px]">
                       <thead>
-                        <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                        <tr className="border-b-[0.5px] border-[var(--border-main)] bg-[var(--bg-subtle)]">
                           {[
                             "S.No",
                             "Status",

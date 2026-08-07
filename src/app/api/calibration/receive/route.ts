@@ -5,6 +5,60 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibReceiveCreateSchema } from "@/lib/validators";
 
+function isCalibIssueLineOpen(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toUpperCase();
+  return (
+    !s ||
+    s === "ISSUED" ||
+    s === "OPEN" ||
+    s === "UNDER CALIBRATION" ||
+    s.includes("ISSUE FOR CALIBRATION") ||
+    s === "PENDING"
+  );
+}
+
+function isCalibIssueLineReceived(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toUpperCase();
+  return s === "RECEIVED" || s === "CLOSED" || s.includes("RECEIVED");
+}
+
+function deriveIssueStatus(lines: { status: string | null }[]): "OPEN" | "PARTIAL" | "CLOSED" {
+  if (lines.length === 0) return "CLOSED";
+  const openCount = lines.filter((l) => isCalibIssueLineOpen(l.status)).length;
+  const receivedCount = lines.filter((l) => isCalibIssueLineReceived(l.status)).length;
+  if (openCount === 0) return "CLOSED";
+  if (receivedCount > 0 && openCount > 0) return "PARTIAL";
+  return "OPEN";
+}
+
+async function resolveLabPrice(
+  toolRefNo: number | null | undefined,
+  toolPrice: unknown,
+  clientPrice: number
+): Promise<number> {
+  if (Number.isFinite(clientPrice) && clientPrice > 0) return clientPrice;
+
+  if (toolRefNo != null) {
+    try {
+      const pm = await prisma.toolsPriceMaster.findFirst({
+        where: { toolRefNo },
+        orderBy: [{ revDate: "desc" }, { creatDt: "desc" }],
+        select: { rate: true },
+      });
+      if (pm?.rate != null) {
+        const rate = Number(pm.rate);
+        if (Number.isFinite(rate) && rate > 0) return rate;
+      }
+    } catch (err) {
+      console.warn("Price master lookup skipped:", err);
+    }
+  }
+
+  const master = Number(toolPrice);
+  if (Number.isFinite(master) && master > 0) return master;
+  return 0;
+}
+
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
@@ -23,16 +77,23 @@ export async function GET() {
             subCode: true,
             issueDate: true,
             issueFor: true,
+            inHouseLines: { select: { status: true } },
           },
         },
       },
     });
 
-    // Derive open issue status for UI that still expects calibIssue.status
     const mapped = items.map((item) => ({
       ...item,
       calibIssue: item.calibIssue
-        ? { ...item.calibIssue, status: "CLOSED" }
+        ? {
+            dcNo: item.calibIssue.dcNo,
+            receiveName: item.calibIssue.receiveName,
+            subCode: item.calibIssue.subCode,
+            issueDate: item.calibIssue.issueDate,
+            issueFor: item.calibIssue.issueFor,
+            status: deriveIssueStatus(item.calibIssue.inHouseLines ?? []),
+          }
         : null,
     }));
 
@@ -69,7 +130,13 @@ export async function POST(req: NextRequest) {
       where: { dcNo },
       include: {
         inHouseLines: {
-          select: { toolOrGaugeNo: true, status: true, issueQty: true, serialNo: true },
+          select: {
+            toolOrGaugeNo: true,
+            status: true,
+            issueQty: true,
+            serialNo: true,
+            toolRefNo: true,
+          },
         },
       },
     });
@@ -78,21 +145,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Calibration DC #${dcNo} not found` }, { status: 400 });
     }
 
+    const openLines = issue.inHouseLines.filter((l) =>
+      isCalibIssueLineOpen(l.status)
+    );
     const openToolNos = new Set(
-      issue.inHouseLines
-        .filter((l) => l.toolOrGaugeNo)
-        .filter((l) => {
-          const s = (l.status ?? "").toUpperCase();
-          return (
-            !s ||
-            s === "ISSUED" ||
-            s === "OPEN" ||
-            s === "UNDER CALIBRATION" ||
-            s.includes("ISSUE FOR CALIBRATION") ||
-            s === "PENDING"
-          );
-        })
-        .map((l) => l.toolOrGaugeNo as string)
+      openLines.filter((l) => l.toolOrGaugeNo).map((l) => l.toolOrGaugeNo as string)
     );
 
     if (openToolNos.size === 0) {
@@ -101,6 +158,15 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Resolve qty/price/serial before the transaction so validation errors are clear
+    const normalizedLines: Array<{
+      toolOrGaugeNo: string;
+      qty: number;
+      price: number;
+      serialNo: number | null;
+      description: string | null;
+    }> = [];
 
     for (const line of lines) {
       if (!openToolNos.has(line.toolOrGaugeNo)) {
@@ -111,6 +177,42 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+
+      const issueLine = openLines.find((l) => l.toolOrGaugeNo === line.toolOrGaugeNo);
+      const issuedQty = Math.max(1, Number(issueLine?.issueQty) || 1);
+      let qty = Number(line.qty);
+      if (!Number.isFinite(qty) || qty < 1) qty = issuedQty;
+      if (qty > issuedQty) {
+        return NextResponse.json(
+          {
+            error: `Qty ${qty} for ${line.toolOrGaugeNo} exceeds issued qty ${issuedQty}`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const tool = await prisma.gaugeAndTools.findUnique({
+        where: { toolOrGaugeNo: line.toolOrGaugeNo },
+        select: { price: true, description: true, name: true, refNo: true },
+      });
+
+      const price = await resolveLabPrice(
+        issueLine?.toolRefNo ?? tool?.refNo,
+        tool?.price,
+        Number(line.price)
+      );
+
+      const serialNo = line.serialNo ?? issueLine?.serialNo ?? null;
+      const description =
+        (line.description ?? tool?.description ?? tool?.name)?.slice(0, 50) ?? null;
+
+      normalizedLines.push({
+        toolOrGaugeNo: line.toolOrGaugeNo,
+        qty,
+        price,
+        serialNo,
+        description,
+      });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -129,17 +231,7 @@ export async function POST(req: NextRequest) {
 
       const recNo = header.recNo;
 
-      for (const line of lines) {
-        const tool = await tx.gaugeAndTools.findUnique({
-          where: { toolOrGaugeNo: line.toolOrGaugeNo },
-        });
-        const issueLine = issue.inHouseLines.find((l) => l.toolOrGaugeNo === line.toolOrGaugeNo);
-        const serialNo = line.serialNo ?? issueLine?.serialNo ?? null;
-        const description =
-          (line.description ?? tool?.description ?? tool?.name)?.slice(0, 50) ?? null;
-
-        // ROW_ID is SQL Server IDENTITY — omit it (Prisma create with stale client
-        // still required rowId; explicit rowId fails with IDENTITY_INSERT OFF).
+      for (const line of normalizedLines) {
         await tx.$executeRaw`
           INSERT INTO [TOOLS_TRANS_RECEIVE_FOR_CALIBRATION]
             ([REC_NO], [DC_NO], [TOOL_OR_GAUGE_NO], [DESCRIPTION], [SERIAL_NO], [QTY], [PRICE], [CREAT_DT])
@@ -147,8 +239,8 @@ export async function POST(req: NextRequest) {
             ${recNo},
             ${dcNo},
             ${line.toolOrGaugeNo},
-            ${description},
-            ${serialNo},
+            ${line.description},
+            ${line.serialNo},
             ${line.qty},
             ${line.price},
             ${new Date()}
@@ -167,10 +259,11 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        // Keep tool Under Calibration until Results Update posts pass/fail
         await tx.gaugeAndTools.update({
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
           data: {
-            status: "Available",
+            status: "Under Calibration",
             lstUpdtUserIdCd: erpActor,
           },
         });

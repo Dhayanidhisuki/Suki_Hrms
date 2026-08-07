@@ -5,9 +5,11 @@
  */
 
 export const ERP_ISSUE_TYPES = [
+  "For Regular",
   "For Asset",
   "For Product",
-  "For Regular",
+  "For Employee",
+  "For Department",
   "For Trial",
 ] as const;
 
@@ -94,7 +96,7 @@ export function formatNextToolNo(prefix: string, nextSeq: number, width = 5): st
 /** Defaults applied on create so new rows match typical ERP inserts. */
 export function erpCreateDefaults() {
   return {
-    issueType: "For Asset" as const,
+    issueType: "For Regular" as const,
     uom: "Nos",
     returnable: "No" as const,
     activeItem: "Yes" as const,

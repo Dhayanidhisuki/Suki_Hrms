@@ -4,13 +4,14 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { GaugeAndToolsCreateSchema } from "@/lib/validators";
-import { computeToolRollupStatus, rollupStatusWhere } from "@/lib/toolStatusRollup";
+import { computeToolRollupStatus, rollupStatusWhere, TOOL_ROLLUP_STATUSES } from "@/lib/toolStatusRollup";
 import {
   erpCreateDefaults,
   normalizeLocationAndLookups,
   stripPlaceholder,
 } from "@/lib/toolCreate";
-import { computeNextPreDate, isAssetYes } from "@/lib/preventiveFlow";
+import { seedSerialsToMatchTotQty } from "@/lib/toolSerialSeed";
+import { mapSpecInputsToPersist } from "@/lib/toolSpecRows";
 
 function normalizeSerialFlag(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -21,6 +22,37 @@ function normalizeSerialFlag(value: unknown): string | undefined {
   return String(value).slice(0, 5);
 }
 
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as Partial<T>;
+}
+
+function prismaWriteErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message) return fallback;
+  const msg = error.message;
+  const unknown = msg.match(/Unknown argument `([^`]+)`/);
+  if (unknown) {
+    return `Save blocked: field "${unknown[1]}" is not on the DB client. Restart the dev server after prisma generate.`;
+  }
+  if (/String or binary data would be truncated/i.test(msg)) {
+    return "One or more fields exceed the ERP column length.";
+  }
+  if (/UNIQUE|duplicate|Violation of UNIQUE/i.test(msg)) {
+    return "Tool Number already exists.";
+  }
+  if (/FOREIGN KEY/i.test(msg)) {
+    return "Save blocked by ERP user FK — audit user could not be resolved.";
+  }
+  const line = msg
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => /^(Unknown|Invalid|Argument|Cannot|The |Violation|Error)/i.test(l));
+  return (line || msg).slice(0, 280);
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
@@ -28,12 +60,20 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const search = searchParams.get("search") ?? "";
+  const searchField = (searchParams.get("searchField") ?? "all").toLowerCase();
   const grouping = searchParams.get("grouping") ?? "";
+  const type = searchParams.get("type") ?? "";
+  const name = searchParams.get("name") ?? "";
   const status = searchParams.get("status") ?? "";
+  const onlyActive = searchParams.get("onlyActive") === "1";
+  const critical = searchParams.get("critical") ?? ""; // Yes | No | ""
+  const department = searchParams.get("department") ?? "";
   /** When "1", only return tools with qtyIn > 0 (Tool Issue picker). */
   const availableOnly = searchParams.get("availableOnly") === "1";
   /** When "1", only tools with HISTORY_CARD_REQ = Yes (History Card module). */
   const historyCardOnly = searchParams.get("historyCardOnly") === "1";
+  const includeCounts = searchParams.get("includeCounts") === "1";
+  const sort = (searchParams.get("sort") ?? "newest").toLowerCase();
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const pageSize = Math.min(100, Number(searchParams.get("pageSize") ?? 20));
   const skip = (page - 1) * pageSize;
@@ -42,30 +82,74 @@ export async function GET(req: NextRequest) {
   // never on GAUGEANDTOOLS.STATUS (verified to carry no lifecycle signal).
   const statusWhere = status ? rollupStatusWhere(status) : null;
 
-  const where = {
+  const searchClause = (() => {
+    if (!search.trim()) return {};
+    const q = search.trim();
+    const fieldMap: Record<string, object> = {
+      toolorgaugeno: { toolOrGaugeNo: { contains: q } },
+      description: { description: { contains: q } },
+      name: { name: { contains: q } },
+      olditemno: { oldItemNo: { contains: q } },
+      location: {
+        OR: [
+          { location: { contains: q } },
+          { locationName: { contains: q } },
+          { locationOutputName: { contains: q } },
+        ],
+      },
+    };
+    if (searchField !== "all" && fieldMap[searchField]) {
+      return fieldMap[searchField];
+    }
+    return {
+      OR: [
+        { toolOrGaugeNo: { contains: q } },
+        { name: { contains: q } },
+        { description: { contains: q } },
+        { oldItemNo: { contains: q } },
+        { location: { contains: q } },
+        { locationName: { contains: q } },
+      ],
+    };
+  })();
+
+  const baseWhere = {
     AND: [
-      search
-        ? {
-            OR: [
-              { toolOrGaugeNo: { contains: search } },
-              { name: { contains: search } },
-              { description: { contains: search } },
-            ],
-          }
-        : {},
+      searchClause,
       grouping ? { grouping: { contains: grouping } } : {},
-      statusWhere ?? {},
+      type ? { type: { contains: type } } : {},
+      name ? { name: { contains: name } } : {},
+      onlyActive
+        ? { activeItem: { in: ["Yes", "Y"] } }
+        : {},
+      critical === "Yes" || critical === "No" ? { criticalItem: critical } : {},
+      department ? { deptName: { contains: department } } : {},
       availableOnly ? { qtyIn: { gt: 0 } } : {},
-      historyCardOnly ? { historyCardReq: "Yes" } : {},
+      historyCardOnly
+        ? { historyCardReq: { in: ["Yes", "Y", "YES"] } }
+        : {},
     ],
   };
+
+  const where = {
+    AND: [...baseWhere.AND, statusWhere ?? {}],
+  };
+
+  const orderBy =
+    sort === "toolno"
+      ? { toolOrGaugeNo: "asc" as const }
+      : sort === "name"
+        ? { name: "asc" as const }
+        : sort === "group"
+          ? { grouping: "asc" as const }
+          : { creatDt: "desc" as const };
 
   const [rows, total] = await Promise.all([
     prisma.gaugeAndTools.findMany({
       where,
       skip,
       take: pageSize,
-      orderBy: { creatDt: "desc" },
+      orderBy,
       include: {
         serialNumbers: true,
         machineMapping: { select: { macCode: true } },
@@ -85,7 +169,73 @@ export async function GET(req: NextRequest) {
       .filter((code): code is string => Boolean(code)),
   }));
 
-  return NextResponse.json({ items, total, page, pageSize });
+  // Enrich each item with nextCalibDate from latest GaugeControlCardTrans
+  const toolNos = items.map((t) => t.toolOrGaugeNo).filter(Boolean) as string[];
+  let nextCalibMap: Map<string, Date | null> = new Map();
+  if (toolNos.length > 0) {
+    try {
+      // Get latest calibration card history per tool
+      const cards = await prisma.gaugeControlCard.findMany({
+        where: { toolOrGaugeNo: { in: toolNos.map((n) => n.slice(0, 15)) } },
+        select: {
+          toolOrGaugeNo: true,
+          history: { orderBy: { cDate: "desc" as const }, take: 1, select: { nextCDate: true } },
+        },
+      });
+      for (const card of cards) {
+        const nextCDate = card.history[0]?.nextCDate ?? null;
+        nextCalibMap.set(card.toolOrGaugeNo, nextCDate ? new Date(nextCDate) : null);
+      }
+    } catch {
+      // non-critical enrichment
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const enriched = items.map((t) => {
+    let nextCalibDate = nextCalibMap.get(t.toolOrGaugeNo?.slice(0, 15) ?? "") ?? null;
+
+    // If no history found but frequency is set, derive from tool creation date + frequency
+    if (!nextCalibDate && (t.calibrationFrqMonths ?? 0) > 0) {
+      const base = t.creatDt ? new Date(t.creatDt as unknown as string) : today;
+      const derived = new Date(base);
+      derived.setMonth(derived.getMonth() + (t.calibrationFrqMonths ?? 1));
+      nextCalibDate = derived;
+    }
+
+    let calibDueStatus: "overdue" | "due-soon" | "ok" | null = null;
+    if (nextCalibDate && t.calibrationFrqMonths) {
+      const diffDays = Math.ceil((nextCalibDate.getTime() - today.getTime()) / 86400000);
+      calibDueStatus = diffDays < 0 ? "overdue" : diffDays <= 30 ? "due-soon" : "ok";
+    }
+    return { ...t, nextCalibDate: nextCalibDate ? nextCalibDate.toISOString() : null, calibDueStatus };
+  });
+
+  let statusCounts: Record<string, number> | undefined;
+  if (includeCounts) {
+    const [allCount, ...perStatus] = await Promise.all([
+      prisma.gaugeAndTools.count({ where: baseWhere }),
+      ...TOOL_ROLLUP_STATUSES.map((badge) => {
+        const sw = rollupStatusWhere(badge);
+        return prisma.gaugeAndTools.count({
+          where: { AND: [...baseWhere.AND, sw ?? {}] },
+        });
+      }),
+    ]);
+    statusCounts = { All: allCount };
+    TOOL_ROLLUP_STATUSES.forEach((badge, i) => {
+      statusCounts![badge] = perStatus[i] ?? 0;
+    });
+  }
+
+  return NextResponse.json({
+    items: enriched,
+    total,
+    page,
+    pageSize,
+    ...(statusCounts ? { statusCounts } : {}),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -183,7 +333,7 @@ export async function POST(req: NextRequest) {
         ((await tx.gaugeAndTools.aggregate({ _max: { refNo: true } }))._max.refNo ?? 0) + 1;
 
       const created = await tx.gaugeAndTools.create({
-        data: {
+        data: omitUndefined({
           ...toolData,
           ...normalized,
           toolOrGaugeNo: toolNo,
@@ -218,53 +368,29 @@ export async function POST(req: NextRequest) {
           creatUserIdCd: userId,
           creatDt: new Date(),
           lstUpdtUserIdCd: userId,
-        },
+        }) as Parameters<typeof tx.gaugeAndTools.create>[0]["data"],
       });
 
-      if (serialFlag === "Y" && created.totQty && Number(created.totQty) > 0) {
-        const maxSerial =
-          (await tx.gaugeSerialNo.aggregate({ _max: { refNo: true } }))._max.refNo ??
-          created.refNo * 1000;
-        const seedPre =
-          isAssetYes(created.isAsset) || (created.preventiveFrqMonths ?? 0) > 0
-            ? computeNextPreDate({
-                frequencyMonths:
-                  created.preventiveFrqMonths && created.preventiveFrqMonths > 0
-                    ? created.preventiveFrqMonths
-                    : 6,
-              })
-            : null;
-        const serials = Array.from({ length: Number(created.totQty) }, (_, i) => ({
-          refNo: maxSerial + i + 1,
-          toolOrGaugeNo: created.toolOrGaugeNo,
+      if (serialFlag === "Y") {
+        await seedSerialsToMatchTotQty(tx, {
           toolRefNo: created.refNo,
-          serialNo: i + 1,
-          status: "AVAILABLE FOR USE",
-          nextPreDate: seedPre,
-          creatUserIdCd: userId,
-          creatDt: new Date(),
-        }));
-        await tx.gaugeSerialNo.createMany({ data: serials });
+          toolOrGaugeNo: created.toolOrGaugeNo,
+          totQty: created.totQty,
+          userId,
+          isAsset: created.isAsset,
+          preventiveFrqMonths: created.preventiveFrqMonths,
+          purchaseDt: body.unitPurchaseDt || body.purchaseDt,
+        });
       }
 
-      if (specifications && specifications.length > 0) {
-        const specRows = specifications
-          .map((s) => ({
-            toolRefNo: created.refNo,
-            parameter: s.parameter || s.specName || "",
-            specification: s.specification || s.specValue,
-            minRange: s.minRange || s.unit,
-            maxRange: s.maxRange,
-          }))
-          .filter((s) => s.parameter);
-        if (specRows.length > 0) {
-          const maxSpecRow =
-            (await tx.toolsSpecification.aggregate({ _max: { rowId: true } }))._max
-              .rowId ?? 0;
-          await tx.toolsSpecification.createMany({
-            data: specRows.map((row, i) => ({ ...row, rowId: maxSpecRow + i + 1 })),
-          });
-        }
+      const specRows = mapSpecInputsToPersist(created.refNo, specifications);
+      if (specRows.length > 0) {
+        const maxSpecRow =
+          (await tx.toolsSpecification.aggregate({ _max: { rowId: true } }))._max
+            .rowId ?? 0;
+        await tx.toolsSpecification.createMany({
+          data: specRows.map((row, i) => ({ ...row, rowId: maxSpecRow + i + 1 })),
+        });
       }
 
       return created;
@@ -301,10 +427,7 @@ export async function POST(req: NextRequest) {
     console.error("POST /api/tools failed:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create tool",
+        error: prismaWriteErrorMessage(error, "Failed to create tool"),
       },
       { status: 500 }
     );

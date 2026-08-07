@@ -25,30 +25,71 @@ export async function GET() {
         refNo: number | null;
         toolOrGaugeNo: string;
         name: string | null;
+        description: string | null;
         status: string | null;
         grouping: string | null;
         type: string | null;
+        /** Calibration interval from master (CALIBRATION_FRQ_MONTHS) — not due urgency */
         frequency: string | null;
+        calibrationFrqMonths: number | null;
+        /** ERP Cali. Plan — CALI_PLANNED_WHO */
+        caliPlan: string | null;
+        /** ERP P.S Min / Max — product spec from master */
+        psMin: number | null;
+        psMax: number | null;
         cDate: Date | null;
         nextCDate: Date | null;
         remarks: string | null;
         nextCalibrationDate: Date | null;
+        serialNo: number | null;
+        /** Physical unit status from GAUGE_SERIAL_NO (ERP Cur.Status) */
+        unitStatus: string | null;
+        location: string | null;
         source: string;
       }
     >();
+
+    const toNum = (v: unknown): number | null => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const formatFrequency = (months: number | null | undefined): string | null => {
+      if (months == null) return null;
+      if (months <= 0) return "Not set (0)";
+      return `${months} Months`;
+    };
+
+    /** Skip calib-DC line statuses like OPEN — those are issue workflow, not tool state. */
+    const isToolishStatus = (s: string | null | undefined): boolean => {
+      if (!s?.trim()) return false;
+      const u = s.trim().toUpperCase();
+      if (u === "OPEN" || u === "PARTIAL" || u === "CLOSED" || u === "COMPLETE") return false;
+      if (u === "PENDING" || u === "PASS" || u === "FAIL" || u === "CONDITIONAL PASS") return false;
+      return true;
+    };
 
     const upsert = (
       toolOrGaugeNo: string,
       row: {
         refNo?: number | null;
         name?: string | null;
+        description?: string | null;
         status?: string | null;
+        unitStatus?: string | null;
         grouping?: string | null;
         type?: string | null;
         frequency?: string | null;
+        calibrationFrqMonths?: number | null;
+        caliPlan?: string | null;
+        psMin?: number | null;
+        psMax?: number | null;
         cDate?: Date | null;
         nextCDate?: Date | null;
         remarks?: string | null;
+        serialNo?: number | null;
+        location?: string | null;
         source: string;
       }
     ) => {
@@ -64,16 +105,36 @@ export async function GET() {
           refNo: row.refNo ?? existing?.refNo ?? null,
           toolOrGaugeNo,
           name: row.name ?? existing?.name ?? null,
+          description: row.description ?? existing?.description ?? null,
           status: row.status ?? existing?.status ?? null,
+          unitStatus: row.unitStatus ?? existing?.unitStatus ?? null,
           grouping: row.grouping ?? existing?.grouping ?? null,
           type: row.type ?? existing?.type ?? null,
           frequency: row.frequency ?? existing?.frequency ?? null,
+          calibrationFrqMonths:
+            row.calibrationFrqMonths ?? existing?.calibrationFrqMonths ?? null,
+          caliPlan: row.caliPlan ?? existing?.caliPlan ?? null,
+          psMin: row.psMin ?? existing?.psMin ?? null,
+          psMax: row.psMax ?? existing?.psMax ?? null,
           cDate: row.cDate ?? existing?.cDate ?? null,
           nextCDate: next,
           remarks: row.remarks ?? existing?.remarks ?? null,
           nextCalibrationDate: next,
+          serialNo: row.serialNo ?? existing?.serialNo ?? null,
+          location: row.location ?? existing?.location ?? null,
           source: row.source,
         });
+      } else if (existing) {
+        if (existing.serialNo == null && row.serialNo != null) existing.serialNo = row.serialNo;
+        if (!existing.unitStatus && row.unitStatus) existing.unitStatus = row.unitStatus;
+        if (!existing.description && row.description) existing.description = row.description;
+        if (!existing.caliPlan && row.caliPlan) existing.caliPlan = row.caliPlan;
+        if (existing.psMin == null && row.psMin != null) existing.psMin = row.psMin;
+        if (existing.psMax == null && row.psMax != null) existing.psMax = row.psMax;
+        if (existing.calibrationFrqMonths == null && row.calibrationFrqMonths != null) {
+          existing.calibrationFrqMonths = row.calibrationFrqMonths;
+          existing.frequency = row.frequency ?? formatFrequency(row.calibrationFrqMonths);
+        }
       }
     };
 
@@ -94,10 +155,15 @@ export async function GET() {
             refNo: true,
             toolOrGaugeNo: true,
             name: true,
+            description: true,
             status: true,
             grouping: true,
             type: true,
+            location: true,
             calibrationFrqMonths: true,
+            caliPlannedWho: true,
+            prodSpecLowerMax: true,
+            prodSpecUpperMax: true,
           },
         },
       },
@@ -107,16 +173,25 @@ export async function GET() {
       const toolNo = line.toolOrGaugeNo ?? line.tool?.toolOrGaugeNo;
       if (!toolNo) continue;
       const next = line.nxtCalibDate ?? line.calibDueDate ?? line.dueDate;
+      const masterStatus = line.tool?.status ?? null;
       upsert(toolNo, {
         refNo: line.toolRefNo ?? line.tool?.refNo ?? null,
         name: line.tool?.name ?? null,
-        status: line.resultStatus ?? line.calibrationStatus ?? line.status ?? line.tool?.status ?? null,
+        description: line.tool?.description ?? null,
+        // Prefer master tool status; never surface calib-DC "Open" as tool status
+        status: isToolishStatus(masterStatus) ? masterStatus : null,
         grouping: line.grouping ?? line.tool?.grouping ?? null,
         type: line.tool?.type ?? null,
-        frequency: line.tool?.calibrationFrqMonths != null ? `${line.tool.calibrationFrqMonths} Months` : null,
+        calibrationFrqMonths: line.tool?.calibrationFrqMonths ?? null,
+        frequency: formatFrequency(line.tool?.calibrationFrqMonths),
+        caliPlan: line.tool?.caliPlannedWho ?? null,
+        psMin: toNum(line.tool?.prodSpecLowerMax),
+        psMax: toNum(line.tool?.prodSpecUpperMax),
         cDate: line.calibratedDate ?? line.creatDt ?? null,
         nextCDate: next,
         remarks: line.calibResultComments ?? line.remarks ?? null,
+        serialNo: line.serialNo ?? null,
+        location: line.tool?.location ?? null,
         source: "TOOLS_TRANS_ISSUE_FOR_CALIBRATION",
       });
     }
@@ -135,9 +210,15 @@ export async function GET() {
                   refNo: true,
                   toolOrGaugeNo: true,
                   name: true,
+                  description: true,
                   status: true,
                   grouping: true,
                   type: true,
+                  location: true,
+                  caliPlannedWho: true,
+                  prodSpecLowerMax: true,
+                  prodSpecUpperMax: true,
+                  calibrationFrqMonths: true,
                 },
               },
             },
@@ -147,16 +228,28 @@ export async function GET() {
 
       for (const t of dueTools) {
         const toolNo = t.controlCard.toolOrGaugeNo;
+        const freqRaw = t.controlCard.frequency?.trim() || null;
+        const freqLooksZero = !freqRaw || /^0(\s*months?)?$/i.test(freqRaw);
         upsert(toolNo, {
           refNo: t.controlCard.tool?.refNo ?? null,
           name: t.controlCard.tool?.name ?? null,
-          status: t.controlCard.tool?.status ?? t.controlCard.status ?? null,
+          description: t.controlCard.tool?.description ?? null,
+          status: isToolishStatus(t.controlCard.tool?.status)
+            ? t.controlCard.tool?.status ?? null
+            : null,
           grouping: t.controlCard.tool?.grouping ?? null,
           type: t.controlCard.type ?? t.controlCard.tool?.type ?? null,
-          frequency: t.controlCard.frequency ?? null,
+          frequency: freqLooksZero
+            ? "Not set (0)"
+            : freqRaw ?? formatFrequency(t.controlCard.tool?.calibrationFrqMonths),
+          calibrationFrqMonths: t.controlCard.tool?.calibrationFrqMonths ?? null,
+          caliPlan: t.controlCard.tool?.caliPlannedWho ?? null,
+          psMin: toNum(t.controlCard.tool?.prodSpecLowerMax),
+          psMax: toNum(t.controlCard.tool?.prodSpecUpperMax),
           cDate: t.cDate,
           nextCDate: t.nextCDate,
           remarks: t.remarks,
+          location: t.controlCard.tool?.location ?? null,
           source: "GAUGE_CONTROL_CARD_TRANS",
         });
       }
@@ -164,41 +257,105 @@ export async function GET() {
       console.warn("GaugeControlCardTrans due lookup skipped:", err);
     }
 
-    // 3) Never-calibrated History Card tools (master has freq but no due dates yet)
+    // 3) Never-calibrated History Card tools (master has freq but no due dates yet).
+    // Derive next due from earliest unit purchaseDt + frequency when available.
     try {
       const masters = await prisma.gaugeAndTools.findMany({
         where: {
           historyCardReq: { in: ["Yes", "Y", "YES"] },
           calibrationFrqMonths: { gt: 0 },
-          NOT: { status: { in: ["Under Calibration", "Scrapped"] } },
+          // SQL NULL status must be allowed — `NOT IN (...)` / Prisma NOT+in drop nulls
+          OR: [
+            { status: null },
+            { status: { notIn: ["Under Calibration", "Scrapped"] } },
+          ],
         },
         select: {
           refNo: true,
           toolOrGaugeNo: true,
           name: true,
+          description: true,
           status: true,
           grouping: true,
           type: true,
+          location: true,
           calibrationFrqMonths: true,
+          caliPlannedWho: true,
+          prodSpecLowerMax: true,
+          prodSpecUpperMax: true,
         },
-        take: 200,
       });
+
+      const pending = masters.filter(
+        (m) => m.toolOrGaugeNo && !byTool.has(m.toolOrGaugeNo)
+      );
+      const pendingNos = pending
+        .map((m) => m.toolOrGaugeNo!)
+        .filter(Boolean);
+
+      const serialRows =
+        pendingNos.length > 0
+          ? await prisma.gaugeSerialNo.findMany({
+              where: { toolOrGaugeNo: { in: pendingNos } },
+              orderBy: { serialNo: "asc" },
+              select: {
+                toolOrGaugeNo: true,
+                purchaseDt: true,
+                serialNo: true,
+                status: true,
+              },
+            })
+          : [];
+
+      const serialsByTool = new Map<
+        string,
+        Array<{ purchaseDt: Date | null; serialNo: number | null; status: string | null }>
+      >();
+      for (const s of serialRows) {
+        if (!s.toolOrGaugeNo) continue;
+        const list = serialsByTool.get(s.toolOrGaugeNo) ?? [];
+        list.push(s);
+        serialsByTool.set(s.toolOrGaugeNo, list);
+      }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      for (const m of masters) {
-        if (!m.toolOrGaugeNo || byTool.has(m.toolOrGaugeNo)) continue;
+      for (const m of pending) {
+        if (!m.toolOrGaugeNo) continue;
+        const serials = serialsByTool.get(m.toolOrGaugeNo) ?? [];
+        const purchase = serials.find((s) => s.purchaseDt)?.purchaseDt ?? null;
+        let nextDue = today;
+        if (purchase && (m.calibrationFrqMonths ?? 0) > 0) {
+          const d = new Date(purchase);
+          d.setHours(12, 0, 0, 0);
+          d.setMonth(d.getMonth() + (m.calibrationFrqMonths ?? 0));
+          nextDue = d;
+        }
+
+        // Only surface in the alert window (same as line/card sources)
+        if (nextDue > alertDate) continue;
+
+        const firstSerial = serials[0];
         upsert(m.toolOrGaugeNo, {
           refNo: m.refNo,
           name: m.name,
-          status: m.status,
+          description: m.description,
+          status: isToolishStatus(m.status) ? m.status : null,
+          unitStatus: firstSerial?.status ?? null,
           grouping: m.grouping,
           type: m.type,
-          frequency:
-            m.calibrationFrqMonths != null ? `${m.calibrationFrqMonths} Months` : null,
-          cDate: null,
-          nextCDate: today,
-          remarks: "Initial — never calibrated",
+          calibrationFrqMonths: m.calibrationFrqMonths,
+          frequency: formatFrequency(m.calibrationFrqMonths),
+          caliPlan: m.caliPlannedWho,
+          psMin: toNum(m.prodSpecLowerMax),
+          psMax: toNum(m.prodSpecUpperMax),
+          cDate: purchase,
+          nextCDate: nextDue,
+          remarks: purchase
+            ? "Initial — from purchase date + frequency"
+            : "Initial — never calibrated",
+          serialNo: firstSerial?.serialNo ?? null,
+          location: m.location,
           source: "GAUGEANDTOOLS",
         });
       }
@@ -251,14 +408,57 @@ export async function GET() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    // Enrich serial + unit status from GAUGE_SERIAL_NO for Cur.Status
+    const allToolNos = Array.from(byTool.keys());
+    if (allToolNos.length > 0) {
+      try {
+        const serialRows = await prisma.gaugeSerialNo.findMany({
+          where: { toolOrGaugeNo: { in: allToolNos } },
+          orderBy: { serialNo: "asc" },
+          select: { toolOrGaugeNo: true, serialNo: true, status: true },
+        });
+        // ERP Cur.Status = GAUGE_SERIAL_NO.STATUS for the unit row (lowest Sl.No first)
+        const pickByTool = new Map<string, { serialNo: number; status: string | null }>();
+        for (const row of serialRows) {
+          if (!row.toolOrGaugeNo || row.serialNo == null) continue;
+          if (!pickByTool.has(row.toolOrGaugeNo)) {
+            pickByTool.set(row.toolOrGaugeNo, {
+              serialNo: row.serialNo,
+              status: row.status,
+            });
+          }
+        }
+        for (const [toolNo, pick] of pickByTool) {
+          const entry = byTool.get(toolNo);
+          if (!entry) continue;
+          if (entry.serialNo == null) entry.serialNo = pick.serialNo;
+          if (pick.status) entry.unitStatus = pick.status;
+        }
+      } catch (err) {
+        console.warn("GaugeSerialNo enrichment skipped:", err);
+      }
+    }
+
+    // ERP lists all due tools in the alert window — do not hard-cap at 200
+    // (that was dropping newer masters like OTH_J00331 behind older overdue rows).
     const items = Array.from(byTool.values())
       .filter((i) => i.nextCalibrationDate != null)
       .filter((i) => !blocked.has(i.toolOrGaugeNo))
+      .map((i) => ({
+        ...i,
+        // ERP Cur.Status = physical unit status (NEW PURCHASE / AVAILABLE FOR USE / …)
+        status: i.unitStatus || i.status || "—",
+        curStatus: i.unitStatus || i.status || "—",
+        description: i.description || i.name || null,
+        caliPlan: i.caliPlan && i.caliPlan !== "N/A" ? i.caliPlan : null,
+        psMin: i.psMin,
+        psMax: i.psMax ?? 0,
+        frequency: i.frequency || formatFrequency(i.calibrationFrqMonths) || "Not set",
+      }))
       .sort(
         (a, b) =>
           (a.nextCalibrationDate?.getTime() ?? 0) - (b.nextCalibrationDate?.getTime() ?? 0)
-      )
-      .slice(0, 200);
+      );
 
     // KPI splits (mutually exclusive within the alert-window due list):
     // dueSoon  = nextCalibrationDate >= start of today (upcoming window, not overdue)

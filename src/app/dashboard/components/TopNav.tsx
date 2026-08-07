@@ -21,9 +21,8 @@ export default function TopNav() {
       <div className="flex items-center h-16 px-6 gap-8">
         {/* ── Logo ── */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-8 h-8 bg-[var(--primary)] rounded-lg flex items-center justify-center shadow-sm">
-            <Wrench className="w-4 h-4 text-white" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-icon-blue.svg" alt="SUKI Tools Logo" className="w-8 h-8 object-contain" />
           <div className="leading-tight">
             <span className="text-sm font-bold text-[var(--text-primary)] tracking-tight">
               SUKI ERP

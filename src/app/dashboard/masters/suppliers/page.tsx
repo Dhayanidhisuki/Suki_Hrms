@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Edit2, Trash2, X, CheckCircle2, XCircle, AlertTriangle, Eye } from "lucide-react";
+import { Plus, Edit2, Trash2, X, CheckCircle2, XCircle, AlertTriangle, Eye, FileSpreadsheet } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -11,7 +11,11 @@ import { Users, ShieldCheck, Building } from "lucide-react";
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { TablePager } from "@/components/TablePager";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { SelectionFilter } from "@/components/ui/SelectionFilter";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
 
 export interface Supplier {
   id: string;
@@ -23,14 +27,16 @@ export interface Supplier {
   phone: string | null;
   email: string | null;
   gstin: string | null;
-  status: "Active" | "Inactive";
+  bankName: string | null;
+  accountNumber: string | null;
+  ifscCode: string | null;
+  status: "Active" | "Inactive" | "Blocked";
   isApproved: boolean;
   creatUserIdCd: string;
   creatDt: string | null;
 }
 
 export default function SuppliersPage() {
-  const { showSuccess } = useSuccessOverlay();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -38,11 +44,10 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDetail, setSelectedDetail] = useState<Supplier | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Filters
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive">("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive" | "Blocked">("All");
   const [approvalFilter, setApprovalFilter] = useState<"All" | "Approved" | "Pending">("All");
 
   // Slide-over Form State
@@ -58,7 +63,10 @@ export default function SuppliersPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [gstin, setGstin] = useState("");
-  const [status, setStatus] = useState<"Active" | "Inactive">("Active");
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [ifscCode, setIfscCode] = useState("");
+  const [status, setStatus] = useState<"Active" | "Inactive" | "Blocked">("Active");
   const [isApproved, setIsApproved] = useState(false);
 
   // Field Errors
@@ -96,6 +104,9 @@ export default function SuppliersPage() {
     setPhone("");
     setEmail("");
     setGstin("");
+    setBankName("");
+    setAccountNumber("");
+    setIfscCode("");
     setStatus("Active");
     setIsApproved(false);
     setErrors({});
@@ -112,6 +123,9 @@ export default function SuppliersPage() {
     setPhone(sup.phone ?? "");
     setEmail(sup.email ?? "");
     setGstin(sup.gstin ?? "");
+    setBankName(sup.bankName ?? "");
+    setAccountNumber(sup.accountNumber ?? "");
+    setIfscCode(sup.ifscCode ?? "");
     setStatus(sup.status);
     setIsApproved(sup.isApproved);
     setErrors({});
@@ -119,24 +133,22 @@ export default function SuppliersPage() {
   };
 
   const handleApprove = async (id: string) => {
-    setBannerMsg(null);
     const res = await apiPatch<{ supplier: Supplier }>(`/api/suppliers/${encodeURIComponent(id)}`, {});
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Supplier approval toggled." });
+    toastSuccess("Supplier approval toggled.");
     loadSuppliers();
   };
 
   const handleDelete = async (id: string) => {
-    setBannerMsg(null);
     const res = await apiDelete(`/api/suppliers/${encodeURIComponent(id)}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Supplier deleted." });
+    toastSuccess("Supplier deleted.");
     loadSuppliers();
   };
 
@@ -163,11 +175,13 @@ export default function SuppliersPage() {
       phone,
       email,
       gstin,
+      bankName: bankName.trim() || undefined,
+      accountNumber: accountNumber.trim() || undefined,
+      ifscCode: ifscCode.trim() || undefined,
       status,
       isApproved,
     };
 
-    setBannerMsg(null);
     const res = editSupplier
       ? await apiPut<{ supplier: Supplier }>(
           `/api/suppliers/${encodeURIComponent(editSupplier.supCode)}`,
@@ -176,15 +190,11 @@ export default function SuppliersPage() {
       : await apiPost<{ supplier: Supplier }>("/api/suppliers", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
-    setBannerMsg({
-      type: "success",
-      text: editSupplier ? "Supplier updated successfully." : "Supplier created successfully.",
-    });
-    showSuccess({
+    toastSuccess({
       title: "Record saved",
       message: editSupplier ? "Supplier updated successfully." : "Supplier created successfully.",
       detail: supName.trim() || undefined,
@@ -196,6 +206,41 @@ export default function SuppliersPage() {
   // Server already filters by search / status / approval
   const filtered = suppliers;
 
+  const handleExportExcel = async () => {
+    const params = new URLSearchParams({ page: "1", pageSize: "500" });
+    if (query.trim()) params.set("search", query.trim());
+    if (statusFilter !== "All") params.set("status", statusFilter);
+    if (approvalFilter === "Approved") params.set("approved", "Yes");
+    if (approvalFilter === "Pending") params.set("approved", "No");
+    const res = await apiGet<{ items: Supplier[] }>(`/api/suppliers?${params}`);
+    const rows = res.data?.items ?? [];
+    if (rows.length === 0) {
+      toastError("Nothing to export.");
+      return;
+    }
+    downloadExcel({
+      filename: "suppliers",
+      sheetName: "Suppliers",
+      columns: [
+        { key: "supCode", label: "Code" },
+        { key: "supName", label: "Name" },
+        { key: "address", label: "Address" },
+        { key: "city", label: "City" },
+        { key: "state", label: "State" },
+        { key: "phone", label: "Phone" },
+        { key: "email", label: "Email" },
+        { key: "gstin", label: "GSTIN" },
+        { key: "bankName", label: "Bank Name" },
+        { key: "accountNumber", label: "Account No" },
+        { key: "ifscCode", label: "IFSC" },
+        { key: "status", label: "Status" },
+        { key: "isApproved", label: "Approved", value: (r) => (r.isApproved ? "Yes" : "No") },
+      ],
+      rows,
+    });
+    toastSuccess(`Exported ${rows.length} suppliers.`);
+  };
+
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
@@ -203,26 +248,28 @@ export default function SuppliersPage() {
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
           {/* ── Header ── */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
                 Supplier Master
               </h1>
               <p className="text-sm text-[var(--text-muted)] mt-0.5">
-                Manage approved tool suppliers
+                Manage approved tool suppliers (SUPPLIER). Bank / IFSC fields from Prisma; ERP-only columns (Vendor Code, ASN, PAN…) not mapped.
               </p>
             </div>
-            <RoleGate permission="canEditMaster">
-              <Button
-                id="supplier-add-btn"
-                onClick={handleOpenAdd}
-                variant="primary"
-                className="group"
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                Add Supplier
-              </Button>
-            </RoleGate>
+            <div className="flex items-center gap-2">
+              <RoleGate permission="canEditMaster">
+                <Button
+                  id="supplier-add-btn"
+                  onClick={handleOpenAdd}
+                  variant="primary"
+                  className="group"
+                >
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+                  Add Supplier
+                </Button>
+              </RoleGate>
+            </div>
           </div>
 
           {/* ── Module KPI Cards ── */}
@@ -274,97 +321,99 @@ export default function SuppliersPage() {
             ]}
           />
 
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button
-                onClick={() => setBannerMsg(null)}
-                className="ml-auto text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          <StatusPillTabs
+            className="mb-3"
+            idPrefix="supplier-status-pill"
+            value={statusFilter}
+            onChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+            items={[
+              { value: "All", label: "All", count: total },
+              {
+                value: "Active",
+                label: "Active",
+                count: suppliers.filter((s) => s.status === "Active").length,
+              },
+              {
+                value: "Inactive",
+                label: "Inactive",
+                count: suppliers.filter((s) => s.status === "Inactive").length,
+              },
+              {
+                value: "Blocked",
+                label: "Blocked",
+                count: suppliers.filter((s) => s.status === "Blocked").length,
+              },
+            ]}
+          />
 
-          {/* ── Filters Card ── */}
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
+          <MasterTableCard
+            toolbar={
+              <>
+                <MasterSearchInput
                   id="supplier-search-input"
                   value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
+                  onChange={(v) => {
+                    setQuery(v);
                     setPage(1);
                   }}
-                  placeholder="Search supplier name, code, city, GSTIN…"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] transition-all bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                  placeholder="Search"
                 />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4">
-                {/* Status Filter */}
-                <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1">
-                  {(["All", "Active", "Inactive"] as const).map((f) => (
-                    <button
-                      key={f}
-                      id={`supplier-status-filter-${f.toLowerCase()}`}
-                      onClick={() => {
-                        setStatusFilter(f);
-                        setPage(1);
-                      }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                        statusFilter === f
-                          ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <SelectionFilter
+                    id="supplier-approval-filter"
+                    label="Approval"
+                    value={approvalFilter}
+                    anyValue="All"
+                    anyLabel="Any"
+                    maxValueWidth="4rem"
+                    onChange={(v) => {
+                      setApprovalFilter(v);
+                      setPage(1);
+                    }}
+                    options={[
+                      { value: "All", label: "Any" },
+                      { value: "Approved", label: "Approved" },
+                      { value: "Pending", label: "Pending" },
+                    ]}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    title="Export Excel"
+                    onClick={() => void handleExportExcel()}
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    Excel
+                  </Button>
                 </div>
-
-                {/* Approval Filter */}
-                <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1">
-                  {(["All", "Approved", "Pending"] as const).map((f) => (
-                    <button
-                      key={f}
-                      id={`supplier-approval-filter-${f.toLowerCase()}`}
-                      onClick={() => {
-                        setApprovalFilter(f);
-                        setPage(1);
-                      }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                        approvalFilter === f
-                          ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                      }`}
-                    >
-                      {f === "Approved" ? "Approved Only" : f === "Pending" ? "Pending Approval" : "All Approvals"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Table Card ── */}
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+              </>
+            }
+            footer={
+              <TablePager
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                disabled={loading}
+                idPrefix="supplier"
+              />
+            }
+          >
             {loading ? (
-              <TableSkeleton rows={5} />
+              <div className="p-4">
+                <TableSkeleton rows={5} />
+              </div>
             ) : (
             <div className="overflow-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                    {["Code", "Supplier Name", "City", "GSTIN", "Status", "Approved", "Actions"].map((col) => (
+                    {["Code", "Supplier Name", "City", "GSTIN", "Bank", "Status", "Approved", "Actions"].map((col) => (
                       <th
                         key={col}
                         className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0"
@@ -389,12 +438,17 @@ export default function SuppliersPage() {
                       </td>
                       <td className="py-3 px-3 text-[var(--text-secondary)]">{s.city}</td>
                       <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{s.gstin}</td>
+                      <td className="py-3 px-3 text-xs text-[var(--text-secondary)] max-w-[8rem] truncate" title={s.bankName || ""}>
+                        {s.bankName || "—"}
+                      </td>
                       <td className="py-3 px-3">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                            (s.status ?? "").toUpperCase() === "ACTIVE"
+                            s.status === "Active"
                               ? "bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--border-main)]"
-                              : "bg-[var(--bg-subtle)] text-[var(--text-muted)] border border-[var(--border-main)]"
+                              : s.status === "Blocked"
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300"
+                                : "bg-[var(--bg-subtle)] text-[var(--text-muted)] border border-[var(--border-main)]"
                           }`}
                         >
                           {s.status}
@@ -457,7 +511,7 @@ export default function SuppliersPage() {
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                      <td colSpan={8} className="py-8 text-center text-sm text-[var(--text-muted)]">
                         No suppliers found matching your query and filters.
                       </td>
                     </tr>
@@ -466,16 +520,7 @@ export default function SuppliersPage() {
               </table>
             </div>
             )}
-
-            <TablePager
-              page={page}
-              pageSize={pageSize}
-              total={total}
-              onPageChange={setPage}
-              disabled={loading}
-              idPrefix="supplier"
-            />
-          </div>
+          </MasterTableCard>
         </main>
       </div>
 
@@ -494,7 +539,7 @@ export default function SuppliersPage() {
             </div>
 
             {/* Form Content */}
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-5">
               {/* Special warnings for SUP-000035 */}
               {supCode === "SUP-000035" && (
                 <div className="p-3 bg-[var(--color-warning-bg)] border border-[var(--border-main)] rounded-xl text-xs text-[var(--color-warning-text)] flex gap-2.5 items-start">
@@ -506,7 +551,7 @@ export default function SuppliersPage() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Supplier Code
                 </label>
                 <input
@@ -515,12 +560,12 @@ export default function SuppliersPage() {
                   onChange={(e) => setSupCode(e.target.value)}
                   placeholder="Auto-generated if empty"
                   disabled={!!editSupplier}
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono uppercase disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-muted)]"
+                  className="form-control placeholder-[var(--text-muted)] font-mono uppercase disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-muted)]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Supplier Name *
                 </label>
                 <input
@@ -528,13 +573,13 @@ export default function SuppliersPage() {
                   value={supName}
                   onChange={(e) => setSupName(e.target.value)}
                   placeholder="e.g. Apex Precision Tools Ltd"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                  className="form-control placeholder-[var(--text-muted)]"
                 />
                 {errors.supName && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{errors.supName}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Address
                 </label>
                 <textarea
@@ -543,13 +588,13 @@ export default function SuppliersPage() {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Street address, Industrial area"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] resize-none"
+                  className="form-control placeholder-[var(--text-muted)] resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="form-grid">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     City
                   </label>
                   <input
@@ -557,11 +602,11 @@ export default function SuppliersPage() {
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="e.g. Bangalore"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    className="form-control placeholder-[var(--text-muted)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     State
                   </label>
                   <input
@@ -569,14 +614,14 @@ export default function SuppliersPage() {
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     placeholder="e.g. Karnataka"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                    className="form-control placeholder-[var(--text-muted)]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="form-grid">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Phone
                   </label>
                   <input
@@ -584,11 +629,11 @@ export default function SuppliersPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+91 98765 43210"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                    className="form-control placeholder-[var(--text-muted)] font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Email
                   </label>
                   <input
@@ -596,14 +641,14 @@ export default function SuppliersPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="sales@vendor.com"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono"
+                    className="form-control placeholder-[var(--text-muted)] font-mono"
                   />
                   {errors.email && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-medium">{errors.email}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   GSTIN Number
                 </label>
                 <input
@@ -611,27 +656,64 @@ export default function SuppliersPage() {
                   value={gstin}
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   placeholder="29ABCDE1234F1Z5"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono uppercase"
+                  className="form-control placeholder-[var(--text-muted)] font-mono uppercase"
                 />
+              </div>
+
+              <div className="border-t border-[var(--border-main)] pt-3 space-y-3">
+                <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Bank details</p>
+                <div>
+                  <label className="form-label">Bank Name</label>
+                  <input
+                    id="form-bank-name"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="form-control"
+                    maxLength={50}
+                  />
+                </div>
+                <div className="form-grid">
+                  <div>
+                    <label className="form-label">Account Number</label>
+                    <input
+                      id="form-account"
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
+                      className="form-control font-mono"
+                      maxLength={30}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">IFSC</label>
+                    <input
+                      id="form-ifsc"
+                      value={ifscCode}
+                      onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                      className="form-control font-mono uppercase"
+                      maxLength={30}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Status
                   </label>
                   <select
                     id="form-status"
                     value={status}
-                    onChange={(e) => setStatus(e.target.value as "Active" | "Inactive")}
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)]"
+                    onChange={(e) => setStatus(e.target.value as "Active" | "Inactive" | "Blocked")}
+                    className="form-control outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)]"
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
+                    <option value="Blocked">Blocked</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Approval Status
                   </label>
                   <RoleGate
@@ -733,7 +815,7 @@ export default function SuppliersPage() {
 
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Tax & Vendor Registration</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="form-grid">
                   <div className="p-3 border border-[var(--border-main)] rounded-xl">
                     <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">GSTIN Number</p>
                     <p className="font-mono font-bold text-[var(--text-primary)] mt-1">{selectedDetail.gstin || "—"}</p>
@@ -743,6 +825,24 @@ export default function SuppliersPage() {
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary)] mt-1">
                       {selectedDetail.status}
                     </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Bank</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Bank Name</p>
+                    <p className="font-medium mt-1">{selectedDetail.bankName || "—"}</p>
+                  </div>
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Account No</p>
+                    <p className="font-mono mt-1">{selectedDetail.accountNumber || "—"}</p>
+                  </div>
+                  <div className="p-3 border border-[var(--border-main)] rounded-xl">
+                    <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">IFSC</p>
+                    <p className="font-mono mt-1">{selectedDetail.ifscCode || "—"}</p>
                   </div>
                 </div>
               </div>

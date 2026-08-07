@@ -90,12 +90,14 @@ export default function Page() {
           badge: { label: "Store", type: "warning" },
         },
       ]}
+      chartBesideKpis
       chart={
         <ReportChartCard
           title="Capability flags"
           subtitle="Counts by In-House / Store Vendor / DC Issue (flags can overlap)"
+          className="mb-0 h-full"
         >
-          <ReportBarChart data={capabilityChart} />
+          <ReportBarChart data={capabilityChart} loading={loading} />
         </ReportChartCard>
       }
       links={[

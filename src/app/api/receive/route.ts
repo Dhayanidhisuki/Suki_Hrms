@@ -7,6 +7,21 @@ import { ToolsReceiveCreateSchema } from "@/lib/validators";
 
 const OPEN_STATUSES = ["OPEN", "PARTIAL", "Active"] as const;
 
+/** Open slips that are expected back (exclude explicit non-returnable). */
+const pendingReturnWhere = {
+  status: { in: [...OPEN_STATUSES] },
+  NOT: { returnable: { in: ["No", "N", "NO"] } },
+} as const;
+
+function overdueReturnWhere(today: Date) {
+  // Ignore blank/sentinel ERP dates (common Access/SQL defaults) so overdue ≠ all pending.
+  const minSensibleDue = new Date("2015-01-01T00:00:00.000Z");
+  return {
+    ...pendingReturnWhere,
+    dueDate: { not: null, gte: minSensibleDue, lt: today },
+  };
+}
+
 const toolPreview = {
   select: {
     toolOrGaugeNo: true,
@@ -30,6 +45,7 @@ export async function GET(req: NextRequest) {
   const search = (searchParams.get("search") ?? "").trim();
   const subCode = (searchParams.get("subCode") ?? "").trim();
   const vendorType = (searchParams.get("vendorType") ?? "").trim();
+  const partyCode = (searchParams.get("partyCode") ?? "").trim();
   const fromDate = (searchParams.get("fromDate") ?? "").trim();
   const toDate = (searchParams.get("toDate") ?? "").trim();
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
@@ -54,6 +70,18 @@ export async function GET(req: NextRequest) {
               }
             : {},
           subCode && subCode !== "ALL" ? { subCode } : {},
+          partyCode
+            ? {
+                OR: [
+                  { subCode: partyCode },
+                  { supCode: partyCode },
+                  { custCode: partyCode },
+                ],
+              }
+            : {},
+          vendorType && vendorType !== "ALL"
+            ? { issueOption: { contains: vendorType } }
+            : {},
           fromDate ? { issueDate: { gte: new Date(fromDate) } } : {},
           toDate
             ? {
@@ -77,13 +105,10 @@ export async function GET(req: NextRequest) {
         }),
         prisma.gaugeToolsIssue.count({ where }),
         prisma.gaugeToolsIssue.count({
-          where: { status: { in: [...OPEN_STATUSES] } },
+          where: pendingReturnWhere,
         }),
         prisma.gaugeToolsIssue.count({
-          where: {
-            status: { in: [...OPEN_STATUSES] },
-            dueDate: { lt: today },
-          },
+          where: overdueReturnWhere(today),
         }),
       ]);
 
@@ -113,6 +138,22 @@ export async function GET(req: NextRequest) {
             }
           : {},
         subCode && subCode !== "ALL" ? { subCode } : {},
+        partyCode
+          ? {
+              OR: [
+                { subCode: partyCode },
+                {
+                  issueHeader: {
+                    OR: [
+                      { subCode: partyCode },
+                      { supCode: partyCode },
+                      { custCode: partyCode },
+                    ],
+                  },
+                },
+              ],
+            }
+          : {},
         vendorType && vendorType !== "ALL" ? { vendorType } : {},
         fromDate ? { receiveDate: { gte: new Date(fromDate) } } : {},
         toDate
@@ -141,13 +182,10 @@ export async function GET(req: NextRequest) {
       }),
       prisma.toolsIssueReceived.count({ where }),
       prisma.gaugeToolsIssue.count({
-        where: { status: { in: [...OPEN_STATUSES] } },
+        where: pendingReturnWhere,
       }),
       prisma.gaugeToolsIssue.count({
-        where: {
-          status: { in: [...OPEN_STATUSES] },
-          dueDate: { lt: today },
-        },
+        where: overdueReturnWhere(today),
       }),
     ]);
 
@@ -244,6 +282,8 @@ export async function POST(req: NextRequest) {
     poOrderNo,
     location,
     geNo,
+    geDate,
+    invoiceNo,
     remarks,
     lines,
   } = parsed.data;
@@ -281,6 +321,8 @@ export async function POST(req: NextRequest) {
           poOrderNo: poOrderNo?.slice(0, 15) || null,
           location: location?.slice(0, 50) || null,
           geNo: geNo?.slice(0, 20) || null,
+          geDate: geDate ? new Date(geDate) : null,
+          invoiceNo: invoiceNo?.slice(0, 25) || null,
           status: "Active",
           creatUserIdCd: erpActor,
           creatDt: new Date(),
@@ -356,6 +398,29 @@ export async function POST(req: NextRequest) {
               lstUpdtUserIdCd: erpActor,
             },
           });
+        }
+
+        // Restore unit STATUS on Tools Master after return receive
+        if (toolNo) {
+          try {
+            const sn = issueLine.serialNo ?? null;
+            if (sn != null) {
+              await tx.gaugeSerialNo.updateMany({
+                where: { toolOrGaugeNo: toolNo, serialNo: sn },
+                data: { status: "AVAILABLE FOR USE" },
+              });
+            } else if (maintainsSerial) {
+              await tx.gaugeSerialNo.updateMany({
+                where: {
+                  toolOrGaugeNo: toolNo,
+                  status: { in: ["VENDOR USE", "INHOUSE USE"] },
+                },
+                data: { status: "AVAILABLE FOR USE" },
+              });
+            }
+          } catch (err) {
+            console.warn("Serial status update on receive skipped:", err);
+          }
         }
 
         totalReturning += line.quantity;

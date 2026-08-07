@@ -25,6 +25,8 @@ import {
   Tag,
   IndianRupee,
   Gauge,
+  Wrench,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 
@@ -119,7 +121,7 @@ const navSections: NavSection[] = [
       {
         label: "Customer Tool Transactions",
         items: [
-          { label: "Receive From Customer", href: "/dashboard/transactions/customer-receive", icon: ArrowDownLeft },
+          { label: "Customer Tool Issues", href: "/dashboard/transactions/customer-receive", icon: ArrowDownLeft },
         ],
       },
       {
@@ -139,6 +141,8 @@ const navSections: NavSection[] = [
           { label: "Calibration Issue", href: "/dashboard/calibration/issue", icon: CalendarClock },
           { label: "Calibration Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft },
           { label: "Results Update", href: "/dashboard/calibration/results-update", icon: ClipboardList },
+          { label: "Preventive MNT Results", href: "/dashboard/calibration/preventive-results", icon: Wrench },
+          { label: "Calib / PM Calendar", href: "/dashboard/calibration/calendar", icon: CalendarDays },
           { label: "Due List", href: "/dashboard/calibration/due-list", icon: History },
         ],
       },
@@ -228,7 +232,7 @@ const navSections: NavSection[] = [
       {
         label: "Workflow",
         items: [
-          { label: "Approval Workflow", href: "/dashboard/settings/approval-workflow", icon: GitBranch },
+          { label: "Approval Centre", href: "/dashboard/settings/approval-workflow", icon: GitBranch },
         ],
       },
       {

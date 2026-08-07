@@ -8,7 +8,7 @@ import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
 
 interface Supplier {
   supCode: string;
@@ -49,14 +49,10 @@ interface StagedScheduleLine {
 }
 
 export default function PoSchedulePage() {
-  const { showSuccess } = useSuccessOverlay();
   const [schedules, setSchedules] = useState<PoScheduleHeader[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Success Banner
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Slide-over Form State
   const [isOpen, setIsOpen] = useState(false);
@@ -155,20 +151,15 @@ export default function PoSchedulePage() {
       })),
     };
 
-    setBannerMsg(null);
     const res = await apiPost<{ schedule: PoScheduleHeader }>("/api/po/schedule", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
     const poNo = res.data?.schedule?.poOrderNo ?? poOrderNo;
-    setBannerMsg({
-      type: "success",
-      text: `PO Delivery Schedule for ${poNo} created successfully.`,
-    });
-    showSuccess({
+    toastSuccess({
       title: "Schedule saved",
       message: "PO delivery schedule created successfully.",
       detail: poNo,
@@ -183,24 +174,6 @@ export default function PoSchedulePage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button
-                onClick={() => setBannerMsg(null)}
-                className="ml-auto text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
           {/* ── Header ── */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -312,9 +285,9 @@ export default function PoSchedulePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveSchedule} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <form onSubmit={handleSaveSchedule} className="flex-1 overflow-y-auto p-5 space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   PO Order Number *
                 </label>
                 <input
@@ -328,12 +301,12 @@ export default function PoSchedulePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Supplier (optional)
                 </label>
                 <select
                   id="form-sup"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-semibold"
+                  className="form-control outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-semibold"
                   disabled
                 >
                   <option value="">Select supplier (optional)</option>

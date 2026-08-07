@@ -8,6 +8,8 @@ import { buildToolUnitHistory } from "@/lib/toolUnitHistory";
 import { computeToolRollupStatus } from "@/lib/toolStatusRollup";
 import { normalizeLocationAndLookups, stripPlaceholder } from "@/lib/toolCreate";
 import { computeNextPreDate, isAssetYes } from "@/lib/preventiveFlow";
+import { seedSerialsToMatchTotQty } from "@/lib/toolSerialSeed";
+import { mapSpecInputsToPersist } from "@/lib/toolSpecRows";
 
 function normalizeSerialFlag(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -16,6 +18,37 @@ function normalizeSerialFlag(value: unknown): string | undefined {
   if (text === "YES" || text === "Y") return "Y";
   if (text === "NO" || text === "N") return "N";
   return String(value).slice(0, 5);
+}
+
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as Partial<T>;
+}
+
+function prismaWriteErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message) return fallback;
+  const msg = error.message;
+  const unknown = msg.match(/Unknown argument `([^`]+)`/);
+  if (unknown) {
+    return `Save blocked: field "${unknown[1]}" is not on the DB client. Restart the dev server after prisma generate.`;
+  }
+  if (/String or binary data would be truncated/i.test(msg)) {
+    return "One or more fields exceed the ERP column length.";
+  }
+  if (/UNIQUE|duplicate|Violation of UNIQUE/i.test(msg)) {
+    return "Tool Number already exists.";
+  }
+  if (/FOREIGN KEY/i.test(msg)) {
+    return "Save blocked by ERP user FK — audit user could not be resolved.";
+  }
+  const line = msg
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => /^(Unknown|Invalid|Argument|Cannot|The |Violation|Error)/i.test(l));
+  return (line || msg).slice(0, 280);
 }
 
 export async function GET(
@@ -32,7 +65,7 @@ export async function GET(
     where: { refNo },
     include: {
       serialNumbers: { orderBy: { serialNo: "asc" } },
-      specifications: true,
+      specifications: { orderBy: [{ sequence: "asc" }, { rowId: "asc" }] },
       priceMaster: { orderBy: { revDate: "desc" } },
       details: true,
       machineMapping: true,
@@ -48,6 +81,7 @@ export async function GET(
   const unitHistory = await buildToolUnitHistory({
     refNo: tool.refNo,
     toolOrGaugeNo: tool.toolOrGaugeNo,
+    calibrationFrqMonths: tool.calibrationFrqMonths,
   });
 
   const computedStatus = computeToolRollupStatus(
@@ -55,7 +89,62 @@ export async function GET(
     tool.activeItem
   );
 
-  return NextResponse.json({ tool: { ...tool, unitHistory, computedStatus } });
+  // Fetch latest calibration issue/result info for the calibration status panel
+  let calibrationSummary = null;
+  try {
+    const latestLine = await prisma.toolsTransIssueForCalibration.findFirst({
+      where: { toolOrGaugeNo: tool.toolOrGaugeNo },
+      orderBy: { creatDt: "desc" },
+      include: {
+        calibIssue: { select: { dcNo: true, issueDate: true, receiveName: true, issueFor: true } },
+      },
+    });
+
+    if (latestLine) {
+      // Extract certificate number from packed CALIB_RESULT_COMMENTS (format: "Cert:XXXXX | ...")
+      const comments = latestLine.calibResultComments ?? "";
+      const certMatch = comments.match(/Cert:([^|]+)/);
+      const certNo = certMatch ? certMatch[1].trim() : null;
+
+      calibrationSummary = {
+        dcNo: latestLine.calibIssue?.dcNo ?? null,
+        issueDate: latestLine.calibIssue?.issueDate ?? null,
+        receiveName: latestLine.calibIssue?.receiveName ?? null,
+        issueFor: latestLine.calibIssue?.issueFor ?? null,
+        calibStatus: latestLine.calibrationStatus ?? null,
+        resultStatus: latestLine.resultStatus ?? null,
+        calibratedDate: latestLine.calibratedDate ?? null,
+        calibratedBy: latestLine.calibratedBy ?? null,
+        nextCalibDate: latestLine.nxtCalibDate ?? null,
+        calibDueDate: latestLine.calibDueDate ?? null,
+        certificateNo: certNo,
+        comments: latestLine.calibResultComments ?? null,
+      };
+    } else if ((tool.calibrationFrqMonths ?? 0) > 0) {
+      // Never calibrated but frequency is set — derive expected next due date
+      const base = tool.creatDt ? new Date(tool.creatDt) : new Date();
+      const derived = new Date(base);
+      derived.setMonth(derived.getMonth() + (tool.calibrationFrqMonths ?? 1));
+      calibrationSummary = {
+        dcNo: null,
+        issueDate: null,
+        receiveName: null,
+        issueFor: null,
+        calibStatus: "Not Started",
+        resultStatus: null,
+        calibratedDate: null,
+        calibratedBy: null,
+        nextCalibDate: derived,
+        calibDueDate: derived,
+        certificateNo: null,
+        comments: null,
+      };
+    }
+  } catch {
+    // non-critical
+  }
+
+  return NextResponse.json({ tool: { ...tool, unitHistory, computedStatus, calibrationSummary } });
 }
 
 export async function PUT(
@@ -142,7 +231,7 @@ export async function PUT(
 
     const tool = await prisma.gaugeAndTools.update({
       where: { refNo },
-      data: {
+      data: omitUndefined({
         ...updateData,
         ...(touchedLocation ? normalized : {}),
         ...(updateData.type !== undefined
@@ -155,25 +244,65 @@ export async function PUT(
           ? { serialNoGenReq: normalizeSerialFlag(serialNoGenReq) }
           : {}),
         lstUpdtUserIdCd: erpActor,
-      },
+      }) as Parameters<typeof prisma.gaugeAndTools.update>[0]["data"],
     });
 
     if (specifications) {
       await prisma.toolsSpecification.deleteMany({ where: { toolRefNo: refNo } });
-      const rows = specifications
-        .map((s) => ({
-          toolRefNo: refNo,
-          parameter: s.parameter || s.specName || "",
-          specification: s.specification || s.specValue,
-          minRange: s.minRange || s.unit,
-          maxRange: s.maxRange,
-        }))
-        .filter((s) => s.parameter);
+      const rows = mapSpecInputsToPersist(refNo, specifications);
       if (rows.length > 0) {
         const maxRow =
           (await prisma.toolsSpecification.aggregate({ _max: { rowId: true } }))._max.rowId ?? 0;
         await prisma.toolsSpecification.createMany({
           data: rows.map((row, i) => ({ ...row, rowId: maxRow + i + 1 })),
+        });
+      }
+    }
+
+    const effectiveSerialFlag =
+      serialNoGenReq !== undefined
+        ? normalizeSerialFlag(serialNoGenReq)
+        : normalizeSerialFlag(tool.serialNoGenReq);
+
+    // Turning serial gen on requires Tot Qty > 0 (same as create)
+    if (serialNoGenReq !== undefined && effectiveSerialFlag === "Y" && Number(tool.totQty) <= 0) {
+      return NextResponse.json(
+        { error: "Serial generation requires Total Qty greater than 0" },
+        { status: 400 }
+      );
+    }
+
+    // Match ERP: unit count follows Total Qty when serial gen = Yes (adds missing only)
+    if (effectiveSerialFlag === "Y" && Number(tool.totQty) > 0) {
+      await seedSerialsToMatchTotQty(prisma, {
+        toolRefNo: tool.refNo,
+        toolOrGaugeNo: tool.toolOrGaugeNo,
+        totQty: tool.totQty,
+        userId: erpActor,
+        isAsset: tool.isAsset,
+        preventiveFrqMonths: tool.preventiveFrqMonths,
+        purchaseDt: body.unitPurchaseDt || body.purchaseDt,
+      });
+    }
+
+    // Only fill purchase date on units that still have none — never overwrite
+    // an existing past/custom purchase date on every Save.
+    if (body.unitPurchaseDt || body.purchaseDt) {
+      const pDt = new Date(String(body.unitPurchaseDt || body.purchaseDt));
+      if (!isNaN(pDt.getTime())) {
+        await prisma.gaugeSerialNo.updateMany({
+          where: {
+            AND: [
+              {
+                OR: [
+                  ...(tool.toolOrGaugeNo ? [{ toolOrGaugeNo: tool.toolOrGaugeNo }] : []),
+                  { toolRefNo: tool.refNo },
+                ],
+              },
+              { purchaseDt: null },
+            ],
+          },
+          data: { purchaseDt: pDt },
         });
       }
     }
@@ -209,8 +338,10 @@ export async function PUT(
     console.error("PUT /api/tools/[id] failed:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message.slice(0, 400) : "Failed to update tool",
+        error: prismaWriteErrorMessage(
+          error,
+          error instanceof Error ? error.message.slice(0, 400) : "Failed to update tool"
+        ),
       },
       { status: 500 }
     );

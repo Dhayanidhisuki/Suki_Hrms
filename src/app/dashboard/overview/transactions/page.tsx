@@ -2,86 +2,89 @@
 
 import Link from "next/link";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
-import { ChartContainer, TransactionVelocityChart } from "@/components/OverviewCharts";
+import { TransactionVelocityChart } from "@/components/OverviewCharts";
 import { ArrowUpRight, ArrowDownLeft, ClipboardList, ArrowLeftRight } from "lucide-react";
+
+const cards = [
+  {
+    href: "/dashboard/transactions/issue",
+    label: "Tool Issue",
+    desc: "GAUGE_TOOLS_ISSUE + Line Items",
+    icon: ArrowUpRight,
+    iconClass: "text-emerald-500 bg-emerald-500/10",
+  },
+  {
+    href: "/dashboard/transactions/receive",
+    label: "Tool Receive",
+    desc: "Return against open delivery challans",
+    icon: ArrowDownLeft,
+    iconClass: "text-blue-500 bg-blue-500/10",
+  },
+  {
+    href: "/dashboard/transactions/customer-receive",
+    label: "Receive From Customer",
+    desc: "CUST_CODE filtered issue tracking",
+    icon: ArrowLeftRight,
+    iconClass: "text-purple-500 bg-purple-500/10",
+  },
+  {
+    href: "/dashboard/transactions/requisition-pending",
+    label: "Requisition Pending",
+    desc: "Pending shopfloor approvals",
+    icon: ClipboardList,
+    iconClass: "text-amber-500 bg-amber-500/10",
+  },
+] as const;
 
 export default function Page() {
   return (
-    <SimpleMasterShell title="Transaction Overview" subtitle="Live analytics, Issue/Receive velocity, and quick navigation">
-      <div className="space-y-6">
-        {/* Graphical Representation: Transaction Velocity Bar Chart */}
-        <ChartContainer
-          title="Monthly Transaction Movement Velocity"
-          subtitle="Comparison of Tool Issues vs Returns across shopfloor & customers"
-        >
-          <TransactionVelocityChart />
-        </ChartContainer>
+    <SimpleMasterShell
+      title="Transaction Overview"
+      subtitle="Live analytics, Issue/Receive velocity, and quick navigation"
+    >
+      <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.8fr] gap-6 items-stretch">
+        {/* Left: combo chart panel */}
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 sm:p-6 shadow-sm flex flex-col min-h-[480px]">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">Overview</h3>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Comparison of Tool Issues vs Returns across shopfloor & customers
+            </p>
+          </div>
+          <div className="flex-1 min-h-[380px]">
+            <TransactionVelocityChart />
+          </div>
+        </div>
 
-        {/* Action Link Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <Link
-            href="/dashboard/transactions/issue"
-            className="group flex items-start justify-between bg-[var(--bg-card)] border border-[var(--border-main)] rounded-xl p-4 hover:border-[var(--primary)] transition-all shadow-sm"
-          >
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <ArrowUpRight className="w-4 h-4 text-emerald-500" />
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Tool Issue</p>
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">GAUGE_TOOLS_ISSUE + Line Items</p>
-            </div>
-            <span className="text-xs font-mono text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-              View &rarr;
-            </span>
-          </Link>
-
-          <Link
-            href="/dashboard/transactions/receive"
-            className="group flex items-start justify-between bg-[var(--bg-card)] border border-[var(--border-main)] rounded-xl p-4 hover:border-[var(--primary)] transition-all shadow-sm"
-          >
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <ArrowDownLeft className="w-4 h-4 text-blue-500" />
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Tool Receive</p>
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">Return against open delivery challans</p>
-            </div>
-            <span className="text-xs font-mono text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-              View &rarr;
-            </span>
-          </Link>
-
-          <Link
-            href="/dashboard/transactions/customer-receive"
-            className="group flex items-start justify-between bg-[var(--bg-card)] border border-[var(--border-main)] rounded-xl p-4 hover:border-[var(--primary)] transition-all shadow-sm"
-          >
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <ArrowLeftRight className="w-4 h-4 text-purple-500" />
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Receive From Customer</p>
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">CUST_CODE filtered issue tracking</p>
-            </div>
-            <span className="text-xs font-mono text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-              View &rarr;
-            </span>
-          </Link>
-
-          <Link
-            href="/dashboard/transactions/requisition-pending"
-            className="group flex items-start justify-between bg-[var(--bg-card)] border border-[var(--border-main)] rounded-xl p-4 hover:border-[var(--primary)] transition-all shadow-sm"
-          >
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <ClipboardList className="w-4 h-4 text-amber-500" />
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Requisition Pending</p>
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">Pending shopfloor approvals</p>
-            </div>
-            <span className="text-xs font-mono text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-              View &rarr;
-            </span>
-          </Link>
+        {/* Right: stacked KPI / nav cards */}
+        <div className="flex flex-col gap-4 min-h-0">
+          {cards.map((c) => {
+            const Icon = c.icon;
+            return (
+              <Link
+                key={c.href}
+                href={c.href}
+                className="flex-1 group flex items-start gap-3.5 bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl p-5 hover:border-[var(--primary)] transition-all shadow-sm"
+              >
+                <span
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${c.iconClass}`}
+                >
+                  <Icon className="w-4.5 h-4.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors">
+                      {c.label}
+                    </p>
+                    <span className="text-xs font-mono text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      View →
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">{c.desc}</p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </SimpleMasterShell>

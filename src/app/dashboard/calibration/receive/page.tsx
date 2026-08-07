@@ -9,7 +9,7 @@ import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { CheckCircle2, ShieldAlert, FileCheck2, RefreshCw, Upload, X, Search } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 import { useSession } from "@/lib/SessionContext";
 
@@ -75,6 +75,7 @@ interface OpenCalibIssue {
       name?: string | null;
       description?: string | null;
       price?: number | string | null;
+      labRate?: number | string | null;
     } | null;
   }[];
 }
@@ -84,12 +85,12 @@ type ReceiveLineDraft = {
   description: string;
   serialNo: number | null;
   qty: number;
+  maxQty: number;
   price: number;
   selected: boolean;
 };
 
 export default function CalibrationReceivePage() {
-  const { showSuccess } = useSuccessOverlay();
   const { user } = useSession();
   const [records, setRecords] = useState<CalibReceiveHeader[]>([]);
   const [openIssues, setOpenIssues] = useState<OpenCalibIssue[]>([]);
@@ -105,7 +106,6 @@ export default function CalibrationReceivePage() {
   const [receiverName, setReceiverName] = useState("");
   const [lineDrafts, setLineDrafts] = useState<ReceiveLineDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [openSearch, setOpenSearch] = useState("");
   const [historySearch, setHistorySearch] = useState("");
 
@@ -131,39 +131,54 @@ export default function CalibrationReceivePage() {
     setPartyDcNo("");
     // Prefill store receiver from logged-in user (editable)
     setReceiverName((user?.name || "").slice(0, 30));
-    setBannerMsg(null);
     setLineDrafts(
       (iss.inHouseLines ?? [])
         .filter((l) => l.toolOrGaugeNo)
-        .map((l) => ({
-          toolOrGaugeNo: l.toolOrGaugeNo as string,
-          description: (l.tool?.description || l.tool?.name || "").slice(0, 50),
-          serialNo: l.serialNo ?? null,
-          qty: l.issueQty && l.issueQty > 0 ? l.issueQty : 1,
-          price: l.tool?.price != null ? toNum(l.tool.price) : 0,
-          selected: true,
-        }))
+        .map((l) => {
+          const issuedQty = Math.max(1, Number(l.issueQty) || 1);
+          const masterPrice = l.tool?.price != null ? toNum(l.tool.price) : 0;
+          const labRate = l.tool?.labRate != null ? toNum(l.tool.labRate) : 0;
+          return {
+            toolOrGaugeNo: l.toolOrGaugeNo as string,
+            description: (l.tool?.description || l.tool?.name || "").slice(0, 50),
+            serialNo: l.serialNo ?? null,
+            qty: issuedQty,
+            maxQty: issuedQty,
+            price: labRate > 0 ? labRate : masterPrice,
+            selected: true,
+          };
+        })
     );
   };
 
   const handleSubmitReceive = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDc) return;
-    const lines = lineDrafts
-      .filter((l) => l.selected)
-      .map((l) => ({
-        toolOrGaugeNo: l.toolOrGaugeNo,
-        qty: l.qty,
-        price: l.price,
-        serialNo: l.serialNo,
-        description: l.description || null,
-      }));
-    if (lines.length === 0) {
-      setBannerMsg({ type: "error", text: "Select at least one tool line to receive." });
+    const selected = lineDrafts.filter((l) => l.selected);
+    if (selected.length === 0) {
+      toastError("Select at least one tool line to receive.");
       return;
     }
+    const badQty = selected.find((l) => !Number.isFinite(l.qty) || l.qty < 1);
+    if (badQty) {
+      toastError(`Quantity must be at least 1 for ${badQty.toolOrGaugeNo}.`);
+      return;
+    }
+    const overIssued = selected.find((l) => l.qty > l.maxQty);
+    if (overIssued) {
+      toastError(
+        `Qty ${overIssued.qty} for ${overIssued.toolOrGaugeNo} exceeds issued qty ${overIssued.maxQty}.`
+      );
+      return;
+    }
+    const lines = selected.map((l) => ({
+      toolOrGaugeNo: l.toolOrGaugeNo,
+      qty: l.qty,
+      price: l.price,
+      serialNo: l.serialNo,
+      description: l.description || null,
+    }));
     setSubmitting(true);
-    setBannerMsg(null);
     const res = await apiPost("/api/calibration/receive", {
       dcNo: selectedDc,
       receiveDate,
@@ -173,14 +188,10 @@ export default function CalibrationReceivePage() {
     });
     setSubmitting(false);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({
-      type: "success",
-      text: `Calibration receive posted for DC #${selectedDc} (${lines.length} tool(s)). Remaining open lines stay on the DC for a later receive. Continue to Results Update for certificates.`,
-    });
-    showSuccess({
+    toastSuccess({
       title: "Calibration receive posted",
       message: `${lines.length} tool(s) received. Unchecked lines remain open on the DC.`,
       detail: `DC #${selectedDc}`,
@@ -252,21 +263,6 @@ export default function CalibrationReceivePage() {
               Receive tools back from the calibration lab, then update certificates on Results Update
             </p>
           </div>
-
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {bannerMsg.text}
-              <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          )}
 
           {/* ── Module KPI Cards ── */}
           <ModuleKpiRow
@@ -555,13 +551,18 @@ export default function CalibrationReceivePage() {
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                min={0}
+                                min={1}
+                                max={line.maxQty}
                                 step={1}
                                 value={line.qty}
                                 disabled={!line.selected}
                                 onChange={(e) => {
                                   const next = [...lineDrafts];
-                                  next[idx] = { ...line, qty: Number(e.target.value) || 0 };
+                                  const raw = Number(e.target.value);
+                                  const qty = Number.isFinite(raw)
+                                    ? Math.min(line.maxQty, Math.max(1, Math.floor(raw)))
+                                    : 1;
+                                  next[idx] = { ...line, qty };
                                   setLineDrafts(next);
                                 }}
                                 className="w-20 text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 font-mono bg-[var(--bg-subtle)]"

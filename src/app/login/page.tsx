@@ -5,6 +5,7 @@ import { Lock, User, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { LoginSchema } from "@/lib/validators";
 import { LogoSpinner } from "@/components/LogoSpinner";
+import { toastError } from "@/lib/appToast";
 
 function safeRedirectTarget(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
@@ -53,11 +54,12 @@ function LoginForm() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        setError(
+        const msg =
           typeof data.error === "string"
             ? data.error
-            : "Invalid username or password"
-        );
+            : "Invalid username or password";
+        setError(msg);
+        toastError(msg);
         setLoading(false);
         return;
       }
@@ -67,7 +69,9 @@ function LoginForm() {
       const dest = safeRedirectTarget(searchParams.get("redirect"));
       window.location.assign(dest);
     } catch {
-      setError("Failed to communicate with server. Please try again.");
+      const msg = "Failed to communicate with server. Please try again.";
+      setError(msg);
+      toastError(msg);
       setLoading(false);
     }
   };

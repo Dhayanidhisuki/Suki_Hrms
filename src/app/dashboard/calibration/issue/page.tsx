@@ -4,7 +4,6 @@ import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Plus,
-  CheckCircle2,
   AlertTriangle,
   ShieldAlert,
   Search,
@@ -13,6 +12,7 @@ import {
   Download,
   FileText,
   Eye,
+  Pencil,
   CalendarClock,
   Building2,
   Clock,
@@ -23,22 +23,32 @@ import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
-import { apiGet, apiPost } from "@/lib/apiClient";
+import { apiGet, apiPost, apiPut } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { SelectionFilter } from "@/components/ui/SelectionFilter";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageLoader } from "@/components/PageLoader";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { OverlayModal } from "@/components/ui/OverlayModal";
+import { toastSuccess, toastError } from "@/lib/appToast";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 
 interface Tool {
   refNo: number | null;
   toolOrGaugeNo: string;
   name: string | null;
+  description?: string | null;
   status: string | null;
+  /** ERP Cur.Status — GAUGE_SERIAL_NO.STATUS */
+  curStatus?: string | null;
   grouping: string | null;
   type?: string | null;
   location?: string | null;
   frequency?: string | null;
+  /** ERP Cali. Plan — CALI_PLANNED_WHO */
+  caliPlan?: string | null;
+  psMin?: number | null;
+  psMax?: number | null;
   nextCalibrationDate: string | null;
   serialNo?: number | null;
 }
@@ -110,8 +120,13 @@ function localToday() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function dateOnly(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  if (dateStr.includes("T")) return dateStr.split("T")[0];
+  return dateStr.slice(0, 10);
+}
+
 function CalibrationIssuePage() {
-  const { showSuccess } = useSuccessOverlay();
   const searchParams = useSearchParams();
   const preselectTool = (searchParams.get("tool") ?? "").trim();
   const preselectApplied = useRef(false);
@@ -128,18 +143,35 @@ function CalibrationIssuePage() {
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
+  const [historyIssueFor, setHistoryIssueFor] = useState("ALL");
+  const [historyParty, setHistoryParty] = useState("");
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
+  const [appliedHistory, setAppliedHistory] = useState({
+    issueFor: "ALL",
+    party: "",
+    from: "",
+    to: "",
+  });
   const [selectedDc, setSelectedDc] = useState<CalibrationIssueHeader | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editReceiveName, setEditReceiveName] = useState("");
+  const [editSubCode, setEditSubCode] = useState("");
+  const [editIssueFor, setEditIssueFor] = useState("Calibration");
+  const [editIssueDate, setEditIssueDate] = useState("");
+  const [editToolsPoNo, setEditToolsPoNo] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [pdfBusyDc, setPdfBusyDc] = useState<number | null>(null);
   const [lastIssuedDc, setLastIssuedDc] = useState<number | null>(null);
   const [groupFilter, setGroupFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [issueForFilter, setIssueForFilter] = useState<string>("Calibration");
+  /** Filter due picker by Cali.Due.Dt. range (inclusive, local YYYY-MM-DD) */
+  const [dueFromDate, setDueFromDate] = useState("");
+  const [dueToDate, setDueToDate] = useState("");
+  /** ERP "Consider Date" — No = ignore From/To (show all due like ERP default) */
+  const [considerDate, setConsiderDate] = useState<"Yes" | "No">("No");
   const mainRef = useRef<HTMLElement | null>(null);
-  const successBannerRef = useRef<HTMLDivElement | null>(null);
-
-  const [successBanner, setSuccessBanner] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [receiveName, setReceiveName] = useState("");
   const [subCode, setSubCode] = useState("");
@@ -152,7 +184,12 @@ function CalibrationIssuePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setBannerMsg(null);
+    const histParams = new URLSearchParams();
+    if (appliedHistory.issueFor !== "ALL") histParams.set("issueFor", appliedHistory.issueFor);
+    if (appliedHistory.party.trim()) histParams.set("party", appliedHistory.party.trim());
+    if (appliedHistory.from) histParams.set("fromDate", appliedHistory.from);
+    if (appliedHistory.to) histParams.set("toDate", appliedHistory.to);
+    const histQs = histParams.toString();
     const [tRes, hRes, sRes] = await Promise.all([
       apiGet<{
         items: Tool[];
@@ -161,7 +198,9 @@ function CalibrationIssuePage() {
         overdueCount?: number;
         underCalibrationCount?: number;
       }>("/api/tools/calibration-due"),
-      apiGet<{ items: CalibrationIssueHeader[]; total?: number }>("/api/calibration/issue"),
+      apiGet<{ items: CalibrationIssueHeader[]; total?: number }>(
+        `/api/calibration/issue${histQs ? `?${histQs}` : ""}`
+      ),
       apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
     ]);
 
@@ -194,16 +233,15 @@ function CalibrationIssuePage() {
     }
     if (hRes.error) {
       setHistory([]);
-      setBannerMsg({
-        type: "error",
-        text: typeof hRes.error.message === "string" ? hRes.error.message : "Failed to load calibration issues",
-      });
+      toastError(
+        typeof hRes.error.message === "string" ? hRes.error.message : "Failed to load calibration issues"
+      );
     } else if (hRes.data?.items) {
       setHistory(hRes.data.items);
     }
     setSubs(sRes.data?.items ?? []);
     setLoading(false);
-  }, []);
+  }, [appliedHistory]);
 
   useEffect(() => {
     void loadData();
@@ -249,7 +287,6 @@ function CalibrationIssuePage() {
 
   const downloadDcPdf = async (dcNo: number) => {
     setPdfBusyDc(dcNo);
-    setBannerMsg(null);
     try {
       const res = await fetch(`/api/calibration/issue/${dcNo}/pdf`, {
         credentials: "include",
@@ -270,10 +307,7 @@ function CalibrationIssuePage() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setBannerMsg({
-        type: "error",
-        text: e instanceof Error ? e.message : "Failed to download DC PDF",
-      });
+      toastError(e instanceof Error ? e.message : "Failed to download DC PDF");
     } finally {
       setPdfBusyDc(null);
     }
@@ -282,20 +316,62 @@ function CalibrationIssuePage() {
   const openDcDetail = async (dcNo: number) => {
     setMode("detail");
     setDetailLoading(true);
-    setBannerMsg(null);
     const fromList = history.find((h) => h.dcNo === dcNo) ?? null;
     setSelectedDc(fromList);
     const res = await apiGet<{ issue: CalibrationIssueHeader }>(
       `/api/calibration/issue/${dcNo}`
     );
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       if (!fromList) setMode("list");
     } else if (res.data?.issue) {
       setSelectedDc(res.data.issue);
     }
     setDetailLoading(false);
     mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openEditDc = (ci: CalibrationIssueHeader) => {
+    const st = (ci.status || "").toUpperCase();
+    if (st !== "OPEN" && st !== "PARTIAL") {
+      toastError("Only OPEN or PARTIAL DCs can be edited.");
+      return;
+    }
+    setSelectedDc(ci);
+    setEditReceiveName(ci.receiveName ?? "");
+    setEditSubCode(ci.subCode ?? "");
+    setEditIssueFor(ci.issueFor || "Calibration");
+    setEditIssueDate(ci.issueDate ? String(ci.issueDate).slice(0, 10) : localToday());
+    setEditToolsPoNo(ci.toolsPoNo ?? "");
+    setEditOpen(true);
+  };
+
+  const saveEditDc = async () => {
+    if (!selectedDc) return;
+    if (!editReceiveName.trim()) {
+      toastError("Receive Name is required.");
+      return;
+    }
+    setSubmitting(true);
+    const res = await apiPut<{ issue: CalibrationIssueHeader }>(
+      `/api/calibration/issue/${selectedDc.dcNo}`,
+      {
+        receiveName: editReceiveName.trim(),
+        subCode: editSubCode.trim() || null,
+        issueFor: editIssueFor,
+        issueDate: editIssueDate || undefined,
+        toolsPoNo: editToolsPoNo.trim() || null,
+      }
+    );
+    setSubmitting(false);
+    if (res.error) {
+      toastError(res.error.message);
+      return;
+    }
+    toastSuccess({ title: "DC updated", message: `Calibration DC #${selectedDc.dcNo} saved.` });
+    setEditOpen(false);
+    if (res.data?.issue) setSelectedDc(res.data.issue);
+    void loadData();
   };
 
   const dueToolsList = tools
@@ -308,15 +384,28 @@ function CalibrationIssuePage() {
     .filter((t) => {
       if (groupFilter !== "ALL" && t.grouping !== groupFilter) return false;
       if (typeFilter !== "ALL" && t.type !== typeFilter) return false;
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return (
+
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
         t.toolOrGaugeNo.toLowerCase().includes(q) ||
         (t.name || "").toLowerCase().includes(q) ||
-        (t.status || "").toLowerCase().includes(q)
-      );
+        (t.status || "").toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      // ERP Consider Date = No → From/To do not filter the picker (overdue still listed).
+      if (considerDate === "Yes") {
+        const due = dateOnly(t.nextCalibrationDate);
+        if (dueFromDate && due && due < dueFromDate) return false;
+        if (dueToDate && due && due > dueToDate) return false;
+        if (dueFromDate && !due) return false;
+        if (dueToDate && !due) return false;
+      }
+      return true;
     })
     .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
+
 
   const toggleSelect = (toolNo: string) => {
     setSelectedKeys((prev) => {
@@ -352,12 +441,11 @@ function CalibrationIssuePage() {
       });
     }
     if (!toAdd.length) {
-      setBannerMsg({ type: "error", text: "Select one or more tools first." });
+      toastError("Select one or more tools first.");
       return;
     }
     setStaged((prev) => [...prev, ...toAdd]);
     setSelectedKeys(new Set());
-    setBannerMsg(null);
     setErrors((prev) => ({ ...prev, tools: "" }));
   };
 
@@ -371,7 +459,6 @@ function CalibrationIssuePage() {
     setStaged([]);
     setSelectedKeys(new Set());
     setErrors({});
-    setBannerMsg(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -403,8 +490,6 @@ function CalibrationIssuePage() {
     };
 
     setSubmitting(true);
-    setBannerMsg(null);
-    setSuccessBanner("");
     try {
       const res = await apiPost<{
         ok?: boolean;
@@ -413,15 +498,11 @@ function CalibrationIssuePage() {
       }>("/api/calibration/issue", payload);
 
       if (res.error) {
-        setBannerMsg({ type: "error", text: res.error.message });
+        toastError(res.error.message);
         return;
       }
 
       const dcNo = res.data?.item?.dcNo ?? res.data?.header?.dcNo;
-      const msg =
-        dcNo != null
-          ? `Calibration DC #${dcNo} created successfully.`
-          : "Calibration DC created successfully.";
 
       setMode("list");
       setStaged([]);
@@ -429,14 +510,12 @@ function CalibrationIssuePage() {
       setErrors({});
       setLastIssuedDc(dcNo ?? null);
       await loadData();
-      setSuccessBanner(msg);
-      showSuccess({
+      toastSuccess({
         title: "Calibration DC issued",
         message: "Tool(s) moved to Under Calibration. Download the Delivery Challan PDF or open the DC to attach documents.",
         detail: dcNo != null ? `DC #${dcNo}` : undefined,
       });
       mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      window.setTimeout(() => setSuccessBanner(""), 12000);
     } finally {
       setSubmitting(false);
     }
@@ -448,44 +527,37 @@ function CalibrationIssuePage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main ref={mainRef} className="flex-1 overflow-y-auto px-7 py-6 space-y-4">
-          {(successBanner || (bannerMsg && bannerMsg.type === "error")) && (
-            <div ref={successBannerRef} className="space-y-3 sticky top-0 z-20">
-              {successBanner && (
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl flex items-center gap-2.5 text-emerald-800 dark:text-emerald-200 text-sm font-semibold shadow-md flex-wrap">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                  <span className="flex-1 min-w-[12rem]">{successBanner}</span>
-                  {lastIssuedDc != null && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={pdfBusyDc === lastIssuedDc}
-                        onClick={() => void downloadDcPdf(lastIssuedDc)}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        {pdfBusyDc === lastIssuedDc ? "Preparing…" : "Download DC PDF"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void openDcDetail(lastIssuedDc)}
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        Open DC / Upload
-                      </Button>
-                    </div>
-                  )}
-                  <button type="button" onClick={() => setSuccessBanner("")} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
-                </div>
-              )}
-              {bannerMsg && bannerMsg.type === "error" && (
-                <div className="px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]">
-                  {bannerMsg.text}
-                  <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
-                </div>
-              )}
+          {lastIssuedDc != null && mode === "list" && (
+            <div className="p-3 rounded-xl border border-[var(--border-main)] bg-[var(--bg-subtle)] flex items-center gap-2.5 flex-wrap">
+              <span className="text-sm text-[var(--text-secondary)]">
+                Next steps for <span className="font-mono font-semibold text-[var(--text-primary)]">DC #{lastIssuedDc}</span>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pdfBusyDc === lastIssuedDc}
+                onClick={() => void downloadDcPdf(lastIssuedDc)}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {pdfBusyDc === lastIssuedDc ? "Preparing…" : "Download DC PDF"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void openDcDetail(lastIssuedDc)}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Open DC / Upload
+              </Button>
+              <button
+                type="button"
+                onClick={() => setLastIssuedDc(null)}
+                className="ml-auto text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                ✕
+              </button>
             </div>
           )}
 
@@ -556,31 +628,85 @@ function CalibrationIssuePage() {
                 ]}
               />
 
-              <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap mb-3 pb-2 border-b border-[var(--border-main)]">
-                  <h2 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">
-                    Calibration Issue History
-                  </h2>
-                  <div className="relative min-w-[16rem] flex-1 max-w-md">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                    <input
+              <MasterTableCard
+                toolbar={
+                  <>
+                    <MasterSearchInput
+                      id="calib-issue-history-search"
                       value={historySearch}
-                      onChange={(e) => setHistorySearch(e.target.value)}
+                      onChange={setHistorySearch}
                       placeholder="Search DC No, receiver, tool, date…"
-                      className="w-full h-8 text-xs border border-[var(--border-main)] rounded-md pl-8 pr-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                      widthClass="w-52"
                     />
-                  </div>
-                </div>
-                <div className="overflow-auto">
-                  {loading ? (
-                    <TableSkeleton rows={4} />
-                  ) : filteredHistory.length === 0 ? (
-                    <div className="text-center text-sm text-[var(--text-muted)] py-8">
-                      {history.length === 0
-                        ? "No calibration issue records found."
-                        : "No DCs match your search."}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <SelectionFilter
+                        id="calib-issue-history-issue-for"
+                        label="Issued For"
+                        value={historyIssueFor}
+                        anyValue="ALL"
+                        anyLabel="All"
+                        maxValueWidth="5rem"
+                        onChange={setHistoryIssueFor}
+                        options={[
+                          { value: "ALL", label: "All" },
+                          ...ISSUE_FOR_OPTIONS.map((o) => ({ value: o, label: o })),
+                        ]}
+                      />
+                      <input
+                        id="calib-issue-history-party"
+                        value={historyParty}
+                        onChange={(e) => setHistoryParty(e.target.value)}
+                        placeholder="Party / receiver"
+                        className="h-7 w-28 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                      />
+                      <input
+                        type="date"
+                        aria-label="From date"
+                        className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                        value={historyFrom}
+                        onChange={(e) => setHistoryFrom(e.target.value)}
+                        title="From Date"
+                      />
+                      <input
+                        type="date"
+                        aria-label="To date"
+                        className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                        value={historyTo}
+                        onChange={(e) => setHistoryTo(e.target.value)}
+                        title="To Date"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 !rounded-md !px-2 !text-[11px]"
+                        onClick={() =>
+                          setAppliedHistory({
+                            issueFor: historyIssueFor,
+                            party: historyParty,
+                            from: historyFrom,
+                            to: historyTo,
+                          })
+                        }
+                      >
+                        Apply
+                      </Button>
                     </div>
-                  ) : (
+                  </>
+                }
+              >
+                {loading ? (
+                  <div className="p-4">
+                    <TableSkeleton rows={4} />
+                  </div>
+                ) : filteredHistory.length === 0 ? (
+                  <div className="text-center text-sm text-[var(--text-muted)] py-8">
+                    {history.length === 0
+                      ? "No calibration issue records found."
+                      : "No DCs match your search."}
+                  </div>
+                ) : (
+                  <div className="overflow-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
@@ -621,6 +747,17 @@ function CalibrationIssuePage() {
                                   >
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
+                                  {(ci.status || "").toUpperCase() === "OPEN" ||
+                                  (ci.status || "").toUpperCase() === "PARTIAL" ? (
+                                    <button
+                                      type="button"
+                                      title="Edit DC header"
+                                      onClick={() => openEditDc(ci)}
+                                      className="inline-flex p-1.5 rounded-lg text-[var(--primary)] hover:bg-[var(--primary-light)]"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     title="Download Delivery Challan PDF"
@@ -637,9 +774,9 @@ function CalibrationIssuePage() {
                         })}
                       </tbody>
                     </table>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
+              </MasterTableCard>
             </>
           ) : mode === "detail" ? (
             <div className="space-y-3">
@@ -658,16 +795,30 @@ function CalibrationIssuePage() {
                   Calibration DC {selectedDc ? `#${selectedDc.dcNo}` : ""}
                 </h1>
                 {selectedDc && (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    disabled={pdfBusyDc === selectedDc.dcNo}
-                    onClick={() => void downloadDcPdf(selectedDc.dcNo)}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {pdfBusyDc === selectedDc.dcNo ? "Preparing…" : "Download DC PDF"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {((selectedDc.status || "").toUpperCase() === "OPEN" ||
+                      (selectedDc.status || "").toUpperCase() === "PARTIAL") && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDc(selectedDc)}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit header
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      disabled={pdfBusyDc === selectedDc.dcNo}
+                      onClick={() => void downloadDcPdf(selectedDc.dcNo)}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {pdfBusyDc === selectedDc.dcNo ? "Preparing…" : "Download DC PDF"}
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -783,9 +934,9 @@ function CalibrationIssuePage() {
                 </div>
 
                 {/* Filters + source table */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-                    <div>
+                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3 overflow-hidden">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-0">
+                    <div className="min-w-0">
                       <label className={headerLabelCls}>Issue for</label>
                       <select
                         value={issueFor}
@@ -800,7 +951,7 @@ function CalibrationIssuePage() {
                         ))}
                       </select>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className={headerLabelCls}>Type of Item</label>
                       <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={headerInputCls}>
                         <option value="ALL">ALL</option>
@@ -809,7 +960,7 @@ function CalibrationIssuePage() {
                         ))}
                       </select>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className={headerLabelCls}>Group / Name</label>
                       <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className={headerInputCls}>
                         <option value="ALL">ALL</option>
@@ -818,10 +969,46 @@ function CalibrationIssuePage() {
                         ))}
                       </select>
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="min-w-0">
+                      <label className={headerLabelCls}>From Date</label>
+                      <input
+                        type="date"
+                        value={dueFromDate}
+                        max={dueToDate || undefined}
+                        onChange={(e) => setDueFromDate(e.target.value)}
+                        className={headerInputCls}
+                        title="Filter by Cali.Due.Dt. from (only when Consider Date = Yes)"
+                        disabled={considerDate === "No"}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <label className={headerLabelCls}>To Date</label>
+                      <input
+                        type="date"
+                        value={dueToDate}
+                        min={dueFromDate || undefined}
+                        onChange={(e) => setDueToDate(e.target.value)}
+                        className={headerInputCls}
+                        title="Filter by Cali.Due.Dt. to (only when Consider Date = Yes)"
+                        disabled={considerDate === "No"}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <label className={headerLabelCls}>Consider Date</label>
+                      <select
+                        value={considerDate}
+                        onChange={(e) => setConsiderDate(e.target.value as "Yes" | "No")}
+                        className={headerInputCls}
+                        title="ERP: No = list all due tools ignoring From/To (default)"
+                      >
+                        <option value="No">No</option>
+                        <option value="Yes">Yes</option>
+                      </select>
+                    </div>
+                    <div className="min-w-0 col-span-2 sm:col-span-3 lg:col-span-1">
                       <label className={headerLabelCls}>Search</label>
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2 top-1/2 -translate-y-1/2" />
+                      <div className="relative min-w-0">
+                        <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -830,13 +1017,37 @@ function CalibrationIssuePage() {
                         />
                       </div>
                     </div>
-                    <div className="flex items-end">
-                      <Button type="button" variant="outline" className="h-8 w-full text-xs" onClick={handleSelectAll}>
-                        {selectedKeys.size === dueToolsList.length && dueToolsList.length > 0 ? "Deselect All" : "Select All"}
-                      </Button>
-                    </div>
                   </div>
 
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {(dueFromDate || dueToDate) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setDueFromDate("");
+                          setDueToDate("");
+                        }}
+                      >
+                        Clear dates
+                      </Button>
+                    )}
+                    <Button type="button" variant="outline" className="h-8 text-xs" onClick={handleSelectAll}>
+                      {selectedKeys.size === dueToolsList.length && dueToolsList.length > 0
+                        ? "Deselect All"
+                        : "Select All"}
+                    </Button>
+                  </div>
+
+                  <p className="text-[11px] text-[var(--text-muted)] leading-snug">
+                    Same as ERP:{" "}
+                    <span className="font-semibold text-[var(--text-secondary)]">Consider Date = No</span> lists all due
+                    tools (From/To ignored).{" "}
+                    <span className="font-semibold text-[var(--text-secondary)]">Cur.Status</span> ={" "}
+                    <span className="font-mono">GAUGE_SERIAL_NO.STATUS</span> (e.g. AVAILABLE FOR USE, NEW PURCHASE).{" "}
+                    Red due date = overdue · showing {dueToolsList.length} tool(s).
+                  </p>
                   <div className="overflow-auto max-h-64 border border-[var(--border-main)] rounded-lg">
                     {loading ? (
                       <TableSkeleton rows={5} />
@@ -844,8 +1055,37 @@ function CalibrationIssuePage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                            {["", "Gauge/Tool No", "Group", "Type", "Sl.No", "Description", "Location", "Cali. Plan", "Cali.Due.Dt.", "Cur.Status"].map((c) => (
-                              <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-1.5 px-2">{c}</th>
+                            {[
+                              "",
+                              "Gauge/Tool No",
+                              "Group",
+                              "Type",
+                              "Sl.No",
+                              "Description",
+                              "Location",
+                              "Cali. Plan",
+                              "Cali.Due.Dt.",
+                              "P.S Min",
+                              "P.S Max",
+                              "Cur.Status",
+                            ].map((c) => (
+                              <th
+                                key={c || "chk"}
+                                title={
+                                  c === "Cali. Plan"
+                                    ? "CALI_PLANNED_WHO from Tools Master"
+                                    : c === "Cur.Status"
+                                      ? "ERP Cur.Status from GAUGE_SERIAL_NO (AVAILABLE FOR USE / NEW PURCHASE / …)"
+                                      : c === "Cali.Due.Dt."
+                                        ? "Next calibration due date. Red = overdue."
+                                        : c === "P.S Min" || c === "P.S Max"
+                                          ? "Product spec from Tools Master"
+                                          : undefined
+                                }
+                                className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-1.5 px-2 whitespace-nowrap"
+                              >
+                                {c}
+                              </th>
                             ))}
                           </tr>
                         </thead>
@@ -865,19 +1105,25 @@ function CalibrationIssuePage() {
                                 <td className="py-1.5 px-2 text-xs">{t.grouping || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.type || "—"}</td>
                                 <td className="py-1.5 px-2 font-mono text-xs">{t.serialNo ?? "—"}</td>
-                                <td className="py-1.5 px-2 text-xs">{t.name || "—"}</td>
-                                <td className="py-1.5 px-2 text-xs">{t.location || "—"}</td>
-                                <td className="py-1.5 px-2 text-xs">{t.frequency || "—"}</td>
+                                <td className="py-1.5 px-2 text-xs">{t.description || t.name || "—"}</td>
+                                <td className="py-1.5 px-2 text-xs">{t.location && t.location !== "-Select-" ? t.location : "—"}</td>
+                                <td className="py-1.5 px-2 text-xs">{t.caliPlan || "—"}</td>
                                 <td className={`py-1.5 px-2 font-mono text-xs ${isOver ? "text-[var(--color-danger-text)] font-bold" : ""}`}>
                                   {formatDate(t.nextCalibrationDate)}
                                 </td>
-                                <td className="py-1.5 px-2 text-xs">{t.status || "—"}</td>
+                                <td className="py-1.5 px-2 font-mono text-xs">{t.psMin != null ? Number(t.psMin).toFixed(1) : "—"}</td>
+                                <td className="py-1.5 px-2 font-mono text-xs">{t.psMax != null ? Number(t.psMax).toFixed(1) : "0.0"}</td>
+                                <td className="py-1.5 px-2 text-xs font-semibold">{t.curStatus || t.status || "—"}</td>
                               </tr>
                             );
                           })}
                           {dueToolsList.length === 0 && (
                             <tr>
-                              <td colSpan={10} className="py-6 text-center text-xs text-[var(--text-muted)]">No records found.</td>
+                              <td colSpan={12} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                                {searchQuery.trim()
+                                  ? "No matching due tools. Set Consider Date = No (ERP default), or check History Card = Yes + calibration frequency on Tools Master."
+                                  : "No records found. With Consider Date = No, all due tools in the alert window are listed (ERP behaviour)."}
+                              </td>
                             </tr>
                           )}
                         </tbody>
@@ -989,6 +1235,76 @@ function CalibrationIssuePage() {
           )}
         </main>
       </div>
+
+      <OverlayModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title={selectedDc ? `Edit Calibration DC #${selectedDc.dcNo}` : "Edit DC"}
+        size="md"
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="form-label">Receive Name *</label>
+            <input
+              className="form-control"
+              value={editReceiveName}
+              onChange={(e) => setEditReceiveName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="form-label">Sub Code</label>
+            <select
+              className="form-control"
+              value={editSubCode}
+              onChange={(e) => setEditSubCode(e.target.value)}
+            >
+              <option value="">—</option>
+              {subs.map((s) => (
+                <option key={s.subCode} value={s.subCode}>
+                  {s.subCode} — {s.subName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Issue For</label>
+            <select
+              className="form-control"
+              value={editIssueFor}
+              onChange={(e) => setEditIssueFor(e.target.value)}
+            >
+              {ISSUE_FOR_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Issue Date</label>
+            <input
+              type="date"
+              className="form-control"
+              value={editIssueDate}
+              onChange={(e) => setEditIssueDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="form-label">Tools PO No</label>
+            <input
+              className="form-control"
+              value={editToolsPoNo}
+              onChange={(e) => setEditToolsPoNo(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" disabled={submitting} onClick={() => void saveEditDc()}>
+              {submitting ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </div>
+      </OverlayModal>
     </div>
   );
 }

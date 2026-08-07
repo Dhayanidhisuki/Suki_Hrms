@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Trash2, Edit2, Check, X, Eye, Tag, Layers, FolderTree, Hash } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Eye, Tag, Layers, FolderTree, Hash, FileSpreadsheet } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -9,7 +9,10 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { SelectionFilter } from "@/components/ui/SelectionFilter";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
 
 interface ToolsGroup {
   id: number;
@@ -42,12 +45,11 @@ function formatDate(value: string | null | undefined) {
 }
 
 export default function ToolsSubgroupPage() {
-  const { showSuccess } = useSuccessOverlay();
   const [subgroups, setSubgroups] = useState<ToolsSubgroup[]>([]);
   const [groups, setGroups] = useState<ToolsGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [groupFilter, setGroupFilter] = useState<number | "">("");
 
   // Modal / Form state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,9 +59,16 @@ export default function ToolsSubgroupPage() {
   const [name, setName] = useState("");
   const [refGroupId, setRefGroupId] = useState<number | "">("");
   const [prefixToolsNo, setPrefixToolsNo] = useState("");
-  const [isAutoGenCd, setIsAutoGenCd] = useState("No");
-  const [prefixBased, setPrefixBased] = useState("");
+  const [isAutoGenCd, setIsAutoGenCd] = useState("Yes");
+  const [prefixBased, setPrefixBased] = useState<"Group" | "Type" | "">("");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  function normalizePrefixBased(value: string | null | undefined): "Group" | "Type" | "" {
+    const v = (value || "").trim().toLowerCase();
+    if (v === "group") return "Group";
+    if (v === "type") return "Type";
+    return "";
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -82,8 +91,8 @@ export default function ToolsSubgroupPage() {
     setName("");
     setRefGroupId(groups[0]?.id ?? "");
     setPrefixToolsNo("");
-    setIsAutoGenCd("No");
-    setPrefixBased("");
+    setIsAutoGenCd("Yes");
+    setPrefixBased("Group");
     setFormErrors({});
     setIsModalOpen(true);
   };
@@ -93,8 +102,8 @@ export default function ToolsSubgroupPage() {
     setName(sg.name);
     setRefGroupId(sg.refGroupId ?? "");
     setPrefixToolsNo(sg.prefixToolsNo ?? "");
-    setIsAutoGenCd(sg.isAutoGenCd === "Yes" ? "Yes" : "No");
-    setPrefixBased(sg.prefixBased ?? "");
+    setIsAutoGenCd(sg.isAutoGenCd === "No" ? "No" : "Yes");
+    setPrefixBased(normalizePrefixBased(sg.prefixBased) || "Group");
     setFormErrors({});
     setIsModalOpen(true);
   };
@@ -103,10 +112,10 @@ export default function ToolsSubgroupPage() {
     if (!confirm("Are you sure you want to delete this subgroup?")) return;
     const res = await apiDelete(`/api/lookups/subgroups/${id}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
-    setBannerMsg({ type: "success", text: "Subgroup deleted successfully." });
+    toastSuccess("Subgroup deleted successfully.");
     loadData();
   };
 
@@ -116,6 +125,8 @@ export default function ToolsSubgroupPage() {
 
     if (!name.trim()) errors.name = "Subgroup Name is required";
     if (refGroupId === "") errors.refGroupId = "Parent Group is required";
+    if (!prefixToolsNo.trim()) errors.prefixToolsNo = "Type Prefix is required";
+    if (!prefixBased) errors.prefixBased = "Prefix Based is required";
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -126,23 +137,21 @@ export default function ToolsSubgroupPage() {
       name: name.trim(),
       qmsOtherTypeOfTools: name.trim(),
       refGroupId: Number(refGroupId),
-      prefixToolsNo: prefixToolsNo.trim() || undefined,
+      prefixToolsNo: prefixToolsNo.trim(),
       isAutoGenCd,
-      prefixBased: prefixBased.trim() || undefined,
+      prefixBased,
     };
 
-    setBannerMsg(null);
     const res = editSubgroup
       ? await apiPut(`/api/lookups/subgroups/${editSubgroup.id}`, payload)
       : await apiPost("/api/lookups/subgroups", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
-    setBannerMsg({ type: "success", text: editSubgroup ? "Subgroup updated." : "Subgroup created." });
-    showSuccess({
+    toastSuccess({
       title: "Record saved",
       message: editSubgroup
         ? "Tools subgroup updated successfully."
@@ -154,14 +163,36 @@ export default function ToolsSubgroupPage() {
   };
 
   const filtered = subgroups.filter((sg) => {
+    if (groupFilter !== "" && sg.refGroupId !== groupFilter) return false;
     const q = query.toLowerCase();
+    if (!q) return true;
     const parentName = sg.group?.name || "";
     return (
       sg.name.toLowerCase().includes(q) ||
       (sg.prefixToolsNo || "").toLowerCase().includes(q) ||
-      parentName.toLowerCase().includes(q)
+      parentName.toLowerCase().includes(q) ||
+      String(sg.rowId).includes(q)
     );
   });
+
+  const handleExportExcel = () => {
+    downloadExcel({
+      filename: "tools_subgroups",
+      sheetName: "Tool Subgroups",
+      columns: [
+        { key: "rowId", label: "Ref No" },
+        { key: "name", label: "QMS Other Type Of Tools" },
+        { key: "group", label: "Parent Group", value: (sg) => sg.group?.name || "" },
+        { key: "prefixToolsNo", label: "Type Prefix" },
+        { key: "isAutoGenCd", label: "Is Auto Generate Code?" },
+        { key: "prefixBased", label: "Prefix Based" },
+        { key: "creatUserIdCd", label: "Created By" },
+        { key: "creatDt", label: "Created Date", value: (sg) => formatDate(sg.creatDt) },
+      ],
+      rows: filtered,
+    });
+    toastSuccess("Excel downloaded.");
+  };
 
   const selectedGroup = groups.find((g) => g.id === refGroupId);
   const selectedGroupPrefix = selectedGroup?.prefixToolsNo || "";
@@ -172,21 +203,6 @@ export default function ToolsSubgroupPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {bannerMsg.text}
-              <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          )}
-
           {/* ── Header ── */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -197,12 +213,14 @@ export default function ToolsSubgroupPage() {
                 Manage tool subgroups linked to each parent tools group
               </p>
             </div>
-            <RoleGate permission="canEditMaster">
-              <Button onClick={handleOpenAdd} variant="primary" className="group">
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                Add Subgroup
-              </Button>
-            </RoleGate>
+            <div className="flex items-center gap-2">
+              <RoleGate permission="canEditMaster">
+                <Button onClick={handleOpenAdd} variant="primary" className="group">
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+                  Add Subgroup
+                </Button>
+              </RoleGate>
+            </div>
           </div>
 
           {/* ── Module KPI Cards ── */}
@@ -251,29 +269,55 @@ export default function ToolsSubgroupPage() {
             ]}
           />
 
-          {/* ── Filter & Search Card ── */}
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6">
-            <div className="relative max-w-sm">
-              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search subgroup name, prefix, parent group..."
-                className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-              />
-            </div>
-          </div>
-
-          {/* ── Data Table Card ── */}
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 animate-fade-in">
+          <MasterTableCard
+            toolbar={
+              <>
+                <MasterSearchInput
+                  id="tools-subgroup-search-input"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search subgroup name, prefix, Ref No..."
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <SelectionFilter
+                    id="tools-subgroup-group-filter"
+                    label="Parent Group"
+                    value={groupFilter === "" ? "" : String(groupFilter)}
+                    anyValue=""
+                    anyLabel="All"
+                    maxValueWidth="5.5rem"
+                    onChange={(v) => setGroupFilter(v === "" ? "" : Number(v))}
+                    options={[
+                      { value: "", label: "All groups" },
+                      ...groups.map((g) => ({ value: String(g.id), label: g.name })),
+                    ]}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    title="Export Excel"
+                    onClick={handleExportExcel}
+                    disabled={loading || filtered.length === 0}
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    Excel
+                  </Button>
+                </div>
+              </>
+            }
+          >
             {loading ? (
-              <TableSkeleton rows={5} />
+              <div className="p-4">
+                <TableSkeleton rows={5} />
+              </div>
             ) : (
               <div className="overflow-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                      {["Subgroup Name", "Parent Group", "Prefix Tools No", "Created By", "Created Date", "Actions"].map((col) => (
+                      {["Description (Tool Type)", "Tool Group", "Type Prefix", "Ref No", "Auto-gen", "Prefix Based", "Created By", "Created Date", "Actions"].map((col) => (
                         <th key={col} className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                           {col}
                         </th>
@@ -295,6 +339,9 @@ export default function ToolsSubgroupPage() {
                         <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)]">
                           {(sg.prefixToolsNo ?? "").trim() || "—"}
                         </td>
+                        <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-muted)]">{sg.rowId}</td>
+                        <td className="py-3.5 px-3 text-[var(--text-secondary)]">{sg.isAutoGenCd || "—"}</td>
+                        <td className="py-3.5 px-3 text-[var(--text-secondary)]">{sg.prefixBased || "—"}</td>
                         <td className="py-3.5 px-3 text-[var(--text-secondary)]">{sg.creatUserIdCd || "—"}</td>
                         <td className="py-3.5 px-3 text-[var(--text-secondary)]">{formatDate(sg.creatDt)}</td>
                         <td className="py-3.5 px-3">
@@ -320,7 +367,7 @@ export default function ToolsSubgroupPage() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                        <td colSpan={9} className="py-8 text-center text-sm text-[var(--text-muted)]">
                           No subgroups found.
                         </td>
                       </tr>
@@ -329,7 +376,7 @@ export default function ToolsSubgroupPage() {
                 </table>
               </div>
             )}
-          </div>
+          </MasterTableCard>
         </main>
       </div>
 
@@ -345,15 +392,18 @@ export default function ToolsSubgroupPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSave} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Subgroup Name *</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ANALOG AIR GAUGE" className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)]" />
+                <label className="form-label">Description (Tool Type) *</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ANALOG AIR GAUGE" className="form-control" />
                 {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                  Order: Description → Tool Group → Type Prefix (same as Item/Asset Master).
+                </p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Parent Group *</label>
-                <select value={refGroupId} onChange={(e) => setRefGroupId(Number(e.target.value))} className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-medium">
+                <label className="form-label">Tool Group *</label>
+                <select value={refGroupId} onChange={(e) => setRefGroupId(Number(e.target.value))} className="form-control font-medium">
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -368,20 +418,30 @@ export default function ToolsSubgroupPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Prefix Tools No</label>
-                <input value={prefixToolsNo} onChange={(e) => setPrefixToolsNo(e.target.value)} maxLength={12} placeholder="e.g. MIC" className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono" />
+                <label className="form-label">Type Prefix *</label>
+                <input value={prefixToolsNo} onChange={(e) => setPrefixToolsNo(e.target.value)} maxLength={12} placeholder="e.g. MIC" className="form-control font-mono" />
+                {formErrors.prefixToolsNo && <p className="text-red-500 text-xs mt-1">{formErrors.prefixToolsNo}</p>}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="form-grid">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Is Auto Generate Code?</label>
-                  <select value={isAutoGenCd} onChange={(e) => setIsAutoGenCd(e.target.value)} className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-medium">
+                  <label className="form-label">Is Auto Generate Code?</label>
+                  <select value={isAutoGenCd} onChange={(e) => setIsAutoGenCd(e.target.value)} className="form-control font-medium">
                     <option value="Yes">Yes</option>
                     <option value="No">No</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Prefix Based</label>
-                  <input value={prefixBased} onChange={(e) => setPrefixBased(e.target.value)} maxLength={10} placeholder="e.g. Group" className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)]" />
+                  <label className="form-label">Prefix Based *</label>
+                  <select
+                    value={prefixBased}
+                    onChange={(e) => setPrefixBased(e.target.value as "Group" | "Type" | "")}
+                    className="form-control font-medium"
+                  >
+                    <option value="">Select…</option>
+                    <option value="Group">Group</option>
+                    <option value="Type">Type</option>
+                  </select>
+                  {formErrors.prefixBased && <p className="text-red-500 text-xs mt-1">{formErrors.prefixBased}</p>}
                 </div>
               </div>
               <div className="pt-3 border-t border-[var(--border-main)] flex justify-end gap-2">
@@ -420,16 +480,20 @@ export default function ToolsSubgroupPage() {
             <div className="p-6 space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-4 bg-[var(--bg-subtle)] p-4 rounded-xl border border-[var(--border-main)]">
                 <div>
-                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Subgroup Name</p>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Description (Tool Type)</p>
                   <p className="font-semibold text-[var(--text-primary)] mt-1">{selectedDetail.name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Parent Group</p>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Tool Group</p>
                   <p className="font-medium text-[var(--text-primary)] mt-1">{selectedDetail.group?.name || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Prefix Tools No</p>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Type Prefix</p>
                   <p className="font-mono text-[var(--text-primary)] mt-1">{(selectedDetail.prefixToolsNo ?? "").trim() || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Ref No</p>
+                  <p className="font-mono text-[var(--text-primary)] mt-1">{selectedDetail.rowId}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Group Prefix</p>

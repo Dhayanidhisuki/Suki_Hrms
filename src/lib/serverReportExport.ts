@@ -4,6 +4,9 @@ import autoTable from "jspdf-autotable";
 
 export type ReportColumn = { key: string; label: string };
 
+/** Max chars shown in a PDF table cell. Full values remain in Excel / on-screen UI. */
+export const PDF_CELL_MAX_CHARS = 40;
+
 function formatCell(value: unknown): string {
   if (value == null || value === "") return "";
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
@@ -13,6 +16,17 @@ function formatCell(value: unknown): string {
   if (typeof value === "number") return String(value);
   if (value instanceof Date) return value.toISOString().split("T")[0];
   return String(value);
+}
+
+/** Truncate for PDF only — prevents space-less strings from wrapping char-by-char. */
+export function truncateForPdfCell(
+  value: unknown,
+  maxChars: number = PDF_CELL_MAX_CHARS
+): string {
+  const text = formatCell(value);
+  if (text.length <= maxChars) return text;
+  if (maxChars <= 1) return "…";
+  return `${text.slice(0, maxChars - 1)}…`;
 }
 
 function sanitizeFilename(name: string) {
@@ -71,14 +85,28 @@ export function buildPdfBuffer(options: {
   );
   doc.setTextColor(0);
 
+  // Truncate + ellipsize: pipe-joined SERIAL_NO/MAKE (and other space-less strings)
+  // were wrapping one character per line under default overflow:'linebreak',
+  // inflating page counts into the thousands.
   autoTable(doc, {
     startY: 64,
     head: [columns.map((c) => c.label)],
-    body: rows.map((row) => columns.map((c) => formatCell(row[c.key]))),
-    styles: { fontSize: 7, cellPadding: 2 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+    body: rows.map((row) => columns.map((c) => truncateForPdfCell(row[c.key]))),
+    styles: {
+      fontSize: 7,
+      cellPadding: 2,
+      overflow: "ellipsize",
+      valign: "middle",
+      minCellHeight: 14,
+    },
+    headStyles: {
+      fillColor: [37, 99, 235],
+      textColor: 255,
+      overflow: "ellipsize",
+    },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     margin: { left: 28, right: 28 },
+    rowPageBreak: "avoid",
   });
 
   const arrayBuffer = doc.output("arraybuffer");

@@ -21,20 +21,27 @@ function loginRedirectUrl(req: NextRequest): URL {
   return url;
 }
 
-function clearAuthCookie(res: NextResponse) {
+function clearAuthCookie(res: NextResponse, secure: boolean) {
   res.cookies.set(AUTH_COOKIE_NAME, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     path: "/",
     maxAge: 0,
   });
 }
 
+function requestIsHttps(req: NextRequest): boolean {
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (proto) return proto.toLowerCase() === "https";
+  return req.nextUrl.protocol === "https:";
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
   const auth = await verifyAuthTokenEdge(token);
+  const secureCookie = requestIsHttps(req);
 
   // Logged-in users hitting /login → send them onward
   if (pathname === "/login" && auth.status === "ok") {
@@ -61,11 +68,11 @@ export async function middleware(req: NextRequest) {
         { success: false, error: "Session expired" },
         { status: 401 }
       );
-      clearAuthCookie(res);
+      clearAuthCookie(res, secureCookie);
       return res;
     }
     const res = NextResponse.redirect(new URL("/auth/session-expired", req.url));
-    clearAuthCookie(res);
+    clearAuthCookie(res, secureCookie);
     return res;
   }
 

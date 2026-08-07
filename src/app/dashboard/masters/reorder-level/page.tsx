@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { StockBatteryMeter } from "@/components/OverviewCharts";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { apiGet } from "@/lib/apiClient";
 
 type Row = {
@@ -27,6 +28,7 @@ const toNum = (v: unknown, fallback = 0) => {
 export default function Page() {
   const [items, setItems] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -41,11 +43,34 @@ export default function Page() {
     return () => { cancelled = true; };
   }, []);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (row) =>
+        String(row.toolOrGaugeNo ?? "").toLowerCase().includes(q) ||
+        String(row.name ?? "").toLowerCase().includes(q) ||
+        String(row.grouping ?? "").toLowerCase().includes(q)
+    );
+  }, [items, query]);
+
   return (
     <SimpleMasterShell title="Reorder Level Monitoring" subtitle="Visual battery stock gauges and reorder threshold metrics">
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
+      <MasterTableCard
+        toolbar={
+          <MasterSearchInput
+            id="reorder-level-search"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search tool, group…"
+            widthClass="w-52"
+          />
+        }
+      >
         {loading ? (
-          <TableSkeleton rows={5} />
+          <div className="p-4">
+            <TableSkeleton rows={5} />
+          </div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -66,7 +91,7 @@ export default function Page() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-main)]">
-                {items.map((row, idx) => {
+                {filtered.map((row, idx) => {
                   const curr = toNum(row.qtyIn);
                   const rol = toNum(row.reorderLevel, 5);
                   const tot = toNum(row.totQty, 50);
@@ -89,7 +114,7 @@ export default function Page() {
                     </tr>
                   );
                 })}
-                {items.length === 0 && (
+                {filtered.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-8 text-center text-sm text-[var(--text-muted)]">No reorder items found.</td>
                   </tr>
@@ -98,7 +123,7 @@ export default function Page() {
             </table>
           </div>
         )}
-      </div>
+      </MasterTableCard>
     </SimpleMasterShell>
   );
 }

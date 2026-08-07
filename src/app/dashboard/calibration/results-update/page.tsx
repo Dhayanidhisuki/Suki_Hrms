@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Check, X, ClipboardList, CheckCircle2, RefreshCw, Clock, FileSpreadsheet, FileText, Upload } from "lucide-react";
+import { Check, X, ClipboardList, CheckCircle2, RefreshCw, Clock, FileSpreadsheet, FileText, Upload } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -9,8 +9,11 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { SelectionFilter } from "@/components/ui/SelectionFilter";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { toastSuccess, toastError } from "@/lib/appToast";
 
 interface CalibrationRecord {
   refNo: number;
@@ -30,6 +33,8 @@ interface CalibrationRecord {
   nextCDate?: string | null;
   remarks?: string | null;
   dcNo?: string | number | null;
+  receiveName?: string | null;
+  issueFor?: string | null;
   calibratedBy?: string | null;
   gSpecUpperMin?: number | string | null;
   gSpecUpperMax?: number | string | null;
@@ -47,22 +52,75 @@ const fmtDate = (v?: string | null) => (v ? String(v).split("T")[0] : "—");
 const fmtNum = (v?: number | string | null) =>
   v == null || v === "" ? "—" : String(v);
 
+/** YMD from calibrated date + frequency months (noon avoids TZ day-shift). */
+function suggestNextCalibDate(calibratedYmd: string, freqMonths: number): string {
+  const months = freqMonths > 0 ? freqMonths : 6;
+  const d = new Date(`${calibratedYmd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    const fallback = new Date();
+    fallback.setMonth(fallback.getMonth() + months);
+    return fallback.toISOString().split("T")[0];
+  }
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().split("T")[0];
+}
+
+/**
+ * Pending lines expose old calibDueDate/dueDate as nextCDate.
+ * Only keep a fetched next when it is strictly after the calibrated date;
+ * otherwise default to calibrated date + frequency.
+ */
+function resolveNextCalibDefault(
+  fetchedNext: string | null | undefined,
+  calibratedYmd: string,
+  freqMonths: number
+): string {
+  const suggested = suggestNextCalibDate(calibratedYmd, freqMonths);
+  const fetched = fetchedNext ? fmtDate(fetchedNext) : "";
+  if (!fetched || fetched === "—") return suggested;
+  const fetchedTime = new Date(`${fetched}T12:00:00`).getTime();
+  const calibTime = new Date(`${calibratedYmd}T12:00:00`).getTime();
+  if (!Number.isFinite(fetchedTime) || !Number.isFinite(calibTime) || fetchedTime <= calibTime) {
+    return suggested;
+  }
+  return fetched;
+}
+
 const RESULT_OPTIONS = [
   { value: "AVAILABLE FOR USE", label: "AVAILABLE FOR USE" },
-  { value: "PASSED", label: "PASSED (Fit for use)" },
-  { value: "RECALIBRATED", label: "RECALIBRATED (Adjusted)" },
-  { value: "FAILED", label: "FAILED (Scrap / Out of Tol)" },
+  { value: "PASSED", label: "PASSED (legacy Fit for use)" },
+  { value: "RECALIBRATED", label: "RECALIBRATED" },
+  { value: "FAILED", label: "FAILED (legacy)" },
+  { value: "WORN OUT", label: "WORN OUT" },
+  { value: "BROKEN", label: "BROKEN" },
+  { value: "REJECTED", label: "REJECTED" },
+  { value: "NOT IN USE", label: "NOT IN USE" },
   { value: "OUT OF SERVICE", label: "OUT OF SERVICE" },
 ] as const;
 
+type ObservedSpecRow = {
+  parameter: string;
+  spec?: string;
+  obsMin: string;
+  obsMax: string;
+  note: string;
+};
+
 export default function CalibrationResultsUpdatePage() {
-  const { showSuccess } = useSuccessOverlay();
   const [items, setItems] = useState<CalibrationRecord[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [openClosed, setOpenClosed] = useState<"open" | "closed" | "all">("open");
+  const [fromDue, setFromDue] = useState("");
+  const [toDue, setToDue] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    openClosed: "open" as "open" | "closed" | "all",
+    fromDue: "",
+    toDue: "",
+    search: "",
+  });
   const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
 
   const [selectedRecord, setSelectedRecord] = useState<CalibrationRecord | null>(null);
@@ -76,10 +134,11 @@ export default function CalibrationResultsUpdatePage() {
   const [calibratedDate, setCalibratedDate] = useState("");
   const [nextDate, setNextDate] = useState("");
   const [location, setLocation] = useState("");
+  const [observedSpecs, setObservedSpecs] = useState<ObservedSpecRow[]>([]);
+  const [specsLoading, setSpecsLoading] = useState(false);
 
   const handleExport = async (format: "xlsx" | "pdf") => {
     setExporting(format);
-    setBannerMsg(null);
     try {
       const res = await fetch(`/api/calibration/results-update/export?format=${format}`, {
         credentials: "include",
@@ -104,17 +163,13 @@ export default function CalibrationResultsUpdatePage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setBannerMsg({
-        type: "success",
-        text: count
+      toastSuccess(
+        count
           ? `Downloaded ${filename} (${Number(count).toLocaleString()} rows).`
-          : `Downloaded ${filename}.`,
-      });
+          : `Downloaded ${filename}.`
+      );
     } catch (err) {
-      setBannerMsg({
-        type: "error",
-        text: err instanceof Error ? err.message : "Export failed",
-      });
+      toastError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setExporting(null);
     }
@@ -122,19 +177,74 @@ export default function CalibrationResultsUpdatePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const params = new URLSearchParams();
+    params.set("openClosed", appliedFilters.openClosed);
+    if (appliedFilters.fromDue) params.set("fromDue", appliedFilters.fromDue);
+    if (appliedFilters.toDue) params.set("toDue", appliedFilters.toDue);
+    if (appliedFilters.search.trim()) params.set("search", appliedFilters.search.trim());
     const [res, locRes] = await Promise.all([
-      apiGet<{ items: CalibrationRecord[] }>("/api/calibration/results-update"),
+      apiGet<{ items: CalibrationRecord[] }>(`/api/calibration/results-update?${params}`),
       apiGet<{ items: LocationOption[] }>("/api/lookups/locations"),
     ]);
     if (res.data?.items) setItems(res.data.items);
     else setItems([]);
     if (locRes.data?.items) setLocations(locRes.data.items);
     setLoading(false);
-  }, []);
+  }, [appliedFilters]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const loadObservedSpecs = async (toolOrGaugeNo: string) => {
+    setSpecsLoading(true);
+    setObservedSpecs([]);
+    try {
+      const list = await apiGet<{ items: { refNo: number; toolOrGaugeNo: string }[] }>(
+        `/api/tools?searchField=toolorgaugeno&search=${encodeURIComponent(toolOrGaugeNo)}&pageSize=5`
+      );
+      const match = (list.data?.items ?? []).find(
+        (t) => t.toolOrGaugeNo.toLowerCase() === toolOrGaugeNo.toLowerCase()
+      ) ?? list.data?.items?.[0];
+      if (!match?.refNo) {
+        setSpecsLoading(false);
+        return;
+      }
+      const detail = await apiGet<{
+        tool?: {
+          specifications?: {
+            parameter: string | null;
+            specification: string | null;
+            minRange: string | null;
+            maxRange: string | null;
+          }[];
+        };
+        specifications?: {
+          parameter: string | null;
+          specification: string | null;
+          minRange: string | null;
+          maxRange: string | null;
+        }[];
+      }>(`/api/tools/${match.refNo}`);
+      const specs =
+        detail.data?.tool?.specifications ??
+        detail.data?.specifications ??
+        [];
+      setObservedSpecs(
+        specs
+          .filter((s) => (s.parameter || "").trim())
+          .map((s) => ({
+            parameter: (s.parameter || "").trim().slice(0, 50),
+            spec: s.specification || undefined,
+            obsMin: s.minRange || "",
+            obsMax: s.maxRange || "",
+            note: "",
+          }))
+      );
+    } finally {
+      setSpecsLoading(false);
+    }
+  };
 
   const handleOpenUpdate = (rec: CalibrationRecord) => {
     setSelectedRecord(rec);
@@ -144,24 +254,23 @@ export default function CalibrationResultsUpdatePage() {
     setErrorNoticed("");
     setComments(rec.remarks || "");
     setCalibratedBy(rec.calibratedBy || "");
-    setCalibratedDate(new Date().toISOString().split("T")[0]);
-    const months = rec.calibrationFrqMonths && rec.calibrationFrqMonths > 0 ? rec.calibrationFrqMonths : 6;
-    const next = new Date();
-    next.setMonth(next.getMonth() + months);
-    setNextDate(rec.nextCDate ? fmtDate(rec.nextCDate) : next.toISOString().split("T")[0]);
+    const today = new Date().toISOString().split("T")[0];
+    const months =
+      rec.calibrationFrqMonths && rec.calibrationFrqMonths > 0 ? rec.calibrationFrqMonths : 6;
+    setCalibratedDate(today);
+    setNextDate(resolveNextCalibDefault(rec.nextCDate, today, months));
     setLocation(rec.locationName || rec.location || "");
-    setBannerMsg(null);
+    void loadObservedSpecs(rec.toolOrGaugeNo);
   };
 
   const handleSaveResult = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRecord) return;
     if (!calibratedDate) {
-      setBannerMsg({ type: "error", text: "Calibrated Date is required." });
+      toastError("Calibrated Date is required.");
       return;
     }
 
-    setBannerMsg(null);
     const res = await apiPost("/api/calibration/results-update", {
       toolOrGaugeNo: selectedRecord.toolOrGaugeNo,
       result: calibResult,
@@ -175,18 +284,23 @@ export default function CalibrationResultsUpdatePage() {
       nextCDate: nextDate,
       location: location.trim() || undefined,
       locationName: location.trim() || undefined,
+      observedSpecs:
+        observedSpecs.length > 0
+          ? observedSpecs.map((s) => ({
+              parameter: s.parameter,
+              obsMin: s.obsMin.trim() || undefined,
+              obsMax: s.obsMax.trim() || undefined,
+              note: s.note.trim() || undefined,
+            }))
+          : undefined,
     });
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
-    setBannerMsg({
-      type: "success",
-      text: `Calibration result recorded for ${selectedRecord.toolOrGaugeNo} (${calibResult}).`,
-    });
-    showSuccess({
+    toastSuccess({
       title: "Result saved",
       message: `Calibration result recorded (${calibResult}).`,
       detail: selectedRecord.toolOrGaugeNo,
@@ -198,10 +312,13 @@ export default function CalibrationResultsUpdatePage() {
   const filtered = items.filter((item) => {
     const q = query.toLowerCase();
     const matchesSearch =
+      !q ||
       item.toolOrGaugeNo.toLowerCase().includes(q) ||
       (item.name || "").toLowerCase().includes(q) ||
       (item.type || "").toLowerCase().includes(q) ||
-      (item.remarks || "").toLowerCase().includes(q);
+      (item.remarks || "").toLowerCase().includes(q) ||
+      String(item.dcNo ?? "").includes(q) ||
+      (item.receiveName || "").toLowerCase().includes(q);
 
     const matchesStatus = statusFilter === "All" || item.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -213,21 +330,6 @@ export default function CalibrationResultsUpdatePage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {bannerMsg.text}
-              <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          )}
-
           <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -236,28 +338,6 @@ export default function CalibrationResultsUpdatePage() {
               <p className="text-sm text-[var(--text-muted)] mt-0.5">
                 Update inspection results, certificate details & next calibration due dates
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={exporting !== null || items.length === 0}
-                onClick={() => void handleExport("xlsx")}
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                {exporting === "xlsx" ? "Downloading…" : "Download Excel"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={exporting !== null || items.length === 0}
-                onClick={() => void handleExport("pdf")}
-              >
-                <FileText className="w-4 h-4" />
-                {exporting === "pdf" ? "Downloading…" : "Download PDF"}
-              </Button>
             </div>
           </div>
 
@@ -310,32 +390,109 @@ export default function CalibrationResultsUpdatePage() {
             ]}
           />
 
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search tool number, type, or remarks..."
-                className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] font-medium text-[var(--text-primary)]"
-            >
-              <option value="All">All Statuses</option>
-              <option value="Under Calibration">Under Calibration</option>
-              <option value="Pending">Pending</option>
-              <option value="Received">Received</option>
-              <option value="Available">Available</option>
-            </select>
-          </div>
+          <StatusPillTabs
+            className="mb-3"
+            idPrefix="calib-results-open-closed"
+            value={openClosed}
+            onChange={(v) => setOpenClosed(v)}
+            items={[
+              { value: "open", label: "Open (pending)" },
+              { value: "closed", label: "Closed" },
+              { value: "all", label: "All" },
+            ]}
+          />
 
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 animate-fade-in">
+          <MasterTableCard
+            toolbar={
+              <>
+                <MasterSearchInput
+                  id="calib-results-search"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search tool, DC, issued to…"
+                  widthClass="w-52"
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <SelectionFilter
+                    id="calib-results-status-filter"
+                    label="Status"
+                    value={statusFilter}
+                    anyValue="All"
+                    anyLabel="Any"
+                    maxValueWidth="5.5rem"
+                    onChange={setStatusFilter}
+                    options={[
+                      { value: "All", label: "Any" },
+                      { value: "Under Calibration", label: "Under Calibration" },
+                      { value: "Pending", label: "Pending" },
+                      { value: "Received", label: "Received" },
+                      { value: "Available", label: "Available" },
+                    ]}
+                  />
+                  <input
+                    type="date"
+                    aria-label="Due from"
+                    className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                    value={fromDue}
+                    onChange={(e) => setFromDue(e.target.value)}
+                    title="Due From"
+                  />
+                  <input
+                    type="date"
+                    aria-label="Due to"
+                    className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                    value={toDue}
+                    onChange={(e) => setToDue(e.target.value)}
+                    title="Due To"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    onClick={() =>
+                      setAppliedFilters({
+                        openClosed,
+                        fromDue,
+                        toDue,
+                        search: query,
+                      })
+                    }
+                  >
+                    Apply
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    disabled={exporting !== null || items.length === 0}
+                    onClick={() => void handleExport("xlsx")}
+                    title="Download Excel"
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    Excel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    disabled={exporting !== null || items.length === 0}
+                    onClick={() => void handleExport("pdf")}
+                    title="Download PDF"
+                  >
+                    <FileText className="w-3 h-3" />
+                    PDF
+                  </Button>
+                </div>
+              </>
+            }
+          >
             {loading ? (
-              <TableSkeleton rows={5} />
+              <div className="p-4">
+                <TableSkeleton rows={5} />
+              </div>
             ) : (
               <div className="overflow-auto">
                 <table className="w-full text-sm">
@@ -426,7 +583,7 @@ export default function CalibrationResultsUpdatePage() {
                 </table>
               </div>
             )}
-          </div>
+          </MasterTableCard>
         </main>
       </div>
 
@@ -461,7 +618,7 @@ export default function CalibrationResultsUpdatePage() {
                   <select
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                    className="form-control"
                   >
                     <option value="">-Select-</option>
                     {location && !locations.some((l) => l.locationName === location) && (
@@ -500,6 +657,83 @@ export default function CalibrationResultsUpdatePage() {
                   <ReadField label="Prod Spec Upper Min" value={fmtNum(selectedRecord.prodSpecUpperMin)} mono />
                   <ReadField label="Prod Spec Upper Max" value={fmtNum(selectedRecord.prodSpecUpperMax)} mono />
                 </div>
+              </div>
+
+              <div className="border border-[var(--border-main)] rounded-xl p-4">
+                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
+                  Observed specifications (TOOLS_SPECIFICATION)
+                </p>
+                {specsLoading ? (
+                  <p className="text-xs text-[var(--text-muted)]">Loading parameters…</p>
+                ) : observedSpecs.length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    No specification rows on this tool. Add parameters on Item/Asset Master to capture observations.
+                  </p>
+                ) : (
+                  <div className="overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                          {["Parameter", "Spec", "Obs Min", "Obs Max", "Note"].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2"
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-main)]">
+                        {observedSpecs.map((row, idx) => (
+                          <tr key={`${row.parameter}-${idx}`}>
+                            <td className="py-1.5 px-2 font-medium">{row.parameter}</td>
+                            <td className="py-1.5 px-2 text-[var(--text-muted)]">{row.spec || "—"}</td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                className="form-control font-mono"
+                                value={row.obsMin}
+                                onChange={(e) =>
+                                  setObservedSpecs((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, obsMin: e.target.value } : r
+                                    )
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                className="form-control font-mono"
+                                value={row.obsMax}
+                                onChange={(e) =>
+                                  setObservedSpecs((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, obsMax: e.target.value } : r
+                                    )
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                className="form-control"
+                                value={row.note}
+                                onChange={(e) =>
+                                  setObservedSpecs((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, note: e.target.value } : r
+                                    )
+                                  )
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Result entry */}
@@ -542,7 +776,21 @@ export default function CalibrationResultsUpdatePage() {
                     type="date"
                     required
                     value={calibratedDate}
-                    onChange={(e) => setCalibratedDate(e.target.value)}
+                    onChange={(e) => {
+                      const ymd = e.target.value;
+                      setCalibratedDate(ymd);
+                      if (!selectedRecord || !ymd) return;
+                      const months =
+                        selectedRecord.calibrationFrqMonths &&
+                        selectedRecord.calibrationFrqMonths > 0
+                          ? selectedRecord.calibrationFrqMonths
+                          : 6;
+                      // Keep next aligned when it was blank or still on/before the new calib date
+                      // (avoids leaving an old overdue due like 2020 after changing calib dt).
+                      if (!nextDate || nextDate <= ymd) {
+                        setNextDate(suggestNextCalibDate(ymd, months));
+                      }
+                    }}
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] font-mono"
                   />
                 </div>
@@ -557,6 +805,9 @@ export default function CalibrationResultsUpdatePage() {
                     onChange={(e) => setNextDate(e.target.value)}
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] font-mono"
                   />
+                  <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                    Defaults to calibrated date + frequency (ignores old overdue due dates).
+                  </p>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">

@@ -5,6 +5,7 @@ import { verifyPassword } from "@/lib/password";
 import {
   AUTH_COOKIE_NAME,
   authCookieOptions,
+  requestIsHttps,
   signAuthToken,
 } from "@/lib/authToken";
 import {
@@ -79,7 +80,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    res.cookies.set(AUTH_COOKIE_NAME, token, authCookieOptions(maxAge));
+    res.cookies.set(
+      AUTH_COOKIE_NAME,
+      token,
+      authCookieOptions(maxAge, { secure: requestIsHttps(req) })
+    );
     return res;
   } catch (err) {
     console.error("Login handler error:", err);

@@ -10,7 +10,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { ReportHub } from "@/components/ReportHub";
-import { ReportBarChart, ReportChartCard } from "@/components/ReportCharts";
+import { ReportProgressChart } from "@/components/ReportCharts";
 import { apiGet } from "@/lib/apiClient";
 
 type ToolRow = {
@@ -29,7 +29,6 @@ export default function Page() {
   const [issued, setIssued] = useState(0);
   const [underCal, setUnderCal] = useState(0);
   const [groups, setGroups] = useState(0);
-  const [groupBreakdown, setGroupBreakdown] = useState<{ name: string; count: number }[]>([]);
   const [rows, setRows] = useState<ToolRow[]>([]);
 
   useEffect(() => {
@@ -48,9 +47,7 @@ export default function Page() {
       setTotalTools(kpi.data?.totalTools ?? tools.data?.total ?? 0);
       setIssued(kpi.data?.currentlyIssued ?? 0);
       setUnderCal(kpi.data?.underRepairOrCal ?? 0);
-      const breakdown = kpi.data?.groupBreakdown ?? [];
-      setGroupBreakdown(breakdown);
-      setGroups(breakdown.length);
+      setGroups((kpi.data?.groupBreakdown ?? []).length);
       setRows(tools.data?.items ?? []);
       setLoading(false);
     })();
@@ -102,13 +99,15 @@ export default function Page() {
           badge: { label: "Groups", type: "success" },
         },
       ]}
+      chartBesideKpis
       chart={
-        <ReportChartCard
-          title="Tools by group"
-          subtitle="Count by GROUPING from dashboard KPI (same breakdown as main Dashboard)"
-        >
-          <ReportBarChart data={groupBreakdown} horizontal />
-        </ReportChartCard>
+        <ReportProgressChart
+          totalTools={totalTools}
+          currentlyIssued={issued}
+          underRepairOrCal={underCal}
+          loading={loading}
+          className="mb-0 h-full"
+        />
       }
       links={[
         {

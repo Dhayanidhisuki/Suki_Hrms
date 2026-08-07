@@ -10,6 +10,8 @@ import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { History, CalendarClock, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { apiGet } from "@/lib/apiClient";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { MasterTableCard } from "@/components/ui/MasterTableCard";
 
 interface Tool {
   refNo: number | null;
@@ -67,13 +69,21 @@ export default function CalibrationDueListPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Calibration Due List
-            </h1>
-            <p className="text-sm text-[var(--text-muted)] mt-0.5">
-              Tools/gauges due or overdue for calibration (issue line NXT_CALIB_DATE / CALIB_DUE_DATE)
-            </p>
+          <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
+                Calibration Due List
+              </h1>
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">
+                Tools/gauges due or overdue for calibration (issue line NXT_CALIB_DATE / CALIB_DUE_DATE)
+              </p>
+            </div>
+            <Link
+              href="/dashboard/calibration/calendar"
+              className="text-xs font-semibold text-[var(--primary)] hover:underline whitespace-nowrap"
+            >
+              Open year calendar →
+            </Link>
           </div>
 
           {/* ── Module KPI Cards ── */}
@@ -131,28 +141,45 @@ export default function CalibrationDueListPage() {
             ]}
           />
 
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
-            <div className="flex items-center gap-1 bg-[var(--bg-subtle)] rounded-lg p-1 mb-4 w-fit">
-              {(["All", "Overdue", "Due in 7 Days", "Due in 30 Days"] as const).map((f) => (
-                <button
-                  key={f}
-                  id={`due-list-filter-${f.toLowerCase().replace(/\s/g, "-")}`}
-                  onClick={() => setFilter(f)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    filter === f
-                      ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+          <StatusPillTabs
+            className="mb-3"
+            idPrefix="due-list-filter"
+            value={filter}
+            onChange={setFilter}
+            items={[
+              { value: "All", label: "All", count: rows.length },
+              {
+                value: "Overdue",
+                label: "Overdue",
+                count: rows.filter((t) => (t.daysLeft ?? 0) < 0).length,
+              },
+              {
+                value: "Due in 7 Days",
+                label: "Due in 7 Days",
+                count: rows.filter((t) => (t.daysLeft ?? 0) >= 0 && (t.daysLeft ?? 0) <= 7).length,
+              },
+              {
+                value: "Due in 30 Days",
+                label: "Due in 30 Days",
+                count: rows.filter((t) => (t.daysLeft ?? 0) >= 0 && (t.daysLeft ?? 0) <= 30).length,
+              },
+            ]}
+          />
 
-            <div className="overflow-auto">
-              {loading ? (
+          <MasterTableCard
+            toolbar={<span className="text-[11px] text-[var(--text-muted)]">Calibration due tools</span>}
+            footer={
+              <span className="text-xs text-[var(--text-muted)]">
+                Showing {filtered.length} of {rows.length} tools due for calibration
+              </span>
+            }
+          >
+            {loading ? (
+              <div className="p-4">
                 <TableSkeleton rows={5} />
-              ) : (
+              </div>
+            ) : (
+            <div className="overflow-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
@@ -221,14 +248,9 @@ export default function CalibrationDueListPage() {
                   )}
                 </tbody>
               </table>
-              )}
             </div>
-            <div className="mt-4 pt-3 border-t border-[var(--border-main)]">
-              <span className="text-xs text-[var(--text-muted)]">
-                Showing {filtered.length} of {rows.length} tools due for calibration
-              </span>
-            </div>
-          </div>
+            )}
+          </MasterTableCard>
         </main>
       </div>
     </div>

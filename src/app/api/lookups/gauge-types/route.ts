@@ -4,13 +4,22 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { GaugeTypeSchema } from "@/lib/validators";
 
-const FALLBACK_GAUGE_TYPES = [
-  { id: 1, code: "GT-01", name: "Plug Gauge", description: "Thread Plug & Plain Cylindrical Plug" },
-  { id: 2, code: "GT-02", name: "Ring Gauge", description: "Thread Ring & Plain Ring Go/No-Go" },
-  { id: 3, code: "GT-03", name: "Snap Gauge", description: "Adjustable & Solid Snap Gauges" },
-  { id: 4, code: "GT-04", name: "Dial Indicator", description: "Dial Test Indicators & Height Gauges" },
-  { id: 5, code: "GT-05", name: "Bore Gauge", description: "Two-point & Three-point Internal Bore Gauges" },
-];
+function mapGaugeType(item: {
+  rowId: number;
+  typeOfGauge: string;
+  creatUserIdCd: string;
+  creatDt: Date | null;
+}) {
+  return {
+    id: item.rowId,
+    rowId: item.rowId,
+    code: `GT-${String(item.rowId).padStart(2, "0")}`,
+    name: item.typeOfGauge || "Unnamed Gauge Type",
+    typeOfGauge: item.typeOfGauge,
+    creatUserIdCd: item.creatUserIdCd,
+    creatDt: item.creatDt,
+  };
+}
 
 export async function GET() {
   const session = await getSession();
@@ -22,22 +31,10 @@ export async function GET() {
       orderBy: { creatDt: "desc" },
     });
 
-    if (rawItems.length === 0) {
-      return NextResponse.json({ items: FALLBACK_GAUGE_TYPES });
-    }
-
-    const items = rawItems.map((item) => ({
-      id: item.rowId,
-      code: `GT-${String(item.rowId).padStart(2, "0")}`,
-      name: item.typeOfGauge || "Unnamed Gauge Type",
-      description: null,
-      rowId: item.rowId,
-    }));
-
-    return NextResponse.json({ items });
+    return NextResponse.json({ items: rawItems.map(mapGaugeType) });
   } catch (error) {
     console.error("Error fetching gauge types:", error);
-    return NextResponse.json({ items: FALLBACK_GAUGE_TYPES });
+    return NextResponse.json({ items: [], error: "Failed to load gauge types" }, { status: 500 });
   }
 }
 
@@ -50,7 +47,8 @@ export async function POST(req: NextRequest) {
   if (!permCheck.ok) return permCheck.response;
 
   const body = await req.json();
-  const parsed = GaugeTypeSchema.safeParse(body);
+  const typeOfGauge = String(body.typeOfGauge || body.name || body.code || "").trim();
+  const parsed = GaugeTypeSchema.safeParse({ typeOfGauge });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
@@ -58,23 +56,13 @@ export async function POST(req: NextRequest) {
   try {
     const item = await prisma.gaugeType.create({
       data: {
-        typeOfGauge: body.name || body.typeOfGauge || body.code,
+        typeOfGauge: parsed.data.typeOfGauge,
         creatUserIdCd: authCheck.session.userId,
+        creatDt: new Date(),
       },
     });
 
-    return NextResponse.json(
-      {
-        ok: true,
-        item: {
-          id: item.rowId,
-          code: `GT-${String(item.rowId).padStart(2, "0")}`,
-          name: item.typeOfGauge,
-          description: null,
-        },
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ ok: true, item: mapGaugeType(item) }, { status: 201 });
   } catch (error) {
     console.error("Error creating gauge type:", error);
     return NextResponse.json({ error: "Failed to create gauge type" }, { status: 500 });

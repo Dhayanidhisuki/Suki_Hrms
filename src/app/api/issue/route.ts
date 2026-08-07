@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
   const statusFilter = searchParams.get("status");
   const search = searchParams.get("search") ?? "";
   const customerOnly = searchParams.get("customerOnly") === "1";
+  const fromDate = (searchParams.get("fromDate") ?? "").trim();
+  const toDate = (searchParams.get("toDate") ?? "").trim();
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const pageSize = Math.min(50, Number(searchParams.get("pageSize") ?? 50));
   const skip = (page - 1) * pageSize;
@@ -53,6 +55,10 @@ export async function GET(req: NextRequest) {
       AND: [
         statusClause,
         customerOnly ? { custCode: { not: null } } : {},
+        fromDate ? { issueDate: { gte: new Date(fromDate) } } : {},
+        toDate
+          ? { issueDate: { lte: new Date(`${toDate}T23:59:59.999`) } }
+          : {},
         search
           ? {
               OR: [
@@ -135,6 +141,8 @@ export async function POST(req: NextRequest) {
     poOrderNo,
     fromUnit,
     itemType,
+    issuePurpose,
+    matType,
     lines,
   } = data;
 
@@ -183,6 +191,8 @@ export async function POST(req: NextRequest) {
           poOrderNo: poOrderNo || null,
           fromUnit: fromUnit || null,
           itemType: itemType || null,
+          issuePurpose: issuePurpose || null,
+          matType: matType || null,
           status: "Active",
           creatUserIdCd: erpActor,
           creatDt: new Date(),
@@ -238,6 +248,50 @@ export async function POST(req: NextRequest) {
               lstUpdtUserIdCd: erpActor,
             },
           });
+        }
+
+        // ERP: Tools Master unit STATUS lives on GAUGE_SERIAL_NO
+        // SubContractor/Customer → VENDOR USE; Employee / in-house → INHOUSE USE
+        const opt = (issueOption || "").toLowerCase();
+        const unitStatus =
+          opt.includes("sub") || opt.includes("vendor") || opt.includes("cust")
+            ? "VENDOR USE"
+            : "INHOUSE USE";
+        try {
+          if (line.serialNo != null) {
+            await tx.gaugeSerialNo.updateMany({
+              where: {
+                toolOrGaugeNo: line.toolOrGaugeNo,
+                serialNo: line.serialNo,
+              },
+              data: { status: unitStatus },
+            });
+          } else if (tool && maintainsSerial(tool.serialNoGenReq)) {
+            // No serial on line — mark first available unit so Master view reflects issue
+            const unit = await tx.gaugeSerialNo.findFirst({
+              where: {
+                toolOrGaugeNo: line.toolOrGaugeNo,
+                OR: [
+                  { status: null },
+                  {
+                    status: {
+                      in: ["AVAILABLE FOR USE", "Available", "NEW PURCHASE"],
+                    },
+                  },
+                ],
+              },
+              orderBy: { serialNo: "asc" },
+              select: { refNo: true },
+            });
+            if (unit) {
+              await tx.gaugeSerialNo.update({
+                where: { refNo: unit.refNo },
+                data: { status: unitStatus },
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Serial status update on issue skipped:", err);
         }
       }
 

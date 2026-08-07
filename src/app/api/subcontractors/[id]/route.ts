@@ -2,45 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
-
-function yesNo(v: string | null | undefined): boolean {
-  return String(v ?? "").trim().toUpperCase() === "YES" || String(v ?? "").trim().toUpperCase() === "Y";
-}
-
-function mapStatus(v: string | null | undefined): "Active" | "Inactive" {
-  const s = String(v ?? "").trim().toUpperCase();
-  return s === "ACTIVE" || s === "A" ? "Active" : "Inactive";
-}
-
-function mapItem(item: {
-  subConId: string;
-  subName: string | null;
-  natureOfWork: string | null;
-  gstin: string | null;
-  add1: string | null;
-  add2: string | null;
-  isStoreVendor: string | null;
-  isInhouse: string | null;
-  isIssueDc: string | null;
-  status: string | null;
-  creatUserIdCd: string | null;
-  creatDt: Date | null;
-}) {
-  return {
-    id: item.subConId,
-    subCode: item.subConId,
-    subName: item.subName ?? "",
-    natureOfWork: item.natureOfWork ?? "",
-    gstin: item.gstin,
-    address: [item.add1, item.add2].filter(Boolean).join(", ") || null,
-    isStoreVendor: yesNo(item.isStoreVendor),
-    isInhouse: yesNo(item.isInhouse),
-    isIssueDC: yesNo(item.isIssueDc),
-    status: mapStatus(item.status),
-    creatUserIdCd: item.creatUserIdCd ?? "",
-    creatDt: item.creatDt,
-  };
-}
+import { SubcontractorUpdateSchema } from "@/lib/validators";
+import {
+  mapSubcontractorRow,
+  toErpSubStatus,
+  ynFromBody,
+} from "@/lib/subcontractorMap";
 
 export async function GET(
   _req: NextRequest,
@@ -59,7 +26,7 @@ export async function GET(
     return NextResponse.json({ error: "Subcontractor not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ item: mapItem(subcontractor) });
+  return NextResponse.json({ item: mapSubcontractorRow(subcontractor) });
 }
 
 export async function PUT(
@@ -75,24 +42,43 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
+  const normalized = {
+    subConId: id,
+    subName: body.subName,
+    natureOfWork: body.natureOfWork,
+    isStoreVendor:
+      body.isStoreVendor !== undefined ? ynFromBody(body.isStoreVendor) : undefined,
+    isInhouse: body.isInhouse !== undefined ? ynFromBody(body.isInhouse) : undefined,
+    isIssueDc:
+      body.isIssueDC !== undefined || body.isIssueDc !== undefined
+        ? ynFromBody(body.isIssueDC ?? body.isIssueDc)
+        : undefined,
+    add1: body.add1 ?? body.address,
+    add2: body.add2,
+    gstin: body.gstin,
+    approvedSubcontractor:
+      body.approvedSubcontractor ??
+      (body.isApproved === true ? "Yes" : body.isApproved === false ? "No" : undefined),
+    status: body.status !== undefined ? toErpSubStatus(body.status) : undefined,
+  };
+
+  const parsed = SubcontractorUpdateSchema.safeParse(normalized);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { subConId: _id, ...data } = parsed.data;
 
   try {
     const subcontractor = await prisma.subcontractor.update({
       where: { subConId: id },
       data: {
-        subName: body.subName,
-        natureOfWork: body.natureOfWork,
-        gstin: body.gstin,
-        add1: body.address ?? body.add1,
-        isStoreVendor: body.isStoreVendor === true || body.isStoreVendor === "Yes" ? "Yes" : "No",
-        isInhouse: body.isInhouse === true || body.isInhouse === "Yes" ? "Yes" : "No",
-        isIssueDc: body.isIssueDC === true || body.isIssueDc === true || body.isIssueDC === "Yes" ? "Yes" : "No",
-        status: body.status === "Inactive" ? "BLOCKED" : body.status === "Active" ? "ACTIVE" : body.status,
-        lstUpdtUserIdCd: authCheck.session.userId,
+        ...data,
+        lstUpdtUserIdCd: authCheck.session.userId.slice(0, 10),
       },
     });
 
-    return NextResponse.json({ ok: true, item: mapItem(subcontractor) });
+    return NextResponse.json({ ok: true, item: mapSubcontractorRow(subcontractor) });
   } catch (error) {
     console.error("Error updating subcontractor:", error);
     return NextResponse.json({ error: "Failed to update subcontractor" }, { status: 500 });

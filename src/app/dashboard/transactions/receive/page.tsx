@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Search,
   CheckCircle2,
-  ArrowLeft,
   ArrowDownLeft,
   ShieldAlert,
   Plus,
   Trash,
+  Save,
+  FileSpreadsheet,
 } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
@@ -18,7 +18,15 @@ import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { Clock } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { OverlayModal } from "@/components/ui/OverlayModal";
+import { FormModalSection } from "@/components/ui/form";
+import { SearchSelect, type SearchSelectItem } from "@/components/ui/SearchSelect";
+import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { SelectionFilter } from "@/components/ui/SelectionFilter";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface ToolMasterPreview {
   toolOrGaugeNo: string | null;
@@ -151,14 +159,9 @@ function monthEnd() {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
 }
 
-const inputCls =
-  "w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium";
-const labelCls = "block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1";
-
-const VENDOR_OPTIONS = ["ALL", "SubContractor", "Supplier", "Customer"] as const;
-
 export default function ReceiveToolPage() {
-  const { showSuccess } = useSuccessOverlay();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"list" | "receive">("list");
 
   // List (GRN history)
@@ -183,6 +186,8 @@ export default function ReceiveToolPage() {
   const [pickerFrom, setPickerFrom] = useState(monthStart);
   const [pickerTo, setPickerTo] = useState(monthEnd);
   const [pickerSub, setPickerSub] = useState("ALL");
+  const [pickerSubQuery, setPickerSubQuery] = useState("");
+  const [partyQuery, setPartyQuery] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [staged, setStaged] = useState<StagedReceiveLine[]>([]);
   const [activeDcNo, setActiveDcNo] = useState("");
@@ -194,25 +199,43 @@ export default function ReceiveToolPage() {
   const [location, setLocation] = useState("");
   const [subCode, setSubCode] = useState("");
   const [geNo, setGeNo] = useState("");
+  const [geDate, setGeDate] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
 
   const [subs, setSubs] = useState<SubOption[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<{ supCode: string; supName: string }>>([]);
+  const [partyFilterCode, setPartyFilterCode] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [successMessage, setSuccessMessage] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadHistory = useCallback(
-    async (p = page, q = searchQuery) => {
+    async (
+      p = page,
+      q = searchQuery,
+      opts?: {
+        vendorType?: string;
+        subFilter?: string;
+        partyFilterCode?: string;
+        fromDate?: string;
+        toDate?: string;
+      }
+    ) => {
       setLoading(true);
+      const vt = opts?.vendorType ?? vendorType;
+      const sf = opts?.subFilter ?? subFilter;
+      const pc = opts?.partyFilterCode ?? partyFilterCode;
+      const fd = opts?.fromDate ?? fromDate;
+      const td = opts?.toDate ?? toDate;
       const params = new URLSearchParams({
         history: "1",
         page: String(p),
         pageSize: String(pageSize),
-        fromDate,
-        toDate,
-        vendorType,
-        subCode: subFilter,
+        fromDate: fd,
+        toDate: td,
+        vendorType: vt,
+        subCode: sf,
       });
       if (q.trim()) params.set("search", q.trim());
+      if (pc.trim()) params.set("partyCode", pc.trim());
       const res = await apiGet<{
         items: HistoryRow[];
         total: number;
@@ -225,7 +248,7 @@ export default function ReceiveToolPage() {
       setOverdueTotal(res.data?.overdueTotal ?? 0);
       setLoading(false);
     },
-    [page, searchQuery, fromDate, toDate, vendorType, subFilter]
+    [page, searchQuery, fromDate, toDate, vendorType, subFilter, partyFilterCode]
   );
 
   const loadOpenIssues = useCallback(async () => {
@@ -247,9 +270,14 @@ export default function ReceiveToolPage() {
   useEffect(() => {
     void loadHistory(1, "");
     void (async () => {
-      const res = await apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200");
-      setSubs(res.data?.items ?? []);
+      const [subRes, supRes] = await Promise.all([
+        apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
+        apiGet<{ items?: Array<{ supCode: string; supName: string }> }>("/api/suppliers?pageSize=200"),
+      ]);
+      setSubs(subRes.data?.items ?? []);
+      setSuppliers(supRes.data?.items ?? []);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -263,7 +291,7 @@ export default function ReceiveToolPage() {
     searchTimer.current = setTimeout(() => loadHistory(1, val), 350);
   };
 
-  const openReceiveForm = () => {
+  const openReceiveForm = useCallback(() => {
     setMode("receive");
     setReceiveDate(localToday());
     setPartyDcNo("");
@@ -276,12 +304,67 @@ export default function ReceiveToolPage() {
     setSelectedKeys(new Set());
     setActiveDcNo("");
     setErrors({});
-    setBannerMsg(null);
-  };
+    setPickerSubQuery("");
+    setPartyQuery("");
+    setPickerSearch("");
+    router.replace("/dashboard/transactions/receive?action=add", { scroll: false });
+  }, [router]);
+
+  const closeReceiveForm = useCallback(() => {
+    setMode("list");
+    setStaged([]);
+    setSelectedKeys(new Set());
+    setErrors({});
+    router.replace("/dashboard/transactions/receive", { scroll: false });
+  }, [router]);
+
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "add") {
+      if (mode !== "receive") {
+        setMode("receive");
+        setReceiveDate(localToday());
+      }
+      return;
+    }
+    if (mode === "receive") {
+      setMode("list");
+      setStaged([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const flatOpenLines = openIssues.flatMap((issue) =>
     issue.lines.map((line) => ({ issue, line }))
   );
+
+  const dcToolSelectItems: SearchSelectItem[] = (() => {
+    const q = pickerSearch.trim().toLowerCase();
+    const items: SearchSelectItem[] = [];
+    const seenDc = new Set<string>();
+    for (const { issue, line } of flatOpenLines) {
+      if (!seenDc.has(issue.dcNo)) {
+        seenDc.add(issue.dcNo);
+        if (!q || issue.dcNo.toLowerCase().includes(q) || (issue.receiveName ?? "").toLowerCase().includes(q)) {
+          items.push({
+            id: `dc:${issue.dcNo}`,
+            primary: issue.dcNo,
+            secondary: `${issue.receiveName || "—"} · ${issue.subCode || "—"} · select all lines`,
+          });
+        }
+      }
+      const tool = resolveToolNo(line);
+      if (!q || tool.toLowerCase().includes(q) || issue.dcNo.toLowerCase().includes(q)) {
+        items.push({
+          id: `line:${issue.dcNo}:${lineKey(line)}`,
+          primary: tool,
+          secondary: `DC ${issue.dcNo} · qty ${Number(line.issueQty) || 0} · ${resolveDesc(line)}`,
+        });
+      }
+      if (items.length >= 40) break;
+    }
+    return items;
+  })();
 
   const toggleSelect = (key: string) => {
     setSelectedKeys((prev) => {
@@ -300,10 +383,7 @@ export default function ReceiveToolPage() {
       const key = `${issue.dcNo}:${lineKey(line)}`;
       if (!selectedKeys.has(key)) continue;
       if (dc && dc !== issue.dcNo) {
-        setBannerMsg({
-          type: "error",
-          text: "Select lines from one DC only for a receive (ERP: one Our DC No per GRN).",
-        });
+        toastError("Select lines from one DC only for a receive (ERP: one Our DC No per GRN).");
         return;
       }
       dc = issue.dcNo;
@@ -322,7 +402,7 @@ export default function ReceiveToolPage() {
     }
 
     if (!toAdd.length) {
-      setBannerMsg({ type: "error", text: "Select one or more open issue lines first." });
+      toastError("Select one or more open issue lines first.");
       return;
     }
 
@@ -331,7 +411,6 @@ export default function ReceiveToolPage() {
     setContName((prev) => prev || openIssues.find((i) => i.dcNo === dc)?.receiveName || "");
     setStaged((prev) => [...prev, ...toAdd]);
     setSelectedKeys(new Set());
-    setBannerMsg(null);
   };
 
   const patchStaged = (idx: number, patch: Partial<StagedReceiveLine>) => {
@@ -362,6 +441,8 @@ export default function ReceiveToolPage() {
       poOrderNo: poOrderNo || undefined,
       location: location || undefined,
       geNo: geNo || undefined,
+      geDate: geDate || undefined,
+      invoiceNo: invoiceNo || undefined,
       lines: staged.map((l) => ({
         issueRowId: l.issueRowId,
         toolOrGaugeNo: l.toolOrGaugeNo.startsWith("LINE-") ? undefined : l.toolOrGaugeNo,
@@ -371,27 +452,27 @@ export default function ReceiveToolPage() {
       })),
     };
 
-    setBannerMsg(null);
     const res = await apiPost<{ ok: boolean; header?: { recNo: number } }>("/api/receive", payload);
     if (res.error) {
-      setBannerMsg({ type: "error", text: res.error.message });
+      toastError(res.error.message);
       return;
     }
 
     const grn = res.data?.header?.recNo;
-    setSuccessMessage(`GRN #${grn ?? "—"} received against DC #${activeDcNo}`);
-    showSuccess({
+    toastSuccess({
       title: "Receive posted",
       message: "Items/Asset receive saved.",
       detail: grn ? `GRN #${grn} · DC #${activeDcNo}` : `DC #${activeDcNo}`,
     });
     setMode("list");
     setStaged([]);
+    router.replace("/dashboard/transactions/receive", { scroll: false });
     void loadHistory(1, searchQuery);
-    setTimeout(() => setSuccessMessage(""), 5000);
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageQty = history.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
+  const pageLines = history.length;
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
@@ -399,30 +480,8 @@ export default function ReceiveToolPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {successMessage && (
-            <div className="mb-4 p-4 bg-[var(--color-success-bg)] border border-[var(--border-main)] rounded-2xl flex items-center gap-2.5 text-[var(--color-success-text)] text-sm font-semibold shadow-sm">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-[var(--color-success-bg)] text-[var(--color-success-text)] border border-[var(--border-main)]"
-                  : "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] border border-[var(--border-main)]"
-              }`}
-            >
-              {bannerMsg.text}
-              <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          )}
-
-          {mode === "list" ? (
-            <>
+          {/* List stays mounted under overlay */}
+          <>
               <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -433,9 +492,11 @@ export default function ReceiveToolPage() {
                   </p>
                 </div>
                 <RoleGate permission="canReceiveTool">
-                  <Button type="button" variant="primary" onClick={openReceiveForm}>
-                    <Plus className="w-4 h-4" /> Receive
-                  </Button>
+                  {mode !== "receive" && (
+                    <Button type="button" variant="primary" onClick={openReceiveForm}>
+                      <Plus className="w-4 h-4" /> Receive
+                    </Button>
+                  )}
                 </RoleGate>
               </div>
 
@@ -445,7 +506,8 @@ export default function ReceiveToolPage() {
                     id: "pending-returns",
                     label: "Pending Return DCs",
                     value: pendingTotal,
-                    subtext: "Open issue DCs awaiting receive",
+                    subtext: "Open returnable issue slips",
+                    title: "Open issue DCs with RETURNABLE ≠ No awaiting receive",
                     icon: ArrowDownLeft,
                     iconBg: "bg-[var(--primary-light)]",
                     iconColor: "text-[var(--primary)]",
@@ -453,94 +515,228 @@ export default function ReceiveToolPage() {
                   },
                   {
                     id: "overdue-returns",
-                    label: "Overdue Return Slips",
+                    label: "Overdue Returns",
                     value: overdueTotal,
-                    subtext: "Past scheduled return date",
+                    subtext: "Due date before today",
+                    title: "Pending return DCs with a real due date already past",
                     icon: ShieldAlert,
                     iconBg: "bg-amber-50 dark:bg-amber-950/30",
                     iconColor: "text-amber-600 dark:text-amber-400",
                     badge: { label: "Overdue", type: "warning" },
                   },
                   {
-                    id: "grn-rows",
-                    label: "GRN Lines Shown",
-                    value: history.length,
-                    subtext: `Page ${page}`,
+                    id: "grn-total",
+                    label: "Matching GRNs",
+                    value: total,
+                    subtext: "Receive headers in filters",
+                    title: "TOOLS_ISSUE_RECEIVED headers matching current filters",
+                    icon: CheckCircle2,
+                    iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
+                    iconColor: "text-emerald-600 dark:text-emerald-400",
+                    badge: { label: "GRNs", type: "success" },
+                  },
+                  {
+                    id: "page-qty",
+                    label: "Qty on This Page",
+                    value: pageQty,
+                    subtext: `${pageLines} line${pageLines === 1 ? "" : "s"} · page ${page}`,
+                    title: "Sum of receive quantities on the current page",
                     icon: Clock,
                     iconBg: "bg-blue-50 dark:bg-blue-950/30",
                     iconColor: "text-blue-600 dark:text-blue-400",
                     badge: { label: "Page", type: "info" },
                   },
-                  {
-                    id: "grn-total",
-                    label: "Matching GRNs",
-                    value: total,
-                    subtext: "Filtered receive headers",
-                    icon: CheckCircle2,
-                    iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
-                    iconColor: "text-emerald-600 dark:text-emerald-400",
-                    badge: { label: "Listed", type: "success" },
-                  },
                 ]}
               />
 
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div>
-                    <label className={labelCls}>From Date</label>
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>To Date</label>
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Select Option</label>
-                    <select value={vendorType} onChange={(e) => setVendorType(e.target.value)} className={inputCls}>
-                      {VENDOR_OPTIONS.map((v) => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Sub Contractor</label>
-                    <select value={subFilter} onChange={(e) => setSubFilter(e.target.value)} className={inputCls}>
-                      <option value="ALL">ALL</option>
-                      {subs.map((s) => (
-                        <option key={s.subCode} value={s.subCode}>{s.subCode} — {s.subName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>GRN / DC Contains</label>
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        value={searchQuery}
-                        onChange={(e) => handleSearchChange(e.target.value)}
-                        placeholder="GRN / DC / party…"
-                        className={`${inputCls} pl-9`}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setPage(1);
-                      void loadHistory(1, searchQuery);
-                    }}
-                  >
-                    Apply Filters
-                  </Button>
-                </div>
+              <StatusPillTabs
+                className="mb-3"
+                idPrefix="receive-vendor-pill"
+                value={vendorType}
+                onChange={(v) => {
+                  setVendorType(v);
+                  setSubFilter("ALL");
+                  setPartyFilterCode("");
+                  setPage(1);
+                  void loadHistory(1, searchQuery, {
+                    vendorType: v,
+                    subFilter: "ALL",
+                    partyFilterCode: "",
+                  });
+                }}
+                items={[
+                  { value: "ALL", label: "All" },
+                  { value: "SubContractor", label: "SubContractor" },
+                  { value: "Supplier", label: "Supplier" },
+                  { value: "Customer", label: "Customer" },
+                ]}
+              />
 
-                <div className="overflow-auto">
-                  {loading ? (
+              <MasterTableCard
+                toolbar={
+                  <>
+                    <MasterSearchInput
+                      id="receive-search-input"
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      placeholder="GRN / DC / party…"
+                      widthClass="w-48"
+                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="date"
+                        aria-label="From date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                      />
+                      <input
+                        type="date"
+                        aria-label="To date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+                      />
+                      {vendorType === "Customer" ? (
+                        <input
+                          value={partyFilterCode}
+                          onChange={(e) => setPartyFilterCode(e.target.value)}
+                          placeholder="Customer code"
+                          aria-label="Customer code"
+                          className="h-7 w-28 shrink-0 text-[11px] font-mono border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                        />
+                      ) : vendorType === "Supplier" ? (
+                        <SelectionFilter
+                          id="receive-supplier-filter"
+                          label="Supplier"
+                          value={partyFilterCode || "ALL"}
+                          anyValue="ALL"
+                          anyLabel="Any"
+                          maxValueWidth="5rem"
+                          onChange={(v) => {
+                            setPartyFilterCode(v === "ALL" ? "" : v);
+                            setSubFilter("ALL");
+                          }}
+                          options={[
+                            { value: "ALL", label: "Any" },
+                            ...suppliers.map((s) => ({
+                              value: s.supCode,
+                              label: `${s.supCode} — ${s.supName}`,
+                            })),
+                          ]}
+                        />
+                      ) : vendorType === "SubContractor" ? (
+                        <SelectionFilter
+                          id="receive-sub-filter"
+                          label="Sub"
+                          value={subFilter}
+                          anyValue="ALL"
+                          anyLabel="Any"
+                          maxValueWidth="5rem"
+                          onChange={setSubFilter}
+                          options={[
+                            { value: "ALL", label: "Any" },
+                            ...subs.map((s) => ({
+                              value: s.subCode,
+                              label: `${s.subCode} — ${s.subName}`,
+                            })),
+                          ]}
+                        />
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 !rounded-md !px-2 !text-[11px]"
+                        onClick={() => {
+                          setPage(1);
+                          void loadHistory(1, searchQuery);
+                        }}
+                      >
+                        Apply
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 !rounded-md !px-2 !text-[11px]"
+                        disabled={loading || history.length === 0}
+                        onClick={() => {
+                          downloadExcel({
+                            filename: "tools_receive",
+                            sheetName: "Receive",
+                            columns: [
+                              { key: "grnNo", label: "GRN No" },
+                              {
+                                key: "receiveDate",
+                                label: "GRN Date",
+                                value: (r) => (r.receiveDate ? String(r.receiveDate).split("T")[0] : ""),
+                              },
+                              { key: "dcNo", label: "DC No" },
+                              { key: "receivedFrom", label: "Received From" },
+                              { key: "partyDcNo", label: "Party DC" },
+                              { key: "toolOrGaugeNo", label: "Tool No" },
+                              { key: "qty", label: "Qty" },
+                              { key: "status", label: "Status" },
+                              { key: "vendorType", label: "Vendor Type" },
+                            ],
+                            rows: history,
+                          });
+                          toastSuccess("Excel downloaded (current page).");
+                        }}
+                      >
+                        <FileSpreadsheet className="w-3 h-3" />
+                        Excel
+                      </Button>
+                    </div>
+                  </>
+                }
+                footer={
+                  total > pageSize ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} out of {total}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 !rounded-md !px-2 !text-[11px]"
+                          disabled={page <= 1 || loading}
+                          onClick={() => {
+                            const n = page - 1;
+                            setPage(n);
+                            void loadHistory(n, searchQuery);
+                          }}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 !rounded-md !px-2 !text-[11px]"
+                          disabled={page >= totalPages || loading}
+                          onClick={() => {
+                            const n = page + 1;
+                            setPage(n);
+                            void loadHistory(n, searchQuery);
+                          }}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  ) : undefined
+                }
+              >
+                {loading ? (
+                  <div className="p-4">
                     <TableSkeleton rows={5} />
-                  ) : (
+                  </div>
+                ) : (
+                  <div className="overflow-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
@@ -594,263 +790,352 @@ export default function ReceiveToolPage() {
                         )}
                       </tbody>
                     </table>
-                  )}
-                </div>
-
-                {total > pageSize && (
-                  <div className="flex items-center justify-between pt-3 border-t border-[var(--border-main)]">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} out of {total}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => { const n = page - 1; setPage(n); void loadHistory(n, searchQuery); }}>Previous</Button>
-                      <Button type="button" variant="outline" size="sm" disabled={page >= totalPages || loading} onClick={() => { const n = page + 1; setPage(n); void loadHistory(n, searchQuery); }}>Next</Button>
-                    </div>
                   </div>
                 )}
-              </div>
-            </>
-          ) : (
-            <form onSubmit={handleConfirmReceive} className="space-y-5 animate-fade-in">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setMode("list")}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-widest"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Back to GRN list
-                </button>
-                <h1 className="text-xl font-bold text-[var(--text-primary)]">Items / Asset Receive</h1>
-              </div>
+              </MasterTableCard>
+          </>
 
-              {/* Picker filters */}
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div>
-                    <label className={labelCls}>GRN No</label>
-                    <input value="Auto" readOnly className={`${inputCls} opacity-70`} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Rec.Date</label>
-                    <input type="date" value={receiveDate} onChange={(e) => setReceiveDate(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>From</label>
-                    <input type="date" value={pickerFrom} onChange={(e) => setPickerFrom(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>To</label>
-                    <input type="date" value={pickerTo} onChange={(e) => setPickerTo(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Sub Contractor</label>
-                    <select value={pickerSub} onChange={(e) => setPickerSub(e.target.value)} className={inputCls}>
-                      <option value="ALL">ALL</option>
-                      {subs.map((s) => (
-                        <option key={s.subCode} value={s.subCode}>{s.subCode}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-                  <div className="flex-1">
-                    <label className={labelCls}>Gauge / Tool No</label>
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        value={pickerSearch}
-                        onChange={(e) => setPickerSearch(e.target.value)}
-                        placeholder="Filter open DC / tool…"
-                        className={`${inputCls} pl-9`}
-                      />
+          {mode === "receive" && (
+            <OverlayModal
+              open
+              size="5xl"
+              title="Add Receive"
+              subtitle="Items / Asset Receive · GRN Auto"
+              onClose={closeReceiveForm}
+              footer={
+                <>
+                  <button type="button" onClick={closeReceiveForm} className="form-btn-cancel">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form="receive-create-form"
+                    className="form-btn-save"
+                    disabled={!staged.length}
+                  >
+                    <Save className="w-4 h-4" /> Save Now
+                  </button>
+                </>
+              }
+            >
+              <form id="receive-create-form" onSubmit={handleConfirmReceive} className="space-y-0">
+                <FormModalSection title="Open DC picker">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">GRN No</label>
+                      <input value="Auto" readOnly className="form-control opacity-70" />
+                    </div>
+                    <div>
+                      <label className="form-label">Rec.Date</label>
+                      <input type="date" value={receiveDate} onChange={(e) => setReceiveDate(e.target.value)} className="form-control" />
+                      {errors.receiveDate && <p className="form-error">{errors.receiveDate}</p>}
+                    </div>
+                    <div>
+                      <label className="form-label">From</label>
+                      <input type="date" value={pickerFrom} onChange={(e) => setPickerFrom(e.target.value)} className="form-control" />
+                    </div>
+                    <div>
+                      <label className="form-label">To</label>
+                      <input type="date" value={pickerTo} onChange={(e) => setPickerTo(e.target.value)} className="form-control" />
                     </div>
                   </div>
-                  <Button type="button" variant="outline" onClick={() => void loadOpenIssues()}>
-                    Search
-                  </Button>
-                </div>
 
-                <div className="overflow-auto max-h-64 border border-[var(--border-main)] rounded-xl">
-                  {openLoading ? (
-                    <TableSkeleton rows={4} />
-                  ) : (
+                  <div className="form-grid">
+                    <SearchSelect
+                      label="Sub Contractor"
+                      placeholder="Search subcontractor…"
+                      query={pickerSubQuery}
+                      onQueryChange={setPickerSubQuery}
+                      selected={
+                        pickerSub !== "ALL"
+                          ? {
+                              primary: pickerSub,
+                              secondary: subs.find((s) => s.subCode === pickerSub)?.subName,
+                            }
+                          : null
+                      }
+                      onClear={() => {
+                        setPickerSub("ALL");
+                        setPickerSubQuery("");
+                      }}
+                      items={[
+                        { id: "ALL", primary: "ALL", secondary: "All subcontractors" },
+                        ...subs
+                          .filter((s) => {
+                            const q = pickerSubQuery.trim().toLowerCase();
+                            return (
+                              !q ||
+                              s.subCode.toLowerCase().includes(q) ||
+                              (s.subName ?? "").toLowerCase().includes(q)
+                            );
+                          })
+                          .slice(0, 50)
+                          .map((s) => ({
+                            id: s.subCode,
+                            primary: s.subCode,
+                            secondary: s.subName,
+                          })),
+                      ]}
+                      onSelect={(item) => {
+                        setPickerSub(item.id);
+                        setPickerSubQuery("");
+                      }}
+                      emptyText="No subcontractors match"
+                    />
+                    <SearchSelect
+                      label="Open DC / Tool"
+                      placeholder="Search DC or tool number…"
+                      query={pickerSearch}
+                      onQueryChange={setPickerSearch}
+                      items={dcToolSelectItems}
+                      onSelect={(item) => {
+                        // Select matching open lines (checkbox) for quick add
+                        const next = new Set(selectedKeys);
+                        for (const { issue, line } of flatOpenLines) {
+                          const key = `${issue.dcNo}:${lineKey(line)}`;
+                          const tool = resolveToolNo(line).toLowerCase();
+                          if (
+                            item.id.startsWith("dc:") &&
+                            issue.dcNo === item.id.slice(3)
+                          ) {
+                            next.add(key);
+                          } else if (
+                            item.id.startsWith("line:") &&
+                            key === item.id.slice(5)
+                          ) {
+                            next.add(key);
+                          } else if (
+                            !item.id.startsWith("dc:") &&
+                            !item.id.startsWith("line:") &&
+                            (issue.dcNo === item.primary || tool.includes(item.primary.toLowerCase()))
+                          ) {
+                            next.add(key);
+                          }
+                        }
+                        setSelectedKeys(next);
+                        setPickerSearch("");
+                      }}
+                      loading={openLoading}
+                      emptyText="No open DC / tool matches — adjust filters and Search"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => void loadOpenIssues()}>
+                      Search
+                    </Button>
+                    <Button type="button" variant="primary" onClick={addToReceiveList}>
+                      Add To Receive List
+                    </Button>
+                  </div>
+
+                  <div className="overflow-auto max-h-64 border border-[var(--border-main)] rounded-xl">
+                    {openLoading ? (
+                      <TableSkeleton rows={4} />
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                            {["", "Dc.No", "Receiver Name", "Party", "Gauge/Tool", "Sl.No", "Qty", "Description", "Due.Dat", "Status"].map((c) => (
+                              <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2">{c}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border-main)]">
+                          {flatOpenLines.map(({ issue, line }) => {
+                            const key = `${issue.dcNo}:${lineKey(line)}`;
+                            return (
+                              <tr key={key} className="hover:bg-[var(--bg-hover)]">
+                                <td className="py-2 px-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedKeys.has(key)}
+                                    onChange={() => toggleSelect(key)}
+                                  />
+                                </td>
+                                <td className="py-2 px-2 font-mono text-xs">{issue.dcNo}</td>
+                                <td className="py-2 px-2 text-xs">{issue.receiveName || "—"}</td>
+                                <td className="py-2 px-2 font-mono text-xs">{issue.subCode || "—"}</td>
+                                <td className="py-2 px-2 font-mono text-xs">{resolveToolNo(line)}</td>
+                                <td className="py-2 px-2 font-mono text-xs">{line.serialNo ?? "—"}</td>
+                                <td className="py-2 px-2 font-mono text-xs">{Number(line.issueQty)}</td>
+                                <td className="py-2 px-2 text-xs">{resolveDesc(line)}</td>
+                                <td className="py-2 px-2 font-mono text-xs">{issue.dueDate ? issue.dueDate.split("T")[0] : "—"}</td>
+                                <td className="py-2 px-2 text-xs">{issue.status}</td>
+                              </tr>
+                            );
+                          })}
+                          {flatOpenLines.length === 0 && (
+                            <tr>
+                              <td colSpan={10} className="py-6 text-center text-xs text-[var(--text-muted)]">No records found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </FormModalSection>
+
+                <FormModalSection title="Receive details">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">Our DC No</label>
+                      <input value={activeDcNo || "—"} readOnly className="form-control opacity-80" />
+                      {errors.dc && <p className="form-error">{errors.dc}</p>}
+                    </div>
+                    <div>
+                      <label className="form-label">DC Date</label>
+                      <input type="date" value={receiveDate} onChange={(e) => setReceiveDate(e.target.value)} className="form-control" />
+                    </div>
+                    <SearchSelect
+                      label="Party Name"
+                      placeholder="Search party / subcontractor…"
+                      query={partyQuery}
+                      onQueryChange={setPartyQuery}
+                      selected={
+                        subCode
+                          ? {
+                              primary: subCode,
+                              secondary: subs.find((s) => s.subCode === subCode)?.subName,
+                            }
+                          : null
+                      }
+                      onClear={() => {
+                        setSubCode("");
+                        setPartyQuery("");
+                      }}
+                      items={subs
+                        .filter((s) => {
+                          const q = partyQuery.trim().toLowerCase();
+                          return (
+                            !q ||
+                            s.subCode.toLowerCase().includes(q) ||
+                            (s.subName ?? "").toLowerCase().includes(q)
+                          );
+                        })
+                        .slice(0, 50)
+                        .map((s) => ({
+                          id: s.subCode,
+                          primary: s.subCode,
+                          secondary: s.subName,
+                        }))}
+                      onSelect={(item) => {
+                        setSubCode(item.id);
+                        setPartyQuery("");
+                      }}
+                      emptyText="No parties match"
+                    />
+                    <div>
+                      <label className="form-label">Party DC No</label>
+                      <input value={partyDcNo} onChange={(e) => setPartyDcNo(e.target.value)} className="form-control" maxLength={15} />
+                    </div>
+                    <div>
+                      <label className="form-label">From Whom</label>
+                      <input value={contName} onChange={(e) => setContName(e.target.value)} className="form-control" maxLength={80} />
+                    </div>
+                    <div>
+                      <label className="form-label">Our PO No</label>
+                      <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className="form-control" maxLength={15} />
+                    </div>
+                    <div>
+                      <label className="form-label">Location</label>
+                      <input value={location} onChange={(e) => setLocation(e.target.value)} className="form-control" maxLength={50} />
+                    </div>
+                    <div>
+                      <label className="form-label">GE.No</label>
+                      <input value={geNo} onChange={(e) => setGeNo(e.target.value)} className="form-control" maxLength={20} />
+                    </div>
+                    <div>
+                      <label className="form-label">GE.Date</label>
+                      <input type="date" value={geDate} onChange={(e) => setGeDate(e.target.value)} className="form-control" />
+                    </div>
+                    <div>
+                      <label className="form-label">Invoice No</label>
+                      <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} className="form-control" maxLength={25} />
+                    </div>
+                  </div>
+
+                  {errors.lines && (
+                    <p className="form-error">{errors.lines}</p>
+                  )}
+
+                  <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["", "Dc.No", "Receiver Name", "Party", "Gauge/Tool", "Sl.No", "Qty", "Description", "Due.Dat", "Status"].map((c) => (
-                            <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2">{c}</th>
+                          {["Gauge/Tool No", "SLNo", "Qty", "Status", "Description", "Comments", ""].map((c) => (
+                            <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3">{c}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
-                        {flatOpenLines.map(({ issue, line }) => {
-                          const key = `${issue.dcNo}:${lineKey(line)}`;
-                          return (
-                            <tr key={key} className="hover:bg-[var(--bg-hover)]">
-                              <td className="py-2 px-2">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedKeys.has(key)}
-                                  onChange={() => toggleSelect(key)}
-                                />
-                              </td>
-                              <td className="py-2 px-2 font-mono text-xs">{issue.dcNo}</td>
-                              <td className="py-2 px-2 text-xs">{issue.receiveName || "—"}</td>
-                              <td className="py-2 px-2 font-mono text-xs">{issue.subCode || "—"}</td>
-                              <td className="py-2 px-2 font-mono text-xs">{resolveToolNo(line)}</td>
-                              <td className="py-2 px-2 font-mono text-xs">{line.serialNo ?? "—"}</td>
-                              <td className="py-2 px-2 font-mono text-xs">{Number(line.issueQty)}</td>
-                              <td className="py-2 px-2 text-xs">{resolveDesc(line)}</td>
-                              <td className="py-2 px-2 font-mono text-xs">{issue.dueDate ? issue.dueDate.split("T")[0] : "—"}</td>
-                              <td className="py-2 px-2 text-xs">{issue.status}</td>
-                            </tr>
-                          );
-                        })}
-                        {flatOpenLines.length === 0 && (
+                        {staged.map((line, idx) => (
+                          <tr key={line.issueRowId}>
+                            <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
+                            <td className="py-2 px-3 font-mono text-xs">{line.serialNo || "—"}</td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="number"
+                                min={0.001}
+                                max={line.maxQty}
+                                step="any"
+                                value={line.qty}
+                                onChange={(e) =>
+                                  patchStaged(idx, {
+                                    qty: Math.min(line.maxQty, Math.max(0, Number(e.target.value) || 0)),
+                                  })
+                                }
+                                className="w-20 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)] font-mono"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <select
+                                value={line.status}
+                                onChange={(e) => patchStaged(idx, { status: e.target.value })}
+                                className="text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)]"
+                              >
+                                <option value="Received">Received</option>
+                                <option value="Damaged">Damaged</option>
+                                <option value="Missing">Missing</option>
+                                <option value="WORN OUT">WORN OUT</option>
+                                <option value="BROKEN">BROKEN</option>
+                                <option value="REJECTED">REJECTED</option>
+                                <option value="AVAILABLE FOR USE">AVAILABLE FOR USE</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-3 text-xs">{line.description}</td>
+                            <td className="py-2 px-3">
+                              <input
+                                value={line.comments}
+                                onChange={(e) => patchStaged(idx, { comments: e.target.value })}
+                                className="w-28 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-card)]"
+                                maxLength={30}
+                              />
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setStaged((prev) => prev.filter((_, i) => i !== idx))}
+                                className="p-1 text-[var(--text-muted)] hover:text-red-600"
+                              >
+                                <Trash className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {staged.length === 0 && (
                           <tr>
-                            <td colSpan={10} className="py-6 text-center text-xs text-[var(--text-muted)]">No records found.</td>
+                            <td colSpan={7} className="py-8 text-center text-xs text-[var(--text-muted)]">
+                              No records found.
+                            </td>
                           </tr>
                         )}
                       </tbody>
                     </table>
-                  )}
-                </div>
-
-                <div className="flex justify-center">
-                  <Button type="button" variant="primary" onClick={addToReceiveList}>
-                    Add To Receive List
-                  </Button>
-                </div>
-              </div>
-
-              {/* Receive header + list */}
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className={labelCls}>Our DC No</label>
-                    <input value={activeDcNo || "—"} readOnly className={`${inputCls} opacity-80`} />
-                    {errors.dc && <p className="text-xs text-[var(--color-danger-text)] mt-1">{errors.dc}</p>}
                   </div>
-                  <div>
-                    <label className={labelCls}>DC Date</label>
-                    <input type="date" value={receiveDate} onChange={(e) => setReceiveDate(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Party Name</label>
-                    <select value={subCode} onChange={(e) => setSubCode(e.target.value)} className={inputCls}>
-                      <option value="">-SELECT-</option>
-                      {subs.map((s) => (
-                        <option key={s.subCode} value={s.subCode}>{s.subCode} — {s.subName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Party DC No</label>
-                    <input value={partyDcNo} onChange={(e) => setPartyDcNo(e.target.value)} className={inputCls} maxLength={15} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>From Whom</label>
-                    <input value={contName} onChange={(e) => setContName(e.target.value)} className={inputCls} maxLength={80} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Our PO No</label>
-                    <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className={inputCls} maxLength={15} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Location</label>
-                    <input value={location} onChange={(e) => setLocation(e.target.value)} className={inputCls} maxLength={50} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>GE.No</label>
-                    <input value={geNo} onChange={(e) => setGeNo(e.target.value)} className={inputCls} maxLength={20} />
-                  </div>
-                </div>
-
-                {errors.lines && (
-                  <p className="text-xs text-[var(--color-danger-text)] font-semibold">{errors.lines}</p>
-                )}
-
-                <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                        {["Gauge/Tool No", "SLNo", "Qty", "Status", "Description", "Comments", ""].map((c) => (
-                          <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3">{c}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border-main)]">
-                      {staged.map((line, idx) => (
-                        <tr key={line.issueRowId}>
-                          <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
-                          <td className="py-2 px-3 font-mono text-xs">{line.serialNo || "—"}</td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="number"
-                              min={0.001}
-                              max={line.maxQty}
-                              step="any"
-                              value={line.qty}
-                              onChange={(e) =>
-                                patchStaged(idx, {
-                                  qty: Math.min(line.maxQty, Math.max(0, Number(e.target.value) || 0)),
-                                })
-                              }
-                              className="w-20 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)] font-mono"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <select
-                              value={line.status}
-                              onChange={(e) => patchStaged(idx, { status: e.target.value })}
-                              className="text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
-                            >
-                              <option value="Received">Received</option>
-                              <option value="Damaged">Damaged</option>
-                              <option value="Missing">Missing</option>
-                            </select>
-                          </td>
-                          <td className="py-2 px-3 text-xs">{line.description}</td>
-                          <td className="py-2 px-3">
-                            <input
-                              value={line.comments}
-                              onChange={(e) => patchStaged(idx, { comments: e.target.value })}
-                              className="w-28 text-xs border border-[var(--border-main)] rounded-lg px-2 py-1 bg-[var(--bg-subtle)]"
-                              maxLength={30}
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => setStaged((prev) => prev.filter((_, i) => i !== idx))}
-                              className="p-1 text-[var(--text-muted)] hover:text-red-600"
-                            >
-                              <Trash className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {staged.length === 0 && (
-                        <tr>
-                          <td colSpan={7} className="py-8 text-center text-xs text-[var(--text-muted)]">
-                            No records found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setMode("list")}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" variant="primary" disabled={!staged.length}>
-                    <ArrowDownLeft className="w-4 h-4" /> Receive
-                  </Button>
-                </div>
-              </div>
-            </form>
+                </FormModalSection>
+              </form>
+            </OverlayModal>
           )}
         </main>
       </div>

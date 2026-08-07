@@ -40,8 +40,13 @@ export const SubcontractorCreateSchema = z.object({
   isInhouse: z.string().max(3).optional(),
   isIssueDc: z.string().max(3).optional(),
   add1: z.string().max(75).optional(),
+  add2: z.string().max(100).optional(),
   gstin: z.string().max(25).optional(),
+  approvedSubcontractor: z.string().max(5).optional(),
   status: z.string().max(15).optional(),
+});
+export const SubcontractorUpdateSchema = SubcontractorCreateSchema.partial().extend({
+  subConId: z.string(),
 });
 
 // ── Lookup Masters ────────────────────────────────────────────────
@@ -113,7 +118,14 @@ export const GaugeAndToolsCreateSchema = z.object({
   rack: z.string().max(100).optional(),
   deptName: z.string().max(25).optional(),
   issueType: z
-    .enum(["For Asset", "For Product", "For Regular", "For Trial"])
+    .enum([
+      "For Regular",
+      "For Asset",
+      "For Product",
+      "For Employee",
+      "For Department",
+      "For Trial",
+    ])
     .or(z.string().max(25))
     .optional(),
   oldItemNo: z.string().max(20).optional(),
@@ -149,6 +161,12 @@ export const GaugeAndToolsCreateSchema = z.object({
   serialNoGenReq: z.union([z.boolean(), yn]).optional(),
   preventiveMethod: z.string().max(25).optional(),
   preventiveFrqMonths: z.number().int().min(0).optional(),
+  /** ERP Preventive MNT Done At */
+  preventiveFrqOthers: z.number().int().min(0).optional().nullable(),
+  /** ERP Ref Details */
+  refDetails: z.string().max(50).optional().nullable(),
+  /** ERP Addil. Remarks */
+  remarks: z.string().max(50).optional().nullable(),
   gSpecUpperMin: z.number().optional(),
   gSpecUpperMax: z.number().optional(),
   wLimitLowerMax: z.number().optional(),
@@ -164,10 +182,16 @@ export const GaugeAndToolsCreateSchema = z.object({
   specifications: z
     .array(
       z.object({
+        sequence: z.number().int().min(0).optional(),
         parameter: z.string().min(1).max(50).optional(),
         specification: z.string().max(100).optional(),
         minRange: z.string().max(15).optional(),
         maxRange: z.string().max(15).optional(),
+        // ERP Tools Specification dialog (TOOLS_SPECIFICATION)
+        wLimitLowerMin: z.number().optional().nullable(),
+        wLimitLowerMax: z.number().optional().nullable(),
+        prodSpecLowerMin: z.number().optional().nullable(),
+        prodSpecLowerMax: z.number().optional().nullable(),
         // legacy UI aliases
         specName: z.string().max(50).optional(),
         specValue: z.string().max(100).optional(),
@@ -178,43 +202,88 @@ export const GaugeAndToolsCreateSchema = z.object({
 });
 
 // ── Tools Issue ───────────────────────────────────────────────────
-export const ToolsIssueCreateSchema = z.object({
-  receiveName: z.string().min(1).max(50),
-  receiveNameTwo: z.string().max(50).optional(),
-  subCode: z.string().max(10).optional(),
-  supCode: z.string().max(10).optional(),
-  custCode: z.string().max(12).optional(),
-  // ERP EMP_ID is NOT NULL; legacy often stores 0 when no employee is linked
-  empId: z.coerce.number().int().optional().default(0),
-  issueDate: z.string().datetime({ offset: true }).or(z.string().date()),
-  dueDate: z.string().datetime({ offset: true }).or(z.string().date()),
-  // ERP header fields (GAUGE_TOOLS_ISSUE)
-  issueOption: z.string().max(30).optional(), // Search By: SubContractor / Supplier / Customer…
-  dcRefNo: z.string().max(20).optional(),
+export const ToolsIssueCreateSchema = z
+  .object({
+    receiveName: z.string().min(1).max(50),
+    receiveNameTwo: z.string().max(50).optional(),
+    subCode: z.string().max(10).optional(),
+    supCode: z.string().max(10).optional(),
+    custCode: z.string().max(12).optional(),
+    // ERP EMP_ID is NOT NULL; legacy often stores 0 when no employee is linked
+    empId: z.coerce.number().int().optional().default(0),
+    issueDate: z.string().datetime({ offset: true }).or(z.string().date()),
+    dueDate: z.string().datetime({ offset: true }).or(z.string().date()),
+    // ERP header fields (GAUGE_TOOLS_ISSUE)
+    issueOption: z.string().max(30).optional(), // Search By: SubContractor / Supplier / Customer…
+    dcRefNo: z.string().max(20).optional(),
+    returnable: z.enum(["Yes", "No"]).or(z.string().max(5)).optional(),
+    transportName: z.string().max(50).optional(),
+    vehicleNo: z.string().max(25).optional(),
+    comments: z.string().max(100).optional(),
+    lobType: z.string().min(1).max(50),
+    poOrderNo: z.string().max(15).optional(),
+    fromUnit: z.string().max(15).optional(),
+    itemType: z.string().max(100).optional(),
+    issuePurpose: z.string().max(100).optional(),
+    matType: z.string().max(20).optional(),
+    lines: z
+      .array(
+        z.object({
+          toolOrGaugeNo: z.string().min(1),
+          issueQty: z.number().min(1),
+          // Optional on wire — API defaults to toolOrGaugeNo (PART_NO is NOT NULL in ERP)
+          partNo: z.string().min(1).max(50).optional(),
+          machine: z.string().max(50).optional(),
+          processName: z.string().max(100).optional(),
+          remarks: z.string().max(100).optional(),
+          serialNo: z.number().int().optional(),
+          returnable: z.enum(["Yes", "No"]).or(z.string().max(5)).optional(),
+          price: z.number().min(0).optional(),
+        })
+      )
+      .min(1, "At least one line item is required"),
+  })
+  .superRefine((data, ctx) => {
+    const opt = (data.issueOption ?? "").toLowerCase();
+    if (opt === "customer" && !(data.custCode ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "custCode is required when issueOption is Customer",
+        path: ["custCode"],
+      });
+    }
+  });
+
+export const ToolsIssueUpdateSchema = z.object({
+  receiveName: z.string().min(1).max(50).optional(),
+  receiveNameTwo: z.string().max(50).optional().nullable(),
+  subCode: z.string().max(10).optional().nullable(),
+  supCode: z.string().max(10).optional().nullable(),
+  custCode: z.string().max(12).optional().nullable(),
+  empId: z.coerce.number().int().optional(),
+  dueDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  issueOption: z.string().max(30).optional(),
+  dcRefNo: z.string().max(20).optional().nullable(),
   returnable: z.enum(["Yes", "No"]).or(z.string().max(5)).optional(),
-  transportName: z.string().max(50).optional(),
-  vehicleNo: z.string().max(25).optional(),
-  comments: z.string().max(100).optional(),
-  lobType: z.string().min(1).max(50),
-  poOrderNo: z.string().max(15).optional(),
-  fromUnit: z.string().max(15).optional(),
-  itemType: z.string().max(100).optional(),
+  transportName: z.string().max(50).optional().nullable(),
+  vehicleNo: z.string().max(25).optional().nullable(),
+  comments: z.string().max(100).optional().nullable(),
+  lobType: z.string().min(1).max(50).optional(),
+  poOrderNo: z.string().max(15).optional().nullable(),
+  fromUnit: z.string().max(15).optional().nullable(),
+  itemType: z.string().max(100).optional().nullable(),
+  issuePurpose: z.string().max(100).optional().nullable(),
+  matType: z.string().max(20).optional().nullable(),
   lines: z
     .array(
       z.object({
-        toolOrGaugeNo: z.string().min(1),
-        issueQty: z.number().min(1),
-        // Optional on wire — API defaults to toolOrGaugeNo (PART_NO is NOT NULL in ERP)
-        partNo: z.string().min(1).max(50).optional(),
-        machine: z.string().max(50).optional(),
-        processName: z.string().max(100).optional(),
-        remarks: z.string().max(100).optional(),
-        serialNo: z.number().int().optional(),
-        returnable: z.enum(["Yes", "No"]).or(z.string().max(5)).optional(),
-        price: z.number().min(0).optional(),
+        rowId: z.number().int().positive(),
+        remarks: z.string().max(100).optional().nullable(),
+        machine: z.string().max(50).optional().nullable(),
+        processName: z.string().max(100).optional().nullable(),
       })
     )
-    .min(1, "At least one line item is required"),
+    .optional(),
 });
 
 // ── Tools Receive ─────────────────────────────────────────────────
@@ -229,6 +298,8 @@ export const ToolsReceiveCreateSchema = z.object({
   poOrderNo: z.string().max(15).optional(),
   location: z.string().max(50).optional(),
   geNo: z.string().max(20).optional(),
+  geDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  invoiceNo: z.string().max(25).optional(),
   remarks: z.string().max(30).optional(),
   lines: z
     .array(
@@ -310,10 +381,31 @@ export const CalibIssueCreateSchema = z.object({
     .min(1, "Select at least one tool"),
 });
 
+export const CalibIssueUpdateSchema = z.object({
+  receiveName: z.string().max(25).optional().nullable(),
+  subCode: z.string().max(10).optional().nullable(),
+  issueDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  issueFor: z.string().max(25).optional(),
+  toolsPoNo: z.string().max(20).optional().nullable(),
+});
+
 // ── Calibration Results Update ───────────────────────────────────
+// ERP-aligned statuses + legacy PASSED/FAILED kept for existing data.
+export const CALIB_RESULT_STATUSES = [
+  "AVAILABLE FOR USE",
+  "PASSED",
+  "FAILED",
+  "WORN OUT",
+  "BROKEN",
+  "REJECTED",
+  "NOT IN USE",
+  "OUT OF SERVICE",
+  "RECALIBRATED",
+] as const;
+
 export const CalibResultsUpdateSchema = z.object({
   toolOrGaugeNo: z.string().min(1),
-  result: z.enum(["PASSED", "FAILED", "RECALIBRATED", "AVAILABLE FOR USE", "OUT OF SERVICE"]),
+  result: z.enum(CALIB_RESULT_STATUSES),
   remarks: z.string().max(500).optional(),
   nextCDate: z.string().datetime({ offset: true }).or(z.string().date()),
   calibratedDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
@@ -324,6 +416,17 @@ export const CalibResultsUpdateSchema = z.object({
   comments: z.string().max(200).optional(),
   location: z.string().max(50).optional(),
   locationName: z.string().max(100).optional(),
+  /** UI-only observed specs packed into short ERP text cols (OTHERS table not in app Prisma). */
+  observedSpecs: z
+    .array(
+      z.object({
+        parameter: z.string().max(50),
+        obsMin: z.string().max(20).optional(),
+        obsMax: z.string().max(20).optional(),
+        note: z.string().max(40).optional(),
+      })
+    )
+    .optional(),
 });
 
 // ── Calibration Receive ───────────────────────────────────────────
@@ -336,7 +439,8 @@ export const CalibReceiveCreateSchema = z.object({
     .array(
       z.object({
         toolOrGaugeNo: z.string().min(1),
-        qty: z.number().min(0),
+        /** Must be at least 1 — zero-qty receive is not allowed */
+        qty: z.number().min(1, "Quantity must be at least 1"),
         price: z.number().min(0),
         serialNo: z.number().int().optional().nullable(),
         description: z.string().max(50).optional().nullable(),

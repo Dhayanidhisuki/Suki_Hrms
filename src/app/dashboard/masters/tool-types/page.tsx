@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Trash2, Edit2, Check, X, Eye, Tag, Layers, FolderTree, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Eye, Tag, Layers, FolderTree, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -9,7 +9,9 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { useSuccessOverlay } from "@/components/SuccessOverlay";
+import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
+import { toastSuccess, toastError } from "@/lib/appToast";
+import { downloadExcel } from "@/lib/downloadExcel";
 
 interface ToolsGroup {
   id: number;
@@ -41,13 +43,11 @@ interface ToolsName {
 }
 
 export default function ToolsNameForTypePage() {
-  const { showSuccess } = useSuccessOverlay();
   const [items, setItems] = useState<ToolsName[]>([]);
   const [groups, setGroups] = useState<ToolsGroup[]>([]);
   const [types, setTypes] = useState<ToolsTypeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [bannerMsg, setBannerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<ToolsName | null>(null);
@@ -108,10 +108,10 @@ export default function ToolsNameForTypePage() {
     if (!confirm("Are you sure you want to delete this tools name?")) return;
     const res = await apiDelete(`/api/lookups/tool-types/${id}`);
     if (res.error) {
-      setBannerMsg({ type: "error", text: String(res.error.message) });
+      toastError(String(res.error.message));
       return;
     }
-    setBannerMsg({ type: "success", text: "Tools name deleted successfully." });
+    toastSuccess("Tools name deleted successfully.");
     loadData();
   };
 
@@ -135,21 +135,16 @@ export default function ToolsNameForTypePage() {
       prefixItemNo: prefixItemNo || undefined,
     };
 
-    setBannerMsg(null);
     const res = editItem
       ? await apiPut(`/api/lookups/tool-types/${editItem.id}`, payload)
       : await apiPost("/api/lookups/tool-types", payload);
 
     if (res.error) {
-      setBannerMsg({ type: "error", text: String(res.error.message) });
+      toastError(String(res.error.message));
       return;
     }
 
-    setBannerMsg({
-      type: "success",
-      text: editItem ? "Tools name updated." : "Tools name created.",
-    });
-    showSuccess({
+    toastSuccess({
       title: "Record saved",
       message: editItem ? "Tools name updated successfully." : "Tools name created successfully.",
       detail: name.trim() || undefined,
@@ -168,27 +163,31 @@ export default function ToolsNameForTypePage() {
     );
   });
 
+  const handleExportExcel = () => {
+    downloadExcel({
+      filename: "tools_name_for_type",
+      sheetName: "Tools Names",
+      columns: [
+        { key: "rowId", label: "Ref No" },
+        { key: "groupName", label: "Tools Group" },
+        { key: "typeName", label: "Tools Type" },
+        { key: "name", label: "Tools Name" },
+        { key: "isAutoGenCd", label: "Is Auto Gen" },
+        { key: "prefixItemNo", label: "Item Prefix" },
+        { key: "creatUserIdCd", label: "Created By" },
+        { key: "creatDt", label: "Created Date", value: (r) => (r.creatDt ? String(r.creatDt).split("T")[0] : "") },
+      ],
+      rows: filtered,
+    });
+    toastSuccess("Excel downloaded.");
+  };
+
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto px-7 py-6">
-          {bannerMsg && (
-            <div
-              className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
-                bannerMsg.type === "success"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {bannerMsg.text}
-              <button onClick={() => setBannerMsg(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          )}
-
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -198,12 +197,14 @@ export default function ToolsNameForTypePage() {
                 TOOLS_TYPE — reusable item/tool names linked to Tools Group and Tools Type (ERP Item Name for Type)
               </p>
             </div>
-            <RoleGate permission="canEditMaster">
-              <Button onClick={handleOpenAdd} variant="primary" className="group">
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                Add Tools Name
-              </Button>
-            </RoleGate>
+            <div className="flex items-center gap-2">
+              <RoleGate permission="canEditMaster">
+                <Button onClick={handleOpenAdd} variant="primary" className="group">
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+                  Add Tools Name
+                </Button>
+              </RoleGate>
+            </div>
           </div>
 
           <ModuleKpiRow
@@ -251,21 +252,36 @@ export default function ToolsNameForTypePage() {
             ]}
           />
 
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 mb-6">
-            <div className="relative max-w-sm">
-              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search name, type, group, prefix..."
-                className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-              />
-            </div>
-          </div>
-
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 animate-fade-in">
+          <MasterTableCard
+            toolbar={
+              <>
+                <MasterSearchInput
+                  id="tool-types-search-input"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search name, type, group, prefix..."
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    title="Export Excel"
+                    onClick={handleExportExcel}
+                    disabled={loading || filtered.length === 0}
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    Excel
+                  </Button>
+                </div>
+              </>
+            }
+          >
             {loading ? (
-              <TableSkeleton rows={6} />
+              <div className="p-4">
+                <TableSkeleton rows={6} />
+              </div>
             ) : (
               <div className="overflow-auto">
                 <table className="w-full text-sm">
@@ -343,7 +359,7 @@ export default function ToolsNameForTypePage() {
                 </table>
               </div>
             )}
-          </div>
+          </MasterTableCard>
         </main>
       </div>
 
@@ -358,9 +374,9 @@ export default function ToolsNameForTypePage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSave} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Tools Group *
                 </label>
                 <select
@@ -369,7 +385,7 @@ export default function ToolsNameForTypePage() {
                     setItemGroupId(Number(e.target.value));
                     setItemTypeId("");
                   }}
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-medium"
+                  className="form-control font-medium"
                 >
                   <option value="">Select group</option>
                   {groups.map((g) => (
@@ -382,13 +398,13 @@ export default function ToolsNameForTypePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Tools Type *
                 </label>
                 <select
                   value={itemTypeId}
                   onChange={(e) => setItemTypeId(Number(e.target.value))}
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-medium"
+                  className="form-control font-medium"
                 >
                   <option value="">Select type</option>
                   {filteredTypes.map((t) => (
@@ -401,41 +417,41 @@ export default function ToolsNameForTypePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                <label className="form-label">
                   Tools Name *
                 </label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. SURFACE TABLE / MICRO METER"
-                  className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+                  className="form-control"
                 />
                 {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="form-grid">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Is Auto Generate Code?
                   </label>
                   <select
                     value={isAutoGenCd}
                     onChange={(e) => setIsAutoGenCd(e.target.value)}
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-medium"
+                    className="form-control font-medium"
                   >
                     <option>Yes</option>
                     <option>No</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
+                  <label className="form-label">
                     Item Prefix
                   </label>
                   <input
                     value={prefixItemNo}
                     onChange={(e) => setPrefixItemNo(e.target.value)}
                     placeholder="e.g. ST / MM"
-                    className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono"
+                    className="form-control font-mono"
                   />
                 </div>
               </div>

@@ -19,13 +19,16 @@ import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import { ModuleKpiRow, ModuleKpiItem } from "@/app/dashboard/components/ModuleKpiRow";
 
-export const HISTORY_CARD_NAV: {
+export type HistoryCardNavItem = {
   href: string;
   label: string;
   short: string;
   icon: LucideIcon;
   description: string;
-}[] = [
+};
+
+/** Primary module tabs — always in the segmented control */
+export const HISTORY_CARD_PRIMARY_NAV: HistoryCardNavItem[] = [
   {
     href: "/dashboard/tools-history-card",
     label: "History Card",
@@ -61,6 +64,10 @@ export const HISTORY_CARD_NAV: {
     icon: ArrowDownLeft,
     description: "Tool return / receive history",
   },
+];
+
+/** Card-scoped destinations — surface in the detail panel action grid */
+export const HISTORY_CARD_SECONDARY_NAV: HistoryCardNavItem[] = [
   {
     href: "/dashboard/tools-history-card/calibration",
     label: "Calibration Records",
@@ -91,10 +98,23 @@ export const HISTORY_CARD_NAV: {
   },
 ];
 
+/** Full nav list (primary + secondary) for deep-links and legacy consumers */
+export const HISTORY_CARD_NAV: HistoryCardNavItem[] = [
+  ...HISTORY_CARD_PRIMARY_NAV,
+  ...HISTORY_CARD_SECONDARY_NAV,
+];
+
+/** Detail-panel actions: Status → PO (excludes History Card hub itself) */
+export const HISTORY_CARD_DETAIL_ACTIONS: HistoryCardNavItem[] = HISTORY_CARD_NAV.filter(
+  (n) => n.href !== "/dashboard/tools-history-card"
+);
+
 interface HistoryCardShellProps {
   title: string;
   subtitle?: string;
   kpis?: ModuleKpiItem[];
+  /** Compact label+number KPI cards (History Card hub). Default keeps icon/badge layout. */
+  kpiVariant?: "default" | "simple";
   actions?: ReactNode;
   toolbar?: ReactNode;
   children: ReactNode;
@@ -107,15 +127,21 @@ function navActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function secondaryActiveItem(pathname: string) {
+  return HISTORY_CARD_SECONDARY_NAV.find((item) => navActive(pathname, item.href));
+}
+
 export function HistoryCardShell({
   title,
   subtitle,
   kpis,
+  kpiVariant = "default",
   actions,
   toolbar,
   children,
 }: HistoryCardShellProps) {
   const pathname = usePathname();
+  const activeSecondary = secondaryActiveItem(pathname);
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
@@ -136,35 +162,40 @@ export function HistoryCardShell({
             {actions}
           </div>
 
-          <nav
-            aria-label="History Card module"
-            className="mb-6 -mx-1 overflow-x-auto"
-          >
-            <div className="flex gap-1.5 min-w-max px-1 pb-1">
-              {HISTORY_CARD_NAV.map((item) => {
-                const Icon = item.icon;
-                const active = navActive(pathname, item.href);
+          <nav aria-label="History Card module" className="mb-6">
+            <div className="inline-flex max-w-full items-stretch overflow-x-auto rounded-[12px] border-[0.5px] border-[var(--border-main)] bg-[var(--bg-surface)] p-1 gap-0.5">
+              {HISTORY_CARD_PRIMARY_NAV.map((item) => {
+                const active = !activeSecondary && navActive(pathname, item.href);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     title={item.description}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                    className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-3.5 text-xs font-semibold transition-colors ${
                       active
-                        ? "bg-[var(--primary)] text-white border-[var(--primary)] shadow-sm"
-                        : "bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span className="hidden lg:inline">{item.label}</span>
-                    <span className="lg:hidden">{item.short}</span>
+                    <span className="hidden lg:inline whitespace-nowrap">{item.label}</span>
+                    <span className="lg:hidden whitespace-nowrap">{item.short}</span>
                   </Link>
                 );
               })}
+              {activeSecondary && (
+                <Link
+                  href={activeSecondary.href}
+                  title={activeSecondary.description}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-3.5 text-xs font-semibold bg-[var(--primary)] text-white"
+                >
+                  <span className="hidden lg:inline whitespace-nowrap">{activeSecondary.label}</span>
+                  <span className="lg:hidden whitespace-nowrap">{activeSecondary.short}</span>
+                </Link>
+              )}
             </div>
           </nav>
 
-          {kpis && kpis.length > 0 && <ModuleKpiRow items={kpis} />}
+          {kpis && kpis.length > 0 && <ModuleKpiRow items={kpis} variant={kpiVariant} />}
 
           {toolbar && <div className="mb-5">{toolbar}</div>}
 
@@ -188,7 +219,7 @@ export function HistoryCardSearch({
   hint?: string;
 }) {
   return (
-    <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-4">
+    <div className="bg-[var(--bg-card)] rounded-[12px] border-[0.5px] border-[var(--border-main)] p-4">
       <div className="relative max-w-md">
         <svg
           className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2"
@@ -204,7 +235,7 @@ export function HistoryCardSearch({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full text-sm border border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+          className="w-full text-sm border-[0.5px] border-[var(--border-main)] rounded-lg pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
         />
       </div>
       {hint && <p className="text-xs text-[var(--text-muted)] mt-2">{hint}</p>}
@@ -218,20 +249,22 @@ export function HistoryCardPanel({
   actions,
   children,
   className = "",
+  bodyClassName = "p-5",
 }: {
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  bodyClassName?: string;
 }) {
   return (
     <div
-      className={`bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] overflow-hidden ${className}`}
+      className={`bg-[var(--bg-card)] rounded-[12px] border-[0.5px] border-[var(--border-main)] overflow-hidden ${className}`}
     >
       {(title || actions) && (
-        <div className="px-5 py-3.5 border-b border-[var(--border-main)] flex items-center justify-between gap-3 bg-[var(--bg-subtle)]/60">
-          <div>
+        <div className="px-5 py-3.5 border-b-[0.5px] border-[var(--border-main)] flex items-center justify-between gap-3 bg-[var(--bg-subtle)]/60">
+          <div className="min-w-0">
             {title && (
               <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider">
                 {title}
@@ -242,7 +275,7 @@ export function HistoryCardPanel({
           {actions}
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div className={bodyClassName}>{children}</div>
     </div>
   );
 }
