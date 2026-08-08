@@ -246,13 +246,22 @@ export async function buildToolUnitHistory(tool: {
   }
 
   // Open calibration issue → unit STATUS should be ISSUE FOR CALIBRATION
+  // Closed when resultStatus is set OR calibStatus is Done/Failed (Results Update posted).
   const openCalibBySerial = new Map<number | "any", true>();
   for (const line of calibLines) {
     const st = String(line.status ?? "").toUpperCase();
     const calibSt = String(line.calibrationStatus ?? "").toUpperCase();
     const resultSt = String(line.resultStatus ?? "").trim();
+    const lineClosed =
+      !!resultSt ||
+      calibSt === "DONE" ||
+      calibSt === "FAILED" ||
+      st === "CALIBRATED" ||
+      st.includes("AVAILABLE FOR USE") ||
+      st === "PASSED" ||
+      st === "RECALIBRATED";
     const isOpen =
-      !resultSt &&
+      !lineClosed &&
       (st.includes("ISSUE FOR CALIBRATION") ||
         st === "ISSUED" ||
         st === "OPEN" ||

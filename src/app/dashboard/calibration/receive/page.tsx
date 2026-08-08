@@ -611,7 +611,7 @@ export default function CalibrationReceivePage() {
                         </span>
                       </p>
                       <p className="text-[10px] mt-0.5">
-                        Item Value = Qty × Price (from tool master; edit Price if lab charges differ). Tax via Finance Posting.
+                        Item Value = Qty × Price (from tool master; edit Price if lab charges differ). Tax/ledger posting remains in ERP Finance (not in Tools).
                       </p>
                     </div>
                     <Button type="submit" disabled={submitting || lineDrafts.every((l) => !l.selected)}>

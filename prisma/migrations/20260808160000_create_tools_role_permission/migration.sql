@@ -1,0 +1,31 @@
+-- Additive: app-owned role → permission matrix for Settings CRUD.
+-- Does NOT alter TOOLS_APP_USER or any ERP table.
+
+BEGIN TRY
+BEGIN TRAN;
+
+IF OBJECT_ID(N'[dbo].[TOOLS_ROLE_PERMISSION]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[TOOLS_ROLE_PERMISSION] (
+        [id] INT NOT NULL IDENTITY(1,1),
+        [role] NVARCHAR(50) NOT NULL,
+        [permission_key] NVARCHAR(50) NOT NULL,
+        [allowed] BIT NOT NULL CONSTRAINT [TOOLS_ROLE_PERMISSION_allowed_df] DEFAULT 0,
+        [created_at] DATETIME2 NOT NULL CONSTRAINT [TOOLS_ROLE_PERMISSION_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+        [updated_at] DATETIME2 NOT NULL,
+        CONSTRAINT [TOOLS_ROLE_PERMISSION_pkey] PRIMARY KEY CLUSTERED ([id])
+    );
+
+    CREATE UNIQUE NONCLUSTERED INDEX [TOOLS_ROLE_PERMISSION_role_perm_key]
+        ON [dbo].[TOOLS_ROLE_PERMISSION]([role], [permission_key]);
+
+    CREATE NONCLUSTERED INDEX [TOOLS_ROLE_PERMISSION_role_idx]
+        ON [dbo].[TOOLS_ROLE_PERMISSION]([role]);
+END
+
+COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH;

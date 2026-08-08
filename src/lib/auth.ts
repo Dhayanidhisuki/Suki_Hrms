@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SessionData } from "./session";
-import { rolePermissions } from "./rolePermissions";
+import { roleHasPermission } from "./permissionsCache";
 
 const UNAUTHORIZED = NextResponse.json(
   { success: false, error: "Unauthorized" },
@@ -29,30 +29,20 @@ export async function requireSession(
 }
 
 /**
- * Require a role permission from rolePermissions.
+ * Require a role permission from TOOLS_ROLE_PERMISSION (cached),
+ * with hardcoded rolePermissions.ts fallback via permissionsCache.
  * Unknown permission keys (and legacy "canManageTools") map to canEditMaster.
+ * MANAGE_USERS maps to canManageUsers.
  */
-const FULL_ACCESS_ROLES = new Set([
-  "Tools Admin",
-  "Administrator",
-  "Admin",
-  "admin",
-]);
-
 export async function requirePermission(
   session: SessionData,
   permission: string
 ): Promise<{ ok: false; response: Response } | { ok: true }> {
-  if (
-    session.userId.toLowerCase() === "admin" ||
-    FULL_ACCESS_ROLES.has(session.roleName)
-  ) {
+  if (session.userId.toLowerCase() === "admin") {
     return { ok: true };
   }
 
-  const key = permission === "canManageTools" ? "canEditMaster" : permission;
-  const perms = rolePermissions[session.roleName] ?? rolePermissions.Viewer;
-  const allowed = Boolean((perms as Record<string, boolean>)[key]);
+  const allowed = await roleHasPermission(session.roleName, permission);
   if (!allowed) {
     return { ok: false, response: FORBIDDEN };
   }

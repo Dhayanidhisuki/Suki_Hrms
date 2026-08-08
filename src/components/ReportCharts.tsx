@@ -417,12 +417,15 @@ export function ReportProgressChart({
   detailHref?: string;
   className?: string;
 }) {
-  const available = Math.max(0, totalTools - currentlyIssued - underRepairOrCal);
-  const pct = (n: number) => (totalTools > 0 ? Math.round((n / totalTools) * 100) : 0);
+  const issued = Math.max(0, Math.min(currentlyIssued, totalTools));
+  const underCal = Math.max(0, Math.min(underRepairOrCal, Math.max(0, totalTools - issued)));
+  const available = Math.max(0, totalTools - issued - underCal);
+  const pct = (n: number) =>
+    totalTools > 0 ? Math.min(100, Math.max(0, Math.round((n / totalTools) * 100))) : 0;
 
   const availablePct = pct(available);
-  const issuedPct = pct(currentlyIssued);
-  const underCalPct = pct(underRepairOrCal);
+  const issuedPct = pct(issued);
+  const underCalPct = pct(underCal);
 
   const periodLabel = useMemo(() => {
     const to = new Date();
@@ -464,22 +467,22 @@ export function ReportProgressChart({
       name: "Issued",
       short: "Issued",
       value: issuedPct,
-      count: currentlyIssued,
+      count: issued,
       fill: PROGRESS_COLORS.issued,
     },
     {
       name: "Under Cal",
       short: "Under Cal",
       value: underCalPct,
-      count: underRepairOrCal,
+      count: underCal,
       fill: PROGRESS_COLORS.underCal,
     },
   ];
 
   const legend = [
     { label: "Available", value: available, color: PROGRESS_COLORS.available },
-    { label: "Issued", value: currentlyIssued, color: PROGRESS_COLORS.issued },
-    { label: "Under Cal", value: underRepairOrCal, color: PROGRESS_COLORS.underCal },
+    { label: "Issued", value: issued, color: PROGRESS_COLORS.issued },
+    { label: "Under Cal", value: underCal, color: PROGRESS_COLORS.underCal },
   ];
 
   return (
@@ -521,6 +524,7 @@ export function ReportProgressChart({
           <>
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
+                key={`progress-${available}-${issued}-${underCal}-${totalTools}`}
                 cx="42%"
                 cy="50%"
                 innerRadius="38%"
@@ -558,7 +562,7 @@ export function ReportProgressChart({
 
             <div className="absolute left-[42%] top-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
               <div className="text-[11px] text-[var(--text-muted)] font-medium leading-none mb-1.5">
-                Completed
+                Available
               </div>
               <div className="text-[34px] font-bold tabular-nums tracking-tight text-[var(--text-primary)] leading-none">
                 {displayPct}%

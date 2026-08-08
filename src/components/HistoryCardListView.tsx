@@ -32,6 +32,8 @@ interface HistoryCardListViewProps {
   emptyText?: string;
   rowKey?: (row: Record<string, unknown>, idx: number) => string;
   filterHint?: string;
+  /** Optional header actions (e.g. cross-links to GRN / PO-linked Receive) */
+  actions?: ReactNode;
 }
 
 export function HistoryCardListView({
@@ -46,6 +48,7 @@ export function HistoryCardListView({
   emptyText = "No records found.",
   rowKey,
   filterHint,
+  actions,
 }: HistoryCardListViewProps) {
   const searchParams = useSearchParams();
   const toolFromUrl = (searchParams.get("tool") ?? "").trim();
@@ -69,6 +72,7 @@ export function HistoryCardListView({
       title={title}
       subtitle={subtitle}
       kpis={kpis}
+      actions={actions}
       toolbar={
         <HistoryCardSearch
           value={query}

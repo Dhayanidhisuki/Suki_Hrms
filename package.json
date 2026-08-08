@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo-users": "tsx prisma/seed-demo-users.ts",
+    "db:seed:role-permissions": "tsx prisma/seed-role-permissions.ts",
     "tunnel:cloudflare": "bash scripts/start-cloudflare-tunnel.sh"
   },
   "prisma": {

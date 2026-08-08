@@ -13,10 +13,12 @@ import {
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
-import { apiGet } from "@/lib/apiClient";
+import { apiGet, apiPut } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
+import { useSession } from "@/lib/SessionContext";
+import { toastError, toastSuccess } from "@/lib/appToast";
 
 interface PoLine {
   rowId: number;
@@ -29,6 +31,8 @@ interface PoLine {
   uom: string | null;
   toolRefNo: number | null;
   tool?: { refNo: number; toolOrGaugeNo: string | null; name: string | null } | null;
+  expLedgerCode?: string | null;
+  budgetCode?: string | null;
 }
 
 interface PurchaseOrder {
@@ -45,6 +49,8 @@ interface PurchaseOrder {
   lineCount: number;
   toolLineCount: number;
   amount: number;
+  paymentStatus?: string | null;
+  paymentDate?: string | null;
   lines: PoLine[];
 }
 
@@ -75,6 +81,9 @@ function supplierLabel(po: PurchaseOrder): string {
 }
 
 export default function PurchaseOrderPage() {
+  const { can } = useSession();
+  const canCreate = can("canCreatePO");
+  const canUpdateFinance = can("canUpdateFinance");
   const [items, setItems] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -85,7 +94,17 @@ export default function PurchaseOrderPage() {
   const [toolsOnly, setToolsOnly] = useState(true);
   const [suppliers, setSuppliers] = useState<SupplierOpt[]>([]);
   const [expandedPo, setExpandedPo] = useState<string | null>(null);
+  const [payingPo, setPayingPo] = useState<string | null>(null);
   const pageSize = 50;
+
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get("search");
+      if (q?.trim()) setSearchQuery(q.trim());
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const load = useCallback(
     async (p = page, q = searchQuery) => {
@@ -148,7 +167,7 @@ export default function PurchaseOrderPage() {
         icon: FileText,
         iconBg: "bg-[var(--primary-light)]",
         iconColor: "text-[var(--primary)]",
-        badge: { label: "Read-only", type: "info" as const },
+        badge: { label: canCreate ? "Writable" : "Read-only", type: "info" as const },
       },
       {
         id: "po-page-open",
@@ -179,7 +198,35 @@ export default function PurchaseOrderPage() {
         iconColor: "text-emerald-600 dark:text-emerald-400",
       },
     ];
-  }, [items, total, page]);
+  }, [items, total, page, canCreate]);
+
+  const updatePayment = useCallback(
+    async (poOrderNo: string, paymentStatus: "UNPAID" | "PARTIAL" | "PAID") => {
+      setPayingPo(poOrderNo);
+      const res = await apiPut<{
+        ok?: boolean;
+        finance?: { paymentStatus: string; paymentDate: string | null };
+      }>(`/api/po/${encodeURIComponent(poOrderNo)}/finance`, { paymentStatus });
+      setPayingPo(null);
+      if (res.error) {
+        toastError(res.error.message);
+        return;
+      }
+      toastSuccess(`Payment → ${paymentStatus}`);
+      setItems((prev) =>
+        prev.map((p) =>
+          p.poOrderNo === poOrderNo
+            ? {
+                ...p,
+                paymentStatus: res.data?.finance?.paymentStatus ?? paymentStatus,
+                paymentDate: res.data?.finance?.paymentDate ?? p.paymentDate,
+              }
+            : p
+        )
+      );
+    },
+    []
+  );
 
   const columns: DataTableColumn<PurchaseOrder>[] = useMemo(
     () => [
@@ -233,6 +280,16 @@ export default function PurchaseOrderPage() {
         cell: (po) => <StatusBadge status={po.statusLabel} />,
       },
       {
+        id: "payment",
+        header: "Payment",
+        cell: (po) =>
+          po.paymentStatus ? (
+            <StatusBadge status={po.paymentStatus} />
+          ) : (
+            <span className="text-[var(--text-muted)] text-xs">—</span>
+          ),
+      },
+      {
         id: "actions",
         header: "",
         cell: (po) => (
@@ -263,17 +320,26 @@ export default function PurchaseOrderPage() {
                 Purchase Order
               </h1>
               <p className="text-sm text-[var(--text-muted)] mt-0.5">
-                Read-only reference from{" "}
+                Shared{" "}
                 <span className="font-mono text-xs">COMMON_PURCHASE_ORDER</span>
                 {" · "}
-                create/edit stays in ERP Purchasing
+                Tools create uses the same ERP numbering / tables
               </p>
             </div>
-            <Link href="/dashboard/po-linked/receive">
-              <Button type="button" variant="primary">
-                Goods Receipt Note
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2 flex-wrap">
+              {canCreate ? (
+                <Link href="/dashboard/po-linked/purchase-order/create">
+                  <Button type="button" variant="primary">
+                    Create PO
+                  </Button>
+                </Link>
+              ) : null}
+              <Link href="/dashboard/po-linked/receive">
+                <Button type="button" variant={canCreate ? "outline" : "primary"}>
+                  Goods Receipt Note
+                </Button>
+              </Link>
+            </div>
           </div>
 
           <ModuleKpiRow items={kpis} />
@@ -358,7 +424,7 @@ export default function PurchaseOrderPage() {
               }
               renderExpanded={(po) => (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-4 text-xs text-[var(--text-muted)]">
+                  <div className="flex flex-wrap gap-4 text-xs text-[var(--text-muted)] items-center">
                     <span>
                       Valid till:{" "}
                       <span className="font-mono text-[var(--text-secondary)]">
@@ -373,19 +439,44 @@ export default function PurchaseOrderPage() {
                       LOB:{" "}
                       <span className="text-[var(--text-secondary)]">{po.lobType || "—"}</span>
                     </span>
+                    <span>
+                      Payment:{" "}
+                      <span className="text-[var(--text-secondary)]">
+                        {po.paymentStatus || "—"}
+                        {po.paymentDate ? ` · ${dateKey(po.paymentDate)}` : ""}
+                      </span>
+                    </span>
+                    {canUpdateFinance ? (
+                      <span className="flex flex-wrap gap-1.5 ml-auto" onClick={(e) => e.stopPropagation()}>
+                        {(["UNPAID", "PARTIAL", "PAID"] as const).map((st) => (
+                          <Button
+                            key={st}
+                            type="button"
+                            size="sm"
+                            variant={po.paymentStatus === st ? "primary" : "outline"}
+                            disabled={payingPo === po.poOrderNo}
+                            onClick={() => void updatePayment(po.poOrderNo, st)}
+                          >
+                            {st}
+                          </Button>
+                        ))}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Item", "Description", "Qty", "UOM", "Price", "Tool"].map((h) => (
-                            <th
-                              key={h}
-                              className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3"
-                            >
-                              {h}
-                            </th>
-                          ))}
+                          {["Item", "Description", "Qty", "UOM", "Price", "Ledger", "Budget", "Tool"].map(
+                            (h) => (
+                              <th
+                                key={h}
+                                className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3"
+                              >
+                                {h}
+                              </th>
+                            )
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
@@ -403,6 +494,12 @@ export default function PurchaseOrderPage() {
                               {line.price != null ? formatInr(line.price, po.currency) : "—"}
                             </td>
                             <td className="py-2 px-3 font-mono text-xs">
+                              {line.expLedgerCode || "—"}
+                            </td>
+                            <td className="py-2 px-3 font-mono text-xs">
+                              {line.budgetCode || "—"}
+                            </td>
+                            <td className="py-2 px-3 font-mono text-xs">
                               {line.tool?.toolOrGaugeNo ||
                                 (line.toolRefNo != null ? `#${line.toolRefNo}` : "—")}
                             </td>
@@ -410,7 +507,7 @@ export default function PurchaseOrderPage() {
                         ))}
                         {po.lines.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                            <td colSpan={8} className="py-6 text-center text-xs text-[var(--text-muted)]">
                               No line items.
                             </td>
                           </tr>

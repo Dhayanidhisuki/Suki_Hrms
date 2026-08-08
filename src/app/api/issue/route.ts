@@ -143,8 +143,18 @@ export async function POST(req: NextRequest) {
     itemType,
     issuePurpose,
     matType,
+    requisitionPending,
+    reqNo,
     lines,
   } = data;
+
+  const againstReq =
+    requisitionPending === "Yes" && Boolean((reqNo ?? "").trim());
+  const reqNoTrim = (reqNo ?? "").trim();
+  // Keep ERP audit trail of requisition on the DC (COMMENTS max 100)
+  const commentsWithReq = againstReq
+    ? `Req:${reqNoTrim}${comments ? ` | ${comments}` : ""}`.slice(0, 100)
+    : comments || null;
 
   try {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
@@ -186,13 +196,13 @@ export async function POST(req: NextRequest) {
           returnable: headerReturnable,
           transportName: transportName || null,
           vehicleNo: vehicleNo || null,
-          comments: comments || null,
+          comments: commentsWithReq,
           lobType,
           poOrderNo: poOrderNo || null,
           fromUnit: fromUnit || null,
           itemType: itemType || null,
           issuePurpose: issuePurpose || null,
-          matType: matType || null,
+          matType: matType || (againstReq ? "TOOLS" : null),
           status: "Active",
           creatUserIdCd: erpActor,
           creatDt: new Date(),
@@ -292,6 +302,104 @@ export async function POST(req: NextRequest) {
           }
         } catch (err) {
           console.warn("Serial status update on issue skipped:", err);
+        }
+      }
+
+      // ERP Requisition Pending for Tools → Issue For Tools write-back
+      if (againstReq) {
+        const toNum = (v: unknown) => {
+          if (v == null || v === "") return 0;
+          const n = typeof v === "number" ? v : Number(v);
+          return Number.isFinite(n) ? n : 0;
+        };
+        const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
+
+        const allOnReq = await tx.materialRequisitionTrans.findMany({
+          where: { reqNo: reqNoTrim },
+        });
+        if (allOnReq.length === 0) {
+          throw new Error(
+            `Requisition ${reqNoTrim} not found on MATERIAL_REQUISITION_TRANS — cannot write back issue qty.`
+          );
+        }
+
+        for (const line of lines) {
+          const toolKey = norm(line.toolOrGaugeNo);
+          const matched = allOnReq.filter((rl) => norm(rl.toolOrGaugeNo) === toolKey);
+          if (matched.length === 0) {
+            throw new Error(
+              `No line for tool ${line.toolOrGaugeNo} on requisition ${reqNoTrim}. Check Req No and tool number.`
+            );
+          }
+
+          let remaining = line.issueQty;
+          const issuedNow = new Map<number, number>(); // rowId → latest ISSUE_QTY
+          for (const rl of matched) {
+            issuedNow.set(rl.rowId, toNum(rl.issueQty));
+          }
+
+          for (const rl of matched) {
+            if (remaining <= 0) break;
+            const prevIssued = issuedNow.get(rl.rowId) ?? 0;
+            const reqQty = toNum(rl.reqQty);
+            const openBal = reqQty > 0 ? Math.max(0, reqQty - prevIssued) : remaining;
+            if (reqQty > 0 && openBal <= 0) continue;
+            const apply = Math.min(remaining, openBal > 0 ? openBal : remaining);
+            const newIssued = prevIssued + apply;
+            const fulfilled = reqQty > 0 && newIssued >= reqQty;
+            await tx.materialRequisitionTrans.update({
+              where: { rowId: rl.rowId },
+              data: {
+                issueQty: newIssued,
+                status: fulfilled ? "CLOSED" : "OPEN",
+                lstUpdtUserIdCd: erpActor,
+                lstUpdtTs: new Date(),
+              },
+            });
+            issuedNow.set(rl.rowId, newIssued);
+            remaining -= apply;
+          }
+
+          // Over-issue / no open balance left — park remainder on last matched line
+          if (remaining > 0) {
+            const rl = matched[matched.length - 1];
+            const newIssued = (issuedNow.get(rl.rowId) ?? toNum(rl.issueQty)) + remaining;
+            await tx.materialRequisitionTrans.update({
+              where: { rowId: rl.rowId },
+              data: {
+                issueQty: newIssued,
+                status: "CLOSED",
+                lstUpdtUserIdCd: erpActor,
+                lstUpdtTs: new Date(),
+              },
+            });
+          }
+        }
+
+        const allReqLines = await tx.materialRequisitionTrans.findMany({
+          where: { reqNo: reqNoTrim },
+        });
+        const allFulfilled =
+          allReqLines.length > 0 &&
+          allReqLines.every((l) => {
+            const rq = toNum(l.reqQty);
+            const iq = toNum(l.issueQty);
+            return rq > 0 && iq >= rq;
+          });
+        const headerIssued = allReqLines.reduce((s, l) => s + toNum(l.issueQty), 0);
+        const headerUpdated = await tx.materialRequisitionMaster.updateMany({
+          where: { reqNo: reqNoTrim },
+          data: {
+            status: allFulfilled ? "CLOSED" : "OPEN",
+            issueQty: headerIssued,
+            lstUpdtUserIdCd: erpActor,
+            lstUpdtTs: new Date(),
+          },
+        });
+        if (headerUpdated.count === 0) {
+          throw new Error(
+            `Requisition header ${reqNoTrim} not found — line qty updated but header status was not.`
+          );
         }
       }
 

@@ -258,27 +258,58 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // ERP unit grid STATUS — result drives GAUGE_SERIAL_NO
+      // ERP unit grid STATUS — result must clear ISSUE FOR CALIBRATION on GAUGE_SERIAL_NO
+      // (lifecycle panel reads resultStatus; unit table reads serial.status — keep them in sync)
       const unitStatus = normalized.failed
         ? normalized.resultStatus.slice(0, 30)
         : "AVAILABLE FOR USE";
+      const serialWhereBase = {
+        OR: [
+          { toolOrGaugeNo },
+          ...(tool.refNo != null ? [{ toolRefNo: tool.refNo }] : []),
+        ],
+      };
+      const calibPipelineStatuses = [
+        "ISSUE FOR CALIBRATION",
+        "Under Calibration",
+        "UNDER CALIBRATION",
+        "Received",
+        "RECEIVED",
+        "Issued",
+        "ISSUED",
+      ];
       try {
         const sn = openLine?.serialNo ?? null;
+        let updatedCount = 0;
         if (sn != null) {
-          await tx.gaugeSerialNo.updateMany({
-            where: { toolOrGaugeNo, serialNo: sn },
+          const bySn = await tx.gaugeSerialNo.updateMany({
+            where: { AND: [serialWhereBase, { serialNo: sn }] },
             data: { status: unitStatus },
           });
-        } else {
-          await tx.gaugeSerialNo.updateMany({
+          updatedCount = bySn.count;
+        }
+        if (updatedCount === 0) {
+          const byPipeline = await tx.gaugeSerialNo.updateMany({
             where: {
-              toolOrGaugeNo,
-              status: {
-                in: ["ISSUE FOR CALIBRATION", "Under Calibration", "Received"],
-              },
+              AND: [serialWhereBase, { status: { in: calibPipelineStatuses } }],
             },
             data: { status: unitStatus },
           });
+          updatedCount = byPipeline.count;
+        }
+        // Single-unit tools: always sync the only serial even if status text differed
+        if (updatedCount === 0) {
+          const units = await tx.gaugeSerialNo.findMany({
+            where: serialWhereBase,
+            select: { refNo: true },
+            take: 2,
+          });
+          if (units.length === 1) {
+            await tx.gaugeSerialNo.update({
+              where: { refNo: units[0].refNo },
+              data: { status: unitStatus },
+            });
+          }
         }
       } catch (err) {
         console.warn("Serial status update on results skipped:", err);

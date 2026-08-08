@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Columns3, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Columns3, Edit2, X } from "lucide-react";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { TablePager } from "@/components/TablePager";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SelectionFilter } from "@/components/ui/SelectionFilter";
 import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
-import { apiGet } from "@/lib/apiClient";
+import { Button } from "@/components/ui/button";
+import { apiGet, apiPost } from "@/lib/apiClient";
+import { toastError, toastSuccess } from "@/lib/appToast";
+import { useSession } from "@/lib/SessionContext";
 
 type Row = Record<string, unknown>;
 
@@ -25,7 +28,8 @@ type ColumnDef = {
 const ALL_COLUMNS: ColumnDef[] = [
   { key: "toolOrGaugeNo", label: "Tool No", defaultVisible: true, emphasis: "toolNo", minWidth: "9rem" },
   { key: "supCode", label: "Supplier", defaultVisible: true, emphasis: "mono", minWidth: "7.5rem" },
-  { key: "rate", label: "Price / Rate", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8.5rem" },
+  { key: "rate", label: "Live Rate", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8.5rem" },
+  { key: "proposedRate", label: "Proposed", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8rem" },
   { key: "revNo", label: "Rev", defaultVisible: true, emphasis: "mono", minWidth: "3.5rem" },
   { key: "revDate", label: "Rev Date", defaultVisible: true, emphasis: "mono", minWidth: "6.5rem" },
   { key: "approvalStatus", label: "Approval", defaultVisible: true, emphasis: "badge", minWidth: "7rem" },
@@ -111,11 +115,14 @@ function cell(v: unknown): string {
 }
 
 export default function Page() {
+  const { can } = useSession();
+  const canPropose = can("canEditMaster") || can("canRaisePO");
   const [items, setItems] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pricingSource, setPricingSource] = useState<string>("");
   const [pricingNote, setPricingNote] = useState("");
+  const [readOnly, setReadOnly] = useState(true);
 
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
@@ -128,29 +135,70 @@ export default function Page() {
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const res = await apiGet<{
-        items?: Row[];
-        total?: number;
-        source?: string;
-        note?: string;
-        readOnly?: boolean;
-      }>("/api/pricing");
-      if (!cancelled) {
-        setItems(res.data?.items ?? []);
-        setTotal(res.data?.total ?? res.data?.items?.length ?? 0);
-        setPricingSource(res.data?.source ?? "");
-        setPricingNote(res.data?.note ?? "");
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const [editRow, setEditRow] = useState<Row | null>(null);
+  const [proposedRateInput, setProposedRateInput] = useState("");
+  const [remarksInput, setRemarksInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const res = await apiGet<{
+      items?: Row[];
+      total?: number;
+      source?: string;
+      note?: string;
+      readOnly?: boolean;
+    }>("/api/pricing");
+    setItems(res.data?.items ?? []);
+    setTotal(res.data?.total ?? res.data?.items?.length ?? 0);
+    setPricingSource(res.data?.source ?? "");
+    setPricingNote(res.data?.note ?? "");
+    setReadOnly(res.data?.readOnly !== false);
+    if (res.error) toastError(res.error.message);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const openEdit = (row: Row) => {
+    setEditRow(row);
+    const pending = row.proposedRate != null ? Number(row.proposedRate) : null;
+    const live = row.rate != null ? Number(row.rate) : null;
+    setProposedRateInput(
+      pending != null && Number.isFinite(pending)
+        ? String(pending)
+        : live != null && Number.isFinite(live)
+          ? String(live)
+          : ""
+    );
+    setRemarksInput(row.remarks != null ? String(row.remarks) : "");
+  };
+
+  const submitProposal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editRow?.rowId) return;
+    const n = Number(proposedRateInput);
+    if (!Number.isFinite(n) || n < 0) {
+      toastError("Enter a valid proposed rate");
+      return;
+    }
+    setSaving(true);
+    const res = await apiPost("/api/pricing", {
+      rowId: Number(editRow.rowId),
+      proposedRate: n,
+      remarks: remarksInput.trim() || null,
+    });
+    setSaving(false);
+    if (res.error) {
+      toastError(res.error.message);
+      return;
+    }
+    toastSuccess("Rate submitted for approval.");
+    setEditRow(null);
+    void loadData();
+  };
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -315,22 +363,36 @@ export default function Page() {
     [collapsed, groupCounts]
   );
 
-  const colSpan = Math.max(visibleColumns.length, 1);
+  const colSpan = Math.max(visibleColumns.length, 1) + (!readOnly && canPropose ? 1 : 0);
+
+  const isPendingStatus = (raw: unknown) => {
+    const s = String(raw ?? "").trim().toUpperCase();
+    return s === "PENDING" || s.includes("PEND");
+  };
 
   return (
     <SimpleMasterShell
       title="Tool Pricing Master"
       subtitle={
         pricingSource === "db"
-          ? `Live TOOLS_PRICE_MASTER — ${total.toLocaleString("en-IN")} rate rows (read-only)`
+          ? `Live TOOLS_PRICE_MASTER — ${total.toLocaleString("en-IN")} rate rows`
           : `TOOLS_PRICE_MASTER — ${total.toLocaleString("en-IN")} rates · source: ${pricingSource || "json"}`
       }
     >
       {(pricingNote || pricingSource) && (
-        <div className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50/80 dark:bg-amber-950/20 dark:border-amber-900/40 px-4 py-3 text-sm text-[var(--text-secondary)]">
-          <span className="font-semibold text-[var(--text-primary)]">Read-only.</span>{" "}
-          {pricingNote ||
-            "Rates are written via GRN / ERP. App CRUD is out of scope for now."}
+        <div className="mb-4 rounded-xl border border-[var(--border-main)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+          {readOnly ? (
+            <>
+              <span className="font-semibold text-[var(--text-primary)]">Read-only.</span>{" "}
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-[var(--text-primary)]">Propose edits.</span>{" "}
+              Live RATE is unchanged until Approval Centre approves. GRN still writes RATE directly.
+              {" "}
+            </>
+          )}
+          {pricingNote}
           {pricingSource ? (
             <span className="text-[var(--text-muted)]"> · Source: {pricingSource}</span>
           ) : null}
@@ -481,6 +543,11 @@ export default function Page() {
                         </th>
                       );
                     })}
+                    {!readOnly && canPropose ? (
+                      <th className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 text-right whitespace-nowrap">
+                        Actions
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -533,9 +600,10 @@ export default function Page() {
                         {visibleColumns.map((col) => {
                           const raw = row[col.key];
                           const isToolNo = col.key === "toolOrGaugeNo";
-                          const isRate = col.key === "rate";
+                          const isRate = col.key === "rate" || col.key === "proposedRate";
                           const isDate = col.key === "revDate" || col.key === "approvalDate" || col.key === "creatDt" || col.key === "lstUpdtTs";
                           const isBadge = col.emphasis === "badge";
+                          const pending = isPendingStatus(row.approvalStatus);
 
                           let display = "—";
                           if (isRate) display = formatRate(raw);
@@ -561,6 +629,11 @@ export default function Page() {
                                   <span className="font-mono text-xs font-bold text-[var(--text-primary)]">
                                     {display}
                                   </span>
+                                  {pending ? (
+                                    <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                                      Pending approval
+                                    </span>
+                                  ) : null}
                                   {isDup ? (
                                     <span className="text-[10px] text-[var(--text-muted)] leading-tight">
                                       {[
@@ -574,12 +647,24 @@ export default function Page() {
                                     </span>
                                   ) : null}
                                 </div>
+                              ) : col.key === "approvalStatus" && !empty ? (
+                                <StatusBadge status={raw} />
                               ) : isBadge && !empty ? (
                                 <StatusBadge status={raw} />
                               ) : empty ? (
                                 <span className="text-[var(--text-subtle)] text-xs">—</span>
-                              ) : isRate ? (
+                              ) : col.key === "rate" ? (
                                 <span className="font-mono text-xs tabular-nums text-[var(--text-primary)] font-medium">
+                                  {display}
+                                </span>
+                              ) : col.key === "proposedRate" ? (
+                                <span
+                                  className={`font-mono text-xs tabular-nums font-medium ${
+                                    pending
+                                      ? "text-amber-700 dark:text-amber-400"
+                                      : "text-[var(--text-secondary)]"
+                                  }`}
+                                >
                                   {display}
                                 </span>
                               ) : col.emphasis === "mono" ? (
@@ -592,6 +677,18 @@ export default function Page() {
                             </td>
                           );
                         })}
+                        {!readOnly && canPropose ? (
+                          <td className="py-2.5 px-3 text-right align-middle">
+                            <button
+                              type="button"
+                              title="Propose rate"
+                              onClick={() => openEdit(row)}
+                              className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors cursor-pointer"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   })}
@@ -615,6 +712,63 @@ export default function Page() {
             </div>
         )}
       </MasterTableCard>
+
+      {editRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            onSubmit={submitProposal}
+            className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl p-5 shadow-xl"
+          >
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">
+              Propose rate change
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mb-4">
+              {String(editRow.toolOrGaugeNo ?? "—")} · {String(editRow.supCode ?? "—")}
+              {" · "}Live rate {formatRate(editRow.rate)} (unchanged until approved)
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-[var(--text-muted)]">
+                  Proposed rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  className="mt-1 w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-sm font-mono"
+                  value={proposedRateInput}
+                  onChange={(e) => setProposedRateInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--text-muted)]">
+                  Remarks (optional)
+                </label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-sm"
+                  value={remarksInput}
+                  maxLength={200}
+                  onChange={(e) => setRemarksInput(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => setEditRow(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saving}>
+                {saving ? "Submitting…" : "Submit for approval"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
     </SimpleMasterShell>
   );
 }

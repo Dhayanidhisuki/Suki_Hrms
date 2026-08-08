@@ -18,16 +18,28 @@ export async function resolveErpAuditUserId(
   const candidates: string[] = [];
 
   try {
-    const appUser = await prisma.user.findFirst({
-      where: {
-        username: session.userId,
-        isActive: true,
-        deletedAt: null,
-      },
-      select: { erpUserCode: true },
-    });
-    if (appUser?.erpUserCode?.trim()) {
-      candidates.push(appUser.erpUserCode.trim());
+    // Prefer numeric app-user id from JWT (reliable); username lookup is fallback
+    if (session.userDbId != null) {
+      const byId = await prisma.user.findUnique({
+        where: { id: session.userDbId },
+        select: { erpUserCode: true, username: true },
+      });
+      if (byId?.erpUserCode?.trim()) candidates.push(byId.erpUserCode.trim());
+      if (byId?.username?.trim()) candidates.push(byId.username.trim());
+    }
+
+    if (session.userId?.trim()) {
+      const appUser = await prisma.user.findFirst({
+        where: {
+          username: session.userId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { erpUserCode: true },
+      });
+      if (appUser?.erpUserCode?.trim()) {
+        candidates.push(appUser.erpUserCode.trim());
+      }
     }
   } catch {
     // User table unavailable — continue with other candidates

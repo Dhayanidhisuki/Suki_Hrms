@@ -206,6 +206,15 @@ export default function IssueToolPage() {
   const [matType, setMatType] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  /** ERP Requisition Pending for Tools — Yes = issue against a pending MR */
+  const [requisitionPending, setRequisitionPending] = useState<"Yes" | "No">("No");
+  const [reqNo, setReqNo] = useState("");
+  /** When opened via Requisition Pending → Issue For Tools, keep Yes + Req No locked */
+  const [reqLinkLocked, setReqLinkLocked] = useState(false);
+  const [pendingReqs, setPendingReqs] = useState<
+    { reqNo: string; reqDate: string | null; empCd: number | null; deptId: number | null; headerStatus: string | null }[]
+  >([]);
+  const [loadingPendingReqs, setLoadingPendingReqs] = useState(false);
   const [editIssue, setEditIssue] = useState<ToolsIssueHeader | null>(null);
   const [subs, setSubs] = useState<SubOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupOption[]>([]);
@@ -455,8 +464,17 @@ export default function IssueToolPage() {
   const handleUpdateQty = (index: number, newQty: number) => {
     const updated = [...stagedLines];
     const line = updated[index];
-    const maxVal = line.maintainsSerial ? 9999 : line.qtyAvailable;
+    const maxVal = line.maintainsSerial ? 9999 : Math.max(0, line.qtyAvailable);
     const raw = Number.isFinite(newQty) ? newQty : 1;
+    if (!line.maintainsSerial && maxVal <= 0) {
+      setFormErrors((prev) => ({
+        ...prev,
+        lines: `No stock (AVL 0) for ${line.toolOrGaugeNo}. Open Tools Master and raise Qty In before issuing.`,
+      }));
+      updated[index].issueQty = 0;
+      setStagedLines(updated);
+      return;
+    }
     if (!line.maintainsSerial && raw > maxVal) {
       setFormErrors((prev) => ({
         ...prev,
@@ -465,7 +483,7 @@ export default function IssueToolPage() {
     } else {
       setFormErrors((prev) => ({ ...prev, lines: "" }));
     }
-    updated[index].issueQty = Math.min(Math.max(1, raw), Math.max(1, maxVal));
+    updated[index].issueQty = Math.min(Math.max(1, raw), maxVal);
     setStagedLines(updated);
   };
 
@@ -500,6 +518,10 @@ export default function IssueToolPage() {
     setFromUnit("");
     setIssuePurpose("");
     setMatType("");
+    setRequisitionPending("No");
+    setReqNo("");
+    setReqLinkLocked(false);
+    setPendingReqs([]);
     setStagedLines([]);
     setFormErrors({});
     setPartyQuery("");
@@ -507,6 +529,112 @@ export default function IssueToolPage() {
     setTools([]);
     setZeroStockHints([]);
   };
+
+  const loadPendingRequisitions = useCallback(async () => {
+    setLoadingPendingReqs(true);
+    const res = await apiGet<{
+      items?: {
+        reqNo: string | null;
+        reqDate: string | null;
+        empCd: number | null;
+        deptId: number | null;
+        headerStatus: string | null;
+        pending?: boolean;
+      }[];
+    }>("/api/requisition-pending?status=pending&headerStatus=OPEN&pageSize=200&considerDate=No");
+    const byReq = new Map<
+      string,
+      { reqNo: string; reqDate: string | null; empCd: number | null; deptId: number | null; headerStatus: string | null }
+    >();
+    for (const row of res.data?.items ?? []) {
+      if (!row.reqNo || !row.pending) continue;
+      if (!byReq.has(row.reqNo)) {
+        byReq.set(row.reqNo, {
+          reqNo: row.reqNo,
+          reqDate: row.reqDate,
+          empCd: row.empCd,
+          deptId: row.deptId,
+          headerStatus: row.headerStatus,
+        });
+      }
+    }
+    setPendingReqs([...byReq.values()]);
+    setLoadingPendingReqs(false);
+  }, []);
+
+  /** Load open tool lines for a requisition and stage them on the issue slip */
+  const stageToolsFromRequisition = useCallback(async (selectedReqNo: string) => {
+    const res = await apiGet<{
+      items?: {
+        toolOrGaugeNo: string | null;
+        toolName: string | null;
+        description?: string | null;
+        grouping?: string | null;
+        balanceQty: number;
+        pending?: boolean;
+        machine?: string | null;
+      }[];
+    }>(
+      `/api/requisition-pending?status=pending&reqNo=${encodeURIComponent(selectedReqNo)}&pageSize=100&considerDate=No`
+    );
+    const lines = (res.data?.items ?? []).filter(
+      (l) => l.pending && l.toolOrGaugeNo && l.balanceQty > 0
+    );
+    if (lines.length === 0) {
+      toastError("No open tool lines with balance on this requisition.");
+      return;
+    }
+    // Enrich with live stock from tools search API when possible
+    const staged: StagedLine[] = [];
+    for (const l of lines) {
+      const toolNo = l.toolOrGaugeNo as string;
+      const toolRes = await apiGet<{ items?: Tool[] }>(
+        `/api/tools?search=${encodeURIComponent(toolNo)}&pageSize=5`
+      );
+      const tool =
+        toolRes.data?.items?.find((t) => t.toolOrGaugeNo === toolNo) ??
+        toolRes.data?.items?.[0];
+      const serialTracked = (() => {
+        const v = (tool?.serialNoGenReq ?? "").trim().toLowerCase();
+        return v === "yes" || v === "y" || v === "1" || v === "true";
+      })();
+      const qtyIn = Number(tool?.qtyIn ?? 0);
+      const bal = Math.max(1, Math.floor(l.balanceQty));
+      if (!serialTracked && qtyIn <= 0) {
+        toastError(
+          `${toolNo}: Qty In is 0 — cannot stage for issue. Raise stock on Tools Master first.`
+        );
+        continue;
+      }
+      const issueQty = serialTracked ? bal : Math.min(bal, qtyIn);
+      staged.push({
+        toolOrGaugeNo: toolNo,
+        toolName: tool?.name || l.toolName || toolNo,
+        description: tool?.name ? (l.description || "") : l.description || "",
+        grouping: tool?.grouping || l.grouping || "",
+        type: tool?.type || "",
+        issueQty,
+        qtyAvailable: qtyIn,
+        totQty: Number(tool?.totQty ?? 0),
+        location: tool?.location || "",
+        returnable: tool?.returnable === "No" ? "No" : "Yes",
+        serialNo: "",
+        machine: l.machine || "",
+        processName: "",
+        partNo: toolNo,
+        price: 0,
+        maintainsSerial: serialTracked,
+        machineOptions: tool?.machines ?? [],
+      });
+    }
+    if (staged.length === 0) {
+      toastError("No lines could be staged — all tools have zero available stock.");
+      return;
+    }
+    setStagedLines(staged);
+    setMatType((m) => m || "TOOLS");
+    toastSuccess(`Staged ${staged.length} tool line(s) from ${selectedReqNo}.`);
+  }, []);
 
   const isOpenIssue = (status: string | null | undefined) =>
     ["Active", "OPEN", "Open", "PARTIAL"].includes(status ?? "");
@@ -614,8 +742,20 @@ export default function IssueToolPage() {
 
   useEffect(() => {
     const action = searchParams.get("action");
-    if (action === "add") {
+    const fromReq = searchParams.get("requisitionPending");
+    const qReqNo = (searchParams.get("reqNo") ?? "").trim();
+    if (action === "add" || fromReq === "Yes" || qReqNo) {
       if (!showCreate) setShowCreate(true);
+      if (fromReq === "Yes" || qReqNo) {
+        setRequisitionPending("Yes");
+        setReqLinkLocked(true);
+        void loadPendingRequisitions().then(() => {
+          if (qReqNo) {
+            setReqNo(qReqNo);
+            void stageToolsFromRequisition(qReqNo);
+          }
+        });
+      }
       return;
     }
     if (showCreate) {
@@ -624,6 +764,12 @@ export default function IssueToolPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  useEffect(() => {
+    if (showCreate && requisitionPending === "Yes" && pendingReqs.length === 0) {
+      void loadPendingRequisitions();
+    }
+  }, [showCreate, requisitionPending, pendingReqs.length, loadPendingRequisitions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -642,9 +788,22 @@ export default function IssueToolPage() {
       errors.party = "Enter Customer Code";
     }
     if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
+    if (requisitionPending === "Yes" && !reqNo.trim()) {
+      errors.reqNo = "Select a pending requisition (ERP Requisition Pending = Yes)";
+    }
+    const overStock = stagedLines.find(
+      (l) => !l.maintainsSerial && (l.issueQty <= 0 || l.issueQty > l.qtyAvailable)
+    );
+    if (overStock) {
+      errors.lines =
+        overStock.qtyAvailable <= 0
+          ? `No stock (AVL 0) for ${overStock.toolOrGaugeNo}. Raise Qty In on Tools Master, then issue.`
+          : `Qty ${overStock.issueQty} exceeds AVL ${overStock.qtyAvailable} for ${overStock.toolOrGaugeNo}.`;
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      if (errors.lines) toastError(errors.lines);
       return;
     }
 
@@ -672,6 +831,8 @@ export default function IssueToolPage() {
       fromUnit: fromUnit || undefined,
       issuePurpose: issuePurpose || undefined,
       matType: matType || undefined,
+      requisitionPending,
+      reqNo: requisitionPending === "Yes" ? reqNo.trim() : undefined,
       lines: stagedLines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
         issueQty: l.issueQty,
@@ -692,13 +853,22 @@ export default function IssueToolPage() {
     }
 
     if (res.data?.issue) {
+      const linkedReq =
+        requisitionPending === "Yes" && reqNo.trim() ? reqNo.trim() : "";
       toastSuccess({
         title: "Issue DC created",
-        message: `Tools issued successfully to ${receiveName}.`,
+        message: linkedReq
+          ? `Issued against requisition ${linkedReq} to ${receiveName}.`
+          : `Tools issued successfully to ${receiveName}.`,
         detail: `DC #${res.data.issue.dcNo}`,
       });
       handleClearForm();
       setShowCreate(false);
+      if (linkedReq) {
+        // Return to Requisition Pending so Issued / status refresh from write-back
+        router.replace("/dashboard/transactions/requisition-pending");
+        return;
+      }
       router.replace("/dashboard/transactions/issue", { scroll: false });
       loadIssues(1, searchQuery, listStatusFilter);
       setPage(1);
@@ -1037,6 +1207,74 @@ export default function IssueToolPage() {
               }
             >
               <form id="issue-create-form" onSubmit={handleSubmit} className="space-y-0">
+                <FormModalSection title="Requisition Pending (ERP)">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">Requisition Pending?</label>
+                      <select
+                        value={requisitionPending}
+                        disabled={reqLinkLocked}
+                        onChange={(e) => {
+                          const v = e.target.value as "Yes" | "No";
+                          setRequisitionPending(v);
+                          if (v === "No") {
+                            setReqNo("");
+                            setFormErrors((prev) => ({ ...prev, reqNo: "" }));
+                          } else {
+                            void loadPendingRequisitions();
+                          }
+                        }}
+                        className="form-control"
+                        title="ERP: Yes = Issue For Tools against a pending Material Requisition"
+                      >
+                        <option value="No">No</option>
+                        <option value="Yes">Yes</option>
+                      </select>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                        Same as ERP <span className="font-semibold">Requisition Pending for Tools</span> → Issue For Tools.
+                      </p>
+                    </div>
+                    {requisitionPending === "Yes" && (
+                      <div className="sm:col-span-2">
+                        <label className="form-label">Req No *</label>
+                        <select
+                          value={reqNo}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setReqNo(v);
+                            setFormErrors((prev) => ({ ...prev, reqNo: "" }));
+                            if (v) void stageToolsFromRequisition(v);
+                          }}
+                          className="form-control font-mono"
+                          disabled={loadingPendingReqs || reqLinkLocked}
+                        >
+                          <option value="">
+                            {loadingPendingReqs ? "Loading pending requisitions…" : "— Select OPEN requisition —"}
+                          </option>
+                          {reqNo &&
+                            !pendingReqs.some((r) => r.reqNo === reqNo) && (
+                              <option value={reqNo}>{reqNo}</option>
+                            )}
+                          {pendingReqs.map((r) => (
+                            <option key={r.reqNo} value={r.reqNo}>
+                              {r.reqNo}
+                              {r.reqDate ? ` · ${String(r.reqDate).split("T")[0]}` : ""}
+                              {r.deptId != null ? ` · Dept ${r.deptId}` : ""}
+                              {r.headerStatus ? ` · ${r.headerStatus}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        {formErrors.reqNo && <p className="form-error">{formErrors.reqNo}</p>}
+                        {pendingReqs.length === 0 && !loadingPendingReqs && (
+                          <p className="text-[11px] text-[var(--color-warning-text)] mt-1">
+                            No OPEN pending requisitions with tool lines. Raise an MR in ERP or open Requisition Pending.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </FormModalSection>
+
                 <FormModalSection title="Who and what">
                   <div className="form-grid">
                     <div>

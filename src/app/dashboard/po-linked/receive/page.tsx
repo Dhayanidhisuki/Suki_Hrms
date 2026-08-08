@@ -46,6 +46,7 @@ interface PoGrnLine {
 
 interface PoGrnHeader {
   girNo: number;
+  girNoNew?: string | null;
   poOrderNo: string | null;
   girDate: string | null;
   girStatus: string | null;
@@ -126,44 +127,155 @@ export default function PoReceivePage() {
   const [stagedLines, setStagedLines] = useState<StagedGrnLine[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // List filters (client-side over API window ≤100)
+  // List filters (server-side via /api/po/grn)
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [supplierFilter, setSupplierFilter] = useState("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     setGirDate(new Date().toISOString().split("T")[0]);
   }, [showForm]);
 
+  /** Prefill GRN form from ?po= (Receive link on PO list). */
   useEffect(() => {
     const po = searchParams.get("po")?.trim();
     if (!po) return;
+
     setPoOrderNo(po);
     setShowForm(true);
+    setErrors({});
+
+    let cancelled = false;
+    void (async () => {
+      const res = await apiGet<{
+        items?: Array<{
+          poOrderNo: string;
+          supCode: string | null;
+          lines: Array<{
+            itemCode: string | null;
+            qty: number | null;
+            price: number | null;
+            tool?: {
+              refNo: number;
+              toolOrGaugeNo: string | null;
+              name: string | null;
+            } | null;
+          }>;
+        }>;
+      }>(
+        `/api/po?search=${encodeURIComponent(po)}&pageSize=20&toolsOnly=0`
+      );
+
+      if (cancelled) return;
+
+      const items = res.data?.items ?? [];
+      const match =
+        items.find((p) => p.poOrderNo.toUpperCase() === po.toUpperCase()) ??
+        items[0];
+
+      if (!match) {
+        toastError(`PO ${po} not found — fill supplier and lines manually`);
+        return;
+      }
+
+      if (match.supCode) setSupCode(match.supCode);
+
+      const staged: StagedGrnLine[] = [];
+      const extraTools: Tool[] = [];
+      for (const l of match.lines ?? []) {
+        const toolNo = (l.tool?.toolOrGaugeNo || l.itemCode || "").trim();
+        if (!toolNo) continue;
+        const qty = Number(l.qty);
+        const price = Number(l.price);
+        staged.push({
+          toolOrGaugeNo: toolNo,
+          invQty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          recQty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          price: Number.isFinite(price) && price >= 0 ? price : 0,
+        });
+        extraTools.push({
+          refNo: l.tool?.refNo ?? -(extraTools.length + 1),
+          toolOrGaugeNo: toolNo,
+          name: l.tool?.name ?? toolNo,
+        });
+      }
+
+      if (staged.length > 0) {
+        setStagedLines(staged);
+        setTools((prev) => {
+          const byNo = new Map(prev.map((t) => [t.toolOrGaugeNo, t]));
+          for (const t of extraTools) {
+            if (!byNo.has(t.toolOrGaugeNo)) byNo.set(t.toolOrGaugeNo, t);
+          }
+          return Array.from(byNo.values());
+        });
+        toastSuccess(`Loaded ${staged.length} line(s) from ${match.poOrderNo}`);
+      } else {
+        toastError(`${match.poOrderNo} has no tool lines to receive`);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    if (searchQuery.trim()) params.set("search", searchQuery.trim());
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
+    if (supplierFilter !== "ALL") params.set("supCode", supplierFilter);
+    if (dateFrom) params.set("fromDate", dateFrom);
+    if (dateTo) params.set("toDate", dateTo);
+
     const [gRes, sRes, tRes] = await Promise.all([
-      apiGet<{ items: PoGrnHeader[] }>("/api/po/grn"),
-      apiGet<{ items: Supplier[] }>("/api/suppliers"),
-      apiGet<{ items: Tool[] }>("/api/tools"),
+      apiGet<{
+        items: PoGrnHeader[];
+        total: number;
+        totalPages?: number;
+        page?: number;
+        pageSize?: number;
+      }>(`/api/po/grn?${params}`),
+      apiGet<{ items: Supplier[] }>("/api/suppliers?pageSize=500"),
+      apiGet<{ items: Tool[] }>("/api/tools?pageSize=100"),
     ]);
 
     if (gRes.data?.items) setGrns(gRes.data.items);
+    else setGrns([]);
+    setTotal(gRes.data?.total ?? 0);
+    setTotalPages(
+      gRes.data?.totalPages ??
+        Math.max(1, Math.ceil((gRes.data?.total ?? 0) / pageSize))
+    );
     if (sRes.data?.items) setSuppliers(sRes.data.items);
-    if (tRes.data?.items) setTools(tRes.data.items);
+    if (tRes.data?.items) {
+      setTools((prev) => {
+        const byNo = new Map((tRes.data?.items ?? []).map((t) => [t.toolOrGaugeNo, t]));
+        for (const t of prev) {
+          if (!byNo.has(t.toolOrGaugeNo)) byNo.set(t.toolOrGaugeNo, t);
+        }
+        return Array.from(byNo.values());
+      });
+    }
     setLoading(false);
-  }, []);
+  }, [page, pageSize, searchQuery, statusFilter, supplierFilter, dateFrom, dateTo]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const statusOptions = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(["OPEN", "Posted", "CLOSED", "PARTIAL"]);
     for (const g of grns) {
       const s = (g.girStatus ?? "").trim();
       if (s) set.add(s);
@@ -172,44 +284,16 @@ export default function PoReceivePage() {
   }, [grns]);
 
   const supplierOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const g of grns) {
-      const code = (g.supCode ?? g.supplier?.supCode ?? "").trim();
-      if (!code) continue;
-      const name = g.supplier?.supName?.trim();
-      if (!map.has(code)) map.set(code, name ? `${code} · ${name}` : code);
-    }
-    return Array.from(map.entries())
-      .map(([code, label]) => ({ code, label }))
+    return suppliers
+      .map((s) => ({
+        code: s.supCode,
+        label: s.supName ? `${s.supCode} · ${s.supName}` : s.supCode,
+      }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [grns]);
+  }, [suppliers]);
 
-  const filteredGrns = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return grns.filter((g) => {
-      if (statusFilter !== "ALL" && (g.girStatus ?? "").trim() !== statusFilter) {
-        return false;
-      }
-      const code = (g.supCode ?? g.supplier?.supCode ?? "").trim();
-      if (supplierFilter !== "ALL" && code !== supplierFilter) return false;
-
-      const d = dateKey(g.girDate);
-      if (dateFrom && (!d || d < dateFrom)) return false;
-      if (dateTo && (!d || d > dateTo)) return false;
-
-      if (!q) return true;
-      const hay = [
-        String(g.girNo),
-        g.poOrderNo ?? "",
-        code,
-        g.supplier?.supName ?? "",
-        g.girStatus ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [grns, searchQuery, statusFilter, supplierFilter, dateFrom, dateTo]);
+  // Server already filtered — keep list as returned
+  const filteredGrns = grns;
 
   const kpis = useMemo(() => {
     const openCount = grns.filter((g) => isOpenStatus(g.girStatus)).length;
@@ -226,19 +310,19 @@ export default function PoReceivePage() {
     return [
       {
         id: "grn-total",
-        label: "Total GRNs",
-        value: grns.length,
-        subtext: "Loaded window (API ≤100)",
-        title: "Count of GRNs returned by GET /api/po/grn (hard-capped at 100).",
+        label: "Matching GRNs",
+        value: total,
+        subtext: `Page ${page} of ${totalPages} · ${pageSize}/page`,
+        title: "Total TOOLS_PO_RECEIVE rows matching filters (paginated)",
         icon: Package,
         iconBg: "bg-[var(--primary-light)]",
         iconColor: "text-[var(--primary)]",
       },
       {
         id: "grn-open",
-        label: "Open",
+        label: "Open (page)",
         value: openCount,
-        subtext: "OPEN / Draft / Partial",
+        subtext: "OPEN / Draft / Partial on this page",
         icon: CircleDot,
         iconBg: "bg-blue-50 dark:bg-blue-950/40",
         iconColor: "text-blue-600 dark:text-blue-400",
@@ -246,7 +330,7 @@ export default function PoReceivePage() {
       },
       {
         id: "grn-closed-month",
-        label: "Closed this month",
+        label: "Closed (page)",
         value: closedThisMonth,
         subtext: "Posted / Closed · current month",
         icon: CheckCircle2,
@@ -256,15 +340,15 @@ export default function PoReceivePage() {
       },
       {
         id: "grn-suppliers-month",
-        label: "Suppliers this month",
+        label: "Suppliers (page)",
         value: suppliersThisMonth,
-        subtext: "Distinct SUP_CODE",
+        subtext: "Distinct SUP_CODE this month",
         icon: Users,
         iconBg: "bg-violet-50 dark:bg-violet-950/40",
         iconColor: "text-violet-600 dark:text-violet-400",
       },
     ];
-  }, [grns]);
+  }, [grns, total, page, totalPages, pageSize]);
 
   const columns: DataTableColumn<PoGrnHeader>[] = useMemo(
     () => [
@@ -273,7 +357,14 @@ export default function PoReceivePage() {
         header: "GRN no",
         mono: true,
         cell: (g) => (
-          <span className="font-semibold text-[var(--text-primary)]">{g.girNo}</span>
+          <span className="font-semibold text-[var(--text-primary)]">
+            {g.girNo}
+            {g.girNoNew ? (
+              <span className="block text-[10px] font-normal text-[var(--text-muted)]">
+                {g.girNoNew}
+              </span>
+            ) : null}
+          </span>
         ),
       },
       {
@@ -388,7 +479,9 @@ export default function PoReceivePage() {
       })),
     };
 
-    const res = await apiPost<{ grn: PoGrnHeader }>("/api/po/grn", payload);
+    const res = await apiPost<{
+      grn: PoGrnHeader & { girNoNew?: string | null };
+    }>("/api/po/grn", payload);
 
     if (res.error) {
       toastError(res.error.message);
@@ -396,14 +489,22 @@ export default function PoReceivePage() {
     }
 
     if (res.data?.grn) {
+      const g = res.data.grn;
       toastSuccess({
         title: "GRN posted",
-        message: "Inventory stock increased successfully.",
-        detail: `GRN #${res.data.grn.girNo}`,
+        message: "Inventory stock increased. Search the tool in Item / Asset Master to see Tot Qty.",
+        detail: `GRN #${g.girNo}${g.girNoNew ? ` (${g.girNoNew})` : ""} · ${poOrderNo}`,
       });
       handleClearForm();
       setShowForm(false);
-      loadData();
+      // Make the new GRN visible (list defaults / filters can hide it)
+      setStatusFilter("ALL");
+      setDateFrom("");
+      setDateTo("");
+      setSearchQuery(String(g.girNo));
+      setPage(1);
+      setExpandedGrn(g.girNo);
+      // loadData re-runs via filter/page deps
     }
   };
 
@@ -413,6 +514,7 @@ export default function PoReceivePage() {
     setSupplierFilter("ALL");
     setDateFrom("");
     setDateTo("");
+    setPage(1);
   };
 
   return (
@@ -449,7 +551,28 @@ export default function PoReceivePage() {
           {showForm && (
             <form onSubmit={handlePostGRN} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 space-y-5 mb-6 animate-fade-in">
               <div className="flex items-center justify-between pb-3 border-b border-[var(--border-main)]">
-                <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">Active GRN Form</h2>
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-widest">
+                    Active GRN Form
+                  </h2>
+                  {poOrderNo ? (
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                      Receiving against{" "}
+                      <span className="font-mono font-semibold text-[var(--text-secondary)]">
+                        {poOrderNo}
+                      </span>
+                      {supCode ? (
+                        <>
+                          {" "}
+                          · supplier{" "}
+                          <span className="font-mono font-semibold text-[var(--text-secondary)]">
+                            {supCode}
+                          </span>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </div>
                 <span className="font-mono text-xs text-[var(--text-muted)] font-bold bg-[var(--bg-subtle)] px-2.5 py-1 rounded-md">
                   GRN No: Auto-generated
                 </span>
@@ -607,7 +730,7 @@ export default function PoReceivePage() {
                   Cancel
                 </button>
                 <Button type="submit" id="grn-submit-btn" variant="primary">
-                  Post GRN (Posted)
+                  Post GRN
                 </Button>
               </div>
             </form>
@@ -625,14 +748,18 @@ export default function PoReceivePage() {
                 <p className="text-xs text-[var(--text-muted)] mt-1">
                   Showing{" "}
                   <span className="font-semibold text-[var(--text-primary)]">
-                    {filteredGrns.length}
+                    {total === 0
+                      ? 0
+                      : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)}`}
                   </span>{" "}
                   of{" "}
                   <span className="font-semibold text-[var(--text-primary)]">
-                    {grns.length}
-                  </span>{" "}
-                  loaded
-                  <span className="text-[var(--text-muted)]"> · filters are client-side (API window ≤100)</span>
+                    {total}
+                  </span>
+                  <span className="text-[var(--text-muted)]">
+                    {" "}
+                    · server filters · {pageSize}/page
+                  </span>
                 </p>
               </div>
             </div>
@@ -643,14 +770,20 @@ export default function PoReceivePage() {
                 <input
                   type="search"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search GRN no / PO no / supplier…"
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search GRN / PO / tool no / supplier…"
                   className="w-full h-9 pl-8 pr-3 text-xs border border-[var(--border-main)] rounded-lg bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                 />
               </div>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
                 className="h-9 text-xs border border-[var(--border-main)] rounded-lg px-3 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
               >
                 <option value="ALL">All statuses</option>
@@ -662,7 +795,10 @@ export default function PoReceivePage() {
               </select>
               <select
                 value={supplierFilter}
-                onChange={(e) => setSupplierFilter(e.target.value)}
+                onChange={(e) => {
+                  setSupplierFilter(e.target.value);
+                  setPage(1);
+                }}
                 className="h-9 text-xs border border-[var(--border-main)] rounded-lg px-3 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
               >
                 <option value="ALL">All suppliers</option>
@@ -676,7 +812,10 @@ export default function PoReceivePage() {
                 <input
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setPage(1);
+                  }}
                   title="From date"
                   className="h-9 flex-1 min-w-0 text-xs border border-[var(--border-main)] rounded-lg px-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                 />
@@ -684,7 +823,10 @@ export default function PoReceivePage() {
                 <input
                   type="date"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setPage(1);
+                  }}
                   title="To date"
                   className="h-9 flex-1 min-w-0 text-xs border border-[var(--border-main)] rounded-lg px-2 bg-[var(--bg-subtle)] text-[var(--text-primary)] font-mono outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
                 />
@@ -772,6 +914,35 @@ export default function PoReceivePage() {
                 </div>
               )}
             />
+
+            {total > pageSize && (
+              <div className="flex items-center justify-between pt-4 mt-2 border-t border-[var(--border-main)]">
+                <p className="text-xs text-[var(--text-muted)]">
+                  Showing {(page - 1) * pageSize + 1}–
+                  {Math.min(page * pageSize, total)} of {total}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>

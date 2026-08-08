@@ -1,23 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { ChartContainer, PurchaseSpendingChart } from "@/components/OverviewCharts";
 import { Package, Users, Building2, FileText } from "lucide-react";
+import { apiGet } from "@/lib/apiClient";
 
 export default function Page() {
+  const [spend, setSpend] = useState<
+    Array<{ month: string; poCount: number; amount: number }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await apiGet<{
+        items?: Array<{ month: string; poCount: number; amount: number }>;
+      }>("/api/po/spend?months=6");
+      setSpend(res.data?.items ?? []);
+      setLoading(false);
+    })();
+  }, []);
+
   return (
     <SimpleMasterShell title="Purchase Overview" subtitle="GRN volume, PO procurement spending trends, and vendor masters">
       <div className="space-y-6">
-        {/* Graphical Representation: Purchase Spending Chart */}
         <ChartContainer
           title="Monthly Procurement & PO Spend Trend"
-          subtitle="Total spend volume and purchase order count tracking over recent months"
+          subtitle={
+            loading
+              ? "Loading live COMMON_PURCHASE_ORDER spend…"
+              : "Live spend from COMMON_PURCHASE_ORDER (Tools + ERP)"
+          }
         >
-          <PurchaseSpendingChart />
+          <PurchaseSpendingChart data={loading ? undefined : spend} />
         </ChartContainer>
 
-        {/* Quick Link Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <Link
             href="/dashboard/po-linked/receive"

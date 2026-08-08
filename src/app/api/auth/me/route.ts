@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE_NAME, verifyAuthToken } from "@/lib/authToken";
+import { getPermissionsForRole } from "@/lib/permissionsCache";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const permissions = await getPermissionsForRole(payload.role);
+
   return NextResponse.json({
     user: {
       userId: payload.username,
@@ -29,5 +32,6 @@ export async function GET(req: NextRequest) {
       addRoleName: null,
       id: payload.sub,
     },
+    permissions,
   });
 }

@@ -12,7 +12,7 @@ const globalForPrisma = globalThis as unknown as {
  * Changes when GaugeAndTools fields are regenerated — forces a new client.
  * Bump CLIENT_REV after `prisma generate` if Next still serves a stale client.
  */
-const CLIENT_REV = "gauge-fields-2026-08-07b";
+const CLIENT_REV = "grn-gir-no-alloc-2026-08-08";
 const SCHEMA_STAMP = `${CLIENT_REV}:${Object.keys(Prisma.GaugeAndToolsScalarFieldEnum).sort().join(",")}`;
 
 function createPrismaClient() {
@@ -29,12 +29,16 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     materialRequisitionTrans?: { findMany?: unknown };
     commonPurchaseOrder?: { findMany?: unknown; count?: unknown };
     purchaseApproval?: { findMany?: unknown };
+    rolePermission?: { findMany?: unknown };
+    toolsPoFinance?: { findMany?: unknown };
   };
   return (
     typeof c.materialRequisitionTrans?.findMany === "function" &&
     typeof c.commonPurchaseOrder?.findMany === "function" &&
     typeof c.commonPurchaseOrder?.count === "function" &&
-    typeof c.purchaseApproval?.findMany === "function"
+    typeof c.purchaseApproval?.findMany === "function" &&
+    typeof c.rolePermission?.findMany === "function" &&
+    typeof c.toolsPoFinance?.findMany === "function"
   );
 }
 

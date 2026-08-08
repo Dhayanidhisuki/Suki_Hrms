@@ -8,7 +8,8 @@ import React, {
   useState,
 } from "react";
 import { apiGet } from "./apiClient";
-import { rolePermissions, type UserRole } from "./rolePermissions";
+import type { RolePermissionFlags, PermissionFlagKey } from "./rolePermissions";
+import { rolePermissions } from "./rolePermissions";
 
 export interface SessionUser {
   userId: string;
@@ -18,15 +19,7 @@ export interface SessionUser {
   addRoleName: string | null;
 }
 
-export type PermissionKey =
-  | "canApproveSupplier"
-  | "canCreateIssue"
-  | "canReceiveTool"
-  | "canLogConsumption"
-  | "canManageCalibration"
-  | "canRaisePO"
-  | "canEditMaster"
-  | "canDeleteMaster";
+export type PermissionKey = PermissionFlagKey;
 
 interface SessionContextValue {
   user: SessionUser | null;
@@ -35,7 +28,7 @@ interface SessionContextValue {
   can: (permission: PermissionKey) => boolean;
 }
 
-/** Roles that receive full app access (no DB/table changes — code matrix only). */
+/** Roles that receive full app access (matches server permissionsCache). */
 const FULL_ACCESS_ROLES = new Set([
   "Tools Admin",
   "Administrator",
@@ -52,14 +45,26 @@ const SessionContext = createContext<SessionContextValue>({
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [permissions, setPermissions] = useState<RolePermissionFlags | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   const refreshSession = useCallback(async () => {
-    const res = await apiGet<{ user: SessionUser }>("/api/auth/me");
+    const res = await apiGet<{
+      user: SessionUser;
+      permissions?: RolePermissionFlags;
+    }>("/api/auth/me");
     if (res.data?.user) {
       setUser(res.data.user);
+      setPermissions(
+        res.data.permissions ??
+          rolePermissions[res.data.user.roleName] ??
+          rolePermissions.Viewer
+      );
     } else {
       setUser(null);
+      setPermissions(null);
     }
     setLoading(false);
   }, []);
@@ -70,15 +75,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const can = (permission: PermissionKey): boolean => {
     if (!user?.userId) return false;
-    // Seed / app admin + admin-equivalent role names → full access
     if (
       user.userId.toLowerCase() === "admin" ||
       FULL_ACCESS_ROLES.has(user.roleName)
     ) {
       return true;
     }
-    const perms =
-      rolePermissions[user.roleName as UserRole] ?? rolePermissions.Viewer;
+    const perms = permissions ?? rolePermissions.Viewer;
     return Boolean(perms[permission]);
   };
 

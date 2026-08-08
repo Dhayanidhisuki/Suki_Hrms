@@ -119,6 +119,13 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   try {
+    /** Master statuses that mean the tool is in the calibration pipeline (not shop-floor issued). */
+    const underCalStatuses = [
+      "Under Calibration",
+      "UNDER CALIBRATION",
+      "ISSUE FOR CALIBRATION",
+    ];
+
     const [
       totalTools,
       currentlyIssued,
@@ -134,12 +141,21 @@ export async function GET() {
       calibDue,
     ] = await Promise.all([
       prisma.gaugeAndTools.count(),
-      // ERP stores issue status as 'Active', not 'Issued' on the tool record
-      prisma.gaugeToolsIssue.count({
-        where: { status: { in: ["Active", "OPEN", "PARTIAL"] } },
-      }),
-      // Count tools currently sent for calibration (safe catch in case STATUS column missing in ERP)
-      prisma.toolsIssueForCalibration.count().catch(() => 0),
+      // Tools with qty out on shop floor (exclude under-calibration masters)
+      prisma.gaugeAndTools
+        .count({
+          where: {
+            qtyOut: { gt: 0 },
+            NOT: { status: { in: underCalStatuses } },
+          },
+        })
+        .catch(() => 0),
+      // Tools currently under calibration / issued for calib (master status)
+      prisma.gaugeAndTools
+        .count({
+          where: { status: { in: underCalStatuses } },
+        })
+        .catch(() => 0),
       prisma.gaugeAndTools.groupBy({
         by: ["grouping"],
         _count: { refNo: true },
@@ -225,11 +241,18 @@ export async function GET() {
         };
       });
 
+      // Clamp so Progress rings never overshoot the register size
+      const issuedClamped = Math.min(currentlyIssued, totalTools);
+      const underCalClamped = Math.min(
+        underRepairOrCal,
+        Math.max(0, totalTools - issuedClamped)
+      );
+
       return NextResponse.json({
         totalTools,
-        currentlyIssued,
+        currentlyIssued: issuedClamped,
         calibrationDue: calibDue.calibrationDue,
-        underRepairOrCal,
+        underRepairOrCal: underCalClamped,
         trends: {
           addedThisMonth,
           overdueCount,

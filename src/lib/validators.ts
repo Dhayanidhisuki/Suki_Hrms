@@ -11,6 +11,111 @@ export const LoginSchema = z.object({
   password: z.string().min(1, "Password is required").max(200),
 });
 
+/** Settings → Users (TOOLS_APP_USER) */
+export const AppUserCreateSchema = z.object({
+  username: z.string().trim().min(1).max(50),
+  password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  name: z.string().trim().min(1).max(100),
+  role: z.string().trim().min(1).max(50),
+  erpUserCode: z.string().trim().max(10).optional().nullable(),
+});
+
+export const AppUserUpdateSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  password: z.string().max(200).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+  role: z.string().trim().min(1).max(50).optional(),
+  erpUserCode: z.string().trim().max(10).optional().nullable(),
+  isActive: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.password != null && data.password.length > 0 && data.password.length < 8) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Password must be at least 8 characters",
+      path: ["password"],
+    });
+  }
+});
+
+/** Settings → Roles & Permissions matrix updates */
+export const RolePermissionsUpdateSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        role: z.string().trim().min(1).max(50),
+        permissionKey: z.string().trim().min(1).max(50),
+        allowed: z.boolean(),
+      })
+    )
+    .min(1, "At least one update is required"),
+});
+
+/** Pricing Master — propose a rate change (does not overwrite live RATE). */
+export const PricingProposeSchema = z.object({
+  rowId: z.coerce.number().int().positive().optional(),
+  toolRefNo: z.coerce.number().int().positive().optional(),
+  supCode: z.string().trim().max(10).optional().nullable(),
+  proposedRate: z.coerce.number().finite().nonnegative(),
+  remarks: z.string().trim().max(200).optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.rowId == null && data.toolRefNo == null) {
+    ctx.addIssue({
+      code: "custom",
+      message: "rowId or toolRefNo is required",
+      path: ["rowId"],
+    });
+  }
+});
+
+export const PricingRejectSchema = z.object({
+  reason: z.string().trim().min(1, "Rejection reason is required").max(500),
+});
+
+/** Tools → create COMMON_PURCHASE_ORDER (+ lines) */
+export const PurchaseOrderCreateSchema = z.object({
+  supCode: z.string().trim().min(1).max(10),
+  poDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  validTill: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.string().date())
+    .optional()
+    .nullable(),
+  goodsType: z.string().trim().max(50).optional(),
+  purchaseType: z.string().trim().max(20).optional(),
+  currency: z.string().trim().max(15).optional(),
+  remarks: z.string().trim().max(300).optional().nullable(),
+  contactName: z.string().trim().max(50).optional().nullable(),
+  paymentTerms: z.string().trim().max(150).optional().nullable(),
+  lines: z
+    .array(
+      z.object({
+        toolOrGaugeNo: z.string().trim().min(1).max(25),
+        qty: z.coerce.number().positive(),
+        rate: z.coerce.number().nonnegative().optional(),
+        uom: z.string().trim().max(10).optional(),
+        comments: z.string().trim().max(2000).optional().nullable(),
+        /** ERP naming — FINANCE_LEDGER_MASTER.CODE */
+        expLedgerCode: z.string().trim().max(25).optional().nullable(),
+        /** Tools-only free-text budget / cost ref (no ERP BUDGET_CODE on PO) */
+        budgetCode: z.string().trim().max(50).optional().nullable(),
+      })
+    )
+    .min(1, "At least one line item is required"),
+});
+
+/** Tools-owned payment update on TOOLS_PO_FINANCE */
+export const PurchaseOrderFinanceUpdateSchema = z.object({
+  paymentStatus: z.enum(["UNPAID", "PARTIAL", "PAID"]),
+  paymentDate: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.string().date())
+    .optional()
+    .nullable(),
+  remarks: z.string().trim().max(200).optional().nullable(),
+});
+
 // ── Supplier ─────────────────────────────────────────────────────
 export const SupplierCreateSchema = z.object({
   supCode: z.string().min(1).max(10),
@@ -226,6 +331,10 @@ export const ToolsIssueCreateSchema = z
     itemType: z.string().max(100).optional(),
     issuePurpose: z.string().max(100).optional(),
     matType: z.string().max(20).optional(),
+    /** ERP: issue against Requisition Pending for Tools? */
+    requisitionPending: z.enum(["Yes", "No"]).optional().default("No"),
+    /** MATERIAL_REQUISITION_MASTER.REQ_NO when requisitionPending = Yes */
+    reqNo: z.string().max(40).optional(),
     lines: z
       .array(
         z.object({
@@ -250,6 +359,13 @@ export const ToolsIssueCreateSchema = z
         code: z.ZodIssueCode.custom,
         message: "custCode is required when issueOption is Customer",
         path: ["custCode"],
+      });
+    }
+    if (data.requisitionPending === "Yes" && !(data.reqNo ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "reqNo is required when Requisition Pending = Yes",
+        path: ["reqNo"],
       });
     }
   });
@@ -447,4 +563,26 @@ export const CalibReceiveCreateSchema = z.object({
       })
     )
     .min(1),
+});
+
+/** Raise Material Requisition (tools) — writes MATERIAL_REQUISITION_* */
+export const MaterialRequisitionCreateSchema = z.object({
+  reqDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
+  deptId: z.coerce.number().int().optional().nullable(),
+  empCd: z.coerce.number().int().optional().nullable(),
+  matType: z.string().max(20).optional().default("TOOLS"),
+  fromWhere: z.string().max(30).optional(),
+  remarks: z.string().max(500).optional(),
+  lines: z
+    .array(
+      z.object({
+        toolOrGaugeNo: z.string().min(1).max(30),
+        reqQty: z.number().min(0.001),
+        uom: z.string().max(20).optional(),
+        machine: z.string().max(20).optional(),
+        description: z.string().max(500).optional(),
+        remarks: z.string().max(500).optional(),
+      })
+    )
+    .min(1, "At least one tool line is required"),
 });

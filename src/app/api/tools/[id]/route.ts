@@ -78,17 +78,6 @@ export async function GET(
     return NextResponse.json({ error: "Tool not found" }, { status: 404 });
   }
 
-  const unitHistory = await buildToolUnitHistory({
-    refNo: tool.refNo,
-    toolOrGaugeNo: tool.toolOrGaugeNo,
-    calibrationFrqMonths: tool.calibrationFrqMonths,
-  });
-
-  const computedStatus = computeToolRollupStatus(
-    tool.serialNumbers.map((s) => s.status),
-    tool.activeItem
-  );
-
   // Fetch latest calibration issue/result info for the calibration status panel
   let calibrationSummary = null;
   try {
@@ -120,6 +109,29 @@ export async function GET(
         certificateNo: certNo,
         comments: latestLine.calibResultComments ?? null,
       };
+
+      // Heal stuck unit rows: Results Update wrote resultStatus but GAUGE_SERIAL_NO
+      // was left on ISSUE FOR CALIBRATION (common when serialNo on the line was null/mismatched).
+      const resultDone = String(latestLine.resultStatus ?? "").trim();
+      const calibDone = String(latestLine.calibrationStatus ?? "").toUpperCase() === "DONE";
+      if (resultDone || calibDone) {
+        const unitStatus =
+          /FAILED|REJECTED|OUT OF SERVICE|WORN OUT|BROKEN|NOT IN USE/i.test(resultDone)
+            ? resultDone.slice(0, 30)
+            : "AVAILABLE FOR USE";
+        const stuck = tool.serialNumbers.filter((s) =>
+          /ISSUE FOR CALIBRATION|UNDER CALIBRATION|RECEIVED/i.test(String(s.status ?? ""))
+        );
+        if (stuck.length > 0) {
+          await prisma.gaugeSerialNo.updateMany({
+            where: { refNo: { in: stuck.map((s) => s.refNo) } },
+            data: { status: unitStatus },
+          });
+          for (const s of tool.serialNumbers) {
+            if (stuck.some((u) => u.refNo === s.refNo)) s.status = unitStatus;
+          }
+        }
+      }
     } else if ((tool.calibrationFrqMonths ?? 0) > 0) {
       // Never calibrated but frequency is set — derive expected next due date
       const base = tool.creatDt ? new Date(tool.creatDt) : new Date();
@@ -143,6 +155,18 @@ export async function GET(
   } catch {
     // non-critical
   }
+
+  // Build unit grid after heal so STATUS matches lifecycle panel
+  const unitHistory = await buildToolUnitHistory({
+    refNo: tool.refNo,
+    toolOrGaugeNo: tool.toolOrGaugeNo,
+    calibrationFrqMonths: tool.calibrationFrqMonths,
+  });
+
+  const computedStatus = computeToolRollupStatus(
+    tool.serialNumbers.map((s) => s.status),
+    tool.activeItem
+  );
 
   return NextResponse.json({ tool: { ...tool, unitHistory, computedStatus, calibrationSummary } });
 }

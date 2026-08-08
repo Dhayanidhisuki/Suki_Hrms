@@ -11,6 +11,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { ReportHub } from "@/components/ReportHub";
+import { DownloadCenter } from "@/components/DownloadCenter";
 import { ChartContainer, CalibrationAgingDonut, TransactionVelocityChart } from "@/components/OverviewCharts";
 import { apiGet } from "@/lib/apiClient";
 
@@ -153,6 +154,8 @@ export default function ReportsPage() {
           badge: "PO",
         },
       ]}
-    />
+    >
+      <DownloadCenter />
+    </ReportHub>
   );
 }

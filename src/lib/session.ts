@@ -51,5 +51,8 @@ export async function getSessionFromRequest(req: NextRequest): Promise<SessionDa
   return sessionFromToken(req.cookies.get(AUTH_COOKIE_NAME)?.value);
 }
 
-// Re-export role matrix for server callers
+/**
+ * Re-export seed/fallback matrix (deprecated for runtime checks).
+ * Prefer `@/lib/permissionsCache` / `requirePermission` for authz.
+ */
 export { rolePermissions, type UserRole } from "./rolePermissions";

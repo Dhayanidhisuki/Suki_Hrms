@@ -225,7 +225,7 @@ const navSections: NavSection[] = [
         label: "Users",
         items: [
           { label: "Users", href: "/dashboard/settings/users", icon: Users },
-          { label: "Roles", href: "/dashboard/settings/roles", icon: Shield },
+          { label: "Roles & Permissions", href: "/dashboard/settings/roles", icon: Shield },
           { label: "Permissions", href: "/dashboard/settings/permissions", icon: Shield },
         ],
       },

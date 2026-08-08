@@ -1,13 +1,25 @@
 "use client";
 
-import { PendingFeature } from "@/components/PendingFeature";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 
-export default function Page() {
+/** Permissions UI lives on Roles (role × permission matrix). */
+export default function PermissionsSettingsPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/dashboard/settings/roles");
+  }, [router]);
+
   return (
-    <PendingFeature
+    <SimpleMasterShell
       title="Permissions"
-      kind="scope"
-      reason="Tools Management does not maintain its own user or role records — access is read directly from the existing ERP system. Pending confirmation on whether this page should be read-only (showing current access) or support editing (which would require a design change)."
-    />
+      subtitle="Redirecting to Roles & Permissions…"
+    >
+      <p className="text-sm text-[var(--text-muted)]">
+        Permission toggles are edited on the Roles page as a single matrix view.
+      </p>
+    </SimpleMasterShell>
   );
 }

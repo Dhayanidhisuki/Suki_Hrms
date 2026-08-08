@@ -24,6 +24,11 @@ export type ApprovalItem = {
   date: string | null;
   detail?: string;
   href?: string;
+  /** Present for tool_pricing rows that can be approved/rejected in-app */
+  actionable?: boolean;
+  rate?: number | null;
+  proposedRate?: number | null;
+  rejectedReason?: string | null;
 };
 
 function yesNoStatus(raw: string | null | undefined): ApprovalStatus {
@@ -161,7 +166,7 @@ export async function GET(req: NextRequest) {
     try {
       const rows = await prisma.toolsPriceMaster.findMany({
         take: limitPerSource,
-        orderBy: { creatDt: "desc" },
+        orderBy: [{ submittedAt: "desc" }, { creatDt: "desc" }],
         select: {
           rowId: true,
           supCode: true,
@@ -169,6 +174,10 @@ export async function GET(req: NextRequest) {
           approvalStatus: true,
           approvalDate: true,
           rate: true,
+          proposedRate: true,
+          submittedBy: true,
+          submittedAt: true,
+          rejectedReason: true,
           creatDt: true,
           tool: { select: { toolOrGaugeNo: true, name: true } },
         },
@@ -177,20 +186,36 @@ export async function GET(req: NextRequest) {
       if (rows.length > 0 && rows.some((r) => r.approvalStatus != null && r.approvalStatus !== "")) {
         for (const r of rows) {
           const toolNo = r.tool?.toolOrGaugeNo || (r.toolRefNo != null ? `#${r.toolRefNo}` : "—");
+          const statusNorm = textStatus(r.approvalStatus);
+          const live =
+            r.rate != null ? Number(r.rate).toLocaleString("en-IN") : "—";
+          const proposed =
+            r.proposedRate != null
+              ? Number(r.proposedRate).toLocaleString("en-IN")
+              : null;
+          const detailParts = [
+            `Live ${live}`,
+            proposed != null ? `Proposed ${proposed}` : null,
+            r.submittedBy ? `by ${r.submittedBy}` : null,
+            r.tool?.name || null,
+            r.rejectedReason ? `Reason: ${r.rejectedReason}` : null,
+          ].filter(Boolean);
+
           items.push({
             id: `tool_pricing:${r.rowId}`,
             source: "tool_pricing",
             sourceLabel: "Tool pricing",
             ref: String(r.rowId),
             title: `${toolNo} · ${r.supCode || "—"}`,
-            status: textStatus(r.approvalStatus),
+            status: statusNorm,
             statusRaw: r.approvalStatus?.trim() || "—",
-            date: iso(r.approvalDate) || iso(r.creatDt),
-            detail:
-              r.rate != null
-                ? `Rate ${Number(r.rate).toLocaleString("en-IN")} · ${r.tool?.name || ""}`.trim()
-                : r.tool?.name || undefined,
+            date: iso(r.submittedAt) || iso(r.approvalDate) || iso(r.creatDt),
+            detail: detailParts.join(" · ") || undefined,
             href: "/dashboard/masters/pricing",
+            actionable: statusNorm === "Pending",
+            rate: r.rate != null ? Number(r.rate) : null,
+            proposedRate: r.proposedRate != null ? Number(r.proposedRate) : null,
+            rejectedReason: r.rejectedReason,
           });
         }
       } else {
@@ -207,6 +232,7 @@ export async function GET(req: NextRequest) {
             date: r.approvalDate ? iso(r.approvalDate) : r.creatDt ? iso(r.creatDt) : null,
             detail: r.rate != null ? `Rate ${r.rate} (${file.source})` : file.source,
             href: "/dashboard/masters/pricing",
+            actionable: false,
           });
         }
       }
@@ -325,8 +351,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     items: filtered,
     counts,
-    readOnly: true,
-    note: "Aggregated from existing ERP tables — no Tools approval table created.",
+    readOnly: false,
+    note: "Tool pricing PENDING rows can be approved/rejected in-app. Other sources remain ERP read-only.",
     errors: errors.length ? errors : undefined,
   });
 }

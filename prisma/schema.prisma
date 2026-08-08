@@ -306,9 +306,18 @@ model ToolsPriceMaster {
   revNo           String?   @map("REV_NO") @db.NVarChar(10)
   revDate         DateTime? @map("REV_DATE") @db.DateTime
   revStatus       String?   @map("REV_STATUS") @db.NVarChar(30)
+  /// PENDING | APPROVED | REJECTED (ERP may still hold legacy Yes/No values)
   approvalStatus  String?   @map("APPROVAL_STATUS") @db.NVarChar(30)
   approvalDate    DateTime? @map("APPROVAL_DATE") @db.DateTime
+  /// Live rate — what GRN / Issue / Tool Master read. Not overwritten until approve.
   rate            Decimal?  @map("RATE") @db.Decimal(12, 4)
+  /// Proposed rate awaiting approval (Phase 1 workflow)
+  proposedRate    Decimal?  @map("PROPOSED_RATE") @db.Decimal(12, 4)
+  submittedBy     String?   @map("SUBMITTED_BY") @db.NVarChar(50)
+  submittedAt     DateTime? @map("SUBMITTED_AT") @db.DateTime
+  approvedBy      String?   @map("APPROVED_BY") @db.NVarChar(50)
+  approvedAt      DateTime? @map("APPROVED_AT") @db.DateTime
+  rejectedReason  String?   @map("REJECTED_REASON") @db.NVarChar(500)
   remarks         String?   @map("REMARKS") @db.NVarChar(200)
   creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
   creatDt         DateTime  @map("CREAT_DT") @db.DateTime
@@ -494,7 +503,7 @@ model PurchaseApproval {
   @@map("PURCHASE_APPROVAL")
 }
 
-/// Shared ERP Purchasing header — read-only in Tools Management.
+/// Shared ERP Purchasing header — Tools can create (Phase 2); same table ERP uses.
 model CommonPurchaseOrder {
   poOrderNo         String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
   poDate            DateTime? @map("PO_DATE") @db.DateTime
@@ -523,7 +532,7 @@ model CommonPurchaseOrder {
   @@map("COMMON_PURCHASE_ORDER")
 }
 
-/// Shared ERP Purchasing lines — read-only in Tools Management.
+/// Shared ERP Purchasing lines — ROW_ID is NOT identity; allocate explicitly on create.
 model CommonPurchaseItem {
   rowId             Int       @id @map("ROW_ID")
   poOrderNo         String?   @map("PO_ORDER_NO") @db.NVarChar(16)
@@ -547,8 +556,42 @@ model CommonPurchaseItem {
   @@map("COMMON_PURCHASE_ITEM")
 }
 
+/// Tools-owned PO payment tracking (Phase 3). Not an ERP table — no FK to COMMON_PURCHASE_*.
+model ToolsPoFinance {
+  poOrderNo       String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
+  paymentStatus   String    @default("UNPAID") @map("PAYMENT_STATUS") @db.NVarChar(20)
+  paymentDate     DateTime? @map("PAYMENT_DATE") @db.DateTime
+  remarks         String?   @map("REMARKS") @db.NVarChar(200)
+  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
+
+  lines           ToolsPoFinanceLine[]
+
+  @@map("TOOLS_PO_FINANCE")
+}
+
+/// Per-line EXP_LEDGER_CODE (ERP naming) + optional Tools budget ref.
+model ToolsPoFinanceLine {
+  id              Int       @id @default(autoincrement()) @map("ID")
+  poOrderNo       String    @map("PO_ORDER_NO") @db.NVarChar(16)
+  poItemRowId     Int       @map("PO_ITEM_ROW_ID")
+  expLedgerCode   String?   @map("EXP_LEDGER_CODE") @db.NVarChar(25)
+  budgetCode      String?   @map("BUDGET_CODE") @db.NVarChar(50)
+  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+
+  header          ToolsPoFinance @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: Cascade)
+
+  @@unique([poItemRowId], map: "TOOLS_PO_FINANCE_LINE_item_uid")
+  @@index([poOrderNo])
+  @@map("TOOLS_PO_FINANCE_LINE")
+}
+
 model ToolsPoReceive {
-  girNo           Int       @id @map("GIR_NO") @default(autoincrement())
+  /// GIR_NO is NOT IDENTITY in SQL Server — allocate MAX(GIR_NO)+1 on create.
+  girNo           Int       @id @map("GIR_NO")
   girNoNew        String?   @map("GIR_NO_NEW") @db.NVarChar(20)
   girDate         DateTime? @map("GIR_DATE") @db.DateTime
   poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(16)
@@ -564,7 +607,8 @@ model ToolsPoReceive {
 }
 
 model ToolsPoReceiveTrans {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
+  /// ROW_ID is NOT IDENTITY — allocate explicitly on create.
+  rowId           Int       @id @map("ROW_ID")
   girNo           Int?      @map("GIR_NO")
   itemCode        String?   @map("ITEM_CODE") @db.NVarChar(25)
   itemType        String?   @map("ITEM_TYPE") @db.NVarChar(50)
@@ -751,7 +795,7 @@ model User {
   username     String    @unique @db.NVarChar(50)
   passwordHash String    @db.NVarChar(255)
   name         String    @db.NVarChar(100)
-  /// Matches rolePermissions keys in src/lib/session.ts
+  /// Matches rolePermissions keys / TOOLS_ROLE_PERMISSION.role
   role         String    @default("Viewer") @db.NVarChar(50)
   /// Optional ERP USER_ID for traceability — not used for auth; no FK
   erpUserCode  String?   @db.NVarChar(10)
@@ -761,6 +805,20 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   @@map("TOOLS_APP_USER")
+}
+
+/// App-owned role → permission matrix (editable via Settings). Seeded from rolePermissions.ts.
+model RolePermission {
+  id            Int      @id @default(autoincrement())
+  role          String   @db.NVarChar(50)
+  permissionKey String   @map("permission_key") @db.NVarChar(50)
+  allowed       Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([role, permissionKey], map: "TOOLS_ROLE_PERMISSION_role_perm_key")
+  @@index([role])
+  @@map("TOOLS_ROLE_PERMISSION")
 }
 
 // ═══════════════════════════════════════════════════════════════════
