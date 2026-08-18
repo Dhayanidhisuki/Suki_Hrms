@@ -10,10 +10,9 @@ import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { toastError, toastSuccess } from "@/lib/appToast";
 import { useSession } from "@/lib/SessionContext";
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
-type SupplierOpt = { supCode: string; supName: string | null };
 type GoodsType = { goodsType: string; poPrefix: string };
-type LedgerOpt = { code: string; ledgerName: string | null };
 type LineDraft = {
   key: string;
   toolOrGaugeNo: string;
@@ -45,9 +44,7 @@ export default function CreatePurchaseOrderPage() {
   const { can, loading: sessionLoading } = useSession();
   const allowed = can("canCreatePO");
 
-  const [suppliers, setSuppliers] = useState<SupplierOpt[]>([]);
   const [goodsTypes, setGoodsTypes] = useState<GoodsType[]>([]);
-  const [ledgers, setLedgers] = useState<LedgerOpt[]>([]);
   const [supCode, setSupCode] = useState("");
   const [goodsType, setGoodsType] = useState("GENERAL CONSUMABLES");
   const [poDate, setPoDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -61,13 +58,7 @@ export default function CreatePurchaseOrderPage() {
 
   useEffect(() => {
     void (async () => {
-      const [supRes, gtRes, glRes] = await Promise.all([
-        apiGet<{ items?: SupplierOpt[] }>("/api/suppliers?pageSize=500"),
-        apiGet<{ items?: GoodsType[] }>("/api/po/goods-types"),
-        apiGet<{ items?: LedgerOpt[] }>("/api/gl-codes?pageSize=300"),
-      ]);
-      setSuppliers(supRes.data?.items ?? []);
-      setLedgers(glRes.data?.items ?? []);
+      const gtRes = await apiGet<{ items?: GoodsType[] }>("/api/po/goods-types");
       const gts = gtRes.data?.items ?? [];
       setGoodsTypes(gts);
       if (gts.some((g) => g.goodsType === "GENERAL CONSUMABLES")) {
@@ -330,20 +321,15 @@ export default function CreatePurchaseOrderPage() {
           <form onSubmit={handleSubmit} className="space-y-5 max-w-5xl">
             <div className="bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">Supplier</label>
-                <select
-                  className="form-control"
+                <MasterSearchSelect
+                  kind="supplier"
+                  label="Supplier"
                   value={supCode}
                   required
-                  onChange={(e) => setSupCode(e.target.value)}
-                >
-                  <option value="">Select supplier…</option>
-                  {suppliers.map((s) => (
-                    <option key={s.supCode} value={s.supCode}>
-                      {s.supCode} — {s.supName}
-                    </option>
-                  ))}
-                </select>
+                  selectedLabel={supCode}
+                  onChange={(value) => setSupCode(value)}
+                  placeholder="Search supplier code or name…"
+                />
               </div>
               <div>
                 <label className="form-label">Goods type (PO series)</label>
@@ -504,21 +490,13 @@ export default function CreatePurchaseOrderPage() {
                           />
                         </td>
                         <td className="py-2 px-3 align-top w-48">
-                          <select
-                            className="form-control text-xs"
+                          <MasterSearchSelect
+                            kind="ledger"
                             value={line.expLedgerCode}
-                            onChange={(e) =>
-                              updateLine(line.key, { expLedgerCode: e.target.value })
-                            }
-                          >
-                            <option value="">— Optional —</option>
-                            {ledgers.map((g) => (
-                              <option key={g.code} value={g.code}>
-                                {g.code}
-                                {g.ledgerName ? ` · ${g.ledgerName}` : ""}
-                              </option>
-                            ))}
-                          </select>
+                            selectedLabel={line.expLedgerCode}
+                            onChange={(value) => updateLine(line.key, { expLedgerCode: value })}
+                            placeholder="Search ledger code or name…"
+                          />
                         </td>
                         <td className="py-2 px-3 align-top w-36">
                           <input

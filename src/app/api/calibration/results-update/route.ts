@@ -174,6 +174,7 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean) as string[];
     const packedComments = commentParts.join(" | ").slice(0, 50);
     const packedRemarks = (obsPacked || certificateNo || remarks || comments || result).slice(0, 50);
+    const masterObservationRemark = (errorNoticed?.trim() || obsPacked || "").slice(0, 50);
     const byWhom = (calibratedBy?.trim() || erpActor).slice(0, 25);
     const calibDt = calibratedDate ? new Date(calibratedDate) : new Date();
 
@@ -181,18 +182,22 @@ export async function POST(req: NextRequest) {
       const openLine = await tx.toolsTransIssueForCalibration.findFirst({
         where: {
           toolOrGaugeNo,
+          status: { in: ["Received", "RECEIVED"] },
           OR: [
             { resultStatus: null },
             { resultStatus: "" },
             { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
-            { status: { in: ["Received", "Issued", "Under Calibration", "ISSUE FOR CALIBRATION"] } },
           ],
         },
         orderBy: { creatDt: "desc" },
+        include: { calibIssue: { select: { receiveName: true } } },
       });
 
-      if (openLine) {
-        await tx.toolsTransIssueForCalibration.update({
+      if (!openLine) {
+        throw new Error("Receive this instrument against its calibration DC before recording results");
+      }
+
+      await tx.toolsTransIssueForCalibration.update({
           where: { rowId: openLine.rowId },
           data: {
             resultStatus: normalized.resultStatus.slice(0, 30),
@@ -205,6 +210,104 @@ export async function POST(req: NextRequest) {
             status: normalized.lineStatus.slice(0, 30),
           },
         });
+
+      const detail = await tx.calibrationResultDetail.upsert({
+        where: { issueLineRowId: openLine.rowId },
+        update: {
+          resultStatus: normalized.resultStatus,
+          certificateNo: certificateNo?.trim() || null,
+          referenceStandard: referenceStandard?.trim() || null,
+          errorNoticed: errorNoticed?.trim() || null,
+          comments: comments?.trim() || remarks?.trim() || null,
+          calibratedBy: calibratedBy?.trim() || byWhom,
+          calibratedDate: calibDt,
+          nextCalibDate: new Date(nextCDate),
+          location: locationName?.trim() || location?.trim() || null,
+          updatedBy: erpActor,
+          observations: {
+            deleteMany: {},
+            create: (observedSpecs ?? []).map((item, index) => ({
+              lineNo: index + 1,
+              parameter: item.parameter,
+              specification: item.specification?.trim() || null,
+              observedMin: item.obsMin?.trim() || null,
+              observedMax: item.obsMax?.trim() || null,
+              gaugeStatus: item.gaugeStatus?.trim() || normalized.resultStatus,
+              remarks: item.note?.trim() || null,
+            })),
+          },
+        },
+        create: {
+          issueLineRowId: openLine.rowId,
+          toolOrGaugeNo,
+          dcNo: openLine.dcNo,
+          serialNo: openLine.serialNo,
+          resultStatus: normalized.resultStatus,
+          certificateNo: certificateNo?.trim() || null,
+          referenceStandard: referenceStandard?.trim() || null,
+          errorNoticed: errorNoticed?.trim() || null,
+          comments: comments?.trim() || remarks?.trim() || null,
+          calibratedBy: calibratedBy?.trim() || byWhom,
+          calibratedDate: calibDt,
+          nextCalibDate: new Date(nextCDate),
+          location: locationName?.trim() || location?.trim() || null,
+          createdBy: erpActor,
+          updatedBy: erpActor,
+          observations: {
+            create: (observedSpecs ?? []).map((item, index) => ({
+              lineNo: index + 1,
+              parameter: item.parameter,
+              specification: item.specification?.trim() || null,
+              observedMin: item.obsMin?.trim() || null,
+              observedMax: item.obsMax?.trim() || null,
+              gaugeStatus: item.gaugeStatus?.trim() || normalized.resultStatus,
+              remarks: item.note?.trim() || null,
+            })),
+          },
+        },
+      });
+
+      // Keep structured deviations synchronized with the current result edit.
+      // Re-saving the result replaces only deviations generated for this issue
+      // line, preventing duplicate history rows.
+      await tx.calibrationDeviation.deleteMany({
+        where: { issueLineRowId: openLine.rowId },
+      });
+      const deviationRows = (observedSpecs ?? [])
+        .filter((item) => {
+          const status = (item.gaugeStatus || normalized.resultStatus).toUpperCase();
+          return normalized.failed || /FAIL|REJECT|BROKEN|WORN|ATTENTION|OUT OF SERVICE/.test(status);
+        })
+        .map((item) => ({
+          resultId: detail.id,
+          issueLineRowId: openLine.rowId,
+          toolOrGaugeNo,
+          parameter: item.parameter.slice(0, 100),
+          expectedValue: item.specification?.trim().slice(0, 100) || null,
+          observedValue: [item.obsMin, item.obsMax].filter(Boolean).join(" – ").slice(0, 100) || null,
+          deviation: (item.note?.trim() || errorNoticed?.trim() || normalized.resultStatus).slice(0, 200),
+          permissibleLimit: item.specification?.trim().slice(0, 100) || null,
+          resultStatus: normalized.failed ? "Fail" : "Attention",
+          correctiveAction: comments?.trim().slice(0, 1000) || remarks?.trim().slice(0, 1000) || null,
+          recordedBy: erpActor,
+        }));
+      if (deviationRows.length === 0 && (normalized.failed || errorNoticed?.trim())) {
+        deviationRows.push({
+          resultId: detail.id,
+          issueLineRowId: openLine.rowId,
+          toolOrGaugeNo,
+          parameter: "General",
+          expectedValue: null,
+          observedValue: null,
+          deviation: (errorNoticed?.trim() || normalized.resultStatus).slice(0, 200),
+          permissibleLimit: null,
+          resultStatus: normalized.failed ? "Fail" : "Attention",
+          correctiveAction: comments?.trim().slice(0, 1000) || remarks?.trim().slice(0, 1000) || null,
+          recordedBy: erpActor,
+        });
+      }
+      if (deviationRows.length > 0) {
+        await tx.calibrationDeviation.createMany({ data: deviationRows });
       }
 
       try {
@@ -226,8 +329,11 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        const nextCardTransRowId =
+          ((await tx.gaugeControlCardTrans.aggregate({ _max: { rowId: true } }))._max.rowId ?? 0) + 1;
         await tx.gaugeControlCardTrans.create({
           data: {
+            rowId: nextCardTransRowId,
             refNo: controlCard.rowId,
             cDate: calibDt,
             nextCDate: new Date(nextCDate),
@@ -244,6 +350,7 @@ export async function POST(req: NextRequest) {
         where: { toolOrGaugeNo },
         data: {
           status: normalized.toolStatus,
+          ...(masterObservationRemark ? { remarks: masterObservationRemark } : {}),
           ...(location !== undefined
             ? {
                 location: location?.trim() ? location.trim().slice(0, 50) : null,
@@ -257,6 +364,50 @@ export async function POST(req: NextRequest) {
           lstUpdtUserIdCd: erpActor,
         },
       });
+
+      const masterObservedError = (errorNoticed?.trim() || obsPacked || null)?.slice(0, 200) ?? null;
+      const calibrationAgency = openLine.calibIssue?.receiveName?.trim().slice(0, 100) || null;
+      const updatedImported = await tx.$executeRaw`
+        UPDATE [dbo].[TOOLS_APP_INSTRUMENT_MASTER_DATA]
+        SET [CALIBRATION_DATE] = ${calibDt},
+            [NEXT_CALIBRATION_DUE] = ${new Date(nextCDate)},
+            [OBSERVED_ERROR] = ${masterObservedError},
+            [CALIBRATION_AGENCY] = ${calibrationAgency},
+            [UPDATED_AT] = ${new Date()}
+        WHERE [REF_NO] = ${tool.refNo}
+      `;
+      if (updatedImported === 0) {
+        await tx.$executeRaw`
+          INSERT INTO [dbo].[TOOLS_APP_INSTRUMENT_MASTER_DATA]
+            ([REF_NO], [CALIBRATION_DATE], [NEXT_CALIBRATION_DUE], [OBSERVED_ERROR], [CALIBRATION_AGENCY], [UPDATED_AT])
+          VALUES
+            (${tool.refNo}, ${calibDt}, ${new Date(nextCDate)}, ${masterObservedError}, ${calibrationAgency}, ${new Date()})
+        `;
+      }
+
+      if (normalized.failed) {
+        const activeDefect = await tx.instrumentDefect.findFirst({
+          where: {
+            refNo: tool.refNo,
+            status: { notIn: ["Returned to Use", "Rejected", "Scrapped", "Closed"] },
+          },
+          select: { id: true },
+        });
+        if (!activeDefect) {
+          await tx.instrumentDefect.create({
+            data: {
+              refNo: tool.refNo,
+              toolOrGaugeNo,
+              unitCode: tool.locationName?.slice(0, 100) || null,
+              reportedDate: calibDt,
+              defectDetails: `Calibration result: ${normalized.resultStatus}`,
+              errorDeviation: (errorNoticed?.trim() || packedComments || null)?.slice(0, 500) ?? null,
+              status: "Defect Reported",
+              reportedBy: erpActor,
+            },
+          });
+        }
+      }
 
       // ERP unit grid STATUS — result must clear ISSUE FOR CALIBRATION on GAUGE_SERIAL_NO
       // (lifecycle panel reads resultStatus; unit table reads serial.status — keep them in sync)
@@ -316,7 +467,7 @@ export async function POST(req: NextRequest) {
       }
 
       return { toolOrGaugeNo, result: normalized.resultStatus, nextCDate, updatedLineId: openLine?.rowId ?? null };
-    });
+    }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({ ok: true, record }, { status: 201 });
   } catch (err) {

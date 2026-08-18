@@ -31,34 +31,6 @@ function deriveIssueStatus(lines: { status: string | null }[]): "OPEN" | "PARTIA
   return "OPEN";
 }
 
-async function resolveLabPrice(
-  toolRefNo: number | null | undefined,
-  toolPrice: unknown,
-  clientPrice: number
-): Promise<number> {
-  if (Number.isFinite(clientPrice) && clientPrice > 0) return clientPrice;
-
-  if (toolRefNo != null) {
-    try {
-      const pm = await prisma.toolsPriceMaster.findFirst({
-        where: { toolRefNo },
-        orderBy: [{ revDate: "desc" }, { creatDt: "desc" }],
-        select: { rate: true },
-      });
-      if (pm?.rate != null) {
-        const rate = Number(pm.rate);
-        if (Number.isFinite(rate) && rate > 0) return rate;
-      }
-    } catch (err) {
-      console.warn("Price master lookup skipped:", err);
-    }
-  }
-
-  const master = Number(toolPrice);
-  if (Number.isFinite(master) && master > 0) return master;
-  return 0;
-}
-
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
@@ -178,39 +150,19 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const issueLine = openLines.find((l) => l.toolOrGaugeNo === line.toolOrGaugeNo);
-      const issuedQty = Math.max(1, Number(issueLine?.issueQty) || 1);
-      let qty = Number(line.qty);
-      if (!Number.isFinite(qty) || qty < 1) qty = issuedQty;
-      if (qty > issuedQty) {
-        return NextResponse.json(
-          {
-            error: `Qty ${qty} for ${line.toolOrGaugeNo} exceeds issued qty ${issuedQty}`,
-          },
-          { status: 400 }
-        );
-      }
-
       const tool = await prisma.gaugeAndTools.findUnique({
         where: { toolOrGaugeNo: line.toolOrGaugeNo },
-        select: { price: true, description: true, name: true, refNo: true },
+        select: { description: true, name: true },
       });
 
-      const price = await resolveLabPrice(
-        issueLine?.toolRefNo ?? tool?.refNo,
-        tool?.price,
-        Number(line.price)
-      );
-
-      const serialNo = line.serialNo ?? issueLine?.serialNo ?? null;
       const description =
         (line.description ?? tool?.description ?? tool?.name)?.slice(0, 50) ?? null;
 
       normalizedLines.push({
         toolOrGaugeNo: line.toolOrGaugeNo,
-        qty,
-        price,
-        serialNo,
+        qty: 1,
+        price: line.price,
+        serialNo: null,
         description,
       });
     }

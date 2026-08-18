@@ -12,26 +12,21 @@ import {
   Users,
   Settings,
   ChevronDown,
-  ShoppingCart,
   ClipboardList,
-  Layers,
-  Building2,
   ArrowLeftRight,
   BarChart3,
-  FileText,
   Bell,
   Shield,
-  GitBranch,
-  Tag,
-  IndianRupee,
+  AlertTriangle,
   Gauge,
-  Wrench,
-  CalendarDays,
+  Building2,
+  Handshake,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "@/lib/SessionContext";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -67,67 +62,42 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "Tool Overview", href: "/dashboard", icon: LayoutDashboard },
-          { label: "Transaction Overview", href: "/dashboard/overview/transactions", icon: ArrowLeftRight },
-          { label: "Calibration Overview", href: "/dashboard/overview/calibration", icon: CalendarClock },
-          { label: "Purchase Overview", href: "/dashboard/overview/purchase", icon: ShoppingCart },
+          { label: "Tools Overview", href: "/dashboard", icon: LayoutDashboard },
+          { label: "Transaction Overview", href: "/dashboard/overview/transactions", icon: BarChart3 },
         ],
       },
     ],
   },
   {
     label: "Masters",
-    sectionIcon: Layers,
+    sectionIcon: Package,
     groups: [
       {
-        label: "Tool Masters",
         items: [
-          { label: "Tool Group", href: "/dashboard/masters/tools-group", icon: Package },
-          { label: "Tool Subgroup", href: "/dashboard/masters/tools-subgroup", icon: Layers },
-          { label: "Tools Name for Type", href: "/dashboard/masters/tool-types", icon: Tag },
-          { label: "Item/Asset Master", href: "/dashboard/masters/tools", icon: Package },
-          { label: "Tool Pricing Master", href: "/dashboard/masters/pricing", icon: IndianRupee },
-          { label: "Reorder Level", href: "/dashboard/masters/reorder-level", icon: Gauge },
-          { label: "Tool Mapping", href: "/dashboard/masters/tool-mapping", icon: GitBranch },
-        ],
-      },
-      {
-        label: "Calibration Masters",
-        items: [
-          { label: "Gauge Type Master", href: "/dashboard/masters/gauge-types", icon: Gauge },
-          { label: "Calibration Frequency", href: "/dashboard/masters/calib-frequency", icon: CalendarClock },
-        ],
-      },
-      {
-        label: "Purchase Masters",
-        items: [
-          { label: "Supplier Master", href: "/dashboard/masters/suppliers", icon: Users },
-          { label: "Subcontractor Master", href: "/dashboard/masters/subcontractors", icon: Building2 },
+          { label: "All Instruments & Gauges", href: "/dashboard/masters/tools", icon: Package },
+          { label: "Defect & Services", href: "/dashboard/instruments/defects", icon: AlertTriangle },
+          { label: "Supplier", href: "/dashboard/masters/suppliers", icon: Building2 },
+          { label: "Subcontractor", href: "/dashboard/masters/subcontractors", icon: Handshake },
         ],
       },
     ],
   },
   {
-    label: "Tool Transactions",
+    label: "Transactions",
     sectionIcon: ArrowLeftRight,
     groups: [
       {
-        label: "Tool Issue & Return",
+        label: "Internal Movement",
         items: [
-          { label: "Tool Issue", href: "/dashboard/transactions/issue", icon: ArrowUpRight },
-          { label: "Tool Receive", href: "/dashboard/transactions/receive", icon: ArrowDownLeft },
+          { label: "Create Movement", href: "/dashboard/movement/create?movement=internal", icon: ArrowUpRight },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal", icon: ArrowDownLeft },
         ],
       },
       {
-        label: "Customer Tool Transactions",
+        label: "External Movement",
         items: [
-          { label: "Customer Tool Issues", href: "/dashboard/transactions/customer-receive", icon: ArrowDownLeft },
-        ],
-      },
-      {
-        label: "Tool Requisition",
-        items: [
-          { label: "Requisition Pending", href: "/dashboard/transactions/requisition-pending", icon: ClipboardList },
+          { label: "Create Movement", href: "/dashboard/movement/create?movement=external", icon: ArrowUpRight },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external", icon: ArrowDownLeft },
         ],
       },
     ],
@@ -138,25 +108,10 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "Calibration Issue", href: "/dashboard/calibration/issue", icon: CalendarClock },
-          { label: "Calibration Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft },
-          { label: "Results Update", href: "/dashboard/calibration/results-update", icon: ClipboardList },
-          { label: "Preventive MNT Results", href: "/dashboard/calibration/preventive-results", icon: Wrench },
-          { label: "Calib / PM Calendar", href: "/dashboard/calibration/calendar", icon: CalendarDays },
-          { label: "Due List", href: "/dashboard/calibration/due-list", icon: History },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Purchase",
-    sectionIcon: ShoppingCart,
-    groups: [
-      {
-        label: "Purchase Transactions",
-        items: [
-          { label: "Goods Receipt Note", href: "/dashboard/po-linked/receive", icon: Package },
-          { label: "Purchase Order", href: "/dashboard/po-linked/purchase-order", icon: FileText },
+          { label: "Issue", href: "/dashboard/calibration/issue", icon: ArrowUpRight },
+          { label: "Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft },
+          { label: "Result Update", href: "/dashboard/calibration/results-update", icon: ClipboardList },
+          { label: "Documents & Photos", href: "/dashboard/documents", icon: FileText },
         ],
       },
     ],
@@ -170,8 +125,8 @@ const navSections: NavSection[] = [
           { label: "History Card", href: "/dashboard/tools-history-card", icon: History },
           { label: "Current Status", href: "/dashboard/tools-history-card/status", icon: Gauge },
           { label: "Current Holder", href: "/dashboard/tools-history-card/holder", icon: Users },
-          { label: "Issue History", href: "/dashboard/tools-history-card/issue", icon: ArrowUpRight },
-          { label: "Receive History", href: "/dashboard/tools-history-card/receive", icon: ArrowDownLeft },
+          { label: "Issue History", href: "/dashboard/movement/history", icon: ArrowUpRight },
+          { label: "Receive History", href: "/dashboard/movement/receive", icon: ArrowDownLeft },
           { label: "Calibration Records", href: "/dashboard/tools-history-card/calibration", icon: CalendarClock },
           { label: "Calibration Results", href: "/dashboard/tools-history-card/calibration-results", icon: ClipboardList },
           { label: "GRN History", href: "/dashboard/tools-history-card/grn", icon: Package },
@@ -201,45 +156,12 @@ const navSections: NavSection[] = [
     sectionIcon: Settings,
     groups: [
       {
-        label: "Organization",
-        items: [
-          { label: "Company Settings", href: "/dashboard/settings/company", icon: Building2 },
-          { label: "Branch Settings", href: "/dashboard/settings/branches", icon: GitBranch },
-        ],
-      },
-      {
-        label: "Configuration",
-        items: [
-          { label: "Tool Numbering", href: "/dashboard/settings/tool-numbering", icon: Tag },
-          { label: "Transaction Numbering", href: "/dashboard/settings/transaction-numbering", icon: FileText },
-        ],
-      },
-      {
-        label: "Notifications",
-        items: [
-          { label: "Email Notifications", href: "/dashboard/settings/notifications/email", icon: Bell },
-          { label: "System Notifications", href: "/dashboard/settings/notifications/system", icon: Bell },
-        ],
-      },
-      {
-        label: "Users",
+        label: "Access & Notifications",
         items: [
           { label: "Users", href: "/dashboard/settings/users", icon: Users },
           { label: "Roles & Permissions", href: "/dashboard/settings/roles", icon: Shield },
-          { label: "Permissions", href: "/dashboard/settings/permissions", icon: Shield },
-        ],
-      },
-      {
-        label: "Workflow",
-        items: [
-          { label: "Approval Centre", href: "/dashboard/settings/approval-workflow", icon: GitBranch },
-        ],
-      },
-      {
-        label: "Audit",
-        items: [
+          { label: "Email Notifications", href: "/dashboard/settings/notifications/email", icon: Bell },
           { label: "Audit Trail", href: "/dashboard/settings/audit-trail", icon: History },
-          { label: "Activity Logs", href: "/dashboard/settings/activity-logs", icon: ClipboardList },
         ],
       },
     ],
@@ -255,18 +177,26 @@ function sectionItems(section: NavSection): NavItem[] {
 /** Every leaf href in the sidebar — used so parent routes don't stay active on children. */
 const ALL_NAV_HREFS = navSections.flatMap((s) => sectionItems(s).map((i) => i.href));
 
-function routeMatches(pathname: string, href: string): boolean {
-  if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function routeMatches(pathname: string, href: string, currentSearch = ""): boolean {
+  const [hrefPath, hrefSearch = ""] = href.split("?");
+  const pathMatches =
+    hrefPath === "/dashboard"
+      ? pathname === "/dashboard" || pathname === "/"
+      : pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
+  if (!pathMatches || !hrefSearch) return pathMatches;
+
+  const expected = new URLSearchParams(hrefSearch);
+  const current = new URLSearchParams(currentSearch);
+  return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
 }
 
 /**
  * Active when this href is the longest matching nav item for the current path.
  * Prevents e.g. History Card (/tools-history-card) lighting up on Current Holder.
  */
-function isRouteActive(pathname: string, href: string): boolean {
-  if (!routeMatches(pathname, href)) return false;
-  const matches = ALL_NAV_HREFS.filter((h) => routeMatches(pathname, h));
+function isRouteActive(pathname: string, href: string, currentSearch = ""): boolean {
+  if (!routeMatches(pathname, href, currentSearch)) return false;
+  const matches = ALL_NAV_HREFS.filter((h) => routeMatches(pathname, h, currentSearch));
   if (matches.length === 0) return false;
   const best = matches.reduce((a, b) => (a.length >= b.length ? a : b));
   return best === href;
@@ -274,7 +204,8 @@ function isRouteActive(pathname: string, href: string): boolean {
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const ItemIcon = item.icon;
-  const isActive = isRouteActive(pathname, item.href);
+  const searchParams = useSearchParams();
+  const isActive = isRouteActive(pathname, item.href, searchParams.toString());
   return (
     <Link
       href={item.href}
@@ -315,6 +246,8 @@ function CollapsedTooltip({ label }: { label: string }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSearch = searchParams.toString();
   const { user } = useSession();
   const { theme } = useTheme();
   const displayUser = user;
@@ -328,7 +261,9 @@ export default function Sidebar() {
   });
 
   const [openSection, setOpenSection] = useState<string | null>(() => {
-    const active = navSections.find((s) => sectionItems(s).some((item) => isRouteActive(pathname, item.href)));
+    const active = navSections.find((s) =>
+      sectionItems(s).some((item) => isRouteActive(pathname, item.href, currentSearch))
+    );
     return active?.label ?? navSections[0]?.label ?? null;
   });
 
@@ -458,7 +393,7 @@ export default function Sidebar() {
         {filteredSections.map((section) => {
           const SectionIcon = section.sectionIcon;
           const items = sectionItems(section);
-          const hasActive = items.some((item) => isRouteActive(pathname, item.href));
+          const hasActive = items.some((item) => isRouteActive(pathname, item.href, currentSearch));
           const isExpanded = searchQuery.trim() ? true : openSection === section.label;
           const isFlyoutOpen = flyoutSection === section.label;
 

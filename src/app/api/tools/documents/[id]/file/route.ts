@@ -26,6 +26,11 @@ export async function GET(
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
+  const isInline =
+    _req.nextUrl.searchParams.get("inline") === "1" ||
+    _req.nextUrl.searchParams.get("inline") === "true";
+  const dispositionType = isInline ? "inline" : "attachment";
+
   try {
     const abs = absoluteDocPath(doc.toolOrGaugeNo, doc.storedName);
     const buf = await readFile(abs);
@@ -36,8 +41,8 @@ export async function GET(
       headers: {
         "Content-Type": doc.mimeType || "application/octet-stream",
         "Content-Length": String(buf.length),
-        "Content-Disposition": `attachment; filename="${safeName}"`,
-        "Cache-Control": "private, no-store",
+        "Content-Disposition": `${dispositionType}; filename="${safeName}"`,
+        "Cache-Control": "private, max-age=3600",
       },
     });
   } catch {

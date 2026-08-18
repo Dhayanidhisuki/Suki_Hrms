@@ -178,6 +178,10 @@ export async function DELETE(
           `DC ${id} already has receive GRN(s) — cancel is not allowed`
         );
       }
+      const isMovementRecord =
+        issue.issueOption === "Internal Unit Movement" ||
+        issue.issueOption?.startsWith("External:") ||
+        issue.lines.some((line) => Boolean(line.issueToItemNo));
 
       for (const line of issue.lines) {
         const toolNo = line.toolOrGaugeNo;
@@ -187,7 +191,7 @@ export async function DELETE(
         });
         if (!tool) continue;
         const qty = Number(line.issueQty ?? 0);
-        if (qty > 0 && !maintainsSerial(tool.serialNoGenReq)) {
+        if (!isMovementRecord && qty > 0 && !maintainsSerial(tool.serialNoGenReq)) {
           await tx.gaugeAndTools.update({
             where: { toolOrGaugeNo: toolNo },
             data: {
@@ -196,6 +200,35 @@ export async function DELETE(
               lstUpdtUserIdCd: erpActor,
             },
           });
+        }
+        if (isMovementRecord) {
+          await tx.gaugeSerialNo.updateMany({
+            where: {
+              toolOrGaugeNo: toolNo,
+              ...(line.serialNo != null
+                ? { serialNo: line.serialNo }
+                : { status: { in: ["IN MOVEMENT", "VENDOR USE"] } }),
+            },
+            data: { status: "AVAILABLE FOR USE" },
+          });
+          if (issue.fromUnit && line.issueToItemNo) {
+            const sourceRackPrefix = "Source rack/location: ";
+            const sourceRack = line.remarks?.startsWith(sourceRackPrefix)
+              ? line.remarks.slice(sourceRackPrefix.length).trim() || null
+              : null;
+            await tx.gaugeAndTools.update({
+              where: { refNo: tool.refNo },
+              data: {
+                locationName: issue.fromUnit,
+                location: sourceRack,
+                rack: sourceRack,
+                locationOutputName: sourceRack
+                  ? `${issue.fromUnit} / ${sourceRack}`
+                  : `${issue.fromUnit} / Unassigned rack`,
+                lstUpdtUserIdCd: erpActor,
+              },
+            });
+          }
         }
         await tx.toolsTransIssue.update({
           where: { rowId: line.rowId },

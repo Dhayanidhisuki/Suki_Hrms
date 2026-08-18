@@ -1,16 +1,20 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+
+type NumberingClient = Pick<Prisma.TransactionClient, "$queryRawUnsafe">;
 
 // Generate next sequential number for any prefixed document number
 // Example: generateDocNumber("DC", "GAUGE_TOOLS_ISSUE", "DC_NO") → "DC-2026-001"
 export async function generateDocNumber(
   prefix: string,
   tableName: string,
-  columnName: string
+  columnName: string,
+  db: NumberingClient = prisma
 ): Promise<string> {
   const year = new Date().getFullYear();
   const likePattern = `${prefix}-${year}-%`;
 
-  const result = await prisma.$queryRawUnsafe<{ cnt: number }[]>(
+  const result = await db.$queryRawUnsafe<{ cnt: number }[]>(
     `SELECT COUNT(*) as cnt FROM ${tableName} WHERE ${columnName} LIKE '${likePattern}'`
   );
 

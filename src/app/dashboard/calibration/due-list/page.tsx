@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
@@ -23,6 +24,7 @@ interface Tool {
   cDate?: string | null;
   nextCalibrationDate: string | null;
   status: string | null;
+  unit?: string | null;
 }
 
 function daysUntil(dateStr: string | null): number | null {
@@ -33,21 +35,35 @@ function daysUntil(dateStr: string | null): number | null {
 }
 
 export default function CalibrationDueListPage() {
+  const router = useRouter();
   const [filter, setFilter] = useState<"All" | "Overdue" | "Due in 7 Days" | "Due in 30 Days">(
     "All"
   );
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedToolNos, setSelectedToolNos] = useState<Set<string>>(new Set());
+  const [unitFilter, setUnitFilter] = useState("");
+  const [availableUnits, setAvailableUnits] = useState<string[]>(["Unit 1", "Unit 2", "Unit 3"]);
 
   const loadTools = useCallback(async () => {
     setLoading(true);
-    const res = await apiGet<{ items: Tool[]; alertDays: number }>("/api/tools/calibration-due");
-    if (res.data?.items) setTools(res.data.items);
+    const res = await apiGet<{
+      items: Tool[];
+      alertDays: number;
+      activeUnit?: string;
+      availableUnits?: string[];
+    }>(`/api/tools/calibration-due${unitFilter ? `?unit=${encodeURIComponent(unitFilter)}` : ""}`);
+    if (res.data?.items) {
+      setTools(res.data.items);
+      if (!unitFilter && res.data.activeUnit) setUnitFilter(res.data.activeUnit);
+      if (res.data.availableUnits?.length) setAvailableUnits(res.data.availableUnits);
+    }
     setLoading(false);
-  }, []);
+  }, [unitFilter]);
 
   useEffect(() => {
-    loadTools();
+    const timer = window.setTimeout(() => void loadTools(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadTools]);
 
   const rows = tools
@@ -62,6 +78,20 @@ export default function CalibrationDueListPage() {
     if (filter === "Due in 30 Days") return (t.daysLeft ?? 0) >= 0 && (t.daysLeft ?? 0) <= 30;
     return true;
   });
+
+  const sendSelected = () => {
+    const selected = filtered.filter((tool) => selectedToolNos.has(tool.toolOrGaugeNo));
+    if (selected.length === 0) return;
+    sessionStorage.setItem(
+      "bulkCalibIssueLines",
+      JSON.stringify(selected.map((tool) => ({
+        toolOrGaugeNo: tool.toolOrGaugeNo,
+        nextCalibDate: tool.nextCalibrationDate,
+        unit: tool.unit,
+      })))
+    );
+    router.push("/dashboard/calibration/issue?bulk=1");
+  };
 
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
@@ -91,9 +121,9 @@ export default function CalibrationDueListPage() {
             items={[
               {
                 id: "total-due",
-                label: "Total Due Tools",
+                label: "Calibration Records",
                 value: tools.length,
-                subtext: "Within alert window",
+                subtext: `All dated records · ${unitFilter || "current unit"}`,
                 icon: History,
                 iconBg: "bg-[var(--primary-light)]",
                 iconColor: "text-[var(--primary)]",
@@ -167,7 +197,31 @@ export default function CalibrationDueListPage() {
           />
 
           <MasterTableCard
-            toolbar={<span className="text-[11px] text-[var(--text-muted)]">Calibration due tools</span>}
+            toolbar={
+              <div className="flex w-full items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--text-muted)]">Company Unit</span>
+                  <select
+                    value={unitFilter}
+                    onChange={(event) => {
+                      setUnitFilter(event.target.value);
+                      setSelectedToolNos(new Set());
+                    }}
+                    className="h-8 rounded-lg border border-[var(--border-main)] bg-[var(--bg-card)] px-2 text-xs font-semibold"
+                  >
+                    {availableUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  disabled={selectedToolNos.size === 0}
+                  onClick={sendSelected}
+                  className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Send Selected ({selectedToolNos.size})
+                </button>
+              </div>
+            }
             footer={
               <span className="text-xs text-[var(--text-muted)]">
                 Showing {filtered.length} of {rows.length} tools due for calibration
@@ -183,13 +237,22 @@ export default function CalibrationDueListPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                    {["Tool No", "Name", "Grouping", "Type", "Freq", "Last Calib", "Status", "Next Due", "Days Left", ""].map(
-                      (col) => (
+                    {["", "Tool No", "Unit", "Name", "Grouping", "Type", "Freq", "Last Calib", "Status", "Next Due", "Days Left", ""].map(
+                      (col, index) => (
                         <th
-                          key={col || "action"}
+                          key={col || `blank-${index}`}
                           className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 last:pr-0"
                         >
-                          {col}
+                          {index === 0 ? (
+                            <input
+                              type="checkbox"
+                              aria-label="Select all visible instruments"
+                              checked={filtered.length > 0 && filtered.every((tool) => selectedToolNos.has(tool.toolOrGaugeNo))}
+                              onChange={(event) => setSelectedToolNos(event.target.checked
+                                ? new Set(filtered.map((tool) => tool.toolOrGaugeNo))
+                                : new Set())}
+                            />
+                          ) : col}
                         </th>
                       )
                     )}
@@ -200,7 +263,21 @@ export default function CalibrationDueListPage() {
                     const overdue = (t.daysLeft ?? 0) < 0;
                     return (
                       <tr key={t.refNo ?? t.toolOrGaugeNo} className="hover:bg-[var(--bg-hover)] transition-colors">
+                        <td className="py-3 px-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${t.toolOrGaugeNo}`}
+                            checked={selectedToolNos.has(t.toolOrGaugeNo)}
+                            onChange={(event) => setSelectedToolNos((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) next.add(t.toolOrGaugeNo);
+                              else next.delete(t.toolOrGaugeNo);
+                              return next;
+                            })}
+                          />
+                        </td>
                         <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{t.toolOrGaugeNo}</td>
+                        <td className="py-3 px-3 text-xs font-semibold text-[var(--primary)]">{t.unit || "—"}</td>
                         <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{t.name}</td>
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{t.grouping ?? "—"}</td>
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{t.type ?? "—"}</td>
@@ -241,7 +318,7 @@ export default function CalibrationDueListPage() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                      <td colSpan={12} className="py-8 text-center text-sm text-[var(--text-muted)]">
                         No tools match this filter.
                       </td>
                     </tr>

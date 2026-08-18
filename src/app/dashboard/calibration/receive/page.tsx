@@ -48,11 +48,6 @@ interface CalibReceiveHeader {
   } | null;
 }
 
-const toNum = (v: number | string | null | undefined) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
-
 const statusBadge: Record<string, { bg: string; text: string }> = {
   Available: { bg: "bg-[var(--color-success-bg)] border border-[var(--border-main)]", text: "text-[var(--color-success-text)]" },
   "Under Calibration": { bg: "bg-[var(--color-warning-bg)] border border-[var(--border-main)]", text: "text-[var(--color-warning-text)]" },
@@ -122,7 +117,8 @@ export default function CalibrationReceivePage() {
   }, []);
 
   useEffect(() => {
-    loadRecords();
+    const timer = window.setTimeout(() => void loadRecords(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadRecords]);
 
   const beginReceive = (iss: OpenCalibIssue) => {
@@ -135,16 +131,13 @@ export default function CalibrationReceivePage() {
       (iss.inHouseLines ?? [])
         .filter((l) => l.toolOrGaugeNo)
         .map((l) => {
-          const issuedQty = Math.max(1, Number(l.issueQty) || 1);
-          const masterPrice = l.tool?.price != null ? toNum(l.tool.price) : 0;
-          const labRate = l.tool?.labRate != null ? toNum(l.tool.labRate) : 0;
           return {
             toolOrGaugeNo: l.toolOrGaugeNo as string,
             description: (l.tool?.description || l.tool?.name || "").slice(0, 50),
-            serialNo: l.serialNo ?? null,
-            qty: issuedQty,
-            maxQty: issuedQty,
-            price: labRate > 0 ? labRate : masterPrice,
+            serialNo: null,
+            qty: 1,
+            maxQty: 1,
+            price: Number(l.tool?.labRate ?? l.tool?.price ?? 0),
             selected: true,
           };
         })
@@ -159,23 +152,11 @@ export default function CalibrationReceivePage() {
       toastError("Select at least one tool line to receive.");
       return;
     }
-    const badQty = selected.find((l) => !Number.isFinite(l.qty) || l.qty < 1);
-    if (badQty) {
-      toastError(`Quantity must be at least 1 for ${badQty.toolOrGaugeNo}.`);
-      return;
-    }
-    const overIssued = selected.find((l) => l.qty > l.maxQty);
-    if (overIssued) {
-      toastError(
-        `Qty ${overIssued.qty} for ${overIssued.toolOrGaugeNo} exceeds issued qty ${overIssued.maxQty}.`
-      );
-      return;
-    }
     const lines = selected.map((l) => ({
       toolOrGaugeNo: l.toolOrGaugeNo,
-      qty: l.qty,
+      qty: 1,
       price: l.price,
-      serialNo: l.serialNo,
+      serialNo: null,
       description: l.description || null,
     }));
     setSubmitting(true);
@@ -506,7 +487,7 @@ export default function CalibrationReceivePage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["", "Gauge/Tool No", "SL.No", "Description", "Qty", "Price", "Item Value"].map(
+                          {["", "Instrument / Gauge No", "Description", "Calibration Price"].map(
                             (col) => (
                               <th
                                 key={col || "chk"}
@@ -533,9 +514,6 @@ export default function CalibrationReceivePage() {
                               />
                             </td>
                             <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
-                            <td className="py-2 px-3 font-mono text-xs text-[var(--text-muted)]">
-                              {line.serialNo ?? "—"}
-                            </td>
                             <td className="py-2 px-3">
                               <input
                                 value={line.description}
@@ -549,48 +527,29 @@ export default function CalibrationReceivePage() {
                               />
                             </td>
                             <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                min={1}
-                                max={line.maxQty}
-                                step={1}
-                                value={line.qty}
-                                disabled={!line.selected}
-                                onChange={(e) => {
-                                  const next = [...lineDrafts];
-                                  const raw = Number(e.target.value);
-                                  const qty = Number.isFinite(raw)
-                                    ? Math.min(line.maxQty, Math.max(1, Math.floor(raw)))
-                                    : 1;
-                                  next[idx] = { ...line, qty };
-                                  setLineDrafts(next);
-                                }}
-                                className="w-20 text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 font-mono bg-[var(--bg-subtle)]"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                value={line.price}
-                                disabled={!line.selected}
-                                onChange={(e) => {
-                                  const next = [...lineDrafts];
-                                  next[idx] = { ...line, price: Number(e.target.value) || 0 };
-                                  setLineDrafts(next);
-                                }}
-                                className="w-28 text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 font-mono bg-[var(--bg-subtle)]"
-                              />
-                            </td>
-                            <td className="py-2 px-3 font-mono text-xs tabular-nums">
-                              {(line.qty * line.price).toFixed(2)}
+                              <div className="relative min-w-[140px]">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">₹</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.price}
+                                  disabled={!line.selected}
+                                  onChange={(e) => {
+                                    const next = [...lineDrafts];
+                                    next[idx] = { ...line, price: Math.max(0, Number(e.target.value) || 0) };
+                                    setLineDrafts(next);
+                                  }}
+                                  className="w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] py-1.5 pl-7 pr-2 text-right font-mono text-sm"
+                                  aria-label={`Calibration price for ${line.toolOrGaugeNo}`}
+                                />
+                              </div>
                             </td>
                           </tr>
                         ))}
                         {lineDrafts.length === 0 && (
                           <tr>
-                            <td colSpan={7} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                            <td colSpan={4} className="py-6 text-center text-xs text-[var(--text-muted)]">
                               This DC has no tool lines to receive.
                             </td>
                           </tr>
@@ -599,21 +558,13 @@ export default function CalibrationReceivePage() {
                     </table>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="text-sm text-[var(--text-muted)]">
-                      <p>
-                        Sub Total:{" "}
-                        <span className="font-mono font-bold text-[var(--text-primary)]">
-                          {lineDrafts
-                            .filter((l) => l.selected)
-                            .reduce((s, l) => s + l.qty * l.price, 0)
-                            .toFixed(2)}
-                        </span>
-                      </p>
-                      <p className="text-[10px] mt-0.5">
-                        Item Value = Qty × Price (from tool master; edit Price if lab charges differ). Tax/ledger posting remains in ERP Finance (not in Tools).
-                      </p>
-                    </div>
+                  <div className="flex items-center justify-end gap-3">
+                    <span className="text-sm text-[var(--text-muted)]">
+                      Total calibration price:{" "}
+                      <strong className="font-mono text-[var(--text-primary)]">
+                        ₹{lineDrafts.filter((line) => line.selected).reduce((sum, line) => sum + line.price, 0).toFixed(2)}
+                      </strong>
+                    </span>
                     <Button type="submit" disabled={submitting || lineDrafts.every((l) => !l.selected)}>
                       {submitting ? "Posting…" : "Post Calibration Receive"}
                     </Button>
@@ -688,7 +639,7 @@ export default function CalibrationReceivePage() {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-[var(--text-muted)] font-bold text-[10px] uppercase bg-[var(--bg-card)]">
-                                {["Tool No", "Name & Description", "Group", "S.No", "Qty", "Price", "Calib Frq", "Tool Status", "Files"].map((col) => (
+                                {["Instrument No", "Description", "Group", "Calib Frq", "Price", "Instrument Status", "Files"].map((col) => (
                                   <th key={col} className="text-left py-2 px-3">{col}</th>
                                 ))}
                               </tr>
@@ -709,11 +660,11 @@ export default function CalibrationReceivePage() {
                                       )}
                                     </td>
                                     <td className="py-2.5 px-3 text-[var(--text-muted)]">{line.tool?.grouping ?? "—"}</td>
-                                    <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{line.serialNo ?? "—"}</td>
-                                    <td className="py-2.5 px-3 font-mono">{line.qty != null ? toNum(line.qty) : "—"}</td>
-                                    <td className="py-2.5 px-3 font-mono">{line.price != null ? toNum(line.price).toFixed(2) : "—"}</td>
                                     <td className="py-2.5 px-3 text-[var(--text-muted)]">
                                       {line.tool?.calibrationFrqMonths ? `${line.tool.calibrationFrqMonths} mo` : "—"}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-mono text-[var(--text-primary)]">
+                                      ₹{Number(line.price ?? 0).toFixed(2)}
                                     </td>
                                     <td className="py-2.5 px-3">
                                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sb.bg} ${sb.text}`}>

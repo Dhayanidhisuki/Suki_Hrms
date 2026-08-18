@@ -8,12 +8,7 @@ import { NavigationLoader } from "@/components/NavigationLoader";
 import { AppToaster } from "@/components/AppToaster";
 import { parseCookieString, THEME_COOKIE_NAME, MODE_COOKIE_NAME } from "@/lib/theme-cookies";
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
+const poppins = { className: "font-sans", variable: "--font-poppins" };
 
 export const metadata: Metadata = {
   title: "SUKI ERP — Tools Management",

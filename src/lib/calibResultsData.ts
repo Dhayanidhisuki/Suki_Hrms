@@ -21,6 +21,18 @@ export type CalibResultExportRow = {
   receiveName: string | null;
   issueFor: string | null;
   calibratedBy: string | null;
+  certificateNo: string | null;
+  referenceStandard: string | null;
+  errorNoticed: string | null;
+  comments: string | null;
+  observations: Array<{
+    parameter: string;
+    specification: string | null;
+    observedMin: string | null;
+    observedMax: string | null;
+    gaugeStatus: string | null;
+    remarks: string | null;
+  }>;
   // Spec snapshot from tool master (ERP Update Calibration Results)
   gSpecUpperMin: number | string | null;
   gSpecUpperMax: number | string | null;
@@ -32,17 +44,46 @@ export type CalibResultExportRow = {
   prodSpecUpperMax: number | string | null;
 };
 
+async function attachResultDetails(rows: CalibResultExportRow[]) {
+  if (rows.length === 0) return rows;
+  const details = await prisma.calibrationResultDetail.findMany({
+    where: { issueLineRowId: { in: rows.map((row) => row.refNo) } },
+    include: { observations: { orderBy: { lineNo: "asc" } } },
+  });
+  const byLine = new Map(details.map((detail) => [detail.issueLineRowId, detail]));
+  return rows.map((row) => {
+    const detail = byLine.get(row.refNo);
+    return {
+      ...row,
+      certificateNo: detail?.certificateNo ?? null,
+      referenceStandard: detail?.referenceStandard ?? null,
+      errorNoticed: detail?.errorNoticed ?? null,
+      comments: detail?.comments ?? row.remarks,
+      observations: (detail?.observations ?? []).map((item) => ({
+        parameter: item.parameter,
+        specification: item.specification,
+        observedMin: item.observedMin,
+        observedMax: item.observedMax,
+        gaugeStatus: item.gaugeStatus,
+        remarks: item.remarks,
+      })),
+    };
+  });
+}
+
 /** Pending / open calibration result lines (same source as Results Update list). */
 export async function loadCalibResultsPending(
   take = 500
 ): Promise<CalibResultExportRow[]> {
   const lines = await prisma.toolsTransIssueForCalibration.findMany({
     where: {
-      OR: [
-        { resultStatus: null },
-        { resultStatus: "" },
-        { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
-        { status: { in: ["Issued", "Under Calibration", "OPEN", "Received", "ISSUE FOR CALIBRATION"] } },
+      AND: [
+        { status: { in: ["Received", "RECEIVED"] } },
+        { OR: [
+          { resultStatus: null },
+          { resultStatus: "" },
+          { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
+        ] },
       ],
     },
     orderBy: { creatDt: "desc" },
@@ -74,7 +115,7 @@ export async function loadCalibResultsPending(
     },
   });
 
-  return lines
+  const rows: CalibResultExportRow[] = lines
     .filter((l) => l.toolOrGaugeNo)
     .map((l) => ({
       refNo: l.rowId,
@@ -105,15 +146,21 @@ export async function loadCalibResultsPending(
       receiveName: l.calibIssue?.receiveName ?? null,
       issueFor: l.calibIssue?.issueFor ?? null,
       calibratedBy: l.calibratedBy ?? null,
-      gSpecUpperMin: l.tool?.gSpecUpperMin ?? null,
-      gSpecUpperMax: l.tool?.gSpecUpperMax ?? null,
-      wLimitLowerMax: l.tool?.wLimitLowerMax ?? null,
-      wLimitUpperMin: l.tool?.wLimitUpperMin ?? null,
-      wLimitUpperMax: l.tool?.wLimitUpperMax ?? null,
-      prodSpecLowerMax: l.tool?.prodSpecLowerMax ?? null,
-      prodSpecUpperMin: l.tool?.prodSpecUpperMin ?? null,
-      prodSpecUpperMax: l.tool?.prodSpecUpperMax ?? null,
+      certificateNo: null,
+      referenceStandard: null,
+      errorNoticed: null,
+      comments: null,
+      observations: [],
+      gSpecUpperMin: l.tool?.gSpecUpperMin?.toString() ?? null,
+      gSpecUpperMax: l.tool?.gSpecUpperMax?.toString() ?? null,
+      wLimitLowerMax: l.tool?.wLimitLowerMax?.toString() ?? null,
+      wLimitUpperMin: l.tool?.wLimitUpperMin?.toString() ?? null,
+      wLimitUpperMax: l.tool?.wLimitUpperMax?.toString() ?? null,
+      prodSpecLowerMax: l.tool?.prodSpecLowerMax?.toString() ?? null,
+      prodSpecUpperMin: l.tool?.prodSpecUpperMin?.toString() ?? null,
+      prodSpecUpperMax: l.tool?.prodSpecUpperMax?.toString() ?? null,
     }));
+  return attachResultDetails(rows);
 }
 
 /** Closed / completed calibration result lines for Open/Closed filter. */
@@ -156,7 +203,7 @@ export async function loadCalibResultsClosed(
     },
   });
 
-  return lines
+  const rows: CalibResultExportRow[] = lines
     .filter((l) => l.toolOrGaugeNo)
     .map((l) => ({
       refNo: l.rowId,
@@ -182,15 +229,21 @@ export async function loadCalibResultsClosed(
       receiveName: l.calibIssue?.receiveName ?? null,
       issueFor: l.calibIssue?.issueFor ?? null,
       calibratedBy: l.calibratedBy ?? null,
-      gSpecUpperMin: l.tool?.gSpecUpperMin ?? null,
-      gSpecUpperMax: l.tool?.gSpecUpperMax ?? null,
-      wLimitLowerMax: l.tool?.wLimitLowerMax ?? null,
-      wLimitUpperMin: l.tool?.wLimitUpperMin ?? null,
-      wLimitUpperMax: l.tool?.wLimitUpperMax ?? null,
-      prodSpecLowerMax: l.tool?.prodSpecLowerMax ?? null,
-      prodSpecUpperMin: l.tool?.prodSpecUpperMin ?? null,
-      prodSpecUpperMax: l.tool?.prodSpecUpperMax ?? null,
+      certificateNo: null,
+      referenceStandard: null,
+      errorNoticed: null,
+      comments: null,
+      observations: [],
+      gSpecUpperMin: l.tool?.gSpecUpperMin?.toString() ?? null,
+      gSpecUpperMax: l.tool?.gSpecUpperMax?.toString() ?? null,
+      wLimitLowerMax: l.tool?.wLimitLowerMax?.toString() ?? null,
+      wLimitUpperMin: l.tool?.wLimitUpperMin?.toString() ?? null,
+      wLimitUpperMax: l.tool?.wLimitUpperMax?.toString() ?? null,
+      prodSpecLowerMax: l.tool?.prodSpecLowerMax?.toString() ?? null,
+      prodSpecUpperMin: l.tool?.prodSpecUpperMin?.toString() ?? null,
+      prodSpecUpperMax: l.tool?.prodSpecUpperMax?.toString() ?? null,
     }));
+  return attachResultDetails(rows);
 }
 
 export const CALIB_RESULTS_EXPORT_COLUMNS = [
@@ -206,4 +259,7 @@ export const CALIB_RESULTS_EXPORT_COLUMNS = [
   { key: "receiveName", label: "Receive Name" },
   { key: "issueFor", label: "Issue For" },
   { key: "remarks", label: "Remarks / Certificate" },
+  { key: "certificateNo", label: "Certificate No" },
+  { key: "referenceStandard", label: "Reference Standard" },
+  { key: "calibratedBy", label: "Calibrated By" },
 ] as const;

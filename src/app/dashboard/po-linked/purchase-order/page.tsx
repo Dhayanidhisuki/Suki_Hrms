@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { useSession } from "@/lib/SessionContext";
 import { toastError, toastSuccess } from "@/lib/appToast";
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
 interface PoLine {
   rowId: number;
@@ -92,7 +93,6 @@ export default function PurchaseOrderPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [supFilter, setSupFilter] = useState("ALL");
   const [toolsOnly, setToolsOnly] = useState(true);
-  const [suppliers, setSuppliers] = useState<SupplierOpt[]>([]);
   const [expandedPo, setExpandedPo] = useState<string | null>(null);
   const [payingPo, setPayingPo] = useState<string | null>(null);
   const pageSize = 50;
@@ -139,10 +139,6 @@ export default function PurchaseOrderPage() {
 
   useEffect(() => {
     void load(1, "");
-    void (async () => {
-      const res = await apiGet<{ items?: SupplierOpt[] }>("/api/suppliers?pageSize=200");
-      setSuppliers(res.data?.items ?? []);
-    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -365,22 +361,17 @@ export default function PurchaseOrderPage() {
                 </div>
               </div>
               <div className="min-w-[180px]">
-                <label className="form-label">Supplier</label>
-                <select
-                  value={supFilter}
-                  onChange={(e) => {
-                    setSupFilter(e.target.value);
+                <MasterSearchSelect
+                  kind="supplier"
+                  label="Supplier"
+                  value={supFilter === "ALL" ? "" : supFilter}
+                  selectedLabel={supFilter}
+                  onChange={(value) => {
+                    setSupFilter(value || "ALL");
                     setPage(1);
                   }}
-                  className="form-control"
-                >
-                  <option value="ALL">ALL</option>
-                  {suppliers.map((s) => (
-                    <option key={s.supCode} value={s.supCode}>
-                      {s.supCode} — {s.supName}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="All suppliers — search to filter…"
+                />
               </div>
               <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] pb-2 cursor-pointer select-none">
                 <input

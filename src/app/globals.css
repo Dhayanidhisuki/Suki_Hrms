@@ -4,7 +4,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Poppins", system-ui, sans-serif;
+  --font-sans:  system-ui, sans-serif;
 
   --color-primary-50: var(--primary-light);
   --color-primary-100: var(--primary-light);
@@ -40,11 +40,13 @@
 }
 
 body {
-  font-family: "Poppins", system-ui, sans-serif;
+  font-family:  system-ui, sans-serif;
   background-color: var(--bg-app);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
+
+
 
 /* Typography: headings stay medium, numbers stay normal weight */
 h1, h2, h3, h4, h5, h6 {
@@ -457,5 +459,120 @@ textarea.form-control {
   justify-content: flex-end;
   gap: 0.75rem;
   padding-top: 0.25rem;
+}
+
+/* Instrument master: dense, readable enterprise data grid. */
+.instrument-master-grid {
+  min-width: 1780px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text-primary);
+  border: 1px solid var(--border-main);
+  border-radius: 0.75rem;
+  /* Overflow on the table itself prevents the sticky action control from
+     pinning to the visible edge of its scroll container. */
+  overflow: visible;
+}
+
+.instrument-master-grid th,
+.instrument-master-grid td {
+  padding: 0.5rem 0.75rem;
+  border-right: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--border-main);
+  vertical-align: middle;
+}
+
+.instrument-master-grid th {
+  height: 2.75rem;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.instrument-master-grid tbody td {
+  height: 3.25rem;
+  font-size: 0.8125rem;
+}
+
+.instrument-master-grid th:last-child,
+.instrument-master-grid td:last-child {
+  border-right: 0;
+}
+
+.instrument-master-grid tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.instrument-master-grid tbody tr:hover td {
+  background-color: var(--bg-hover);
+}
+
+.instrument-cell-primary,
+.instrument-cell-secondary {
+  display: block;
+}
+
+.instrument-cell-primary {
+  color: var(--text-primary);
+  font-weight: 550;
+  line-height: 1.2;
+}
+
+.instrument-cell-secondary {
+  margin-top: 0.125rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.instrument-actions-cell {
+  position: sticky !important;
+  right: 0 !important;
+  z-index: 40 !important;
+  width: 7.5rem;
+  min-width: 7.5rem;
+  max-width: 7.5rem;
+  text-align: center;
+  background: var(--bg-card);
+  box-shadow: -10px 0 16px -14px rgba(15, 23, 42, 0.85);
+}
+
+.instrument-master-grid th:last-child {
+  position: sticky !important;
+  right: 0 !important;
+  z-index: 50 !important;
+  width: 7.5rem;
+  min-width: 7.5rem;
+  max-width: 7.5rem;
+  background: var(--bg-subtle);
+  box-shadow: -10px 0 16px -14px rgba(15, 23, 42, 0.85);
+}
+
+.instrument-action-btn {
+  display: inline-flex;
+  min-height: 1.875rem;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  flex: 0 0 1.875rem;
+  gap: 0;
+  padding: 0.25rem;
+  border: 1px solid var(--border-main);
+  border-radius: 0.55rem;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.instrument-action-btn:hover {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border-main));
+  background: var(--bg-hover);
+  color: var(--primary);
 }
 } /* end @layer components */

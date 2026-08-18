@@ -7,7 +7,6 @@ import {
   Users,
   Building2,
   History,
-  FileText,
   Boxes,
 } from "lucide-react";
 import { ReportHub } from "@/components/ReportHub";
@@ -145,13 +144,6 @@ export default function ReportsPage() {
           metric: stats.issues,
           metricLabel: "issue records",
           badge: "History",
-        },
-        {
-          href: "/dashboard/reports/purchase-orders",
-          title: "Purchase Order Report",
-          description: "Linked PO references and GRN historical context.",
-          icon: FileText,
-          badge: "PO",
         },
       ]}
     >

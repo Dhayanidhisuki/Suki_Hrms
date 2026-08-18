@@ -20,7 +20,7 @@ export const TOOL_ROLLUP_STATUSES = [
 export type ToolRollupStatus = (typeof TOOL_ROLLUP_STATUSES)[number];
 
 const CALIB = ["ISSUE FOR CALIBRATION"];
-const ATTENTION = ["REJECTED", "WORN OUT"];
+const ATTENTION = ["REJECTED", "WORN OUT", "NEEDS ATTENTION", "DEFECTIVE"];
 const AVAILABLE = ["AVAILABLE FOR USE"];
 const IN_USE = ["INHOUSE USE", "VENDOR USE", "NEW PURCHASE"];
 const ALL_TRACKED = [...CALIB, ...ATTENTION, ...AVAILABLE, ...IN_USE];
@@ -37,7 +37,8 @@ function norm(value: string | null | undefined): string {
  */
 export function computeToolRollupStatus(
   unitStatuses: Array<string | null | undefined>,
-  activeItem: string | null | undefined
+  activeItem: string | null | undefined,
+  hasUnitStock?: boolean
 ): ToolRollupStatus {
   const statuses = new Set(unitStatuses.map(norm));
   if (CALIB.some((s) => statuses.has(s))) return "In Calibration";
@@ -45,6 +46,7 @@ export function computeToolRollupStatus(
   if (AVAILABLE.some((s) => statuses.has(s))) return "Available";
   if (IN_USE.some((s) => statuses.has(s))) return "In Use";
   if (norm(activeItem) === "NO") return "Inactive";
+  if (hasUnitStock) return "Available";
   return "No Units";
 }
 
@@ -60,6 +62,8 @@ export function rollupStatusWhere(badge: string): Record<string, unknown> | null
   const none = (values: string[]) => ({
     serialNumbers: { none: { status: { in: values } } },
   });
+  const hasStock = { unitStock: { some: {} } };
+  const noStock = { unitStock: { none: {} } };
 
   switch (badge) {
     case "In Calibration":
@@ -67,7 +71,18 @@ export function rollupStatusWhere(badge: string): Record<string, unknown> | null
     case "Needs Attention":
       return { AND: [some(ATTENTION), none(CALIB)] };
     case "Available":
-      return { AND: [some(AVAILABLE), none([...CALIB, ...ATTENTION])] };
+      return {
+        OR: [
+          { AND: [some(AVAILABLE), none([...CALIB, ...ATTENTION])] },
+          {
+            AND: [
+              hasStock,
+              none(ALL_TRACKED),
+              { OR: [{ activeItem: null }, { activeItem: { not: "No" } }] },
+            ],
+          },
+        ],
+      };
     case "In Use":
       return { AND: [some(IN_USE), none([...CALIB, ...ATTENTION, ...AVAILABLE])] };
     case "Inactive":
@@ -75,6 +90,7 @@ export function rollupStatusWhere(badge: string): Record<string, unknown> | null
     case "No Units":
       return {
         AND: [
+          noStock,
           none(ALL_TRACKED),
           { OR: [{ activeItem: null }, { activeItem: { not: "No" } }] },
         ],

@@ -21,18 +21,7 @@ import { Button } from "@/components/ui/button";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
-
-interface Supplier {
-  supCode: string;
-  supName: string;
-  isApproved: boolean;
-}
-
-interface Tool {
-  refNo: number;
-  toolOrGaugeNo: string;
-  name: string;
-}
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
 interface PoGrnLine {
   rowId: number;
@@ -114,8 +103,6 @@ function formatInr(n: number): string {
 export default function PoReceivePage() {
   const searchParams = useSearchParams();
   const [grns, setGrns] = useState<PoGrnHeader[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
@@ -187,7 +174,6 @@ export default function PoReceivePage() {
       if (match.supCode) setSupCode(match.supCode);
 
       const staged: StagedGrnLine[] = [];
-      const extraTools: Tool[] = [];
       for (const l of match.lines ?? []) {
         const toolNo = (l.tool?.toolOrGaugeNo || l.itemCode || "").trim();
         if (!toolNo) continue;
@@ -199,22 +185,10 @@ export default function PoReceivePage() {
           recQty: Number.isFinite(qty) && qty > 0 ? qty : 1,
           price: Number.isFinite(price) && price >= 0 ? price : 0,
         });
-        extraTools.push({
-          refNo: l.tool?.refNo ?? -(extraTools.length + 1),
-          toolOrGaugeNo: toolNo,
-          name: l.tool?.name ?? toolNo,
-        });
       }
 
       if (staged.length > 0) {
         setStagedLines(staged);
-        setTools((prev) => {
-          const byNo = new Map(prev.map((t) => [t.toolOrGaugeNo, t]));
-          for (const t of extraTools) {
-            if (!byNo.has(t.toolOrGaugeNo)) byNo.set(t.toolOrGaugeNo, t);
-          }
-          return Array.from(byNo.values());
-        });
         toastSuccess(`Loaded ${staged.length} line(s) from ${match.poOrderNo}`);
       } else {
         toastError(`${match.poOrderNo} has no tool lines to receive`);
@@ -238,17 +212,13 @@ export default function PoReceivePage() {
     if (dateFrom) params.set("fromDate", dateFrom);
     if (dateTo) params.set("toDate", dateTo);
 
-    const [gRes, sRes, tRes] = await Promise.all([
-      apiGet<{
+    const gRes = await apiGet<{
         items: PoGrnHeader[];
         total: number;
         totalPages?: number;
         page?: number;
         pageSize?: number;
-      }>(`/api/po/grn?${params}`),
-      apiGet<{ items: Supplier[] }>("/api/suppliers?pageSize=500"),
-      apiGet<{ items: Tool[] }>("/api/tools?pageSize=100"),
-    ]);
+      }>(`/api/po/grn?${params}`);
 
     if (gRes.data?.items) setGrns(gRes.data.items);
     else setGrns([]);
@@ -257,16 +227,6 @@ export default function PoReceivePage() {
       gRes.data?.totalPages ??
         Math.max(1, Math.ceil((gRes.data?.total ?? 0) / pageSize))
     );
-    if (sRes.data?.items) setSuppliers(sRes.data.items);
-    if (tRes.data?.items) {
-      setTools((prev) => {
-        const byNo = new Map((tRes.data?.items ?? []).map((t) => [t.toolOrGaugeNo, t]));
-        for (const t of prev) {
-          if (!byNo.has(t.toolOrGaugeNo)) byNo.set(t.toolOrGaugeNo, t);
-        }
-        return Array.from(byNo.values());
-      });
-    }
     setLoading(false);
   }, [page, pageSize, searchQuery, statusFilter, supplierFilter, dateFrom, dateTo]);
 
@@ -282,15 +242,6 @@ export default function PoReceivePage() {
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [grns]);
-
-  const supplierOptions = useMemo(() => {
-    return suppliers
-      .map((s) => ({
-        code: s.supCode,
-        label: s.supName ? `${s.supCode} · ${s.supName}` : s.supCode,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [suppliers]);
 
   // Server already filtered — keep list as returned
   const filteredGrns = grns;
@@ -416,11 +367,9 @@ export default function PoReceivePage() {
   );
 
   const handleAddLine = () => {
-    if (tools.length === 0) return;
-    const defaultTool = tools[0].toolOrGaugeNo;
     setStagedLines((prev) => [
       ...prev,
-      { toolOrGaugeNo: defaultTool, invQty: 10, recQty: 10, price: 500 },
+      { toolOrGaugeNo: "", invQty: 10, recQty: 10, price: 500 },
     ]);
   };
 
@@ -454,6 +403,9 @@ export default function PoReceivePage() {
     if (stagedLines.length === 0) tempErrors.lines = "At least one GRN line item must be added";
 
     stagedLines.forEach((line, idx) => {
+      if (!line.toolOrGaugeNo.trim()) {
+        tempErrors[`tool-${idx}`] = "Tool is required";
+      }
       if (line.recQty > line.invQty) {
         tempErrors[`qty-${idx}`] = `Received qty cannot exceed invoice qty (${line.invQty})`;
       }
@@ -594,22 +546,16 @@ export default function PoReceivePage() {
                 </div>
 
                 <div>
-                  <label className="form-label">
-                    Supplier *
-                  </label>
-                  <select
+                  <MasterSearchSelect
+                    kind="supplier"
+                    label="Supplier *"
                     id="form-supplier"
                     value={supCode}
-                    onChange={(e) => setSupCode(e.target.value)}
-                    className="form-control outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
-                  >
-                    <option value="">— Select Supplier —</option>
-                    {suppliers.map((s) => (
-                      <option key={s.supCode} value={s.supCode}>
-                        {s.supCode} · {s.supName}
-                      </option>
-                    ))}
-                  </select>
+                    selectedLabel={supCode}
+                    onChange={(value) => setSupCode(value)}
+                    placeholder="Search supplier code or name…"
+                    required
+                  />
                   {errors.supCode && <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">{errors.supCode}</p>}
                 </div>
 
@@ -660,17 +606,14 @@ export default function PoReceivePage() {
                       {stagedLines.map((line, idx) => (
                         <tr key={idx}>
                           <td className="py-2 px-3">
-                            <select
+                            <MasterSearchSelect
+                              kind="tool"
                               value={line.toolOrGaugeNo}
-                              onChange={(e) => handleLineChange(idx, "toolOrGaugeNo", e.target.value)}
-                              className="w-full text-sm border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none"
-                            >
-                              {tools.map((t) => (
-                                <option key={t.refNo} value={t.toolOrGaugeNo}>
-                                  {t.toolOrGaugeNo} · {t.name}
-                                </option>
-                              ))}
-                            </select>
+                              selectedLabel={line.toolOrGaugeNo}
+                              onChange={(value) => handleLineChange(idx, "toolOrGaugeNo", value)}
+                              placeholder="Search tool number or name…"
+                            />
+                            {errors[`tool-${idx}`] && <p className="form-error">{errors[`tool-${idx}`]}</p>}
                           </td>
                           <td className="py-2 px-3">
                             <input
@@ -793,21 +736,17 @@ export default function PoReceivePage() {
                   </option>
                 ))}
               </select>
-              <select
-                value={supplierFilter}
-                onChange={(e) => {
-                  setSupplierFilter(e.target.value);
+              <MasterSearchSelect
+                kind="supplier"
+                value={supplierFilter === "ALL" ? "" : supplierFilter}
+                selectedLabel={supplierFilter}
+                onChange={(value) => {
+                  setSupplierFilter(value || "ALL");
                   setPage(1);
                 }}
-                className="h-9 text-xs border border-[var(--border-main)] rounded-lg px-3 bg-[var(--bg-subtle)] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]"
-              >
-                <option value="ALL">All suppliers</option>
-                {supplierOptions.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                placeholder="All suppliers — search…"
+                className="min-w-[220px]"
+              />
               <div className="flex items-center gap-2">
                 <input
                   type="date"

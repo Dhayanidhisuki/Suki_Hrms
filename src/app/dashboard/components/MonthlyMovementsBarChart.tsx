@@ -21,11 +21,13 @@ import { BAR_ANIMATION, BAR_ANIMATION_STAGGER } from "@/components/BarChartEffec
 interface MonthlyData {
   month: string;
   year?: number;
+  labelDate?: string;
   Added?: number;
   Issued?: number;
   Received?: number;
   thisPeriod?: number;
   previousPeriod?: number;
+  byUnit?: Record<string, { issued: number; received: number }>;
 }
 
 interface ChartRow {
@@ -106,7 +108,7 @@ function MovementTooltip({
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: thisColor }} />
           <span className="text-[13px] font-semibold tabular-nums text-slate-800">
-            {row.thisPeriod.toLocaleString()}
+            Issued&nbsp; {row.thisPeriod.toLocaleString()}
           </span>
           {thisPct && (
             <span
@@ -121,7 +123,7 @@ function MovementTooltip({
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: prevColor }} />
           <span className="text-[13px] font-semibold tabular-nums text-slate-800">
-            {row.previousPeriod.toLocaleString()}
+            Received&nbsp; {row.previousPeriod.toLocaleString()}
           </span>
           {prevPct && (
             <span
@@ -218,16 +220,33 @@ function BarChartLoadingSkeleton({
 
 export default function MonthlyMovementsBarChart() {
   const { theme } = useTheme();
-  const [data, setData] = useState<MonthlyData[]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
+  const [weeklyData, setWeeklyData] = useState<MonthlyData[]>([]);
+  const [granularity, setGranularity] = useState<"week" | "month">("week");
+  const [unit, setUnit] = useState("All Units");
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    apiGet<{ monthlyTrends: MonthlyData[] }>("/api/dashboard/kpi").then((res) => {
-      if (res.data?.monthlyTrends) setData(res.data.monthlyTrends);
+    apiGet<{ monthlyTrends: MonthlyData[]; weeklyTrends?: MonthlyData[] }>("/api/dashboard/kpi").then((res) => {
+      if (res.data?.monthlyTrends) setMonthlyData(res.data.monthlyTrends);
+      if (res.data?.weeklyTrends) setWeeklyData(res.data.weeklyTrends);
       setLoading(false);
     });
   }, []);
+
+  const baseData = granularity === "week" && weeklyData.length > 0 ? weeklyData : monthlyData;
+  const data = useMemo(
+    () =>
+      unit === "All Units"
+        ? baseData
+        : baseData.map((row) => ({
+            ...row,
+            thisPeriod: row.byUnit?.[unit]?.issued ?? 0,
+            previousPeriod: row.byUnit?.[unit]?.received ?? 0,
+          })),
+    [baseData, unit]
+  );
 
   const primaryColor = THEMES[theme]?.dot || THEMES.blue.dot;
   const thisColor = primaryColor;
@@ -262,11 +281,13 @@ export default function MonthlyMovementsBarChart() {
         prevDown: previousPeriod > 0 ? -previousPeriod : 0,
         thisChange: pctChange(thisPeriod, prevThis),
         prevChange: pctChange(previousPeriod, prevPrev),
-        labelDate: mid.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
+        labelDate:
+          row.labelDate ??
+          mid.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
       };
     });
   }, [data]);
@@ -276,14 +297,16 @@ export default function MonthlyMovementsBarChart() {
     for (const row of chartData) {
       max = Math.max(max, row.thisPeriod, row.previousPeriod);
     }
-    return max || 10;
+    return max;
   }, [chartData]);
 
   const useK = maxAbs >= 1000;
 
   const domainMax = useMemo(() => {
-    const padded = maxAbs * 1.12;
-    if (padded <= 10) return 10;
+    const padded = maxAbs * 1.15;
+    if (maxAbs === 0) return 4;
+    if (padded <= 5) return Math.max(2, Math.ceil(padded));
+    if (padded <= 10) return Math.ceil(padded / 2) * 2;
     if (padded <= 50) return Math.ceil(padded / 10) * 10;
     if (padded <= 100) return Math.ceil(padded / 25) * 25;
     if (padded <= 500) return Math.ceil(padded / 50) * 50;
@@ -302,23 +325,53 @@ export default function MonthlyMovementsBarChart() {
 
   return (
     <div className="bg-[var(--bg-card)] rounded-2xl border-[0.5px] border-[var(--border-main)] p-5 flex flex-col">
-      <div className="mb-1">
-        <h2 className="text-base font-semibold text-[var(--text-primary)]">
-          Monthly Tool Movements
-        </h2>
-        <p className="text-xs text-[var(--text-muted)] mt-0.5">
-          This period vs previous period activity
-        </p>
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">
+            {granularity === "week" ? "Weekly" : "Monthly"} Unit-wise Tool Movements
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            Issued above · received below · {unit}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={unit}
+            onChange={(event) => setUnit(event.target.value)}
+            aria-label="Filter movements by company unit"
+            className="h-9 rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 text-[11px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--primary)]"
+          >
+            {["All Units", "Unit 1", "Unit 2", "Unit 3", "Unassigned"].map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          <div className="inline-flex rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] p-0.5">
+            {(["week", "month"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setGranularity(option)}
+                className={`rounded-md px-3 py-1.5 text-[11px] font-semibold capitalize transition-colors ${
+                  granularity === option
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-5 mb-2 mt-3">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: thisColor }} />
-          <span className="text-xs text-[var(--text-secondary)]">This Period</span>
+          <span className="text-xs text-[var(--text-secondary)]">Issued</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prevColor }} />
-          <span className="text-xs text-[var(--text-secondary)]">Previous Period</span>
+          <span className="text-xs text-[var(--text-secondary)]">Received</span>
         </div>
       </div>
 
@@ -372,7 +425,7 @@ export default function MonthlyMovementsBarChart() {
               />
               <Bar
                 dataKey="thisUp"
-                name="This Period"
+                name="Issued"
                 stackId="mirror"
                 fill={thisColor}
                 maxBarSize={24}
@@ -390,7 +443,7 @@ export default function MonthlyMovementsBarChart() {
               </Bar>
               <Bar
                 dataKey="prevDown"
-                name="Previous Period"
+                name="Received"
                 stackId="mirror"
                 fill={prevColor}
                 maxBarSize={24}

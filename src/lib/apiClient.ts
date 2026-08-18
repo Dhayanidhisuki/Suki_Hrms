@@ -11,17 +11,18 @@ export interface ApiResponse<T> {
   status: number;
 }
 
-/** Normalize string | Zod flatten | unknown into a readable banner message. */
 function formatApiError(error: unknown, fieldErrors?: Record<string, string[]>): string {
   if (typeof error === "string" && error.trim()) return error;
 
   if (error && typeof error === "object") {
     const obj = error as {
       message?: unknown;
+      error?: unknown;
       formErrors?: string[];
       fieldErrors?: Record<string, string[]>;
     };
     if (typeof obj.message === "string" && obj.message.trim()) return obj.message;
+    if (typeof obj.error === "string" && obj.error.trim()) return obj.error;
 
     const fields = fieldErrors ?? obj.fieldErrors;
     const parts: string[] = [];
@@ -69,18 +70,39 @@ export async function apiPost<T>(
       credentials: "include",
       body: JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
+    const responseText = await res.text();
+    let data: Record<string, unknown> = {};
+    if (responseText.trim()) {
+      try {
+        data = JSON.parse(responseText) as Record<string, unknown>;
+      } catch {
+        return {
+          data: null,
+          error: { message: `Server returned an invalid response (HTTP ${res.status}).` },
+          status: res.status,
+        };
+      }
+    }
     if (!res.ok) {
       return {
         data: null,
         error: {
-          message: formatApiError(data.error, data.error?.fieldErrors),
-          fieldErrors: data.error?.fieldErrors,
+          message: responseText.trim()
+            ? formatApiError(data.error, (data.error as { fieldErrors?: Record<string, string[]> } | undefined)?.fieldErrors)
+            : `Server returned an empty error response (HTTP ${res.status}).`,
+          fieldErrors: (data.error as { fieldErrors?: Record<string, string[]> } | undefined)?.fieldErrors,
         },
         status: res.status,
       };
     }
-    return { data, error: null, status: res.status };
+    if (!responseText.trim()) {
+      return {
+        data: null,
+        error: { message: `Server returned an empty response (HTTP ${res.status}).` },
+        status: res.status,
+      };
+    }
+    return { data: data as T, error: null, status: res.status };
   } catch {
     return { data: null, error: { message: "Network error" }, status: 0 };
   }

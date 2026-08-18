@@ -1,9 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TransactionVelocityChart } from "@/components/OverviewCharts";
 import { ArrowUpRight, ArrowDownLeft, ClipboardList, ArrowLeftRight } from "lucide-react";
+import { apiGet } from "@/lib/apiClient";
+
+type MovementMonth = {
+  month: string;
+  Issued?: number;
+  Received?: number;
+};
 
 const cards = [
   {
@@ -37,22 +45,39 @@ const cards = [
 ] as const;
 
 export default function Page() {
+  const [movementData, setMovementData] = useState<
+    { month: string; issue: number; receive: number }[]
+  >([]);
+
+  useEffect(() => {
+    apiGet<{ monthlyTrends?: MovementMonth[] }>("/api/dashboard/kpi").then((res) => {
+      const rows = res.data?.monthlyTrends ?? [];
+      setMovementData(
+        rows.map((row) => ({
+          month: row.month,
+          issue: row.Issued ?? 0,
+          receive: row.Received ?? 0,
+        }))
+      );
+    });
+  }, []);
+
   return (
     <SimpleMasterShell
-      title="Transaction Overview"
-      subtitle="Live analytics, Issue/Receive velocity, and quick navigation"
+      title="Tools Issue Overview"
+      subtitle="Tool issue and receipt activity, trends, and quick navigation"
     >
       <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.8fr] gap-6 items-stretch">
         {/* Left: combo chart panel */}
         <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 sm:p-6 shadow-sm flex flex-col min-h-[480px]">
           <div className="mb-3">
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">Overview</h3>
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">Issue & Receive Graph</h3>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Comparison of Tool Issues vs Returns across shopfloor & customers
             </p>
           </div>
           <div className="flex-1 min-h-[380px]">
-            <TransactionVelocityChart />
+            <TransactionVelocityChart data={movementData.length ? movementData : undefined} />
           </div>
         </div>
 

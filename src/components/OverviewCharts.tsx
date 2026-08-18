@@ -260,28 +260,34 @@ export function TransactionVelocityChart({
   return (
     <div className="flex flex-col h-full gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-0.5 p-1 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-main)]">
-          {PERIODS.map((p) => {
-            const selected = period === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setPeriod(p.id);
-                  setActiveIndex(null);
-                }}
-                className={`px-3.5 py-1.5 rounded-full text-[12px] transition-all ${
-                  selected
-                    ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold shadow-sm"
-                    : "text-[var(--text-muted)] font-medium hover:text-[var(--text-secondary)]"
-                }`}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
+        {data ? (
+          <div className="inline-flex items-center rounded-full border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3.5 py-2 text-[12px] font-semibold text-[var(--text-secondary)]">
+            Latest 12 months · Live records
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-0.5 p-1 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-main)]">
+            {PERIODS.map((p) => {
+              const selected = period === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setPeriod(p.id);
+                    setActiveIndex(null);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-[12px] transition-all ${
+                    selected
+                      ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold shadow-sm"
+                      : "text-[var(--text-muted)] font-medium hover:text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex items-center gap-1">
           <button
@@ -350,7 +356,7 @@ export function TransactionVelocityChart({
               content={(props) => (
                 <VelocityTooltip
                   active={props.active}
-                  payload={props.payload as Array<{
+                  payload={props.payload as unknown as Array<{
                     value?: number | string | null;
                     dataKey?: string | number;
                     color?: string;

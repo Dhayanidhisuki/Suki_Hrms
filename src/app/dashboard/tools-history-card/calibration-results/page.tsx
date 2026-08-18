@@ -16,6 +16,8 @@ type ResultRow = {
   dcNo?: string | null;
   frequency?: string | number | null;
   remarks?: string | null;
+  certificateNo?: string | null;
+  calibratedBy?: string | null;
 };
 
 function ResultsPageInner() {
@@ -26,7 +28,7 @@ function ResultsPageInner() {
     (async () => {
       setLoading(true);
       const res = await apiGet<{ items: ResultRow[]; total?: number }>(
-        "/api/calibration/results-update"
+        "/api/calibration/results-update?openClosed=all"
       );
       const items = res.data?.items ?? [];
       setRows(
@@ -40,6 +42,8 @@ function ResultsPageInner() {
           frequency: r.frequency ?? "—",
           status: r.status || "—",
           remarks: r.remarks || "",
+          certificateNo: r.certificateNo || "—",
+          calibratedBy: r.calibratedBy || "—",
         }))
       );
       setLoading(false);
@@ -116,6 +120,8 @@ function ResultsPageInner() {
         { key: "dcNo", label: "DC No", mono: true },
         { key: "cDate", label: "Calib Date", mono: true },
         { key: "nextCDate", label: "Next Due", mono: true },
+        { key: "certificateNo", label: "Certificate", mono: true },
+        { key: "calibratedBy", label: "Calibrated By" },
         { key: "frequency", label: "Freq", mono: true },
         { key: "status", label: "Status", status: true },
       ]}

@@ -11,7 +11,9 @@ export type UserRole =
   | "Store Keeper"
   | "Calibration Engineer"
   | "Purchase Coordinator"
-  | "Viewer";
+  | "Viewer"
+  | "Quality Manager"
+  | "Quality Engineer";
 
 export type RolePermissionFlags = {
   canApproveSupplier: boolean;
@@ -88,6 +90,8 @@ export const CANONICAL_ROLES: UserRole[] = [
   "Calibration Engineer",
   "Purchase Coordinator",
   "Viewer",
+  "Quality Manager",
+  "Quality Engineer",
 ];
 
 const FULL_ACCESS: RolePermissionFlags = {

@@ -135,7 +135,6 @@ export async function GET() {
       addedThisMonth,
       overdueCount,
       recentActivity,
-      allTools,
       allIssues,
       allReceives,
       calibDue,
@@ -186,34 +185,78 @@ export async function GET() {
           status: true,
         },
       }),
-      prisma.gaugeAndTools.findMany({ select: { creatDt: true } }),
-      prisma.gaugeToolsIssue.findMany({ select: { issueDate: true, creatDt: true } }),
-      prisma.toolsIssueReceived.findMany({ select: { receiveDate: true, creatDt: true } }),
+      prisma.toolsTransIssue.findMany({
+        select: {
+          creatDt: true,
+          header: { select: { issueDate: true, creatDt: true, fromUnit: true } },
+        },
+      }),
+      prisma.toolsIssueReceivedTrans.findMany({
+        select: {
+          creatDt: true,
+          header: {
+            select: {
+              receiveDate: true,
+              creatDt: true,
+              issueHeader: { select: { fromUnit: true } },
+            },
+          },
+        },
+      }),
       getCalibrationDueStats(now),
     ]);
 
     // If database returned data, process and return real data
     if (totalTools > 0) {
-      const countInMonth = (
-        year: number,
-        monthIdx: number
-      ): { added: number; issued: number; received: number; total: number } => {
-        const added = allTools.filter((t) => {
-          const cd = new Date(t.creatDt ?? Date.now());
-          return cd.getFullYear() === year && cd.getMonth() === monthIdx;
-        }).length;
+      // A movement is a transaction line (one tracked instrument), never a
+      // newly imported master row. Keep the chart comparison generic so the
+      // UI can group the same records by month or week.
+      const canonicalUnit = (value: string | null | undefined) => {
+        const compact = (value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+        if (compact === "unit1") return "Unit 1";
+        if (compact === "unit2") return "Unit 2";
+        if (compact === "unit3") return "Unit 3";
+        return "Unassigned";
+      };
+      const issueEvents = allIssues
+        .map((line) => ({
+          date: line.header.issueDate ?? line.header.creatDt ?? line.creatDt,
+          unit: canonicalUnit(line.header.fromUnit),
+        }))
+        .filter((event): event is { date: Date; unit: string } => event.date instanceof Date);
+      const receiveEvents = allReceives
+        .map((line) => ({
+          date: line.header.receiveDate ?? line.header.creatDt ?? line.creatDt,
+          unit: canonicalUnit(line.header.issueHeader.fromUnit),
+        }))
+        .filter((event): event is { date: Date; unit: string } => event.date instanceof Date);
+      const issueDates = issueEvents.map((event) => event.date);
+      const receiveDates = receiveEvents.map((event) => event.date);
+      const movementDates = [...issueDates, ...receiveDates];
 
-        const issued = allIssues.filter((i) => {
-          const id = new Date(i.issueDate || i.creatDt || Date.now());
-          return id.getFullYear() === year && id.getMonth() === monthIdx;
-        }).length;
+      const countBetween = (start: Date, end: Date) =>
+        movementDates.filter((value) => value >= start && value < end).length;
+      const countDatesBetween = (dates: Date[], start: Date, end: Date) =>
+        dates.filter((value) => value >= start && value < end).length;
+      const unitBreakdown = (start: Date, end: Date) =>
+        Object.fromEntries(
+          ["Unit 1", "Unit 2", "Unit 3", "Unassigned"].map((unit) => [
+            unit,
+            {
+              issued: issueEvents.filter(
+                (event) => event.unit === unit && event.date >= start && event.date < end
+              ).length,
+              received: receiveEvents.filter(
+                (event) => event.unit === unit && event.date >= start && event.date < end
+              ).length,
+            },
+          ])
+        );
 
-        const received = allReceives.filter((r) => {
-          const rd = new Date(r.receiveDate || r.creatDt || Date.now());
-          return rd.getFullYear() === year && rd.getMonth() === monthIdx;
-        }).length;
-
-        return { added, issued, received, total: added + issued + received };
+      const countInMonth = (year: number, monthIdx: number) => {
+        const start = new Date(year, monthIdx, 1);
+        const end = new Date(year, monthIdx + 1, 1);
+        return countBetween(start, end);
       };
 
       const months: Array<{ month: string; year: number; monthIdx: number }> = [];
@@ -228,16 +271,44 @@ export async function GET() {
 
       const monthlyTrends = months.map((m) => {
         const current = countInMonth(m.year, m.monthIdx);
-        const previous = countInMonth(m.year - 1, m.monthIdx);
+        const start = new Date(m.year, m.monthIdx, 1);
+        const end = new Date(m.year, m.monthIdx + 1, 1);
+        const issued = countDatesBetween(issueDates, start, end);
+        const received = countDatesBetween(receiveDates, start, end);
 
         return {
           month: m.month,
           year: m.year,
-          Added: current.added,
-          Issued: current.issued,
-          Received: current.received,
-          thisPeriod: current.total,
-          previousPeriod: previous.total,
+          Issued: issued,
+          Received: received,
+          thisPeriod: issued,
+          previousPeriod: received,
+          byUnit: unitBreakdown(start, end),
+          totalMovements: current,
+        };
+      });
+
+      const currentWeekStart = new Date(now);
+      const mondayOffset = (currentWeekStart.getDay() + 6) % 7;
+      currentWeekStart.setDate(currentWeekStart.getDate() - mondayOffset);
+      currentWeekStart.setHours(0, 0, 0, 0);
+
+      const weeklyTrends = Array.from({ length: 12 }, (_, index) => {
+        const weeksBack = 11 - index;
+        const start = new Date(currentWeekStart);
+        start.setDate(start.getDate() - weeksBack * 7);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 7);
+        const displayEnd = new Date(end);
+        displayEnd.setDate(displayEnd.getDate() - 1);
+
+        return {
+          month: start.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+          year: start.getFullYear(),
+          labelDate: `${start.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}–${displayEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`,
+          thisPeriod: countDatesBetween(issueDates, start, end),
+          previousPeriod: countDatesBetween(receiveDates, start, end),
+          byUnit: unitBreakdown(start, end),
         };
       });
 
@@ -275,6 +346,7 @@ export async function GET() {
           return Array.from(merged, ([status, count]) => ({ status, count }));
         })(),
         monthlyTrends,
+        weeklyTrends,
         recentActivity: recentActivity.map((a) => ({
           id: a.dcNo,
           dcNo: a.dcNo,

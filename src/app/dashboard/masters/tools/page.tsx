@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus,
   Search,
@@ -17,13 +18,16 @@ import {
   FileSpreadsheet,
   FileText,
   Upload,
-  Download,
+
   X,
-  ListFilter,
+
   Printer,
   Eraser,
   ExternalLink,
   ClipboardList,
+  ArrowUpDown,
+  MoreVertical,
+  Orbit,
 } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
@@ -33,6 +37,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { ModuleKpiRow } from "@/app/dashboard/components/ModuleKpiRow";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/apiClient";
+import { downloadExcel } from "@/lib/downloadExcel";
 import { Button } from "@/components/ui/button";
 import { OverlayModal } from "@/components/ui/OverlayModal";
 import {
@@ -48,16 +53,78 @@ import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 import { UnitHistoryTable } from "@/components/UnitHistoryTable";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { ERP_COMPANY_UNITS, ERP_ISSUE_TYPES } from "@/lib/toolCreate";
+import { ValidityBadge } from "@/components/ValidityBadge";
+import ToolJourneyTimeline from "@/components/ToolJourneyTimeline";
 
 type ToolSatellite = null | "upload" | "mandatory";
 
-type TabId = "general" | "stock" | "details" | "calibration" | "preventive" | "specs";
+function RowActionMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      const node = event.target as Node;
+      if (!buttonRef.current?.contains(node) && !menuRef.current?.contains(node)) setOpen(false);
+    };
+    const closeOnScroll = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuHeight = 250;
+      setPosition({
+        top: rect.bottom + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight) : rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    setOpen((value) => !value);
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggle}
+        className="inline-flex h-8 w-7 items-center justify-center border-0 bg-transparent p-0 text-[var(--text-secondary)] hover:text-[var(--primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-subtle)] rounded-md"
+        title="Open actions"
+        aria-label="Open instrument actions"
+        aria-expanded={open}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          style={{ top: position.top, right: position.right }}
+          onClick={() => setOpen(false)}
+          className="fixed z-[100] w-56 overflow-hidden rounded-xl border border-[var(--border-main)] bg-[var(--bg-card)] p-1.5 shadow-2xl"
+        >
+          {children}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
 
 interface GaugeAndTool {
   refNo: number;
   toolOrGaugeNo: string;
   name: string;
   description: string | null;
+  make?: string | null;
   size: string | null;
   shape: string | null;
   range?: string | null;
@@ -122,7 +189,7 @@ interface GaugeAndTool {
   uom?: string | null;
   returnable?: string | null;
   leastCount?: string | null;
-  /** Roll-up computed server-side from GAUGE_SERIAL_NO unit statuses. */
+  /** Display status normalized from the Status column returned by the server. */
   computedStatus?: string;
   /** Machine codes mapped via TOOLS_MACHINE_TRANS. */
   machines?: string[];
@@ -154,6 +221,31 @@ interface GaugeAndTool {
   nextCalibDate?: string | null;
   /** overdue | due-soon | ok | null */
   calibDueStatus?: "overdue" | "due-soon" | "ok" | null;
+  /** Days until next calibration due (live-computed) */
+  calibDueInDays?: number | null;
+  importedMasterData?: {
+    calibrationDate: string | null;
+    nextCalibrationDue: string | null;
+    observedError: string | null;
+    calibrationAgency: string | null;
+  } | null;
+  /** Unit codes from TOOLS_UNIT_STOCK rows */
+  units?: string[];
+  /** Per-unit stock rows from TOOLS_UNIT_STOCK */
+  unitStock?: {
+    unitCode: string;
+    make: string | null;
+    mfgSerialNo: string | null;
+    qtyTotal: string | number | null;
+    qtyIn: string | number | null;
+    qtyOut: string | number | null;
+    qtyNew: string | number | null;
+    qtyInUse: string | number | null;
+    calibDate: string | null;
+    nextCalibDate: string | null;
+    observedError: string | null;
+    calibAgency: string | null;
+  }[];
   /** Enriched by detail API: latest calibration issue/result summary */
   calibrationSummary?: {
     dcNo: number | null;
@@ -168,6 +260,17 @@ interface GaugeAndTool {
     calibDueDate: string | null;
     certificateNo: string | null;
     comments: string | null;
+  } | null;
+  movementSummary?: {
+    dcNo: string;
+    movementType: string | null;
+    sourceUnit: string | null;
+    destinationUnit: string | null;
+    sourceRack: string | null;
+    issueDate: string | null;
+    expectedReceiptDate: string | null;
+    issuedTo: string | null;
+    status: string | null;
   } | null;
 }
 
@@ -278,55 +381,37 @@ interface UnitHistoryRow {
 type TypeProfile = "gauge" | "form" | "consumable" | "preventive" | "it_asset" | "generic";
 
 /**
- * Badge styles for the per-tool status roll-up computed server-side from
- * GAUGE_SERIAL_NO unit rows (GAUGEANDTOOLS.STATUS is never used — it carries
- * no lifecycle signal in the ERP data).
+ * Badge styles for the Instrument Master Status column.
  */
 const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
-  "In Calibration": {
+  "Under Calibration": {
     bg: "bg-violet-50 dark:bg-violet-950/30 border border-violet-300 dark:border-violet-800",
     text: "text-violet-700 dark:text-violet-300",
     dot: "bg-violet-500",
   },
-  "Needs Attention": {
+  "Out of Service": {
     bg: "bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800",
     text: "text-amber-700 dark:text-amber-300",
     dot: "bg-amber-500",
   },
-  Available: {
+  Active: {
     bg: "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800",
     text: "text-emerald-700 dark:text-emerald-300",
     dot: "bg-emerald-500",
   },
-  "In Use": {
-    bg: "bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800",
-    text: "text-blue-700 dark:text-blue-300",
-    dot: "bg-blue-500",
-  },
-  Inactive: {
+  "Status Missing": {
     bg: "bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800",
     text: "text-rose-700 dark:text-rose-300",
     dot: "bg-rose-500",
   },
-  "No Units": {
+  "No Unit": {
     bg: "bg-[var(--bg-subtle)] border border-[var(--border-main)]",
     text: "text-[var(--text-muted)]",
     dot: "bg-slate-300",
   },
 };
 
-const ROLLUP_STATUSES = [
-  "In Calibration",
-  "Needs Attention",
-  "Available",
-  "In Use",
-  "Inactive",
-  "No Units",
-] as const;
-
 const YES_NO = ["Yes", "No"] as const;
-const CALI_PLANNED_OPTIONS = ["N/A", "Internal", "External"] as const;
-const CALI_RESP_OPTIONS = ["N/A", "Internal", "External"] as const;
 const PREV_METHOD_OPTIONS = ["N/A", "Qty", "Internal", "External"] as const;
 
 function normalizeText(value: string | null | undefined) {
@@ -603,18 +688,21 @@ export default function ToolsMasterPage() {
   const [groupFilter, setGroupFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [nameFilter, setNameFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [onlyActive, setOnlyActive] = useState(true);
+  const [validityFilter, setValidityFilter] = useState("All");
+  // Client instrument registry shows all records; no Active filter is exposed.
+  const onlyActive = false;
   const [criticalFilter, setCriticalFilter] = useState("All");
+  const [unitFilter, setUnitFilter] = useState("All");
   const [deptFilter, setDeptFilter] = useState("All");
+  const catalogFilter = "relevant" as const;
   const [sortBy, setSortBy] = useState<"newest" | "toolno" | "name" | "group">("newest");
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [validityCounts, setValidityCounts] = useState<Record<string, number>>({});
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 50;
   const [viewState, setViewState] = useState<"list" | "create" | "edit" | "view">("list");
   const [selectedTool, setSelectedTool] = useState<GaugeAndTool | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("general");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [specs, setSpecs] = useState<ToolSpec[]>([]);
   const [unitRows, setUnitRows] = useState<UnitHistoryRow[]>([]);
@@ -631,8 +719,19 @@ export default function ToolsMasterPage() {
   const [exportBusy, setExportBusy] = useState<"xlsx" | "pdf" | "template" | null>(null);
   const [exportMsg, setExportMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [importBusy, setImportBusy] = useState<"preview" | "confirm" | null>(null);
-  const [importTemplate, setImportTemplate] = useState<"basic" | "full" | "price" | null>(null);
-  const [showImportChooser, setShowImportChooser] = useState(false);
+  const [importStartedAt, setImportStartedAt] = useState<number | null>(null);
+  const [importElapsedSeconds, setImportElapsedSeconds] = useState(0);
+  const [importProgress, setImportProgress] = useState<{
+    total: number;
+    processed: number;
+    batch: number;
+    batches: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  } | null>(null);
+  const [importTemplate, setImportTemplate] = useState<"master" | null>(null);
+  // showImportChooser removed — single "Import Master Data" button replaces the chooser
   const [selectedRefNos, setSelectedRefNos] = useState<number[]>([]);
   const [machineModalTool, setMachineModalTool] = useState<GaugeAndTool | null>(null);
   const [machineItems, setMachineItems] = useState<Array<{ rowId: number; macCode: string | null; creatDt: string | null }>>([]);
@@ -656,12 +755,21 @@ export default function ToolsMasterPage() {
   const [savingToolName, setSavingToolName] = useState(false);
   const [machineError, setMachineError] = useState<string | null>(null);
   const [importPreview, setImportPreview] = useState<{
-    template: "basic" | "full" | "price";
+    template: "master";
     createCount: number;
     updateCount: number;
     rejectCount: number;
-    rejected: Array<{ row: number; reason: string }>;
-    pendingRows: Array<Record<string, unknown>>;
+    rejected: Array<{ row: number; reason: string; original?: Record<string, unknown> }>;
+    pendingRows: Array<{
+      row: number;
+      action: "create" | "update";
+      label: string;
+      equipNo: string;
+      usedUnit: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: any;
+      original?: Record<string, unknown>;
+    }>;
   } | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const formBaselineRef = useRef("");
@@ -673,6 +781,14 @@ export default function ToolsMasterPage() {
   const [formFieldHitCount, setFormFieldHitCount] = useState(0);
   const [formFieldActiveIdx, setFormFieldActiveIdx] = useState(0);
   const formFieldHitsRef = useRef<HTMLElement[]>([]);
+
+  useEffect(() => {
+    if (importStartedAt == null) return;
+    const timer = window.setInterval(() => {
+      setImportElapsedSeconds(Math.floor((Date.now() - importStartedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [importStartedAt]);
 
   // Core
   const [toolOrGaugeNo, setToolOrGaugeNo] = useState("");
@@ -740,7 +856,7 @@ export default function ToolsMasterPage() {
   const [calibrationFrqMonths, setCalibrationFrqMonths] = useState(0);
   const [caliPlannedWho, setCaliPlannedWho] = useState("N/A");
   const [calibrationResponsibility, setCalibrationResponsibility] = useState("N/A");
-  const [historyCardReq, setHistoryCardReq] = useState("No");
+  const [historyCardReq, setHistoryCardReq] = useState("Yes");
   const [preventiveMethod, setPreventiveMethod] = useState("N/A");
   const [preventiveFrqMonths, setPreventiveFrqMonths] = useState(0);
   const [preventiveFrqOthers, setPreventiveFrqOthers] = useState(0);
@@ -779,10 +895,12 @@ export default function ToolsMasterPage() {
     if (groupFilter !== "All") params.set("grouping", groupFilter);
     if (typeFilter !== "All") params.set("type", typeFilter);
     if (nameFilter !== "All") params.set("name", nameFilter);
-    if (statusFilter !== "All") params.set("status", statusFilter);
+    if (validityFilter !== "All") params.set("validity", validityFilter);
     if (onlyActive) params.set("onlyActive", "1");
     if (criticalFilter === "Yes" || criticalFilter === "No") params.set("critical", criticalFilter);
+    if (unitFilter !== "All") params.set("unit", unitFilter);
     if (deptFilter !== "All") params.set("department", deptFilter);
+    params.set("catalog", catalogFilter);
     params.set("sort", sortBy);
     params.set("includeCounts", "1");
     params.set("page", String(page));
@@ -791,11 +909,18 @@ export default function ToolsMasterPage() {
       items: GaugeAndTool[];
       total?: number;
       statusCounts?: Record<string, number>;
+      validityCounts?: Record<string, number>;
     }>(`/api/tools?${params}`);
+    if (res.error) {
+      toastError(res.error.message || "Failed to load instrument records.");
+      setLoading(false);
+      return;
+    }
     if (res.data?.items) setTools(res.data.items);
     else setTools([]);
     setTotal(res.data?.total ?? 0);
     if (res.data?.statusCounts) setStatusCounts(res.data.statusCounts);
+    if (res.data?.validityCounts) setValidityCounts(res.data.validityCounts);
     setLoading(false);
   }, [
     query,
@@ -803,10 +928,12 @@ export default function ToolsMasterPage() {
     groupFilter,
     typeFilter,
     nameFilter,
-    statusFilter,
+    validityFilter,
     onlyActive,
     criticalFilter,
+    unitFilter,
     deptFilter,
+    catalogFilter,
     sortBy,
     page,
     pageSize,
@@ -818,9 +945,10 @@ export default function ToolsMasterPage() {
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   const [departments, setDepartments] = useState<Array<{ id: number; name: string | null }>>([]);
+  const [unitOptions, setUnitOptions] = useState<Array<{ id: number; name: string }>>([]);
 
   const loadLookups = useCallback(async () => {
-    const [gr, sg, names, locs, uoms, depts] = await Promise.all([
+    const [gr, sg, names, locs, uoms, depts, units] = await Promise.all([
       apiGet<{ items: ToolsGroup[] }>("/api/lookups/groups"),
       apiGet<{ items: ToolsSubgroup[] }>("/api/lookups/subgroups"),
       apiGet<{
@@ -829,6 +957,7 @@ export default function ToolsMasterPage() {
       apiGet<{ items: LocationOption[] }>("/api/lookups/locations"),
       apiGet<{ items: Array<{ uom: string }> }>("/api/lookups/uom"),
       apiGet<{ items: Array<{ id: number; name: string | null }> }>("/api/lookups/departments"),
+      apiGet<{ items: Array<{ id: number; name: string }> }>("/api/lookups/units"),
     ]);
     if (gr.data?.items) setToolsGroups(gr.data.items);
     if (sg.data?.items) setToolsSubgroups(sg.data.items);
@@ -836,6 +965,7 @@ export default function ToolsMasterPage() {
     if (locs.data?.items) setLocations(locs.data.items);
     if (uoms.data?.items) setUomOptions(uoms.data.items.map((u) => u.uom).filter(Boolean));
     if (depts.data?.items) setDepartments(depts.data.items);
+    if (units.data?.items) setUnitOptions(units.data.items);
   }, []);
 
   useEffect(() => {
@@ -918,7 +1048,12 @@ export default function ToolsMasterPage() {
     setSize("");
     setShape("");
     setRange("");
-    setGrouping(toolsGroups[0]?.name ?? "");
+    setGrouping(
+      toolsGroups.find((group) => /instrument/i.test(group.name))?.name ??
+      toolsGroups.find((group) => /tools\s*(and|&)\s*gauges/i.test(group.name))?.name ??
+      toolsGroups[0]?.name ??
+      ""
+    );
     setType("");
     setIssueType(ERP_ISSUE_TYPES[0]);
     setOldItemNo("");
@@ -969,7 +1104,7 @@ export default function ToolsMasterPage() {
     setCalibrationFrqMonths(0);
     setCaliPlannedWho("N/A");
     setCalibrationResponsibility("N/A");
-    setHistoryCardReq("No");
+    setHistoryCardReq("Yes");
     setPreventiveMethod("N/A");
     setPreventiveFrqMonths(0);
     setPreventiveFrqOthers(0);
@@ -987,7 +1122,6 @@ export default function ToolsMasterPage() {
     setUnitRows([]);
     setShowSerialPreview(false);
     setErrors({});
-    setActiveTab("general");
   }, [toolsGroups]);
 
   const fillForm = (tool: GaugeAndTool) => {
@@ -1051,7 +1185,7 @@ export default function ToolsMasterPage() {
     setCalibrationFrqMonths(tool.calibrationFrqMonths ?? 0);
     setCaliPlannedWho(tool.caliPlannedWho ?? "N/A");
     setCalibrationResponsibility(tool.calibrationResponsibility ?? "N/A");
-    setHistoryCardReq(yesNoValue(tool.historyCardReq));
+    setHistoryCardReq("Yes");
     setPreventiveMethod(tool.preventiveMethod ?? "N/A");
     setPreventiveFrqMonths(tool.preventiveFrqMonths ?? 0);
     setPreventiveFrqOthers(tool.preventiveFrqOthers ?? 0);
@@ -1081,7 +1215,6 @@ export default function ToolsMasterPage() {
     setUnitRows(buildUnitHistoryRows(tool, tool.calibrationFrqMonths ?? 0));
     setShowSerialPreview(false);
     setErrors({});
-    setActiveTab("general");
     void (async () => {
       const res = await apiGet<{
         details: {
@@ -1698,6 +1831,7 @@ export default function ToolsMasterPage() {
     if (!toolOrGaugeNo.trim()) fErrors.toolOrGaugeNo = "Tool Number is required";
     if (!name.trim()) fErrors.name = "Tools Name is required";
     if (!grouping.trim()) fErrors.grouping = "Tools Group is required";
+    if (!locationName.trim()) fErrors.locationName = "Current Unit is required";
     if (totQty < 0) fErrors.totQty = "Quantity cannot be negative";
     if (viewState === "create" && stockReq === "Yes" && totQty < 1) {
       fErrors.totQty = "Set Tot Qty ≥ 1 so the tool can be issued (Qty In starts from Tot Qty)";
@@ -1705,17 +1839,14 @@ export default function ToolsMasterPage() {
     if (serialNoGenReq && totQty <= 0) {
       fErrors.totQty = "Serial generation requires Total Qty > 0";
     }
-    if (typeProfile !== "it_asset" && typeProfile !== "consumable" && historyCardReq === "Yes" && calibrationFrqMonths <= 0) {
-      fErrors.calibrationFrqMonths = "Calibration Frequency (months) must be > 0 when History Card = Yes";
+    if (calibrationFrqMonths <= 0) {
+      fErrors.calibrationFrqMonths = "Calibration Frequency (months) must be greater than 0";
     }
     if (filteredTypes.length > 0 && !type.trim()) {
       fErrors.type = "Tools Type is required for this group";
     }
     if (Object.keys(fErrors).length > 0) {
       setErrors(fErrors);
-      if (fErrors.calibrationFrqMonths) setActiveTab("calibration");
-      else if (fErrors.totQty) setActiveTab("stock");
-      else setActiveTab("general");
       return false;
     }
 
@@ -1768,9 +1899,9 @@ export default function ToolsMasterPage() {
       stiffness: stiffness || undefined,
       selfLife: selfLife || undefined,
       calibrationFrqMonths,
-      caliPlannedWho: caliPlannedWho || undefined,
-      calibrationResponsibility: calibrationResponsibility || undefined,
-      historyCardReq,
+      caliPlannedWho: "N/A",
+      calibrationResponsibility: "N/A",
+      historyCardReq: "Yes",
       preventiveMethod: preventiveMethod || undefined,
       preventiveFrqMonths,
       preventiveFrqOthers,
@@ -2004,20 +2135,24 @@ export default function ToolsMasterPage() {
     const q = formFieldQuery.trim();
     if (!q) {
       clearFormFieldHighlights();
-      setFormFieldHitCount(0);
-      setFormFieldActiveIdx(0);
+      queueMicrotask(() => {
+        setFormFieldHitCount(0);
+        setFormFieldActiveIdx(0);
+      });
       return;
     }
-    setFormSectionsOpen({
-      core: true,
-      stock: true,
-      details: true,
-      calibration: true,
-      preventive: true,
-      specs: true,
-      units: true,
-    });
-    const t = window.setTimeout(() => applyFormFieldSearch(q, 0), 60);
+    const t = window.setTimeout(() => {
+      setFormSectionsOpen({
+        core: true,
+        stock: true,
+        details: true,
+        calibration: true,
+        preventive: true,
+        specs: true,
+        units: true,
+      });
+      applyFormFieldSearch(q, 0);
+    }, 60);
     return () => window.clearTimeout(t);
   }, [formFieldQuery, viewState, applyFormFieldSearch, clearFormFieldHighlights]);
 
@@ -2177,11 +2312,11 @@ export default function ToolsMasterPage() {
       if (groupFilter !== "All") params.set("grouping", groupFilter);
       if (typeFilter !== "All") params.set("type", typeFilter);
       if (nameFilter !== "All") params.set("name", nameFilter);
-      if (statusFilter !== "All") params.set("status", statusFilter);
+      if (validityFilter !== "All") params.set("validity", validityFilter);
       if (onlyActive) params.set("onlyActive", "1");
       if (criticalFilter === "Yes" || criticalFilter === "No") params.set("critical", criticalFilter);
       if (deptFilter !== "All") params.set("department", deptFilter);
-    }
+      }
     return params;
   };
 
@@ -2232,42 +2367,56 @@ export default function ToolsMasterPage() {
     }
   };
 
-  const downloadTemplate = async (kind: "basic" | "full" | "price") => {
-    setExportBusy("template");
-    setExportMsg(null);
-    try {
-      await downloadBlob(
-        `/api/tools/export?format=xlsx&template=${kind}`,
-        `tools_master_${kind}_template.xlsx`
-      );
-      setExportMsg({
-        type: "success",
-        text: `${kind === "basic" ? "Basic Info" : kind === "full" ? "Full Details" : "Price Update"} template downloaded.`,
-      });
-    } catch (err) {
-      setExportMsg({
-        type: "error",
-        text: err instanceof Error ? err.message : "Template download failed",
-      });
-    } finally {
-      setExportBusy(null);
-    }
-  };
-
-  const startImport = (kind: "basic" | "full" | "price") => {
-    setImportTemplate(kind);
-    setShowImportChooser(false);
+  const triggerMasterImport = () => {
+    setImportTemplate("master");
     importFileRef.current?.click();
   };
 
+  const downloadRejectedImportRows = () => {
+    if (!importPreview?.rejected.length) return;
+    const sourceColumns = [
+      ["SL.NO", "SL.NO"],
+      ["EQUIP_NO", "Equip No"],
+      ["DESCRIPTION", "Description"],
+      ["SIZE", "Size"],
+      ["LEAST_COUNT", "Least count"],
+      ["USED_UNIT", "Used Unit"],
+      ["MAKE", "Make"],
+      ["MFG_S.NO", "MFG S.No"],
+      ["USED_LOCATION", "Used Location"],
+      ["CAL._FREQ._(MTHS)", "Cal. Freq. (mths)"],
+      ["CALIBRATION_DATE", "Calibration date"],
+      ["NEXT_CALIBRATION_DUE", "Next Calibration Due"],
+      ["VALIDITY_(DAYS)", "Validity (days)"],
+      ["STATUS", "Status"],
+      ["OBSERVED_ERROR", "Observed Error"],
+      ["CALIBRATION_AGENCY", "Calibration Agency"],
+      ["REMARKS", "Remarks"],
+    ] as const;
+    const rows = importPreview.rejected.map((rejected) => ({
+      ...rejected.original,
+      "SL.NO": rejected.original?.["SL.NO"] || rejected.row,
+      REJECTION_REASON: rejected.reason,
+    }));
+    downloadExcel({
+      filename: "tools_import_rejected_rows.xlsx",
+      sheetName: "Rejected Rows",
+      rows,
+      columns: [
+        ...sourceColumns.map(([key, label]) => ({ key, label })),
+        { key: "REJECTION_REASON", label: "Rejection Reason" },
+      ],
+    });
+  };
+
   const handleImportFile = async (file: File | null) => {
-    if (!file || !importTemplate) return;
+    if (!file) return;
     setImportBusy("preview");
     setImportPreview(null);
     try {
       const form = new FormData();
       form.set("action", "preview");
-      form.set("template", importTemplate);
+      form.set("template", "master");
       form.set("file", file);
       const res = await fetch("/api/tools/import", {
         method: "POST",
@@ -2279,7 +2428,7 @@ export default function ToolsMasterPage() {
         throw new Error(typeof data.error === "string" ? data.error : "Import preview failed");
       }
       setImportPreview({
-        template: data.template ?? importTemplate,
+        template: "master",
         createCount: data.createCount ?? 0,
         updateCount: data.updateCount ?? 0,
         rejectCount: data.rejectCount ?? 0,
@@ -2297,21 +2446,76 @@ export default function ToolsMasterPage() {
   const confirmImport = async () => {
     if (!importPreview || importPreview.pendingRows.length === 0) return;
     setImportBusy("confirm");
+    setImportElapsedSeconds(0);
+    setImportStartedAt(Date.now());
+    const rows = [...importPreview.pendingRows];
+    const batchSize = 20;
+    const batches = Math.ceil(rows.length / batchSize);
+    let created = 0;
+    let updated = 0;
+    let skipped = importPreview.rejected.length;
+    const confirmRejected: Array<{ row: number; reason: string; original?: Record<string, unknown> }> = [...importPreview.rejected];
     try {
-      const res = await apiPost<{ created: number; updated: number }>("/api/tools/import", {
-        action: "confirm",
-        template: importPreview.template,
-        pendingRows: importPreview.pendingRows,
-      });
-      if (res.error) throw new Error(res.error.message);
-      toastSuccess(`Import complete — created ${res.data?.created ?? 0}, updated ${res.data?.updated ?? 0}.`);
-      setImportPreview(null);
+      for (let start = 0; start < rows.length; start += batchSize) {
+        const batch = Math.floor(start / batchSize) + 1;
+        setImportProgress({ total: rows.length, processed: start, batch, batches, created, updated, skipped });
+        const res = await apiPost<{
+          created: number;
+          updated: number;
+          skipped?: number;
+          rejected?: Array<{ row: number; reason: string; original?: Record<string, unknown> }>;
+        }>("/api/tools/import", {
+          action: "confirm",
+          template: importPreview.template,
+          // The server only needs the validated payload. Omitting the duplicate
+          // original Excel cells keeps Safari/Next request bodies small and stable.
+          pendingRows: rows.slice(start, start + batchSize).map(({ original: _original, ...row }) => row),
+        });
+        if (res.error) {
+          setImportPreview((previous) => previous
+            ? { ...previous, pendingRows: rows.slice(start) }
+            : null
+          );
+          throw new Error(`Batch ${batch}/${batches} failed after ${start} rows: ${res.error.message}`);
+        }
+        created += res.data?.created ?? 0;
+        updated += res.data?.updated ?? 0;
+        skipped += res.data?.skipped ?? 0;
+        confirmRejected.push(...(res.data?.rejected ?? []));
+        setImportProgress({
+          total: rows.length,
+          processed: Math.min(start + batchSize, rows.length),
+          batch,
+          batches,
+          created,
+          updated,
+          skipped,
+        });
+      }
+      toastSuccess(
+        `Import complete — created ${created}, updated ${updated}${skipped ? `, skipped ${skipped} invalid row(s)` : ""}.`
+      );
+      if (skipped > 0) {
+        setImportPreview((previous) => previous
+          ? {
+              ...previous,
+              rejectCount: confirmRejected.length,
+              rejected: confirmRejected,
+              pendingRows: [],
+            }
+          : null
+        );
+      } else {
+        setImportPreview(null);
+      }
       setImportTemplate(null);
       loadTools();
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Confirm import failed");
     } finally {
       setImportBusy(null);
+      setImportStartedAt(null);
+      setImportProgress(null);
     }
   };
 
@@ -2345,33 +2549,14 @@ export default function ToolsMasterPage() {
   const selectedTypeMeta = toolsSubgroups.find((sg) => sg.name === type);
   const typeProfile = resolveTypeProfile(type, grouping, selectedTypeMeta?.assetCategory);
 
-  // Independent legacy toggles — each unlocks its own field group
-  const calibBlockEnabled = historyCardReq === "Yes";
+  // Every registered instrument follows the calibration lifecycle.
+  const calibBlockEnabled = true;
   const prevBlockEnabled = isAsset === "Yes";
-
-  const resetCalibrationBlock = () => {
-    setCalibrationFrqMonths(0);
-    setCaliPlannedWho("N/A");
-    setCalibrationResponsibility("N/A");
-    setGSpecUpperMin(0);
-    setGSpecUpperMax(0);
-    setWLimitLowerMax(0);
-    setWLimitUpperMin(0);
-    setWLimitUpperMax(0);
-    setProdSpecLowerMax(0);
-    setProdSpecUpperMin(0);
-    setProdSpecUpperMax(0);
-  };
 
   const resetPreventiveBlock = () => {
     setPreventiveMethod("N/A");
     setPreventiveFrqMonths(0);
     setPreventiveFrqOthers(0);
-  };
-
-  const handleHistoryCardReqChange = (value: string) => {
-    setHistoryCardReq(value);
-    if (value !== "Yes") resetCalibrationBlock();
   };
 
   const handleIsAssetChange = (value: string) => {
@@ -2431,9 +2616,10 @@ export default function ToolsMasterPage() {
     selfLife > 0;
   const showTechDimSection = typeProfile !== "consumable" || hasTechDimData;
   const showCaliMntSection = showCalibrationTab || showPreventiveTab;
-  // Always show ERP unit grid on create/edit/view (bottom of form like toolsmanagecreation)
-  const showSerialUnitsSection = true;
-  const showUnitHistoryTable = viewState === "create" || viewState === "edit";
+  // Each register row is already one individually tracked instrument. A second
+  // serial/unit grid duplicates the asset and is intentionally hidden.
+  const showSerialUnitsSection = false;
+  const showUnitHistoryTable = false;
   /** Live grid like ERP: when Serial Gen = Yes, show Tot Qty rows (planned until Save seeds DB). */
   const displayUnitRows = buildQtyMatchedUnitRows(unitRows, totQty, serialNoGenReq, calibrationFrqMonths, unitForm.purchaseDt);
   const plannedUnitCount = displayUnitRows.filter((r) => String(r.key).startsWith("planned-")).length;
@@ -2450,23 +2636,6 @@ export default function ToolsMasterPage() {
     };
   })();
 
-  const tabItems: Array<{ id: TabId; label: string }> = [
-    { id: "general", label: "General Info" },
-    { id: "stock", label: "Stock & Flags" },
-    { id: "details", label: "Tools Details" },
-    ...(showCalibrationTab ? [{ id: "calibration" as const, label: "Calibration" }] : []),
-    ...(showPreventiveTab ? [{ id: "preventive" as const, label: "Preventive MNT" }] : []),
-    ...(showSpecsTab ? [{ id: "specs" as const, label: "Tools Specification" }] : []),
-  ];
-
-  useEffect(() => {
-    const visible = new Set<TabId>(["general", "stock", "details"]);
-    if (showCalibrationTab) visible.add("calibration");
-    if (showPreventiveTab) visible.add("preventive");
-    if (showSpecsTab) visible.add("specs");
-    if (!visible.has(activeTab)) setActiveTab("general");
-  }, [activeTab, showCalibrationTab, showPreventiveTab, showSpecsTab]);
-
   return (
     <div className="flex h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden">
       <Sidebar />
@@ -2478,16 +2647,16 @@ export default function ToolsMasterPage() {
               <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
                 <div>
                   <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-                    Item / Asset Master
+                    Instrument & Gauge Master
                   </h1>
                   <p className="text-sm text-[var(--text-muted)] mt-0.5">
-                    Core tool & gauge registry with stock, calibration, and unit detail
+                    Instruments and gauges with calibration and current unit detail
                   </p>
                 </div>
                 <RoleGate permission="canEditMaster">
                   <Button id="tools-add-btn" onClick={handleOpenAdd} variant="primary" className="group">
                     <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                    Add Tool Record
+                    Add Instrument
                   </Button>
                 </RoleGate>
               </div>
@@ -2512,73 +2681,59 @@ export default function ToolsMasterPage() {
                     badge: { label: "Registry", type: "info" },
                   },
                   {
-                    id: "available-tools",
-                    label: "In Store (Available)",
-                    value:
-                      statusCounts.Available ??
-                      tools.filter((t) => t.computedStatus === "Available").length,
-                    subtext: "Ready for issue",
-                    title: "Units ready for issue across the registry",
+                    id: "valid-calibration",
+                    label: "Valid Calibration",
+                    value: validityCounts.Valid ?? 0,
+                    subtext: "More than 30 days remaining",
+                    title: "Next calibration due date is more than 30 days away",
                     icon: CheckCircle2,
                     iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
                     iconColor: "text-emerald-600 dark:text-emerald-400",
-                    badge: { label: "In Stock", type: "success" },
+                    badge: { label: "Valid", type: "success" },
                   },
                   {
-                    id: "in-use-tools",
-                    label: "In Use",
-                    value:
-                      statusCounts["In Use"] ??
-                      tools.filter((t) => t.computedStatus === "In Use").length,
-                    subtext: "Issued / out of store",
-                    title: "Inhouse, vendor, or new purchase",
+                    id: "due-soon-calibration",
+                    label: "Due Soon",
+                    value: validityCounts["Due Soon"] ?? 0,
+                    subtext: "Due within the next 30 days",
+                    title: "Next calibration due date is today through the next 30 days",
                     icon: Cog,
-                    iconBg: "bg-blue-50 dark:bg-blue-950/30",
-                    iconColor: "text-blue-600 dark:text-blue-400",
-                    badge: { label: "In Use", type: "info" },
-                  },
-                  {
-                    id: "service-tools",
-                    label: "Calib / Attention",
-                    value:
-                      statusCounts["In Calibration"] != null ||
-                      statusCounts["Needs Attention"] != null
-                        ? (statusCounts["In Calibration"] ?? 0) +
-                          (statusCounts["Needs Attention"] ?? 0)
-                        : tools.filter(
-                            (t) =>
-                              t.computedStatus === "In Calibration" ||
-                              t.computedStatus === "Needs Attention"
-                          ).length,
-                    subtext: "Calibration or attention needed",
-                    title: "In calibration or rejected / worn out",
-                    icon: Wrench,
                     iconBg: "bg-amber-50 dark:bg-amber-950/30",
                     iconColor: "text-amber-600 dark:text-amber-400",
-                    badge: { label: "Service", type: "warning" },
+                    badge: { label: "Due Soon", type: "warning" },
+                  },
+                  {
+                    id: "overdue-calibration",
+                    label: "Calibration Overdue",
+                    value: validityCounts.Overdue ?? 0,
+                    subtext: "Validity has expired",
+                    title: "Next calibration due date is before today",
+                    icon: Wrench,
+                    iconBg: "bg-red-50 dark:bg-red-950/30",
+                    iconColor: "text-red-600 dark:text-red-400",
+                    badge: { label: "Overdue", type: "danger" },
                   },
                 ]}
               />
 
               <StatusPillTabs
                 className="mb-3"
-                idPrefix="tools-status-pill"
+                idPrefix="tools-validity-pill"
                 size="sm"
-                value={statusFilter}
+                value={validityFilter}
                 onChange={(v) => {
-                  setStatusFilter(v);
+                  setValidityFilter(v);
                   setPage(1);
                 }}
                 items={[
-                  { value: "All", label: "All", count: statusCounts.All ?? total },
-                  { value: "Available", label: "Available", count: statusCounts.Available ?? 0 },
-                  { value: "In Use", label: "In Use", count: statusCounts["In Use"] ?? 0 },
-                  { value: "In Calibration", label: "Calibration", count: statusCounts["In Calibration"] ?? 0 },
-                  { value: "Needs Attention", label: "Attention", count: statusCounts["Needs Attention"] ?? 0 },
-                  { value: "Inactive", label: "Inactive", count: statusCounts.Inactive ?? 0 },
-                  { value: "No Units", label: "No Units", count: statusCounts["No Units"] ?? 0 },
+                  { value: "All", label: "All", count: validityCounts.All ?? total },
+                  { value: "valid", label: "Valid", count: validityCounts.Valid ?? 0, tone: "success" },
+                  { value: "due-soon", label: "Due Soon (≤30 days)", count: validityCounts["Due Soon"] ?? 0, tone: "warning" },
+                  { value: "overdue", label: "Overdue", count: validityCounts.Overdue ?? 0, tone: "danger" },
+                  { value: "no-due-date", label: "No Due Date", count: validityCounts["No Due Date"] ?? 0, tone: "neutral" },
                 ]}
               />
+
 
               <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] shadow-sm relative animate-fade-in">
                 <div className="px-3 py-2 border-b border-[var(--border-main)] flex items-center gap-2 flex-wrap sm:flex-nowrap relative z-30 min-w-0">
@@ -2591,7 +2746,7 @@ export default function ToolsMasterPage() {
                         setQuery(e.target.value);
                         setPage(1);
                       }}
-                      placeholder="Search"
+                      placeholder="Search instruments"
                       className="w-full h-7 text-[11px] border border-[var(--border-main)] rounded-md pl-8 pr-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] focus:border-[var(--primary)] bg-[var(--bg-card)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
                     />
                   </div>
@@ -2609,34 +2764,15 @@ export default function ToolsMasterPage() {
                       }}
                       options={[
                         { value: "all", label: "Any" },
-                        { value: "toolOrGaugeNo", label: "Tool No" },
+                        { value: "toolOrGaugeNo", label: "Identification No." },
                         { value: "description", label: "Description" },
                         { value: "name", label: "Name" },
-                        { value: "oldItemNo", label: "Old Item" },
                         { value: "location", label: "Location" },
                       ]}
                     />
                     <SelectionFilter
-                      id="tools-group-filter"
-                      label="Group"
-                      value={groupFilter}
-                      anyValue="All"
-                      anyLabel="Any"
-                      maxValueWidth="4.5rem"
-                      onChange={(v) => {
-                        setGroupFilter(v);
-                        setTypeFilter("All");
-                        setNameFilter("All");
-                        setPage(1);
-                      }}
-                      options={[
-                        { value: "All", label: "Any" },
-                        ...toolsGroups.map((g) => ({ value: g.name, label: g.name })),
-                      ]}
-                    />
-                    <SelectionFilter
                       id="tools-type-filter"
-                      label="Type"
+                      label="Instrument Type"
                       value={typeFilter}
                       anyValue="All"
                       anyLabel="Any"
@@ -2648,15 +2784,23 @@ export default function ToolsMasterPage() {
                       }}
                       options={[
                         { value: "All", label: "Any" },
-                        ...toolsSubgroups
-                          .filter((sg) => {
-                            if (groupFilter === "All") return true;
-                            const gid =
-                              toolsGroups.find((g) => g.name === groupFilter)?.rowId ??
-                              toolsGroups.find((g) => g.name === groupFilter)?.id;
-                            return sg.refGroupId === gid || sg.group?.name === groupFilter;
-                          })
-                          .map((sg) => ({ value: sg.name, label: sg.name })),
+                        ...toolsSubgroups.map((sg) => ({ value: sg.name, label: sg.name })),
+                      ]}
+                    />
+                    <SelectionFilter
+                      id="tools-unit-filter"
+                      label="Unit"
+                      value={unitFilter}
+                      anyValue="All"
+                      anyLabel="All Units"
+                      maxValueWidth="4rem"
+                      onChange={(value) => {
+                        setUnitFilter(value);
+                        setPage(1);
+                      }}
+                      options={[
+                        { value: "All", label: "All Units" },
+                        ...ERP_COMPANY_UNITS.map((unit) => ({ value: unit, label: unit })),
                       ]}
                     />
                     <SelectionFilter
@@ -2677,22 +2821,6 @@ export default function ToolsMasterPage() {
                       ]}
                     />
                     <SelectionFilter
-                      id="tools-active-filter"
-                      label="Active"
-                      value={onlyActive ? "Yes" : "Any"}
-                      anyValue="Any"
-                      anyLabel="Any"
-                      maxValueWidth="3.5rem"
-                      onChange={(v) => {
-                        setOnlyActive(v === "Yes");
-                        setPage(1);
-                      }}
-                      options={[
-                        { value: "Any", label: "Any" },
-                        { value: "Yes", label: "Yes" },
-                      ]}
-                    />
-                    <SelectionFilter
                       id="tools-sort-filter"
                       label="Sort"
                       value={sortBy}
@@ -2705,87 +2833,33 @@ export default function ToolsMasterPage() {
                       }}
                       options={[
                         { value: "newest", label: "Newest" },
-                        { value: "toolno", label: "Tool No" },
+                        { value: "toolno", label: "Identification No." },
                         { value: "name", label: "Name" },
-                        { value: "group", label: "Group" },
                       ]}
                     />
-                    <div className="relative">
+                    <RoleGate permission="canEditMaster">
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         className="h-7 !rounded-md !px-2 !text-[11px]"
                         disabled={!!importBusy || !!exportBusy}
-                        onClick={() => setShowImportChooser((v) => !v)}
+                        onClick={triggerMasterImport}
+                        title="Import Master Data (.xlsx)"
                       >
-                        <ListFilter className="w-3 h-3" />
+                        <Upload className="w-3 h-3" />
                         Import
                       </Button>
-                      {showImportChooser && (
-                        <div className="absolute right-0 top-full mt-2 z-30 w-80 rounded-xl border border-[var(--border-main)] bg-[var(--bg-card)] shadow-lg p-2 space-y-1">
-                          <RoleGate permission="canEditMaster">
-                            {(
-                              [
-                                { kind: "basic" as const, title: "Basic Info", desc: "Upsert core tool fields" },
-                                { kind: "full" as const, title: "Full Details", desc: "Includes serial + details" },
-                                { kind: "price" as const, title: "Price Update Only", desc: "Update price — never creates" },
-                              ] as const
-                            ).map((opt) => (
-                              <div
-                                key={opt.kind}
-                                className="rounded-lg border border-[var(--border-main)] p-2.5 space-y-2"
-                              >
-                                <div>
-                                  <p className="text-sm font-semibold">{opt.title}</p>
-                                  <p className="text-[11px] text-[var(--text-muted)]">{opt.desc}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    className="flex-1"
-                                    disabled={!!exportBusy}
-                                    onClick={() => downloadTemplate(opt.kind)}
-                                  >
-                                    <Download className="w-3.5 h-3.5" />
-                                    Template
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="secondary"
-                                    className="flex-1"
-                                    disabled={!!importBusy}
-                                    onClick={() => startImport(opt.kind)}
-                                  >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    Upload
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </RoleGate>
-                          <div className="flex gap-2 p-1">
-                            <Button type="button" size="sm" variant="ghost" className="flex-1" disabled={!!exportBusy} onClick={() => runExport("xlsx")}>
-                              <FileSpreadsheet className="w-3.5 h-3.5" />
-                              Excel
-                            </Button>
-                            <Button type="button" size="sm" variant="ghost" className="flex-1" disabled={!!exportBusy} onClick={() => runExport("pdf")}>
-                              <FileText className="w-3.5 h-3.5" />
-                              PDF
-                            </Button>
-                          </div>
-                          <button
-                            type="button"
-                            className="w-full text-xs text-[var(--text-muted)] py-1.5 hover:text-[var(--text-primary)]"
-                            onClick={() => setShowImportChooser(false)}
-                          >
-                            Close
-                          </button>
-                        </div>
-                      )}
+                    </RoleGate>
+                    <div className="flex gap-1">
+                      <Button type="button" size="sm" variant="ghost" className="h-7 !rounded-md !px-2 !text-[11px]" disabled={!!exportBusy} onClick={() => runExport("xlsx")}>
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Excel
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 !rounded-md !px-2 !text-[11px]" disabled={!!exportBusy} onClick={() => runExport("pdf")}>
+                        <FileText className="w-3.5 h-3.5" />
+                        PDF
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -2816,12 +2890,7 @@ export default function ToolsMasterPage() {
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div>
                         <p className="text-sm font-semibold text-[var(--text-primary)]">
-                          Import preview —{" "}
-                          {importPreview.template === "basic"
-                            ? "Basic Info"
-                            : importPreview.template === "full"
-                              ? "Full Details"
-                              : "Price Update Only"}
+                          Import Master Data — preview
                         </p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">
                           Nothing has been written yet. Review and confirm to apply.
@@ -2848,6 +2917,18 @@ export default function ToolsMasterPage() {
                       <span className="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200">
                         Rejected {importPreview.rejectCount}
                       </span>
+                      {importPreview.rejected.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 whitespace-nowrap"
+                          onClick={downloadRejectedImportRows}
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          Download Rejected Rows
+                        </Button>
+                      )}
                     </div>
                     {importPreview.rejected.length > 0 && (
                       <div className="max-h-40 overflow-auto rounded-lg border border-red-200 bg-white/60 p-3 text-xs space-y-1">
@@ -2858,91 +2939,224 @@ export default function ToolsMasterPage() {
                         ))}
                       </div>
                     )}
+                    {importPreview.pendingRows.length > 0 && (
+                      <div className="max-h-48 overflow-auto rounded-lg border border-[var(--border-main)] bg-white/60 p-3 text-xs space-y-0.5">
+                        {importPreview.pendingRows.slice(0, 50).map((r) => (
+                            <p
+                              key={`${r.row}-${r.label ?? r.equipNo}-${r.usedUnit}`}
+                              className={
+                                r.action === "create"
+                                  ? "text-emerald-700"
+                                  : "text-blue-700"
+                              }
+                            >
+                              {r.label ?? `${r.equipNo} · ${r.usedUnit}`}{" "}
+                              <span className="font-medium">
+                                → {r.action === "create" ? "Create" : "Update"}
+                              </span>
+                            </p>
+                          ))}
+                        {importPreview.pendingRows.length > 50 && (
+                          <p className="text-[var(--text-muted)]">
+                            … and {importPreview.pendingRows.length - 50} more
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         variant="primary"
+                        className="min-w-36 whitespace-nowrap"
                         disabled={importBusy === "confirm" || importPreview.pendingRows.length === 0}
                         onClick={confirmImport}
                       >
-                        {importBusy === "confirm" ? "Importing…" : "Confirm Import"}
+                        {importBusy === "confirm"
+                          ? `Importing… ${Math.floor(importElapsedSeconds / 60)}:${String(importElapsedSeconds % 60).padStart(2, "0")}`
+                          : "Confirm Import"}
                       </Button>
                       <p className="text-xs text-[var(--text-muted)]">
-                        {importPreview.template === "price"
-                          ? "Update-only: never creates tools."
-                          : importPreview.template === "full"
-                            ? "Writes GAUGEANDTOOLS + serial/details where provided."
-                            : "Writes GAUGEANDTOOLS only."}
+                        {importBusy === "confirm"
+                          ? `Processing ${importPreview.pendingRows.length.toLocaleString()} rows. Keep this page open.`
+                          : "Writes the instrument register as single tracked assets. Calibration dates seed instrument history."}
                       </p>
                     </div>
+                    {importBusy === "confirm" && importProgress && (
+                      <div className="space-y-1.5 rounded-lg border border-blue-200 bg-blue-50/70 p-3">
+                        <div className="flex justify-between gap-3 text-xs text-blue-800">
+                          <span>
+                            Batch {importProgress.batch}/{importProgress.batches} · {importProgress.processed.toLocaleString()}/{importProgress.total.toLocaleString()} rows
+                          </span>
+                          <span>
+                            Created {importProgress.created} · Updated {importProgress.updated} · Skipped {importProgress.skipped}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-blue-100">
+                          <div
+                            className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
+                            style={{ width: `${Math.round((importProgress.processed / importProgress.total) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 </div>
 
+                {selectedRefNos.length > 0 && (
+                  <div className="px-4 py-2 flex items-center gap-2 border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                    <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                      {selectedRefNos.length} selected
+                    </span>
+                    <RoleGate permission="canCreateIssue">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 !rounded-md !px-2 !text-[11px]"
+                        onClick={() => {
+                          const selected = tools.filter((t) => selectedRefNos.includes(t.refNo));
+                          const lines = selected
+                            .filter((t) => Number(t.qtyIn ?? 0) > 0)
+                            .map((t) => ({
+                              toolOrGaugeNo: t.toolOrGaugeNo ?? "",
+                              issueQty: 1,
+                            }));
+                          if (lines.length === 0) {
+                            toastError("None of the selected instruments are currently available for movement.");
+                            return;
+                          }
+                          sessionStorage.setItem("bulkIssueLines", JSON.stringify(lines));
+                          router.push("/dashboard/movement/create?bulk=1");
+                        }}
+                        title="Create movement for selected instruments"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        Move Selected
+                      </Button>
+                    </RoleGate>
+                    <RoleGate permission="canManageCalibration">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 !rounded-md !px-2 !text-[11px]"
+                        onClick={() => {
+                          const selected = tools.filter((t) => selectedRefNos.includes(t.refNo));
+                          const lines = selected.map((t) => ({
+                            toolOrGaugeNo: t.toolOrGaugeNo ?? "",
+                            description: t.description || t.name || "",
+                            location: t.location || "",
+                            unit: unitFilter !== "All" ? unitFilter : t.locationName,
+                            nextCalibDate: t.importedMasterData?.nextCalibrationDue ?? t.nextCalibDate ?? null,
+                          }));
+                          if (lines.length === 0) {
+                            toastError("No valid instruments selected for calibration.");
+                            return;
+                          }
+                          sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
+                          router.push("/dashboard/calibration/issue?bulk=1");
+                        }}
+                        title="Send selected instruments for calibration"
+                      >
+                        <Wrench className="w-3.5 h-3.5" />
+                        Send for Calibration
+                      </Button>
+                    </RoleGate>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 !rounded-md !px-2 !text-[11px] ml-auto"
+                      onClick={() => setSelectedRefNos([])}
+                    >
+                      Clear selection
+                    </Button>
+                  </div>
+                )}
+
                 {loading ? (
                   <div className="px-4 pb-4"><TableSkeleton rows={6} /></div>
                 ) : (
-                  <div className="overflow-auto">
-                    <table className="w-full text-sm">
+                  <div className="relative max-w-full overflow-auto px-3 pb-3 [scrollbar-gutter:stable]">
+                    <table className="instrument-master-grid w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          <th className="py-2.5 px-3 w-10">
+                          <th className="w-12">
                             <input
                               type="checkbox"
                               checked={allFilteredSelected}
                               onChange={toggleSelectAllFiltered}
                               className="w-4 h-4 rounded border-[var(--border-main)]"
-                              aria-label="Select all filtered tools"
+                              aria-label="Select all filtered instruments"
                             />
                           </th>
                           {[
-                            "Tool Or Gauge No",
+                            "Equip No",
                             "Description",
-                            "Tool Group",
-                            "Tool Type",
-                            "Type Name",
-                            "Old Item No",
-                            "UOM",
-                            "Total Qty",
-                            "Avail.For.Iss.",
-                            "Location",
-                            "Loc. Output",
-                            "Ret?",
-                            "Sl.No?",
-                            "Issue Type",
-                            "Critical?",
-                            "PS.Min",
-                            "PS.Max",
-                            "Ref. No",
+                            "Size",
                             "Least Count",
-                            "Buffer Qty",
-                            "Next Calib Due",
+                            "Used Unit",
+                            "Make",
+                            "Used Location",
+                            "Cal. Freq. (mths)",
+                            "Calibration Date",
+                            "Next Calibration Due",
+                            "Validity (days)",
                             "Status",
-                            "Machine",
+                            "Observed Error",
+                            "Calibration Agency",
+                            "Remarks",
                             "Actions",
                           ].map((col) => (
                             <th
                               key={col}
-                              className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3 whitespace-nowrap"
+                              className={`text-left whitespace-nowrap ${
+                                col === "Validity (days)"
+                                  ? "text-blue-700 dark:text-blue-300 font-bold bg-blue-50/70 dark:bg-blue-950/50 border-x border-blue-200 dark:border-blue-800"
+                                  : col === "Actions"
+                                  ? "w-[7.5rem] min-w-[7.5rem] text-center text-[var(--text-muted)] sticky right-0 bg-[var(--bg-subtle)] z-50 shadow-[-4px_0_4px_-2px_rgba(0,0,0,0.1)]"
+                                  : "text-[var(--text-muted)]"
+                              }`}
                             >
-                              {col}
+                              <span className={`flex items-center gap-3 ${col === "Actions" ? "justify-center" : "justify-between"}`}>
+                                <span>{col}</span>
+                                {col !== "Actions" && <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-65" />}
+                              </span>
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border-main)]">
                         {filtered.map((t) => {
-                          const badge = t.computedStatus ?? "No Units";
-                          const sc = statusConfig[badge] ?? statusConfig["No Units"];
                           const isChecked = selectedRefNos.includes(t.refNo);
-                          const hasMachine = (t.machines?.length ?? 0) > 0;
+                          const effectiveNextCalibDate = t.importedMasterData?.nextCalibrationDue ?? t.nextCalibDate ?? null;
+
+                          const effectiveValidityDays = (() => {
+                            if (!effectiveNextCalibDate) return t.calibDueInDays ?? null;
+                            const target = new Date(effectiveNextCalibDate);
+                            if (isNaN(target.getTime())) return t.calibDueInDays ?? null;
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                          })();
+
+                          const effectiveCalibDueStatus = (() => {
+                            if (effectiveValidityDays == null) return t.calibDueStatus ?? null;
+                            return effectiveValidityDays < 0
+                              ? "overdue"
+                              : effectiveValidityDays <= 30
+                              ? "due-soon"
+                              : "ok";
+                          })();
+
                           return (
                             <tr
                               key={t.refNo}
                               onClick={() => handleRowClick(t)}
                               className="hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                             >
-                              <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
+                              <td onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={isChecked}
@@ -2951,134 +3165,184 @@ export default function ToolsMasterPage() {
                                   aria-label={`Select ${t.toolOrGaugeNo}`}
                                 />
                               </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] font-semibold whitespace-nowrap group-hover:text-[var(--primary)] transition-colors">
-                                {t.toolOrGaugeNo}
+                              <td className="whitespace-nowrap">
+                                <span className="instrument-cell-primary font-mono group-hover:text-[var(--primary)]">{t.toolOrGaugeNo}</span>
                               </td>
-                              <td className="py-3.5 px-3 max-w-[240px]">
-                                <p className="text-[var(--text-primary)] line-clamp-2">
-                                  {t.description || t.name || "—"}
-                                </p>
+                              <td className="min-w-[190px] max-w-[260px]">
+                                <span className="instrument-cell-primary line-clamp-1">{t.description || "—"}</span>
                               </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap max-w-[120px] truncate">
-                                {t.grouping || "—"}
+                              <td className="whitespace-nowrap">
+                                {t.size || "—"}
                               </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap max-w-[120px] truncate">
-                                {t.type || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap max-w-[120px] truncate">
-                                {t.name || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-muted)] whitespace-nowrap">
-                                {t.oldItemNo || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">{t.uom || "—"}</td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {num(t.totQty)}
-                              </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {num(t.qtyIn)}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap max-w-[140px] truncate">
-                                {t.location || t.locationName || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-muted)] whitespace-nowrap max-w-[140px] truncate">
-                                {t.locationOutputName || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
-                                {yesNoValue(t.returnable, "—")}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
-                                {yesNoValue(t.serialNoGenReq, "—")}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                                {t.issueType || "—"}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
-                                {yesNoValue(t.criticalItem, "—")}
-                              </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {t.prodSpecLowerMax != null ? num(t.prodSpecLowerMax) : "—"}
-                              </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {t.prodSpecUpperMax != null ? num(t.prodSpecUpperMax) : "—"}
-                              </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {t.refNo}
-                              </td>
-                              <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              <td className="whitespace-nowrap">
                                 {t.leastCount || "—"}
                               </td>
-                              <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)] text-right">
-                                {t.minOrderLevel != null ? num(t.minOrderLevel) : "—"}
+                              <td className="whitespace-nowrap">
+                                <span className="instrument-cell-primary">{t.locationName || "—"}</span>
                               </td>
-                              <td className="py-3.5 px-3 whitespace-nowrap">
-                                {t.calibrationFrqMonths && t.calibrationFrqMonths > 0 ? (
-                                  t.nextCalibDate ? (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${t.calibDueStatus === "overdue" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : t.calibDueStatus === "due-soon" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"}`}>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${t.calibDueStatus === "overdue" ? "bg-red-500" : t.calibDueStatus === "due-soon" ? "bg-amber-500" : "bg-emerald-500"}`} />
-                                      {new Date(t.nextCalibDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                              <td className="whitespace-nowrap">
+                                {t.make || "—"}
+                              </td>
+                              <td className="min-w-[150px] max-w-[210px]">
+                                <span className="instrument-cell-primary line-clamp-1">{t.location || "—"}</span>
+                              </td>
+                              <td className="whitespace-nowrap text-center">
+                                {t.calibrationFrqMonths ?? "—"}
+                              </td>
+                              <td className="whitespace-nowrap">
+                                {t.importedMasterData?.calibrationDate
+                                  ? new Date(t.importedMasterData.calibrationDate).toLocaleDateString("en-IN")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap">
+                                {effectiveNextCalibDate ? (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${effectiveCalibDueStatus === "overdue" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : effectiveCalibDueStatus === "due-soon" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${effectiveCalibDueStatus === "overdue" ? "bg-red-500" : effectiveCalibDueStatus === "due-soon" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                                      {new Date(effectiveNextCalibDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                                     </span>
-                                  ) : (
+                                ) : t.calibrationFrqMonths && t.calibrationFrqMonths > 0 ? (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                       <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                                       Not Calibrated
                                     </span>
-                                  )
                                 ) : (
                                   <span className="text-xs text-[var(--text-muted)]">—</span>
                                 )}
                               </td>
-                              <td className="py-3.5 px-3">
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${sc.bg} ${sc.text}`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                                  {badge}
-                                </span>
+                              <td className="text-right whitespace-nowrap bg-blue-50/30 dark:bg-blue-950/20">
+                                <ValidityBadge nextCalibrationDue={effectiveNextCalibDate} />
                               </td>
-                              <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => void openMachineModal(t)}
-                                  className={`inline-flex p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    hasMachine
-                                      ? "text-[var(--primary)] hover:bg-[var(--primary-light)]"
-                                      : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] opacity-60 hover:opacity-100"
-                                  }`}
-                                  title={
-                                    hasMachine
-                                      ? `Machines: ${t.machines!.join(", ")} — click to manage`
-                                      : "No machine mapped — click to assign"
-                                  }
-                                >
-                                  <Cog className="w-4 h-4" />
-                                </button>
+                              <td>
+                                <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap">{t.status || "—"}</span>
                               </td>
-                              <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1">
+                              <td className="whitespace-nowrap">
+                                {t.importedMasterData?.observedError || "—"}
+                              </td>
+                              <td className="whitespace-nowrap">
+                                {t.importedMasterData?.calibrationAgency || "—"}
+                              </td>
+                              <td className="max-w-[220px] truncate">
+                                {t.remarks || t.importedMasterData?.observedError || "—"}
+                              </td>
+                              <td className="instrument-actions-cell sticky right-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-20 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                                   <button
                                     onClick={() => handleRowClick(t)}
-                                    className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors cursor-pointer"
+                                    className="inline-flex h-8 items-center justify-center rounded-lg border border-[var(--border-main)] bg-[var(--bg-card)] px-3 text-xs font-semibold text-[var(--text-primary)] shadow-sm hover:bg-[var(--bg-hover)]"
                                     title="View Details"
+                                    aria-label="View details"
                                   >
-                                    <Eye className="w-4 h-4" />
+                                    View
                                   </button>
+                                  <RowActionMenu>
+                                  <RoleGate permission="canCreateIssue">
+                                    <button
+                                      onClick={() => {
+                                        let lines = [];
+                                        if (selectedRefNos.length > 0 && selectedRefNos.includes(t.refNo)) {
+                                          const selected = tools.filter((t2) => selectedRefNos.includes(t2.refNo));
+                                          lines = selected.map((t2) => ({
+                                            refNo: t2.refNo,
+                                            toolOrGaugeNo: t2.toolOrGaugeNo,
+                                            description: t2.description || t2.name || "",
+                                            qty: 1,
+
+                                          }));
+                                        } else {
+                                          lines = [{
+                                            refNo: t.refNo,
+                                            toolOrGaugeNo: t.toolOrGaugeNo,
+                                            description: t.description || t.name || "",
+                                            qty: 1,
+
+                                          }];
+                                        }
+                                        sessionStorage.setItem("bulkIssueLines", JSON.stringify(lines));
+                                        router.push("/dashboard/movement/create?action=add&fromMaster=1");
+                                      }}
+                                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                                      title="Create movement"
+                                      aria-label="Create movement"
+                                    >
+                                      <ClipboardList className="w-4 h-4" />
+                                      Create movement
+                                    </button>
+                                  </RoleGate>
+                                  <RoleGate permission="canManageCalibration">
+                                    {t.computedStatus === "Under Calibration" || t.status === "Under Calibration" ? (
+                                      <button
+                                        disabled
+                                        className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-muted)] opacity-60"
+                                        title="Instrument is currently out for calibration"
+                                        aria-label="Instrument is in calibration"
+                                      >
+                                        <Wrench className="w-4 h-4" />
+                                        Currently in calibration
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          let lines = [];
+                                          if (selectedRefNos.length > 0 && selectedRefNos.includes(t.refNo)) {
+                                            const selected = tools.filter((t2) => selectedRefNos.includes(t2.refNo));
+                                            lines = selected.map((t2) => ({
+                                              refNo: t2.refNo,
+                                              toolOrGaugeNo: t2.toolOrGaugeNo,
+                                              description: t2.description || t2.name || "",
+                                              location: t2.location || "",
+                                              unit: unitFilter !== "All" ? unitFilter : t2.locationName,
+                                              nextCalibDate: t2.importedMasterData?.nextCalibrationDue ?? t2.nextCalibDate ?? null,
+                                            }));
+                                          } else {
+                                            lines = [{
+                                              refNo: t.refNo,
+                                              toolOrGaugeNo: t.toolOrGaugeNo,
+                                              description: t.description || t.name || "",
+                                              location: t.location || "",
+                                              unit: unitFilter !== "All" ? unitFilter : t.locationName,
+                                              nextCalibDate: t.importedMasterData?.nextCalibrationDue ?? t.nextCalibDate ?? null,
+                                            }];
+                                          }
+                                          sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
+                                          router.push("/dashboard/calibration/issue?fromMaster=1");
+                                        }}
+                                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium hover:bg-[var(--bg-hover)] ${
+                                          effectiveCalibDueStatus === "overdue"
+                                            ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800"
+                                            : effectiveCalibDueStatus === "due-soon"
+                                            ? "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
+                                            : "hover:bg-amber-50 text-[var(--text-muted)] hover:text-amber-600"
+                                        }`}
+                                        title="Send for calibration"
+                                        aria-label="Send for calibration"
+                                      >
+                                        <Wrench className="w-4 h-4" />
+                                        Send for calibration
+                                      </button>
+                                    )}
+                                  </RoleGate>
                                   <RoleGate permission="canEditMaster">
                                     <button
                                       onClick={() => handleOpenEdit(t)}
-                                      className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                                      title="Edit Tool"
+                                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                                      title="Edit instrument"
+                                      aria-label="Edit instrument"
                                     >
                                       <Edit2 className="w-4 h-4" />
+                                      Edit instrument
                                     </button>
+                                    <div className="my-1 border-t border-[var(--border-main)]" />
                                     <button
                                       onClick={() => handleDeleteTool(t.refNo)}
-                                      className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors cursor-pointer"
-                                      title="Delete Tool"
+                                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      title="Delete instrument"
+                                      aria-label="Delete instrument"
                                     >
                                       <Trash2 className="w-4 h-4" />
+                                      Delete instrument
                                     </button>
                                   </RoleGate>
+                                  </RowActionMenu>
                                 </div>
                               </td>
                             </tr>
@@ -3086,8 +3350,8 @@ export default function ToolsMasterPage() {
                         })}
                         {filtered.length === 0 && (
                           <tr>
-                            <td colSpan={19} className="py-8 text-center text-sm text-[var(--text-muted)]">
-                              No tool records found.
+                            <td colSpan={17} className="py-12 text-center text-sm text-[var(--text-muted)]">
+                              No instrument or gauge records found.
                             </td>
                           </tr>
                         )}
@@ -3104,7 +3368,7 @@ export default function ToolsMasterPage() {
                         {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}
                       </span>{" "}
                       of <span className="font-semibold text-[var(--text-primary)]">{total.toLocaleString()}</span>{" "}
-                      tools
+                      instruments
                       {totalPages > 1 ? ` · Page ${page} of ${totalPages.toLocaleString()}` : ""}
                     </span>
                     {totalPages > 1 && (
@@ -3134,68 +3398,201 @@ export default function ToolsMasterPage() {
               </div>
             </>
           ) : viewState === "view" ? (
-            <div className="animate-fade-in space-y-6">
+            <div className="animate-fade-in space-y-5">
               {/* Header Navigation & Actions */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--border-main)] pb-4">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setViewState("list")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-[var(--border-main)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
-                  >
-                    <ArrowLeft className="w-4 h-4" /> Back to Registry List
-                  </button>
-                  <div>
-                    <div className="flex items-center gap-2">
+              <div className="border-b border-[var(--border-main)] pb-5">
+                <button
+                  onClick={() => setViewState("list")}
+                  className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--primary)] cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back to Registry List
+                </button>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs font-bold text-[var(--primary)] bg-[var(--primary-light)] px-2.5 py-0.5 rounded">
                         {toolOrGaugeNo}
                       </span>
                       <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-main)]">
-                        {grouping} {type ? `/ ${type}` : ""}
+                        {type || "Instrument / Gauge"}
                       </span>
                     </div>
-                    <h1 className="text-xl font-bold text-[var(--text-primary)] mt-1">
+                    <h1 className="mt-2 break-words text-2xl font-bold leading-tight text-[var(--text-primary)]">
                       {!name || name.trim().toUpperCase() === "N/A" ? description || toolOrGaugeNo : name}
                     </h1>
                   </div>
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  <RoleGate permission="canCreateIssue">
+                    <Button
+                      onClick={() => {
+                        if (!selectedTool?.toolOrGaugeNo) return;
+                        const lines = [{
+                          toolOrGaugeNo: selectedTool.toolOrGaugeNo,
+                          description: selectedTool.description || selectedTool.name || "",
+                          location: selectedTool.location || "",
+                          nextCalibDate: selectedTool.importedMasterData?.nextCalibrationDue ?? selectedTool.nextCalibDate ?? null,
+                        }];
+                        sessionStorage.setItem("bulkIssueLines", JSON.stringify(lines));
+                        router.push("/dashboard/movement/create?bulk=1");
+                      }}
+                      variant="outline"
+                      size="sm"
+                      title="Move this instrument"
+                    >
+                      <ClipboardList className="w-4 h-4" /> Move
+                    </Button>
+                  </RoleGate>
+                  <RoleGate permission="canManageCalibration">
+                    <Button
+                      onClick={() => {
+                        if (!selectedTool?.toolOrGaugeNo) return;
+                        const lines = [{
+                          toolOrGaugeNo: selectedTool.toolOrGaugeNo,
+                          issueQty: 1,
+                          unit: selectedTool.locationName,
+                        }];
+                        sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
+                        router.push("/dashboard/calibration/issue?bulk=1");
+                      }}
+                      variant="outline"
+                      size="sm"
+                      title="Send this instrument for calibration"
+                    >
+                      <Wrench className="w-4 h-4" /> Send for Calibration
+                    </Button>
+                  </RoleGate>
+                  <RoleGate permission="canEditMaster">
+                    <Button
+                      onClick={() => {
+                        if (selectedTool) handleOpenEdit(selectedTool);
+                      }}
+                      variant="primary"
+                      size="sm"
+                    >
+                      <Edit2 className="w-4 h-4" /> Edit Instrument
+                    </Button>
+                  </RoleGate>
                 </div>
-                <RoleGate permission="canEditMaster">
-                  <Button
-                    onClick={() => {
-                      if (selectedTool) handleOpenEdit(selectedTool);
-                    }}
-                    variant="primary"
-                    size="sm"
-                  >
-                    <Edit2 className="w-4 h-4" /> Edit Tool Master
-                  </Button>
-                </RoleGate>
+                </div>
               </div>
 
               {/* Top Overview KPI Row */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
-                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Total Quantity</p>
-                  <p className="font-mono text-xl font-bold text-[var(--text-primary)] mt-1">{totQty}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="min-h-28 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
+                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Current Status</p>
+                  <p className="mt-2 text-lg font-bold leading-snug text-[var(--text-primary)]">
+                    {selectedTool?.computedStatus || selectedTool?.status || "Status Missing"}
+                  </p>
                 </div>
-                <div className="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
-                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">In Stock (Available)</p>
-                  <p className="font-mono text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{qtyIn}</p>
+                <div className="min-h-28 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
+                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Current Unit</p>
+                  <p className="mt-2 text-lg font-bold leading-snug text-[var(--text-primary)]">
+                    {selectedTool?.movementSummary
+                      ? "In Transit"
+                      : selectedTool?.units?.join(", ") || locationName || "—"}
+                  </p>
                 </div>
-                <div className="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
-                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Issued Out</p>
-                  <p className="font-mono text-xl font-bold text-blue-600 dark:text-blue-400 mt-1">{qtyOut}</p>
+                <div className="min-h-28 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
+                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Location</p>
+                  <p className="mt-2 break-words text-lg font-bold leading-snug text-[var(--text-primary)]">
+                    {selectedTool?.movementSummary
+                      ? `${selectedTool.movementSummary.sourceUnit || "—"} → ${selectedTool.movementSummary.destinationUnit || "—"}`
+                      : locationName || location || "—"}
+                  </p>
                 </div>
-                <div className="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
-                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Unit Price</p>
-                  <p className="font-mono text-xl font-bold text-[var(--text-primary)] mt-1">{price ? `₹${price}` : "—"}</p>
+                <div className="min-h-28 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
+                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Next Calibration</p>
+                  <p className="mt-2 text-lg font-bold leading-snug text-[var(--text-primary)]">
+                    {formatDate(selectedTool?.importedMasterData?.nextCalibrationDue ?? selectedTool?.nextCalibDate)}
+                  </p>
                 </div>
-                <div className="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)]">
-                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Buffer / ROL Qty</p>
-                  <p className="font-mono text-xl font-bold text-amber-600 dark:text-amber-400 mt-1">{minOrderLevel || "—"}</p>
+                <div className="min-h-28 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-main)] sm:col-span-2 xl:col-span-1">
+                  <p className="text-[11px] font-semibold uppercase text-[var(--text-muted)] tracking-wider">Calibration Validity</p>
+                  <div className="mt-2"><ValidityBadge nextCalibrationDue={selectedTool?.importedMasterData?.nextCalibrationDue ?? selectedTool?.nextCalibDate} /></div>
                 </div>
               </div>
 
+              {selectedTool?.movementSummary && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                        Active movement · In transit
+                      </p>
+                      <h2 className="mt-1 text-lg font-bold text-[var(--text-primary)]">
+                        Moved from {selectedTool.movementSummary.sourceUnit || "Unknown unit"} to {selectedTool.movementSummary.destinationUnit || "Unknown unit"}
+                      </h2>
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                        The instrument has left {selectedTool.movementSummary.sourceUnit || "the source unit"}
+                        {selectedTool.movementSummary.sourceRack ? ` · Source rack: ${selectedTool.movementSummary.sourceRack}` : ""} and is awaiting receipt at {selectedTool.movementSummary.destinationUnit || "the destination unit"}.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-100 px-3 py-1 font-mono text-xs font-bold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
+                      DC {selectedTool.movementSummary.dcNo}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                    <div><p className="font-semibold uppercase text-[var(--text-muted)]">Movement Date</p><p className="mt-1 font-mono font-semibold">{formatDate(selectedTool.movementSummary.issueDate)}</p></div>
+                    <div><p className="font-semibold uppercase text-[var(--text-muted)]">Expected Receipt</p><p className="mt-1 font-mono font-semibold">{formatDate(selectedTool.movementSummary.expectedReceiptDate)}</p></div>
+                    <div><p className="font-semibold uppercase text-[var(--text-muted)]">Issued To</p><p className="mt-1 font-semibold">{selectedTool.movementSummary.issuedTo || "—"}</p></div>
+                    <div><p className="font-semibold uppercase text-[var(--text-muted)]">Destination Rack</p><p className="mt-1 font-semibold">Pending receipt</p></div>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-hidden bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)]">
+                <div className="border-b border-[var(--border-main)] px-5 py-4">
+                  <h2 className="text-base font-bold text-[var(--text-primary)]">Instrument overview</h2>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">Core identification and calibration parameters</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Description", description || name || "—"],
+                    ["Instrument Type", type || "—"],
+                    ["Critical Instrument", criticalItem || "No"],
+                    ["Range", range || size || "—"],
+                    ["Least Count / Resolution", leastCount || "—"],
+                    ["Calibration Frequency", calibrationFrqMonths ? `${calibrationFrqMonths} months` : "Not configured"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="min-h-24 border-b border-[var(--border-main)] px-5 py-4 sm:border-r xl:[&:nth-child(4n)]:border-r-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
+                      <p className="mt-2 break-words text-sm font-medium leading-relaxed text-[var(--text-primary)]">{value}</p>
+                    </div>
+                  ))}
+                  <div className="min-h-24 border-b border-[var(--border-main)] px-5 py-4 sm:col-span-2 sm:border-r xl:col-span-2 xl:border-r-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Remarks</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--text-primary)]">{remarks || "—"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {selectedTool?.toolOrGaugeNo && (
+                <section className="overflow-hidden rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)]">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-main)] px-5 py-4">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-base font-bold text-[var(--text-primary)]">
+                        <Orbit className="h-5 w-5 text-[var(--primary)]" />
+                        360° Instrument Journey
+                      </h2>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">
+                        Complete purchase, receipt, movement, calibration, defect, service, document, and status history
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-1 font-mono text-xs font-semibold text-[var(--text-secondary)]">
+                      {selectedTool.toolOrGaugeNo}
+                    </span>
+                  </div>
+                  <div className="p-5">
+                    <ToolJourneyTimeline
+                      toolOrGaugeNo={selectedTool.toolOrGaugeNo}
+                      refNo={selectedTool.refNo}
+                    />
+                  </div>
+                </section>
+              )}
+
               {/* Main Attributes Panel — Mirroring ERP screenshot layout */}
+              {false && (
               <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-6 space-y-6">
                 {/* 1. Classification & Core Info */}
                 <div>
@@ -3327,7 +3724,7 @@ export default function ToolsMasterPage() {
                 </div>
                 )}
               </div>
-              {/* ↑ closes Main Attributes Panel */}
+              )}
 
               {/* Calibration Lifecycle Status Panel */}
               {showCalibrationTab && selectedTool?.calibrationSummary && (
@@ -3364,7 +3761,7 @@ export default function ToolsMasterPage() {
                 {selectedTool.calibrationSummary.calibStatus === "Not Started" && (
                   <div className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-600">
                     <span className="text-base">📋</span>
-                    <span>This tool has not been issued for calibration yet. Expected first calibration due by <strong>
+                    <span>This instrument has not been sent for calibration yet. Expected first calibration due by <strong>
                       {new Date(selectedTool.calibrationSummary.nextCalibDate as unknown as string).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
                     </strong>. Go to <Link href="/dashboard/calibration/issue" className="text-[var(--primary)] font-semibold hover:underline">Calibration → Issue</Link> to begin.</span>
                   </div>
@@ -3443,7 +3840,7 @@ export default function ToolsMasterPage() {
                       {calibBlockEnabled ? "Individual Serial Units & Calibration History" : "Individual Serial Units"}
                     </h2>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      ERP unit grid from <span className="font-mono">GAUGE_SERIAL_NO</span> — same columns as Tools Manage Creation
+                      Unit ownership, manufacturer identification, and calibration scheduling
                     </p>
                   </div>
                   <span className="font-mono text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary)] px-3 py-1 rounded-full">
@@ -3559,7 +3956,7 @@ export default function ToolsMasterPage() {
 
                 <UnitHistoryTable
                   rows={displayUnitRows}
-                  onUpdateUnitRow={handleUpdateUnitProp}
+                  onUpdateUnitProp={handleUpdateUnitProp}
                   onUpdatePurchaseDt={handleUpdatePurchaseDt}
                   onCompletePm={
                     prevBlockEnabled
@@ -3569,7 +3966,7 @@ export default function ToolsMasterPage() {
                   emptyLabel={
                     serialNoGenReq
                       ? "Set Total Qty > 0 with Serial Gen = Yes to see unit rows."
-                      : "No records found. Add a physical unit after the tool is saved."
+                      : "No unit identification found. Add one after the instrument is saved."
                   }
                 />
               </div>
@@ -3581,7 +3978,7 @@ export default function ToolsMasterPage() {
             <OverlayModal
               open
               size="5xl"
-              title={viewState === "create" ? "Add Tool" : "Edit Tool"}
+              title={viewState === "create" ? "Add Instrument" : "Edit Instrument"}
               subtitle={
                 viewState === "create"
                   ? undefined
@@ -3610,7 +4007,7 @@ export default function ToolsMasterPage() {
                             await handleDeleteTool(selectedTool.refNo);
                             executeLeave("list");
                           }}
-                          title="Delete tool"
+                          title="Delete instrument"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Delete
                         </button>
@@ -3641,30 +4038,14 @@ export default function ToolsMasterPage() {
                     >
                       <ClipboardList className="w-3.5 h-3.5" /> Mandatory Documents
                     </button>
-                    <button
-                      type="button"
-                      className={erpActionBtn}
-                      onClick={() => jumpToErpSection("details")}
-                      title="Tools Details"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" /> Tools Details
-                    </button>
-                    <button
-                      type="button"
-                      className={erpActionBtn}
-                      onClick={() => jumpToErpSection("specs")}
-                      title="Tools Specification"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" /> Tools Specification
-                    </button>
                     {showUnitHistoryTable && (
                     <button
                       type="button"
                       className={erpActionBtn}
                       onClick={() => jumpToErpSection("units")}
-                      title="ERP unit / serial table"
+                      title="Unit ownership and manufacturer identification"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" /> Unit Grid
+                      <ExternalLink className="w-3.5 h-3.5" /> Make &amp; Serial
                     </button>
                     )}
                     <button
@@ -3762,6 +4143,108 @@ export default function ToolsMasterPage() {
                     No fields match “{formFieldQuery.trim()}”. Try another keyword.
                   </p>
                 ) : null}
+                <FormModalSection
+                  id="instrument-section-core"
+                  title="Instrument identification"
+                  collapsible
+                  sticky
+                  open={formSectionsOpen.core}
+                  onOpenChange={(open) => setFormSectionOpen("core", open)}
+                >
+                  <div className="form-grid">
+                    <div>
+                      <FieldLabel>Identification Number *</FieldLabel>
+                      <div className="flex items-stretch gap-2">
+                        <TextInput
+                          id="form-tool-no"
+                          value={toolOrGaugeNo}
+                          onChange={(e) => {
+                            setToolNoLocked(true);
+                            setToolOrGaugeNo(e.target.value.toUpperCase());
+                          }}
+                          disabled={viewState === "edit"}
+                          placeholder="e.g. INS-0001"
+                          className="font-mono font-semibold uppercase"
+                        />
+                        {viewState === "create" && (
+                          <Button type="button" size="sm" variant="outline" className="h-10 shrink-0" onClick={() => { setToolNoLocked(false); void suggestToolNumber(); }}>
+                            Next #
+                          </Button>
+                        )}
+                      </div>
+                      {errors.toolOrGaugeNo && <p className="form-error">{errors.toolOrGaugeNo}</p>}
+                    </div>
+                    <div>
+                      <FieldLabel>Instrument Type *</FieldLabel>
+                      {filteredTypes.length > 0 ? (
+                        <SelectInput id="form-type" value={type} onChange={(e) => setType(e.target.value)}>
+                          <option value="">Select instrument type</option>
+                          {filteredTypes.map((instrumentType) => (
+                            <option key={instrumentType.rowId ?? instrumentType.id ?? instrumentType.code} value={instrumentType.name}>
+                              {instrumentType.name}
+                            </option>
+                          ))}
+                          {type && !filteredTypes.some((instrumentType) => instrumentType.name === type) && <option value={type}>{type}</option>}
+                        </SelectInput>
+                      ) : (
+                        <TextInput id="form-type" value={type} onChange={(e) => setType(e.target.value)} placeholder="Enter instrument type" />
+                      )}
+                      {errors.type && <p className="form-error">{errors.type}</p>}
+                    </div>
+                    <div>
+                      <FieldLabel>Instrument Name *</FieldLabel>
+                      <TextInput id="form-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Digital Vernier Caliper" />
+                      {errors.name && <p className="form-error">{errors.name}</p>}
+                    </div>
+                    <div>
+                      <FieldLabel>Current Unit</FieldLabel>
+                      <SelectInput value={locationName} onChange={(e) => setLocationName(e.target.value)}>
+                        <option value="">Select current unit</option>
+                        {ERP_COMPANY_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                      </SelectInput>
+                      {errors.locationName && <p className="form-error">{errors.locationName}</p>}
+                    </div>
+                    <div className="md:col-span-2">
+                      <FieldLabel>Description</FieldLabel>
+                      <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="form-control resize-none outline-none focus:ring-2 focus:ring-[var(--primary-subtle)]" placeholder="Instrument purpose or description" />
+                    </div>
+                    <div>
+                      <FieldLabel>Range</FieldLabel>
+                      <TextInput value={range} onChange={(e) => setRange(e.target.value)} placeholder="e.g. 0–150 mm" />
+                    </div>
+                    <div>
+                      <FieldLabel>Least Count / Resolution</FieldLabel>
+                      <TextInput value={leastCount} onChange={(e) => setLeastCount(e.target.value)} placeholder="e.g. 0.01 mm" />
+                    </div>
+                    <div>
+                      <FieldLabel>Location</FieldLabel>
+                      <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Production / Inspection room" />
+                    </div>
+                    <div>
+                      <FieldLabel>Department / Area</FieldLabel>
+                      <SelectInput value={deptName} onChange={(e) => setDeptName(e.target.value)}>
+                        <option value="">Select department</option>
+                        {departments.map((department) => <option key={department.id} value={department.name ?? ""}>{department.name}</option>)}
+                        {deptName && !departments.some((department) => department.name === deptName) && <option value={deptName}>{deptName}</option>}
+                      </SelectInput>
+                    </div>
+                    <div>
+                      <FieldLabel>Critical Instrument?</FieldLabel>
+                      <SelectInput value={criticalItem} onChange={(e) => setCriticalItem(e.target.value)}>
+                        {YES_NO.map((option) => <option key={option}>{option}</option>)}
+                      </SelectInput>
+                    </div>
+                    <div className="md:col-span-2">
+                      <FieldLabel>Remarks</FieldLabel>
+                      <TextInput value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional client remarks" />
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs text-[var(--text-muted)]">
+                    Make and manufacturer serial number are maintained under Unit ownership & identification below.
+                  </p>
+                </FormModalSection>
+
+                {false && (
                 <FormModalSection
                   id="tool-section-core"
                   title="Tool details"
@@ -3939,8 +4422,9 @@ export default function ToolsMasterPage() {
                         </SelectInput>
                       </div>
                       <div>
-                        <FieldLabel>Company / Unit</FieldLabel>
-                        <SelectInput value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                        <FieldLabel>Current Unit</FieldLabel>
+                        <SelectInput value={locationName} onChange={(e) => setLocationName(e.target.value)}>
+                          <option value="">Select current unit</option>
                           {ERP_COMPANY_UNITS.map((opt) => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
@@ -3975,28 +4459,8 @@ export default function ToolsMasterPage() {
                         <TextInput value={leastCount} onChange={(e) => setLeastCount(e.target.value)} />
                       </div>
                       <div>
-                        <FieldLabel>Location Name</FieldLabel>
-                        <SelectInput
-                          value={locationName}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            setLocationName(next);
-                            setLocation(next);
-                            const match = locations.find((l) => l.locationName === next);
-                            if (match?.area) setArea(match.area);
-                            if (match?.rack) setRack(match.rack);
-                          }}
-                        >
-                          <option value="">Select location</option>
-                          {locations.map((l) => (
-                            <option key={l.id} value={l.locationName ?? ""}>
-                              {l.locationName}
-                            </option>
-                          ))}
-                          {locationName && !locations.some((l) => l.locationName === locationName) && (
-                            <option value={locationName}>{locationName}</option>
-                          )}
-                        </SelectInput>
+                        <FieldLabel>Location</FieldLabel>
+                        <TextInput value={location} onChange={(e) => setLocation(e.target.value)} />
                       </div>
                       <div>
                         <FieldLabel>Storage Location</FieldLabel>
@@ -4046,8 +4510,9 @@ export default function ToolsMasterPage() {
                       </div>
                     </div>
                 </FormModalSection>
+                )}
 
-                <FormModalSection
+                {false && <FormModalSection
                   id="tool-section-stock"
                   title="Stock & flags"
                   collapsible
@@ -4209,8 +4674,9 @@ export default function ToolsMasterPage() {
                         Qty In / Out / New update automatically from Issue, Receive, and GRN transactions.
                       </p>
                     </div>
-                </FormModalSection>
+                </FormModalSection>}
 
+                {false && (
                 <div id="tool-section-details">
                 <FormModalSection
                   id="tool-section-details-inner"
@@ -4259,6 +4725,7 @@ export default function ToolsMasterPage() {
                   </div>
                 </FormModalSection>
                 </div>
+                )}
 
                 {showCalibrationTab && (
                 <FormModalSection
@@ -4268,45 +4735,13 @@ export default function ToolsMasterPage() {
                   open={formSectionsOpen.calibration}
                   onOpenChange={(open) => setFormSectionOpen("calibration", open)}
                 >
-                    <div className="form-grid">
+                    <div className="max-w-md">
                       <div>
-                        <FieldLabel>History Card?</FieldLabel>
-                        <SelectInput value={historyCardReq} onChange={(e) => handleHistoryCardReqChange(e.target.value)}>
-                          {YES_NO.map((opt) => (
-                            <option key={opt}>{opt}</option>
-                          ))}
-                        </SelectInput>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                          Yes unlocks Calibration fields
+                        <FieldLabel>Calibration Frequency (Months) *</FieldLabel>
+                        <NumInput integer min={1} value={calibrationFrqMonths} onValueChange={setCalibrationFrqMonths} />
+                        <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                          Required for calculating the next calibration due date.
                         </p>
-                      </div>
-                      <div>
-                        <FieldLabel>Calibration Planned To</FieldLabel>
-                        <SelectInput
-                          value={caliPlannedWho}
-                          disabled={!calibBlockEnabled}
-                          onChange={(e) => setCaliPlannedWho(e.target.value)}
-                        >
-                          {CALI_PLANNED_OPTIONS.map((opt) => (
-                            <option key={opt}>{opt}</option>
-                          ))}
-                        </SelectInput>
-                      </div>
-                      <div>
-                        <FieldLabel>Calibration Responsibility</FieldLabel>
-                        <SelectInput
-                          value={calibrationResponsibility}
-                          disabled={!calibBlockEnabled}
-                          onChange={(e) => setCalibrationResponsibility(e.target.value)}
-                        >
-                          {CALI_RESP_OPTIONS.map((opt) => (
-                            <option key={opt}>{opt}</option>
-                          ))}
-                        </SelectInput>
-                      </div>
-                      <div>
-                        <FieldLabel>Calibration Frequency (Months)</FieldLabel>
-                        <NumInput integer min={0} value={calibrationFrqMonths} disabled={!calibBlockEnabled} onValueChange={setCalibrationFrqMonths} />
                         {errors.calibrationFrqMonths && (
                           <p className="text-[var(--color-danger-text)] text-xs mt-1 font-semibold">
                             {errors.calibrationFrqMonths}
@@ -4316,14 +4751,7 @@ export default function ToolsMasterPage() {
                     </div>
 
                     <div className="border-t border-[var(--border-main)] pt-4">
-                      <p className="text-sm font-semibold mb-3">
-                        Gauge / Wear / Product Specs
-                        {!calibBlockEnabled && (
-                          <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
-                            (set History Card to Yes to edit)
-                          </span>
-                        )}
-                      </p>
+                      <p className="text-sm font-semibold mb-3">Gauge / Wear / Product Specs</p>
                       {showGaugeSpecs ? (
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
@@ -4368,7 +4796,7 @@ export default function ToolsMasterPage() {
                 </FormModalSection>
                 )}
 
-                {showPreventiveTab && (
+                {false && showPreventiveTab && (
                 <FormModalSection
                   id="tool-section-preventive"
                   title="Preventive MNT"
@@ -4423,7 +4851,7 @@ export default function ToolsMasterPage() {
                 </FormModalSection>
                 )}
 
-                {showSpecsTab && (
+                {false && showSpecsTab && (
                 <div id="tool-section-specs">
                 <FormModalSection
                   id="tool-section-specs-inner"
@@ -4688,7 +5116,7 @@ export default function ToolsMasterPage() {
                 <div id="tool-section-units">
                 <FormModalSection
                   id="tool-section-units-inner"
-                  title="Physical units (ERP unit grid)"
+                  title="Unit ownership & identification"
                   collapsible
                   open={formSectionsOpen.units}
                   onOpenChange={(open) => setFormSectionOpen("units", open)}
@@ -4700,11 +5128,7 @@ export default function ToolsMasterPage() {
                   }
                 >
                     <p className="text-xs text-[var(--text-muted)] mb-3">
-                      Same table as ERP Tools Manage Creation. With{" "}
-                      <span className="font-semibold">Serial Gen = Yes</span>, rows match{" "}
-                      <span className="font-semibold">Total Qty</span> ({Math.max(0, totQty)}).
-                      Planned rows show before Save; Save writes them to{" "}
-                      <span className="font-mono">GAUGE_SERIAL_NO</span>.
+                      Maintain the owning unit, make, manufacturer serial number, calibration dates, and current status for this instrument.
                     </p>
 
                     {viewState === "create" && serialNoGenReq && totQty > 0 ? (
@@ -4720,7 +5144,7 @@ export default function ToolsMasterPage() {
 
                     <UnitHistoryTable
                       rows={displayUnitRows}
-                      onUpdateUnitRow={handleUpdateUnitProp}
+                      onUpdateUnitProp={handleUpdateUnitProp}
                       onUpdatePurchaseDt={handleUpdatePurchaseDt}
                       onCompletePm={
                         prevBlockEnabled && selectedTool?.refNo

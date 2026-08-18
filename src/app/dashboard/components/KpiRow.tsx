@@ -118,15 +118,16 @@ export default function KpiRow() {
   useEffect(() => {
     apiGet<KpiData>("/api/dashboard/kpi").then((res) => {
       if (res.data) {
+        const data = res.data;
         setStats((prev) => ({
           ...prev,
-          ...res.data,
+          ...data,
           trends: {
             addedThisMonth: 0,
             overdueCount: 0,
             calibrationThisWeek: 0,
             ...prev.trends,
-            ...res.data.trends,
+            ...(data.trends ?? {}),
           },
         }));
       }

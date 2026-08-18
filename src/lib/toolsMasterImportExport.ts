@@ -1,54 +1,42 @@
 import type { ReportColumn } from "@/lib/serverReportExport";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
-export type ImportTemplateKind = "basic" | "full" | "price";
+// ─── Constants ─────────────────────────────────────────────────────────────
 
 export const IMPORT_MAX_ROWS = 5000;
 export const IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
-export const BASIC_COLUMNS: ReportColumn[] = [
-  { key: "GROUPING", label: "GROUPING" },
-  { key: "TYPE", label: "TYPE" },
-  { key: "TOOL_OR_GAUGE_NO", label: "TOOL_OR_GAUGE_NO" },
-  { key: "NAME", label: "NAME" },
-  { key: "DES", label: "DES" },
-  { key: "TOT_QTY", label: "TOT_QTY" },
-  { key: "LOCATION", label: "LOCATION" },
-  { key: "STATUS", label: "STATUS" },
+/**
+ * The single import template — "Master List of Equipments and calibration
+ * monitoring" as sent by the client.  Header is on row 4 of the workbook.
+ *
+ * Column order matches the client's actual sheet.  Normalised header keys
+ * (trim → uppercase → spaces to underscores) are shown as comments.
+ */
+export const MASTER_IMPORT_COLUMNS: ReportColumn[] = [
+  // SL._NO          → ignored (reported as row number only, not stored)
+  { key: "EQUIP_NO", label: "Equip No" },
+  { key: "DESCRIPTION", label: "Description" },
+  { key: "SIZE", label: "Size" },
+  { key: "LEAST_COUNT", label: "Least count" },
+
+  { key: "MAKE", label: "Make" },
+  { key: "MFG_S.NO", label: "MFG S.No" },
+  { key: "USED_LOCATION", label: "Used Location" },
+  { key: "CAL._FREQ._(MTHS)", label: "Cal. Freq. (mths)" },
+  { key: "CALIBRATION_DATE", label: "Calibration date" },
+  { key: "NEXT_CALIBRATION_DUE", label: "Next Calibration Due" },
+  // VALIDITY_(DAYS) — present in the client's sheet but IGNORED on import.
+  // It is a point-in-time countdown (Next Calibration Due − sheet date), not
+  // a fact about the tool. It is computed live wherever displayed.
+  { key: "VALIDITY_(DAYS)", label: "Validity (days)" },
+  { key: "STATUS", label: "Status" },
+  { key: "OBSERVED_ERROR", label: "Observed Error" },
+  { key: "CALIBRATION_AGENCY", label: "Calibration Agency" },
+  { key: "REMARKS", label: "Remarks" },
 ];
 
-export const FULL_COLUMNS: ReportColumn[] = [
-  ...BASIC_COLUMNS,
-  { key: "SERIAL_NO", label: "SERIAL_NO" },
-  { key: "MAKE", label: "MAKE" },
-  { key: "NO_OF_CAVITY", label: "NO_OF_CAVITY" },
-  { key: "TOOL_LIFE", label: "TOOL_LIFE" },
-  { key: "HARDNESS", label: "HARDNESS" },
-  { key: "DRAWING_NO", label: "DRAWING_NO" },
-  { key: "CALIBRATION_FRQ_MONTHS", label: "CALIBRATION_FRQ_MONTHS" },
-  { key: "HISTORY_CARD_REQ", label: "HISTORY_CARD_REQ" },
-];
-
-export const PRICE_COLUMNS: ReportColumn[] = [
-  { key: "TOOL_OR_GAUGE_NO", label: "TOOL_OR_GAUGE_NO" },
-  { key: "PRICE", label: "PRICE" },
-];
-
-/** Default export uses Full Details columns (richest of the 3 templates). */
-export const TOOLS_MASTER_EXPORT_COLUMNS = FULL_COLUMNS;
-
-export function columnsForTemplate(kind: ImportTemplateKind): ReportColumn[] {
-  if (kind === "basic") return BASIC_COLUMNS;
-  if (kind === "price") return PRICE_COLUMNS;
-  return FULL_COLUMNS;
-}
-
-export function parseTemplateKind(raw: unknown): ImportTemplateKind | null {
-  const v = String(raw ?? "").trim().toLowerCase();
-  if (v === "basic" || v === "basic_info" || v === "1") return "basic";
-  if (v === "full" || v === "full_details" || v === "2") return "full";
-  if (v === "price" || v === "price_update" || v === "3") return "price";
-  return null;
-}
+// ─── Shared utilities ───────────────────────────────────────────────────────
 
 export function cellStr(v: unknown): string {
   if (v == null) return "";
@@ -85,176 +73,241 @@ export function parseNumeric(
   return { ok: true, value: n };
 }
 
-export type BasicImportData = {
-  grouping: string;
-  type: string | null;
-  toolOrGaugeNo: string;
-  name: string;
-  description: string | null;
-  totQty: number | null;
-  location: string | null;
-  status: string | null;
-};
-
-export type FullImportData = BasicImportData & {
-  serialNo: number | null;
-  make: string | null;
-  noOfCavity: number | null;
-  toolLife: number | null;
-  hardness: string | null;
-  drawingNo: string | null;
-  calibrationFrqMonths: number | null;
-  historyCardReq: string | null;
-};
-
-export type PriceImportData = {
-  toolOrGaugeNo: string;
-  price: number;
-};
-
-function parseBasicFields(
-  raw: Record<string, unknown>
-): { ok: true; data: BasicImportData } | { ok: false; reason: string } {
-  const toolOrGaugeNo = cellStr(raw.TOOL_OR_GAUGE_NO);
-  if (!toolOrGaugeNo) {
-    return { ok: false, reason: "TOOL_OR_GAUGE_NO is required and cannot be blank" };
+/**
+ * Parse a cell value as a Date.  Accepts:
+ *   - JS Date objects (from xlsx cellDates:true)
+ *   - ISO date strings (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss…)
+ *   - Excel serial numbers (numeric, > 1)
+ * Returns null when the cell is blank.
+ */
+export function parseDate(
+  header: string,
+  raw: unknown
+): { ok: true; value: Date | null } | { ok: false; reason: string } {
+  if (raw == null || cellStr(raw) === "") return { ok: true, value: null };
+  if (raw instanceof Date) {
+    if (!isSqlServerDate(raw)) {
+      return { ok: false, reason: `${header} is outside SQL Server's valid range (1753-9999)` };
+    }
+    return { ok: true, value: raw };
   }
-  if (toolOrGaugeNo.length > 25) {
-    return { ok: false, reason: "TOOL_OR_GAUGE_NO exceeds 25 characters" };
+  if (typeof raw === "number" && raw > 1) {
+    const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    if (!isSqlServerDate(d)) {
+      return { ok: false, reason: `${header} serial is outside SQL Server's valid range (1753-9999)` };
+    }
+    return { ok: true, value: d };
   }
-  const grouping = cellStr(raw.GROUPING);
-  if (!grouping) {
-    return { ok: false, reason: "GROUPING is required and cannot be blank" };
-  }
-  const name = cellStr(raw.NAME);
-  if (!name) {
-    return { ok: false, reason: "NAME is required and cannot be blank" };
-  }
-  // Accept TOTAL_QTY as alias for TOT_QTY
-  const qtyRaw = raw.TOT_QTY !== undefined && cellStr(raw.TOT_QTY) !== "" ? raw.TOT_QTY : raw.TOTAL_QTY;
-  const totQty = parseNumeric("TOT_QTY", qtyRaw, { min: 0 });
-  if (!totQty.ok) return totQty;
+  const s = cellStr(raw);
 
-  return {
-    ok: true,
-    data: {
-      grouping,
-      type: cellStr(raw.TYPE) || null,
-      toolOrGaugeNo,
-      name,
-      description: cellStr(raw.DES) || null,
-      totQty: totQty.value,
-      location: cellStr(raw.LOCATION) || null,
-      status: cellStr(raw.STATUS) || null,
-    },
-  };
+  // Client workbooks commonly contain hand-typed separators such as
+  // 15-07--2026, 24-2 2026, 3-12-202\5, or 2-42026. Normalize only patterns
+  // whose intended day/month/year remains deterministic.
+  const normalized = normalizeImportDateText(s);
+
+  // Check for DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const d = new Date(Date.UTC(year, month, day));
+    if (
+      !isNaN(d.getTime()) &&
+      d.getUTCFullYear() === year &&
+      d.getUTCMonth() === month &&
+      d.getUTCDate() === day
+    ) {
+      if (!isSqlServerDate(d)) {
+        return { ok: false, reason: `${header} is outside SQL Server's valid range (1753-9999)` };
+      }
+      return { ok: true, value: d };
+    }
+  }
+
+  const d = new Date(s);
+  if (!isSqlServerDate(d)) {
+    return {
+      ok: false,
+      reason: isNaN(d.getTime())
+        ? `${header} '${s}' is not a valid date`
+        : `${header} '${s}' is outside SQL Server's valid range (1753-9999)`,
+    };
+  }
+  return { ok: true, value: d };
 }
 
-export function parseBasicRow(
-  raw: Record<string, unknown>
-): { ok: true; data: BasicImportData } | { ok: false; reason: string } {
-  return parseBasicFields(raw);
+function isSqlServerDate(date: Date): boolean {
+  const time = date.getTime();
+  return Number.isFinite(time) &&
+    time >= Date.UTC(1753, 0, 1) &&
+    date.getUTCFullYear() <= 9999;
 }
 
-export function parseFullRow(
-  raw: Record<string, unknown>
-): { ok: true; data: FullImportData } | { ok: false; reason: string } {
-  const basic = parseBasicFields(raw);
-  if (!basic.ok) return basic;
+function normalizeImportDateText(input: string): string {
+  let cleaned = input
+    .trim()
+    // A slash/backslash accidentally typed inside a year: 202\5 -> 2025.
+    .replace(/(\d{3})[\\/](\d)(?!\d)/g, "$1$2")
+    // Any separator run between date components becomes one hyphen.
+    .replace(/[^\d]+/g, "-")
+    .replace(/^-|-$/g, "");
 
-  const serialNo = parseNumeric("SERIAL_NO", raw.SERIAL_NO, { integer: true, min: 0 });
-  if (!serialNo.ok) return serialNo;
-
-  const make = cellStr(raw.MAKE) || null;
-  if (make && serialNo.value == null) {
-    return { ok: false, reason: "MAKE is present but SERIAL_NO is blank — provide SERIAL_NO to upsert serial" };
+  let parts = cleaned.split("-");
+  // Missing separator between month and a four-digit year: 2-42026.
+  if (parts.length === 2 && parts[1].length >= 5) {
+    const joined = parts[1];
+    parts = [parts[0], joined.slice(0, -4), joined.slice(-4)];
   }
 
-  const noOfCavity = parseNumeric("NO_OF_CAVITY", raw.NO_OF_CAVITY, { integer: true, min: 0 });
-  if (!noOfCavity.ok) return noOfCavity;
-  const toolLife = parseNumeric("TOOL_LIFE", raw.TOOL_LIFE, { integer: true, min: 0 });
-  if (!toolLife.ok) return toolLife;
-  const calib = parseNumeric("CALIBRATION_FRQ_MONTHS", raw.CALIBRATION_FRQ_MONTHS, {
+  if (parts.length === 3 && parts[2].length === 5) {
+    const currentYear = new Date().getUTCFullYear();
+    const candidates = [...parts[2]].map((_, index) =>
+      Number(parts[2].slice(0, index) + parts[2].slice(index + 1))
+    );
+    const plausible = [...new Set(candidates)].filter(
+      (year) => year >= 1990 && year <= currentYear + 50
+    );
+    if (plausible.length > 0) {
+      plausible.sort((a, b) => Math.abs(a - currentYear) - Math.abs(b - currentYear));
+      parts[2] = String(plausible[0]);
+    }
+  }
+
+  cleaned = parts.join("-");
+  return cleaned;
+}
+
+// ─── Master import row type ─────────────────────────────────────────────────
+
+/**
+ * Parsed, validated row from the client's "Master List of Equipments and
+ * calibration monitoring" sheet.
+ *
+ * Master-level fields (description … remarks) are taken from the FIRST
+ * occurrence of a given EQUIP_NO in the file; subsequent rows for the same
+ * tool but different units only contribute their unit-specific fields.
+ *
+ * Unit-specific fields: usedUnit, calibDate, nextCalibDate,
+ * observedError, calibAgency.
+ */
+export type MasterImportData = {
+  // ── Required ──────────────────────────────────────────────────────────────
+  equipNo: string;   // → GAUGEANDTOOLS.TOOL_OR_GAUGE_NO
+
+  // ── Master-level (first-occurrence per equipNo) ───────────────────────────
+  description: string | null;       // → GAUGEANDTOOLS.DES
+  size: string | null;              // → GAUGEANDTOOLS.SIZE
+  leastCount: string | null;        // → GAUGEANDTOOLS.LEAST_COUNT
+  usedUnit: string | null;          // → GAUGEANDTOOLS.LOCATION_NAME (current unit)
+  usedLocation: string | null;      // → GAUGEANDTOOLS.LOCATION
+  calibrationFrqMonths: number | null; // → GAUGEANDTOOLS.CALIBRATION_FRQ_MONTHS
+  status: string | null;            // → GAUGEANDTOOLS.STATUS
+  remarks: string | null;           // → GAUGEANDTOOLS.REMARKS
+
+  // ── Per-unit (every occurrence) ───────────────────────────────────────────
+  make: string | null;              // → GAUGEANDTOOLS.MAKE
+  mfgSerialNo: string | null;       // → TOOLS_UNIT_STOCK.MFG_SERIAL_NO
+  calibDate: Date | null;           // → TOOLS_UNIT_STOCK.CALIB_DATE + GAUGE_CONTROL_CARD_TRANS
+  nextCalibDate: Date | null;       // → TOOLS_UNIT_STOCK.NEXT_CALIB_DATE + GAUGE_CONTROL_CARD_TRANS
+  observedError: string | null;     // → TOOLS_UNIT_STOCK.OBSERVED_ERROR
+  calibAgency: string | null;       // → TOOLS_UNIT_STOCK.CALIB_AGENCY
+};
+
+// ─── Row parser ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse one normalised row from the master import sheet.
+ *
+ * `raw` keys are already normalised (trim → uppercase → spaces → underscores)
+ * by `normalizeHeaderKey()` before this function is called.
+ *
+ * The client's sheet uses "Equip No" → normalised to "EQUIP_NO".
+ * "Cal. Freq. (mths)" → "CAL._FREQ._(MTHS)" (dots and brackets survive the
+ * normalisation because only spaces are replaced).
+ */
+export function parseMasterRow(
+  raw: Record<string, unknown>
+): { ok: true; data: MasterImportData } | { ok: false; reason: string } {
+  // ── Required: Equip No ───────────────────────────────────────────────────
+  const equipNo = cellStr(raw["EQUIP_NO"]);
+  if (!equipNo) {
+    return { ok: false, reason: "Equip No is required and cannot be blank" };
+  }
+  if (equipNo.length > 25) {
+    return { ok: false, reason: `Equip No '${equipNo}' exceeds 25 characters` };
+  }
+
+
+  // ── Numeric fields ───────────────────────────────────────────────────────
+  const calibFrq = parseNumeric("Cal. Freq. (mths)", raw["CAL._FREQ._(MTHS)"], {
     integer: true,
     min: 0,
   });
-  if (!calib.ok) return calib;
+  if (!calibFrq.ok) return calibFrq;
+
+  // Validity (days) is intentionally NOT read — see MASTER_IMPORT_COLUMNS note.
+
+  // ── Date fields ──────────────────────────────────────────────────────────
+  const calibDate = parseDate("Calibration date", raw["CALIBRATION_DATE"]);
+  if (!calibDate.ok) return calibDate;
+
+  const nextCalibDate = parseDate("Next Calibration Due", raw["NEXT_CALIBRATION_DUE"]);
+  if (!nextCalibDate.ok) return nextCalibDate;
+
+  // ── String fields (all optional) ─────────────────────────────────────────
+  const size = cellStr(raw["SIZE"]) || null;
+  if (size && size.length > 25) {
+    return { ok: false, reason: `Size '${size}' exceeds 25 characters` };
+  }
+  const rawUsedUnit = cellStr(raw["USED_UNIT"]);
+  const usedUnit = normalizeCompanyUnit(rawUsedUnit);
+  if (!usedUnit) {
+    return {
+      ok: false,
+      reason: `Used Unit must be Unit 1, Unit 2, or Unit 3${rawUsedUnit ? ` (found '${rawUsedUnit}')` : ""}`,
+    };
+  }
+
+  const limitedFields: Array<[string, string, number]> = [
+    ["Description", cellStr(raw["DESCRIPTION"]), 500],
+    ["Least count", cellStr(raw["LEAST_COUNT"]), 50],
+    ["Used Unit", cellStr(raw["USED_UNIT"]), 100],
+    ["Used Location", cellStr(raw["USED_LOCATION"]), 50],
+    ["Status", cellStr(raw["STATUS"]), 25],
+    ["Remarks", cellStr(raw["REMARKS"]), 50],
+    ["Make", cellStr(raw["MAKE"]), 50],
+    ["MFG S.No", cellStr(raw["MFG_S.NO"] ?? raw["MFG_S_NO"]), 100],
+    ["Observed Error", cellStr(raw["OBSERVED_ERROR"]), 200],
+    ["Calibration Agency", cellStr(raw["CALIBRATION_AGENCY"]), 100],
+  ];
+  for (const [label, value, max] of limitedFields) {
+    if (value.length > max) {
+      return {
+        ok: false,
+        reason: `${label} exceeds ${max} characters (found ${value.length})`,
+      };
+    }
+  }
 
   return {
     ok: true,
     data: {
-      ...basic.data,
-      serialNo: serialNo.value,
-      make,
-      noOfCavity: noOfCavity.value,
-      toolLife: toolLife.value,
-      hardness: cellStr(raw.HARDNESS) || null,
-      drawingNo: cellStr(raw.DRAWING_NO) || null,
-      calibrationFrqMonths: calib.value,
-      historyCardReq: cellStr(raw.HISTORY_CARD_REQ) || null,
+      equipNo,
+      description: cellStr(raw["DESCRIPTION"]) || null,
+      size,
+      leastCount: cellStr(raw["LEAST_COUNT"]) || null,
+      usedUnit,
+      usedLocation: cellStr(raw["USED_LOCATION"]) || null,
+      calibrationFrqMonths: calibFrq.value,
+      status: cellStr(raw["STATUS"]) || null,
+      remarks: cellStr(raw["REMARKS"]) || null,
+      make: cellStr(raw["MAKE"]) || null,
+      mfgSerialNo: cellStr(raw["MFG_S.NO"] ?? raw["MFG_S_NO"]) || null,
+      calibDate: calibDate.value,
+      nextCalibDate: nextCalibDate.value,
+      observedError: cellStr(raw["OBSERVED_ERROR"]) || null,
+      calibAgency: cellStr(raw["CALIBRATION_AGENCY"]) || null,
     },
-  };
-}
-
-export function parsePriceRow(
-  raw: Record<string, unknown>
-): { ok: true; data: PriceImportData } | { ok: false; reason: string } {
-  const toolOrGaugeNo = cellStr(raw.TOOL_OR_GAUGE_NO);
-  if (!toolOrGaugeNo) {
-    return { ok: false, reason: "TOOL_OR_GAUGE_NO is required and cannot be blank" };
-  }
-  const price = parseNumeric("PRICE", raw.PRICE, { required: true, min: 0 });
-  if (!price.ok) return price;
-  return { ok: true, data: { toolOrGaugeNo, price: price.value! } };
-}
-
-function joinPipe(values: Array<string | number | null | undefined>): string {
-  const parts = values.map((v) => (v == null || v === "" ? "" : String(v)));
-  if (parts.every((p) => p === "")) return "";
-  return parts.join("|");
-}
-
-/** Map a tool record into Full Details export columns. */
-export function mapToolToExportRow(tool: {
-  toolOrGaugeNo: string | null;
-  grouping: string;
-  type: string | null;
-  name: string | null;
-  description: string | null;
-  totQty: unknown;
-  location: string | null;
-  status: string | null;
-  calibrationFrqMonths: number | null;
-  historyCardReq: string | null;
-  serialNumbers?: Array<{
-    serialNo: number | null;
-    make: string | null;
-  }>;
-  details?: Array<{
-    noOfCavity: number | null;
-    toolLife: number | null;
-    hardness: string | null;
-    drawingNo: string | null;
-  }>;
-}): Record<string, unknown> {
-  const serials = tool.serialNumbers ?? [];
-  const detail = tool.details?.[0];
-  return {
-    GROUPING: tool.grouping ?? "",
-    TYPE: tool.type ?? "",
-    TOOL_OR_GAUGE_NO: tool.toolOrGaugeNo ?? "",
-    NAME: tool.name ?? "",
-    DES: tool.description ?? "",
-    TOT_QTY: tool.totQty != null ? Number(tool.totQty) : "",
-    LOCATION: tool.location ?? "",
-    STATUS: tool.status ?? "",
-    SERIAL_NO: joinPipe(serials.map((s) => s.serialNo)),
-    MAKE: joinPipe(serials.map((s) => s.make)),
-    NO_OF_CAVITY: detail?.noOfCavity ?? "",
-    TOOL_LIFE: detail?.toolLife ?? "",
-    HARDNESS: detail?.hardness ?? "",
-    DRAWING_NO: detail?.drawingNo ?? "",
-    CALIBRATION_FRQ_MONTHS: tool.calibrationFrqMonths ?? "",
-    HISTORY_CARD_REQ: tool.historyCardReq ?? "",
   };
 }

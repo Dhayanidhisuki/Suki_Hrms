@@ -107,8 +107,8 @@ export function buildCalibRecordPdfBuffer(data: CalibRecordPdfData): Buffer {
         cell(h.resultStatus),
         cell(h.status),
       ]),
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 3, overflow: "ellipsize" },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", overflow: "ellipsize" },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       margin: { left: marginX, right: marginX },
     });

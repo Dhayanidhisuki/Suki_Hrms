@@ -13,7 +13,7 @@ export interface ModuleKpiItem {
   icon?: LucideIcon;
   iconBg?: string;
   iconColor?: string;
-  badge?: { label: string; type: "success" | "warning" | "info" | "neutral" };
+  badge?: { label: string; type: "success" | "warning" | "danger" | "info" | "neutral" };
 }
 
 function badgeClasses(type: NonNullable<ModuleKpiItem["badge"]>["type"]) {
@@ -22,6 +22,9 @@ function badgeClasses(type: NonNullable<ModuleKpiItem["badge"]>["type"]) {
   }
   if (type === "warning") {
     return "bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200";
+  }
+  if (type === "danger") {
+    return "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200";
   }
   if (type === "info") {
     return "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200";

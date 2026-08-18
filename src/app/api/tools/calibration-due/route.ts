@@ -1,7 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
+import {
+  COMPANY_UNITS,
+  normalizeCompanyUnit,
+  scopeKeyToUnit,
+  unitStorageVariants,
+  type CompanyUnitLabel,
+} from "@/lib/companyUnits";
 
 /**
  * Calibration due list.
@@ -9,10 +16,35 @@ import { requireSession } from "@/lib/auth";
  * because GAUGE_CONTROL_CARD(_TRANS) is often empty in ERP.
  * Secondary: GaugeControlCardTrans when present.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+
+  const requestedUnit = normalizeCompanyUnit(req.nextUrl.searchParams.get("unit"));
+  let permittedUnits: CompanyUnitLabel[] | null = null;
+  const isSystemAdmin =
+    session.roleName === "Tools Admin" || session.userId.toLowerCase() === "admin";
+  if (!isSystemAdmin && session.userDbId != null) {
+    const scopes = await prisma.userUnitScope.findMany({
+      where: { userId: session.userDbId },
+      select: { unitScope: true },
+    });
+    if (scopes.length > 0 && !scopes.some((scope) => scope.unitScope === "COMMON")) {
+      permittedUnits = scopes
+        .map((scope) => scopeKeyToUnit(scope.unitScope))
+        .filter((unit): unit is CompanyUnitLabel => Boolean(unit));
+    }
+  }
+  if (requestedUnit && permittedUnits && !permittedUnits.includes(requestedUnit)) {
+    return NextResponse.json({ error: "You do not have access to this unit" }, { status: 403 });
+  }
+  const availableUnits = permittedUnits?.length
+    ? permittedUnits
+    : COMPANY_UNITS.map((unit) => unit.label);
+  const effectiveUnits = requestedUnit
+    ? [requestedUnit]
+    : [availableUnits[0] ?? "Unit 1"];
 
   const alertDays = Number(process.env.CALIBRATION_ALERT_DAYS ?? 90);
   const alertDate = new Date();
@@ -257,12 +289,11 @@ export async function GET() {
       console.warn("GaugeControlCardTrans due lookup skipped:", err);
     }
 
-    // 3) Never-calibrated History Card tools (master has freq but no due dates yet).
+    // 3) Never-calibrated tools (master has frequency but no due dates yet).
     // Derive next due from earliest unit purchaseDt + frequency when available.
     try {
       const masters = await prisma.gaugeAndTools.findMany({
         where: {
-          historyCardReq: { in: ["Yes", "Y", "YES"] },
           calibrationFrqMonths: { gt: 0 },
           // SQL NULL status must be allowed — `NOT IN (...)` / Prisma NOT+in drop nulls
           OR: [
@@ -363,13 +394,86 @@ export async function GET() {
       console.warn("History Card master due lookup skipped:", err);
     }
 
+    // The imported client register is the authoritative calibration schedule.
+    // Load every dated instrument, not only the alert-window subset assembled
+    // from legacy ERP issue/history tables above.
+    type ImportedCalibrationRow = {
+      refNo: number;
+      toolOrGaugeNo: string | null;
+      name: string | null;
+      description: string | null;
+      status: string | null;
+      grouping: string | null;
+      type: string | null;
+      calibrationFrqMonths: number | null;
+      caliPlan: string | null;
+      psMin: unknown;
+      psMax: unknown;
+      location: string | null;
+      calibrationDate: Date | null;
+      nextCalibrationDue: Date | null;
+      remarks: string | null;
+    };
+    const importedRows = await prisma.$queryRaw<ImportedCalibrationRow[]>`
+      SELECT
+        g.[REF_NO] AS [refNo],
+        g.[TOOL_OR_GAUGE_NO] AS [toolOrGaugeNo],
+        g.[NAME] AS [name],
+        g.[DES] AS [description],
+        g.[STATUS] AS [status],
+        g.[GROUPING] AS [grouping],
+        g.[TYPE] AS [type],
+        g.[CALIBRATION_FRQ_MONTHS] AS [calibrationFrqMonths],
+        g.[CALI_PLANNED_WHO] AS [caliPlan],
+        g.[PROD_SPEC_LOWER_MAX] AS [psMin],
+        g.[PROD_SPEC_UPPER_MAX] AS [psMax],
+        g.[LOCATION] AS [location],
+        i.[CALIBRATION_DATE] AS [calibrationDate],
+        i.[NEXT_CALIBRATION_DUE] AS [nextCalibrationDue],
+        g.[REMARKS] AS [remarks]
+      FROM [dbo].[GAUGEANDTOOLS] g
+      INNER JOIN [dbo].[TOOLS_APP_INSTRUMENT_MASTER_DATA] i
+        ON i.[REF_NO] = g.[REF_NO]
+      WHERE i.[NEXT_CALIBRATION_DUE] IS NOT NULL
+    `;
+    for (const row of importedRows) {
+      if (!row.toolOrGaugeNo || !row.nextCalibrationDue) continue;
+      byTool.set(row.toolOrGaugeNo, {
+        refNo: row.refNo,
+        toolOrGaugeNo: row.toolOrGaugeNo,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        unitStatus: null,
+        grouping: row.grouping,
+        type: row.type,
+        frequency: formatFrequency(row.calibrationFrqMonths),
+        calibrationFrqMonths: row.calibrationFrqMonths,
+        caliPlan: row.caliPlan,
+        psMin: toNum(row.psMin),
+        psMax: toNum(row.psMax),
+        cDate: row.calibrationDate,
+        nextCDate: row.nextCalibrationDue,
+        remarks: row.remarks,
+        nextCalibrationDate: row.nextCalibrationDue,
+        serialNo: null,
+        location: row.location,
+        source: "IMPORTED_MASTER_DATA",
+      });
+    }
+
     // Tools already issued for calibration must leave the due picker until receive/close.
     const blocked = new Set<string>();
     let underCalibrationCount = 0;
     try {
       // Live STATUS on GAUGEANDTOOLS — used for KPI + exclusion from due picker
       const underCal = await prisma.gaugeAndTools.findMany({
-        where: { status: { in: ["Under Calibration", "UNDER CALIBRATION"] } },
+        where: {
+          status: { in: ["Under Calibration", "UNDER CALIBRATION"] },
+          ...(effectiveUnits?.length
+            ? { locationName: { in: effectiveUnits.flatMap(unitStorageVariants) } }
+            : {}),
+        },
         select: { toolOrGaugeNo: true },
       });
       underCalibrationCount = underCal.length;
@@ -410,7 +514,17 @@ export async function GET() {
 
     // Enrich serial + unit status from GAUGE_SERIAL_NO for Cur.Status
     const allToolNos = Array.from(byTool.keys());
+    const unitByTool = new Map<string, CompanyUnitLabel | null>();
     if (allToolNos.length > 0) {
+      const masters = await prisma.gaugeAndTools.findMany({
+        where: { toolOrGaugeNo: { in: allToolNos } },
+        select: { toolOrGaugeNo: true, locationName: true },
+      });
+      for (const master of masters) {
+        if (master.toolOrGaugeNo) {
+          unitByTool.set(master.toolOrGaugeNo, normalizeCompanyUnit(master.locationName));
+        }
+      }
       try {
         const serialRows = await prisma.gaugeSerialNo.findMany({
           where: { toolOrGaugeNo: { in: allToolNos } },
@@ -444,11 +558,17 @@ export async function GET() {
     const items = Array.from(byTool.values())
       .filter((i) => i.nextCalibrationDate != null)
       .filter((i) => !blocked.has(i.toolOrGaugeNo))
+      .filter((i) => {
+        if (!effectiveUnits?.length) return true;
+        const unit = unitByTool.get(i.toolOrGaugeNo);
+        return unit != null && effectiveUnits.includes(unit);
+      })
       .map((i) => ({
         ...i,
-        // ERP Cur.Status = physical unit status (NEW PURCHASE / AVAILABLE FOR USE / …)
-        status: i.unitStatus || i.status || "—",
-        curStatus: i.unitStatus || i.status || "—",
+        unit: unitByTool.get(i.toolOrGaugeNo) ?? null,
+        // One master row is one tracked instrument; master status is authoritative.
+        status: i.status || i.unitStatus || "—",
+        curStatus: i.status || i.unitStatus || "—",
         description: i.description || i.name || null,
         caliPlan: i.caliPlan && i.caliPlan !== "N/A" ? i.caliPlan : null,
         psMin: i.psMin,
@@ -464,7 +584,7 @@ export async function GET() {
     // dueSoon  = nextCalibrationDate >= start of today (upcoming window, not overdue)
     // overdue  = nextCalibrationDate <  start of today (past due, not yet issued/closed)
     const dueSoonCount = items.filter(
-      (i) => i.nextCalibrationDate != null && i.nextCalibrationDate >= startOfToday
+      (i) => i.nextCalibrationDate != null && i.nextCalibrationDate >= startOfToday && i.nextCalibrationDate <= alertDate
     ).length;
     const overdueCount = items.filter(
       (i) => i.nextCalibrationDate != null && i.nextCalibrationDate < startOfToday
@@ -477,6 +597,8 @@ export async function GET() {
       dueSoonCount,
       overdueCount,
       underCalibrationCount,
+      activeUnit: effectiveUnits[0],
+      availableUnits,
     });
   } catch (error) {
     console.error("Error fetching calibration due list:", error);

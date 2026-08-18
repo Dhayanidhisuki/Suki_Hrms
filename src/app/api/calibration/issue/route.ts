@@ -182,6 +182,26 @@ export async function POST(req: NextRequest) {
     // CREAT_USER_ID_CD FK → ERP_USER.USER_ID (app username "admin" is not an ERP user)
     const erpActor = await resolveErpAuditUserId(authCheck.session);
 
+    const toolNos = [...new Set(lines.map((line) => line.toolOrGaugeNo.trim()))];
+    const openExisting = await prisma.toolsTransIssueForCalibration.findFirst({
+      where: {
+        toolOrGaugeNo: { in: toolNos },
+        OR: [
+          { resultStatus: null },
+          { resultStatus: "" },
+          { calibrationStatus: { in: ["Pending", "PENDING", "Open", "OPEN"] } },
+          { status: { in: ["Issued", "Under Calibration", "ISSUE FOR CALIBRATION", "Received"] } },
+        ],
+      },
+      select: { toolOrGaugeNo: true, dcNo: true },
+    });
+    if (openExisting?.toolOrGaugeNo) {
+      return NextResponse.json(
+        { error: `${openExisting.toolOrGaugeNo} is already open on calibration DC #${openExisting.dcNo ?? "—"}` },
+        { status: 409 }
+      );
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const max = await tx.toolsIssueForCalibration.aggregate({ _max: { dcNo: true } });
       const dcNo = (max._max.dcNo ?? 0) + 1;
@@ -208,29 +228,13 @@ export async function POST(req: NextRequest) {
           where: { toolOrGaugeNo: line.toolOrGaugeNo },
         });
 
-        let serialNo = line.serialNo ?? null;
-        if (serialNo == null) {
-          try {
-            const serialRow = await tx.gaugeSerialNo.findFirst({
-              where: { toolOrGaugeNo: line.toolOrGaugeNo },
-              orderBy: { serialNo: "asc" },
-              select: { serialNo: true },
-            });
-            serialNo = serialRow?.serialNo ?? null;
-          } catch (err) {
-            console.warn("Serial lookup on issue skipped:", err);
-          }
-        }
-
-        const issueQty = Math.max(1, Math.floor(Number(line.issueQty) || 1));
-
         await tx.toolsTransIssueForCalibration.create({
           data: {
             rowId: nextRowId++,
             dcNo,
             toolOrGaugeNo: line.toolOrGaugeNo,
-            issueQty,
-            serialNo,
+            issueQty: 1,
+            serialNo: null,
             grouping: tool?.grouping?.slice(0, 25) ?? null,
             calibDueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
             dueDate: line.calibDueDate ? new Date(line.calibDueDate) : null,
@@ -250,48 +254,6 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // ERP: unit grid STATUS on Tools Master comes from GAUGE_SERIAL_NO
-        const serialWhereBase = {
-          OR: [
-            { toolOrGaugeNo: line.toolOrGaugeNo },
-            ...(tool?.refNo != null ? [{ toolRefNo: tool.refNo }] : []),
-          ],
-        };
-        try {
-          const updated =
-            serialNo != null
-              ? await tx.gaugeSerialNo.updateMany({
-                  where: { AND: [serialWhereBase, { serialNo }] },
-                  data: { status: "ISSUE FOR CALIBRATION" },
-                })
-              : await tx.gaugeSerialNo.updateMany({
-                  where: serialWhereBase,
-                  data: { status: "ISSUE FOR CALIBRATION" },
-                });
-          if (updated.count === 0 && serialNo != null) {
-            // Fallback: any available unit for this tool
-            await tx.gaugeSerialNo.updateMany({
-              where: {
-                AND: [
-                  serialWhereBase,
-                  {
-                    OR: [
-                      { status: null },
-                      {
-                        status: {
-                          in: ["AVAILABLE FOR USE", "Available", "NEW PURCHASE"],
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              data: { status: "ISSUE FOR CALIBRATION" },
-            });
-          }
-        } catch (err) {
-          console.warn("Serial status update on calib issue skipped:", err);
-        }
       }
 
       return header;

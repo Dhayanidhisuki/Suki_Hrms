@@ -5,6 +5,7 @@ import {
   ArrowDownLeft,
   Plus,
   ClipboardList,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -114,6 +115,9 @@ export default function QuickActions() {
         </Link>
         <Link href="/dashboard/calibration/due-list" className="block w-full">
           <ActionButton id="qa-calibration-list-btn" icon={<ClipboardList className="w-4.5 h-4.5" />} label="Calibration Due List" sublabel="View upcoming calibrations" variant="secondary" />
+        </Link>
+        <Link href="/dashboard/documents" className="block w-full">
+          <ActionButton id="qa-documents-btn" icon={<FileText className="w-4.5 h-4.5" />} label="Documents & Photos" sublabel="Upload & view certificates, photos and drawings" variant="secondary" />
         </Link>
         <Link href="/dashboard/masters/tools" className="block w-full">
           <ActionButton id="qa-add-tool-btn" icon={<Plus className="w-4.5 h-4.5" />} label="Add New Tool" sublabel="Register a new tool in GAUGEANDTOOLS" variant="ghost" />

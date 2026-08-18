@@ -9,6 +9,7 @@ import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { toastSuccess, toastError } from "@/lib/appToast";
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
 interface Supplier {
   supCode: string;
@@ -51,7 +52,6 @@ interface StagedScheduleLine {
 export default function PoSchedulePage() {
   const [schedules, setSchedules] = useState<PoScheduleHeader[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Slide-over Form State
@@ -64,18 +64,14 @@ export default function PoSchedulePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [schRes, supRes, tRes] = await Promise.all([
+    const [schRes, supRes] = await Promise.all([
       apiGet<{ items: PoScheduleHeader[] }>("/api/po/schedule"),
       apiGet<{ items: Supplier[] }>("/api/suppliers"),
-      apiGet<{ items: Tool[] }>("/api/tools"),
     ]);
 
     if (schRes.data?.items) setSchedules(schRes.data.items);
     if (supRes.data?.items) {
       setSuppliers(supRes.data.items);
-    }
-    if (tRes.data?.items) {
-      setTools(tRes.data.items);
     }
     setLoading(false);
   }, []);
@@ -88,24 +84,16 @@ export default function PoSchedulePage() {
 
   const handleOpenAdd = () => {
     setPoOrderNo("");
-    if (tools.length > 0) {
-      setStagedLines([
-        {
-          toolOrGaugeNo: tools[0].toolOrGaugeNo,
-          qty: 5,
-        },
-      ]);
-    }
+    setStagedLines([{ toolOrGaugeNo: "", qty: 5 }]);
     setErrors({});
     setIsOpen(true);
   };
 
   const handleAddLine = () => {
-    if (tools.length === 0) return;
     setStagedLines((prev) => [
       ...prev,
       {
-        toolOrGaugeNo: tools[0].toolOrGaugeNo,
+        toolOrGaugeNo: "",
         qty: 5,
       },
     ]);
@@ -133,6 +121,9 @@ export default function PoSchedulePage() {
     if (stagedLines.length === 0) tempErrors.lines = "At least one milestone schedule line must be added";
 
     stagedLines.forEach((line, idx) => {
+      if (!line.toolOrGaugeNo.trim()) {
+        tempErrors[`tool-${idx}`] = "Tool is required";
+      }
       if (line.qty <= 0) {
         tempErrors[`qty-${idx}`] = "Quantity must be > 0";
       }
@@ -349,18 +340,16 @@ export default function PoSchedulePage() {
                       </button>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-0.5">Select Tool</label>
-                        <select
+                        <MasterSearchSelect
+                          kind="tool"
+                          label="Select Tool"
                           value={line.toolOrGaugeNo}
-                          onChange={(e) => handleLineChange(idx, "toolOrGaugeNo", e.target.value)}
-                          className="w-full text-xs border border-[var(--border-main)] rounded-lg px-2 py-1.5 bg-[var(--bg-card)] text-[var(--text-primary)] outline-none"
-                        >
-                          {tools.map((t) => (
-                            <option key={t.refNo} value={t.toolOrGaugeNo}>
-                              {t.toolOrGaugeNo} · {t.name}
-                            </option>
-                          ))}
-                        </select>
+                          selectedLabel={line.toolOrGaugeNo}
+                          onChange={(value) => handleLineChange(idx, "toolOrGaugeNo", value)}
+                          placeholder="Search tool number or name…"
+                          required
+                        />
+                        {errors[`tool-${idx}`] && <p className="form-error">{errors[`tool-${idx}`]}</p>}
                       </div>
 
                       <div className="grid grid-cols-1 gap-2">

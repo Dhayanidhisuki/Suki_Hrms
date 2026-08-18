@@ -3,9 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
 import { buildCalibDcPdfBuffer } from "@/lib/calibDcPdf";
+import { dcQrUrl } from "@/lib/dcQrUrl";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
@@ -45,6 +46,7 @@ export async function GET(
           : "OPEN";
 
     let companyName: string | null = null;
+    let subcontractor: { add1: string | null; add2: string | null; gstin: string | null } | null = null;
     try {
       const companies = await prisma.$queryRawUnsafe<
         Array<{ COMPANY_NAME?: string; DISP_COMPANY_NAME?: string }>
@@ -56,16 +58,27 @@ export async function GET(
     } catch {
       // company table optional
     }
+    if (issue.subCode) {
+      subcontractor = await prisma.subcontractor.findUnique({
+        where: { subConId: issue.subCode },
+        select: { add1: true, add2: true, gstin: true },
+      });
+    }
 
     const buffer = buildCalibDcPdfBuffer({
       dcNo: issue.dcNo,
       receiveName: issue.receiveName,
       subCode: issue.subCode,
+      subAddress1: subcontractor?.add1,
+      subAddress2: subcontractor?.add2,
+      subGstin: subcontractor?.gstin,
       issueDate: issue.issueDate,
       issueFor: issue.issueFor,
       toolsPoNo: issue.toolsPoNo,
       status,
       companyName,
+      preparedBy: issue.creatUserIdCd,
+      verificationUrl: dcQrUrl(req, `/api/calibration/issue/${dcNo}`),
       lines: lines.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
         name: l.tool?.name ?? null,

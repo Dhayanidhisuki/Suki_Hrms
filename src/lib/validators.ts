@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
 // ── Auth ──────────────────────────────────────────────────────────
 export const VerifyTokenSchema = z.object({
@@ -16,6 +17,7 @@ export const AppUserCreateSchema = z.object({
   username: z.string().trim().min(1).max(50),
   password: z.string().min(8, "Password must be at least 8 characters").max(200),
   name: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(150).optional().nullable().or(z.literal("")),
   role: z.string().trim().min(1).max(50),
   erpUserCode: z.string().trim().max(10).optional().nullable(),
 });
@@ -24,6 +26,7 @@ export const AppUserUpdateSchema = z.object({
   id: z.coerce.number().int().positive(),
   password: z.string().max(200).optional(),
   name: z.string().trim().min(1).max(100).optional(),
+  email: z.string().trim().email().max(150).optional().nullable().or(z.literal("")),
   role: z.string().trim().min(1).max(50).optional(),
   erpUserCode: z.string().trim().max(10).optional().nullable(),
   isActive: z.boolean().optional(),
@@ -217,7 +220,9 @@ export const GaugeAndToolsCreateSchema = z.object({
   qtyNew: z.number().min(0).optional(),
   qtyInUse: z.number().min(0).optional(),
   location: z.string().max(50).optional(),
-  locationName: z.string().max(100).optional(),
+  locationName: z.string().min(1).max(100).refine((value) => Boolean(normalizeCompanyUnit(value)), {
+    message: "Current Unit must be Unit 1, Unit 2, or Unit 3",
+  }),
   locationOutputName: z.string().max(100).optional(),
   area: z.string().max(100).optional(),
   rack: z.string().max(100).optional(),
@@ -348,6 +353,8 @@ export const ToolsIssueCreateSchema = z
           serialNo: z.number().int().optional(),
           returnable: z.enum(["Yes", "No"]).or(z.string().max(5)).optional(),
           price: z.number().min(0).optional(),
+          /** Internal unit transfer destination (stored in ERP ISSUE_TO_ITEM_NO). */
+          toUnit: z.string().max(15).optional(),
         })
       )
       .min(1, "At least one line item is required"),
@@ -368,6 +375,52 @@ export const ToolsIssueCreateSchema = z
         path: ["reqNo"],
       });
     }
+    const isInternalMovement = opt === "internal unit movement" || opt === "internal movement";
+    const isMovement = isInternalMovement || opt.startsWith("external:");
+    if (isInternalMovement && !(data.fromUnit ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Source unit is required for an internal tool issue",
+        path: ["fromUnit"],
+      });
+    }
+    if (isInternalMovement && !normalizeCompanyUnit(data.fromUnit)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Source unit must be Unit 1, Unit 2, or Unit 3",
+        path: ["fromUnit"],
+      });
+    }
+    data.lines.forEach((line, index) => {
+      if (isMovement && line.issueQty !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Each instrument movement quantity must be exactly 1",
+          path: ["lines", index, "issueQty"],
+        });
+      }
+      if (isInternalMovement && !(line.toUnit ?? "").trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Destination unit is required",
+          path: ["lines", index, "toUnit"],
+        });
+      }
+      if (isInternalMovement && !normalizeCompanyUnit(line.toUnit)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Destination unit must be Unit 1, Unit 2, or Unit 3",
+          path: ["lines", index, "toUnit"],
+        });
+      }
+      if (isInternalMovement && (line.toUnit ?? "").trim() === (data.fromUnit ?? "").trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Destination unit must be different from source unit",
+          path: ["lines", index, "toUnit"],
+        });
+      }
+    });
   });
 
 export const ToolsIssueUpdateSchema = z.object({
@@ -426,6 +479,8 @@ export const ToolsReceiveCreateSchema = z.object({
         quantity: z.number().min(0.001),
         status: z.string().max(30).optional(),
         comments: z.string().max(30).optional(),
+        /** May differ per partially received line; defaults to the issued-to unit. */
+        destinationUnit: z.string().max(100).optional(),
       })
     )
     .min(1),
@@ -537,8 +592,10 @@ export const CalibResultsUpdateSchema = z.object({
     .array(
       z.object({
         parameter: z.string().max(50),
+        specification: z.string().max(200).optional(),
         obsMin: z.string().max(20).optional(),
         obsMax: z.string().max(20).optional(),
+        gaugeStatus: z.string().max(30).optional(),
         note: z.string().max(40).optional(),
       })
     )

@@ -12,23 +12,23 @@ datasource db {
 // ═══════════════════════════════════════════════════════════════════
 
 model ErpUser {
-  userId       String  @id @map("USER_ID") @db.NVarChar(10)
-  empCd        Int?     @map("EMP_CD")
-  pass         String  @map("PASS") @db.NVarChar(50)
-  roleName     String? @map("ROLE_NAME") @db.NVarChar(15)
-  addRoleName  String? @map("ADD_ROLE_NAME") @db.NVarChar(100)
-  status       String? @map("STATUS") @db.NVarChar(15)
+  userId      String  @id @map("USER_ID") @db.NVarChar(10)
+  empCd       Int?    @map("EMP_CD")
+  pass        String  @map("PASS") @db.NVarChar(50)
+  roleName    String? @map("ROLE_NAME") @db.NVarChar(15)
+  addRoleName String? @map("ADD_ROLE_NAME") @db.NVarChar(100)
+  status      String? @map("STATUS") @db.NVarChar(15)
 
   @@map("ERP_USER")
 }
 
 model Employee {
-  empCd      Int      @id @map("EMP_CD")
-  title      String?  @map("TITLE") @db.NVarChar(15)
-  firstName  String   @map("FIRST_NAME") @db.NVarChar(50)
-  lastName   String?  @map("LAST_NAME") @db.NVarChar(50)
-  deptNo     Int      @map("DEPT_NO")
-  status     String?  @map("STATUS") @db.NVarChar(15)
+  empCd     Int     @id @map("EMP_CD")
+  title     String? @map("TITLE") @db.NVarChar(15)
+  firstName String  @map("FIRST_NAME") @db.NVarChar(50)
+  lastName  String? @map("LAST_NAME") @db.NVarChar(50)
+  deptNo    Int     @map("DEPT_NO")
+  status    String? @map("STATUS") @db.NVarChar(15)
 
   @@map("EMPLOYEE")
 }
@@ -38,106 +38,106 @@ model Employee {
 // ═══════════════════════════════════════════════════════════════════
 
 model Supplier {
-  supCode           String   @id @map("SUP_CODE") @db.NVarChar(10)
-  supName           String?  @map("SUP_NAME") @db.NVarChar(200)
-  add1              String?  @map("ADD1") @db.VarChar(200)
-  city              String?  @map("CITY") @db.VarChar(80)
-  state             String?  @map("STATE") @db.NVarChar(50)
-  gstin             String?  @map("GSTIN") @db.NVarChar(25)
-  phone1            String?  @map("PHONE1") @db.NVarChar(30)
-  emailId           String?  @map("EMAIL_ID") @db.NVarChar(50)
-  bankName          String?  @map("BANK_NAME") @db.NVarChar(50)
-  accountNumber     String?  @map("ACCOUNT_NUMBER") @db.NVarChar(30)
-  ifscCode          String?  @map("IFSC_CODE") @db.NVarChar(30)
-  approvedSupplier String?  @map("APPROVED_SUPPLIER") @db.NVarChar(5)
-  status            String?  @map("STATUS") @db.NVarChar(15)
-  creatUserIdCd     String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.DateTime
+  supCode          String    @id @map("SUP_CODE") @db.NVarChar(10)
+  supName          String?   @map("SUP_NAME") @db.NVarChar(200)
+  add1             String?   @map("ADD1") @db.VarChar(200)
+  city             String?   @map("CITY") @db.VarChar(80)
+  state            String?   @map("STATE") @db.NVarChar(50)
+  gstin            String?   @map("GSTIN") @db.NVarChar(25)
+  phone1           String?   @map("PHONE1") @db.NVarChar(30)
+  emailId          String?   @map("EMAIL_ID") @db.NVarChar(50)
+  bankName         String?   @map("BANK_NAME") @db.NVarChar(50)
+  accountNumber    String?   @map("ACCOUNT_NUMBER") @db.NVarChar(30)
+  ifscCode         String?   @map("IFSC_CODE") @db.NVarChar(30)
+  approvedSupplier String?   @map("APPROVED_SUPPLIER") @db.NVarChar(5)
+  status           String?   @map("STATUS") @db.NVarChar(15)
+  creatUserIdCd    String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt          DateTime? @map("CREAT_DT") @db.DateTime
   lstUpdtUserIdCd  String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
-  poReceives        ToolsPoReceive[]
+  poReceives           ToolsPoReceive[]
   commonPurchaseOrders CommonPurchaseOrder[]
 
   @@map("SUPPLIER")
 }
 
 model Subcontractor {
-  subConId               String    @id @map("SUB_CON_ID") @db.NVarChar(10)
-  subName                String?   @map("SUB_NAME") @db.NVarChar(150)
-  natureOfWork           String?   @map("NATURE_OF_WORK") @db.NVarChar(50)
-  isStoreVendor          String?   @map("IS_STORE_VENDOR") @db.NVarChar(3)
-  isInhouse              String?   @map("IS_INHOUSE") @db.NVarChar(3)
-  isIssueDc              String?   @map("IS_ISSUE_DC") @db.NVarChar(3)
-  add1                   String?   @map("ADD1") @db.NVarChar(75)
-  add2                   String?   @map("ADD2") @db.NVarChar(100)
-  gstin                  String?   @map("GSTIN") @db.NVarChar(25)
-  approvedSubcontractor  String?   @map("APPROVED_SUBCONTRACTOR") @db.NVarChar(5)
-  status                 String?   @map("STATUS") @db.NVarChar(15)
-  creatUserIdCd          String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt                DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd        String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  subConId              String    @id @map("SUB_CON_ID") @db.NVarChar(10)
+  subName               String?   @map("SUB_NAME") @db.NVarChar(150)
+  natureOfWork          String?   @map("NATURE_OF_WORK") @db.NVarChar(50)
+  isStoreVendor         String?   @map("IS_STORE_VENDOR") @db.NVarChar(3)
+  isInhouse             String?   @map("IS_INHOUSE") @db.NVarChar(3)
+  isIssueDc             String?   @map("IS_ISSUE_DC") @db.NVarChar(3)
+  add1                  String?   @map("ADD1") @db.NVarChar(75)
+  add2                  String?   @map("ADD2") @db.NVarChar(100)
+  gstin                 String?   @map("GSTIN") @db.NVarChar(25)
+  approvedSubcontractor String?   @map("APPROVED_SUBCONTRACTOR") @db.NVarChar(5)
+  status                String?   @map("STATUS") @db.NVarChar(15)
+  creatUserIdCd         String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt               DateTime? @map("CREAT_DT") @db.DateTime
+  lstUpdtUserIdCd       String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
   @@map("SUBCONTRACTOR")
 }
 
 model ToolsType {
-  rowId             Int       @id @map("ROW_ID") @default(autoincrement())
-  typeOfTools       String?   @map("TYPE_OF_TOOLS") @db.NVarChar(100)
-  itemGroupId       Int?      @map("ITEM_GROUP_ID")
-  itemTypeId        Int?      @map("ITEM_TYPE_ID")
-  isAutoGenCd       String?   @map("IS_AUTO_GEN_CD") @db.NVarChar(3)
-  prefixItemNo      String?   @map("PREFIX_ITEM_NO") @db.NVarChar(15)
-  creatUserIdCd     String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.DateTime
+  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
+  typeOfTools   String?   @map("TYPE_OF_TOOLS") @db.NVarChar(100)
+  itemGroupId   Int?      @map("ITEM_GROUP_ID")
+  itemTypeId    Int?      @map("ITEM_TYPE_ID")
+  isAutoGenCd   String?   @map("IS_AUTO_GEN_CD") @db.NVarChar(3)
+  prefixItemNo  String?   @map("PREFIX_ITEM_NO") @db.NVarChar(15)
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
   @@map("TOOLS_TYPE")
 }
 
 model GaugeType {
-  rowId             Int      @id @map("ROW_ID") @default(autoincrement())
-  typeOfGauge       String   @map("TYPE_OF_GAUGE") @db.NVarChar(25)
-  creatUserIdCd     String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.Date
+  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
+  typeOfGauge   String    @map("TYPE_OF_GAUGE") @db.NVarChar(25)
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.Date
 
   @@map("GAUGE_TYPE")
 }
 
 model OtherToolsType {
-  rowId             Int      @id @map("ROW_ID") @default(autoincrement())
-  otherType         String?  @map("OTHER_TYPE") @db.NVarChar(35)
-  serialNoGenReq    String?  @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
-  issueType         String?  @map("ISSUE_TYPE") @db.NVarChar(25)
-  poPrefix          String?  @map("PO_PREFIX") @db.NVarChar(20)
-  indentPrefix      String?  @map("INDENT_PREFIX") @db.NVarChar(12)
-  grnPrefix         String?  @map("GRN_PREFIX") @db.NVarChar(12)
-  prefixToolsNo     String?  @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
-  itemNoPrefixMod   String?  @map("ITEM__NO_PREFIX_MOD") @db.NVarChar(5)
-  prefixGateEntry   String?  @map("PREFIX_GATE_ENTRY") @db.NVarChar(12)
-  creatUserIdCd     String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd   String?  @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs         DateTime? @map("LST_UPDT_TS") @db.DateTime
+  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
+  otherType       String?   @map("OTHER_TYPE") @db.NVarChar(35)
+  serialNoGenReq  String?   @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
+  issueType       String?   @map("ISSUE_TYPE") @db.NVarChar(25)
+  poPrefix        String?   @map("PO_PREFIX") @db.NVarChar(20)
+  indentPrefix    String?   @map("INDENT_PREFIX") @db.NVarChar(12)
+  grnPrefix       String?   @map("GRN_PREFIX") @db.NVarChar(12)
+  prefixToolsNo   String?   @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
+  itemNoPrefixMod String?   @map("ITEM__NO_PREFIX_MOD") @db.NVarChar(5)
+  prefixGateEntry String?   @map("PREFIX_GATE_ENTRY") @db.NVarChar(12)
+  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
 
-  subgroups         QmsOtherToolsType[]
+  subgroups QmsOtherToolsType[]
 
   @@map("OTHER_TOOLS_TYPE")
 }
 
 model QmsOtherToolsType {
   // ROW_ID is NOT identity in the ERP DB — creates must supply it explicitly.
-  rowId               Int      @id @map("ROW_ID")
-  qmsOtherTypeOfTools String?  @map("QMS_OTHER_TYPE_OF_TOOLS") @db.NVarChar(50)
-  refGroupId          Int?     @map("REF_GROUP_ID")
-  prefixToolsNo       String?  @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
-  isAutoGenCd         String?  @map("IS_AUTO_GEN_CD") @db.NVarChar(5)
-  prefixBased         String?  @map("PREFIX_BASED") @db.NVarChar(10)
-  assetCategory       String?  @map("ASSET_CATEGORY") @db.NVarChar(15)
-  creatUserIdCd       String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  rowId               Int       @id @map("ROW_ID")
+  qmsOtherTypeOfTools String?   @map("QMS_OTHER_TYPE_OF_TOOLS") @db.NVarChar(50)
+  refGroupId          Int?      @map("REF_GROUP_ID")
+  prefixToolsNo       String?   @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
+  isAutoGenCd         String?   @map("IS_AUTO_GEN_CD") @db.NVarChar(5)
+  prefixBased         String?   @map("PREFIX_BASED") @db.NVarChar(10)
+  assetCategory       String?   @map("ASSET_CATEGORY") @db.NVarChar(15)
+  creatUserIdCd       String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
   creatDt             DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd     String?  @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  lstUpdtUserIdCd     String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
   lstUpdtTs           DateTime? @map("LST_UPDT_TS") @db.DateTime
 
-  group               OtherToolsType? @relation(fields: [refGroupId], references: [rowId])
+  group OtherToolsType? @relation(fields: [refGroupId], references: [rowId])
 
   @@map("QMS_OTHER_TOOLS_TYPE")
 }
@@ -147,121 +147,211 @@ model QmsOtherToolsType {
 // ═══════════════════════════════════════════════════════════════════
 
 model GaugeAndTools {
-  refNo                       Int       @id @map("REF_NO")
-  grouping                    String    @map("GROUPING") @db.NVarChar(25)
-  type                        String?   @map("TYPE") @db.NVarChar(50)
-  name                        String?   @map("NAME") @db.NVarChar(100)
-  description                 String?   @map("DES") @db.NVarChar(500)
-  toolOrGaugeNo               String?   @unique @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  size                        String?   @map("SIZE") @db.NVarChar(25)
-  shape                       String?   @map("SHAPE") @db.NVarChar(15)
-  range                       String?   @map("RANGE") @db.NVarChar(30)
-  totQty                      Decimal?  @map("TOT_QTY") @db.Decimal(10, 3)
-  qtyIn                       Decimal?  @map("QTY_IN") @db.Decimal(10, 3)
-  qtyOut                      Decimal?  @map("QTY_OUT") @db.Decimal(10, 3)
-  qtyNew                      Decimal?  @map("QTY_NEW") @db.Decimal(10, 3)
-  qtyInUse                    Decimal?  @map("QTY_IN_USE") @db.Decimal(10, 3)
-  status                      String?   @map("STATUS") @db.NVarChar(25)
-  location                    String?   @map("LOCATION") @db.NVarChar(50)
-  locationName                String?   @map("LOCATION_NAME") @db.NVarChar(100)
-  locationOutputName          String?   @map("LOCATION_OUTPUT_NAME") @db.NVarChar(100)
-  area                        String?   @map("AREA") @db.NVarChar(100)
-  rack                        String?   @map("RACK") @db.NVarChar(100)
-  deptName                    String?   @map("DEPT_NAME") @db.NVarChar(25)
-  issueType                   String?   @map("ISSUE_TYPE") @db.NVarChar(25)
-  oldItemNo                   String?   @map("OLD_ITEM_NO") @db.NVarChar(20)
-  price                       Decimal?  @map("PRICE") @db.Decimal(10, 3)
-  minOrderLevel               Decimal?  @map("MIN_ORDER_LEVEL") @db.Decimal(12, 3)
-  hsnCode                     String?   @map("HSN_CODE") @db.NVarChar(25)
-  drawingNo                   String?   @map("DRAWING_NO") @db.NVarChar(30)
-  revNoDt                     String?   @map("REV_NO_DT") @db.NVarChar(30)
-  detailedSpec                String?   @map("DETAILED_SPEC")
-  packingLength               String?   @map("PACKING_LENGTH") @db.VarChar(20)
-  packingWidth                String?   @map("PACKING_WIDTH") @db.VarChar(20)
-  packingHeight               String?   @map("PACKING_HEIGHT") @db.VarChar(20)
-  packingDimensions           String?   @map("PACKING_DIMENSIONS") @db.NVarChar(50)
-  stiffness                   String?   @map("STIFFNESS") @db.NVarChar(20)
-  selfLife                    Int?      @map("SELF_LIFE")
-  activeItem                  String?   @map("ACTIVE_ITEM") @db.NVarChar(10)
-  criticalItem                String?   @map("CRITICAL_ITEM") @db.NVarChar(10)
-  poReq                       String?   @map("PO_REQ") @db.NVarChar(10)
-  stockReq                    String?   @map("STOCK_REQ") @db.NVarChar(5)
-  stockItem                   String?   @map("STOCK_ITEM") @db.NVarChar(1)
-  isAsset                     String?   @map("IS_ASSET") @db.NVarChar(20)
-  saleableItem                String?   @map("SALEABLE_ITEM") @db.NVarChar(3)
-  nocReq                      String?   @map("NOC_REQ") @db.NVarChar(10)
-  machineSoftware             String?   @map("MACHINE_SOFTWARE") @db.NVarChar(5)
-  ineligibleForItc            String?   @map("INELIGIBLE_FOR_ITC") @db.NVarChar(3)
-  isCustGiven                 String?   @map("IS_CUST_GIVEN") @db.NVarChar(3)
-  historyCardReq              String?   @map("HISTORY_CARD_REQ") @db.NVarChar(10)
-  calibrationFrqMonths        Int?      @map("CALIBRATION_FRQ_MONTHS")
-  caliPlannedWho              String?   @map("CALI_PLANNED_WHO") @db.NVarChar(15)
-  calibrationResponsibility   String?   @map("CALIBRATION_RESPONSIBILITY") @db.NVarChar(15)
-  serialNoGenReq              String?   @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
-  preventiveMethod            String?   @map("PREVENTIVE_METHOD") @db.NVarChar(25)
-  preventiveFrqMonths         Int?      @map("PREVENTIVE_FRQ_MONTHS")
-  /** ERP "Preventive MNT Done At" (int counter / done flag on master) */
-  preventiveFrqOthers         Int?      @map("PREVENTIVE_FRQ_OTHERS")
-  /** ERP "Ref Details" */
-  refDetails                  String?   @map("REF_DETAILS") @db.NVarChar(50)
-  /** ERP "Addil. Remarks" */
-  remarks                     String?   @map("REMARKS") @db.NVarChar(50)
-  gSpecUpperMin               Decimal?  @map("G_SPEC_UPPER_MIN") @db.Decimal(12, 3)
-  gSpecUpperMax               Decimal?  @map("G_SPEC_UPPER_MAX") @db.Decimal(12, 3)
-  wLimitLowerMax              Decimal?  @map("W_LIMIT_LOWER_MAX") @db.Decimal(12, 3)
-  wLimitUpperMin              Decimal?  @map("W_LIMIT_UPPER_MIN") @db.Decimal(12, 3)
-  wLimitUpperMax              Decimal?  @map("W_LIMIT_UPPER_MAX") @db.Decimal(12, 3)
-  prodSpecLowerMax            Decimal?  @map("PROD_SPEC_LOWER_MAX") @db.Decimal(12, 3)
-  prodSpecUpperMin            Decimal?  @map("PROD_SPEC_UPPER_MIN") @db.Decimal(12, 3)
-  prodSpecUpperMax            Decimal?  @map("PROD_SPEC_UPPER_MAX") @db.Decimal(12, 3)
-  uom                         String?   @map("UOM") @db.NVarChar(10)
-  returnable                  String?   @map("RETURNABLE") @db.NVarChar(3)
-  leastCount                  String?   @map("LEAST_COUNT") @db.NVarChar(50)
-  companyId                   String?   @map("COMPANY_ID") @db.NVarChar(10)
-  creatUserIdCd               String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt                     DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd             String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  refNo                     Int       @id @map("REF_NO")
+  grouping                  String    @map("GROUPING") @db.NVarChar(25)
+  type                      String?   @map("TYPE") @db.NVarChar(50)
+  name                      String?   @map("NAME") @db.NVarChar(100)
+  description               String?   @map("DES") @db.NVarChar(500)
+  toolOrGaugeNo             String?   @unique @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  size                      String?   @map("SIZE") @db.NVarChar(25)
+  make                      String?   @map("MAKE") @db.NVarChar(100)
+  shape                     String?   @map("SHAPE") @db.NVarChar(15)
+  range                     String?   @map("RANGE") @db.NVarChar(30)
+  totQty                    Decimal?  @map("TOT_QTY") @db.Decimal(10, 3)
+  qtyIn                     Decimal?  @map("QTY_IN") @db.Decimal(10, 3)
+  qtyOut                    Decimal?  @map("QTY_OUT") @db.Decimal(10, 3)
+  qtyNew                    Decimal?  @map("QTY_NEW") @db.Decimal(10, 3)
+  qtyInUse                  Decimal?  @map("QTY_IN_USE") @db.Decimal(10, 3)
+  status                    String?   @map("STATUS") @db.NVarChar(25)
+  location                  String?   @map("LOCATION") @db.NVarChar(50)
+  locationName              String?   @map("LOCATION_NAME") @db.NVarChar(100)
+  locationOutputName        String?   @map("LOCATION_OUTPUT_NAME") @db.NVarChar(100)
+  area                      String?   @map("AREA") @db.NVarChar(100)
+  rack                      String?   @map("RACK") @db.NVarChar(100)
+  deptName                  String?   @map("DEPT_NAME") @db.NVarChar(25)
+  issueType                 String?   @map("ISSUE_TYPE") @db.NVarChar(25)
+  oldItemNo                 String?   @map("OLD_ITEM_NO") @db.NVarChar(20)
+  price                     Decimal?  @map("PRICE") @db.Decimal(10, 3)
+  minOrderLevel             Decimal?  @map("MIN_ORDER_LEVEL") @db.Decimal(12, 3)
+  hsnCode                   String?   @map("HSN_CODE") @db.NVarChar(25)
+  drawingNo                 String?   @map("DRAWING_NO") @db.NVarChar(30)
+  revNoDt                   String?   @map("REV_NO_DT") @db.NVarChar(30)
+  detailedSpec              String?   @map("DETAILED_SPEC")
+  packingLength             String?   @map("PACKING_LENGTH") @db.VarChar(20)
+  packingWidth              String?   @map("PACKING_WIDTH") @db.VarChar(20)
+  packingHeight             String?   @map("PACKING_HEIGHT") @db.VarChar(20)
+  packingDimensions         String?   @map("PACKING_DIMENSIONS") @db.NVarChar(50)
+  stiffness                 String?   @map("STIFFNESS") @db.NVarChar(20)
+  selfLife                  Int?      @map("SELF_LIFE")
+  activeItem                String?   @map("ACTIVE_ITEM") @db.NVarChar(10)
+  criticalItem              String?   @map("CRITICAL_ITEM") @db.NVarChar(10)
+  poReq                     String?   @map("PO_REQ") @db.NVarChar(10)
+  stockReq                  String?   @map("STOCK_REQ") @db.NVarChar(5)
+  stockItem                 String?   @map("STOCK_ITEM") @db.NVarChar(1)
+  isAsset                   String?   @map("IS_ASSET") @db.NVarChar(20)
+  saleableItem              String?   @map("SALEABLE_ITEM") @db.NVarChar(3)
+  nocReq                    String?   @map("NOC_REQ") @db.NVarChar(10)
+  machineSoftware           String?   @map("MACHINE_SOFTWARE") @db.NVarChar(5)
+  ineligibleForItc          String?   @map("INELIGIBLE_FOR_ITC") @db.NVarChar(3)
+  isCustGiven               String?   @map("IS_CUST_GIVEN") @db.NVarChar(3)
+  historyCardReq            String?   @map("HISTORY_CARD_REQ") @db.NVarChar(10)
+  calibrationFrqMonths      Int?      @map("CALIBRATION_FRQ_MONTHS")
+  caliPlannedWho            String?   @map("CALI_PLANNED_WHO") @db.NVarChar(15)
+  calibrationResponsibility String?   @map("CALIBRATION_RESPONSIBILITY") @db.NVarChar(15)
+  serialNoGenReq            String?   @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
+  preventiveMethod          String?   @map("PREVENTIVE_METHOD") @db.NVarChar(25)
+  preventiveFrqMonths       Int?      @map("PREVENTIVE_FRQ_MONTHS")
+  /**
+   * ERP "Preventive MNT Done At" (int counter / done flag on master)
+   */
+  preventiveFrqOthers       Int?      @map("PREVENTIVE_FRQ_OTHERS")
+  /**
+   * ERP "Ref Details"
+   */
+  refDetails                String?   @map("REF_DETAILS") @db.NVarChar(50)
+  /**
+   * ERP "Addil. Remarks"
+   */
+  remarks                   String?   @map("REMARKS") @db.NVarChar(50)
+  gSpecUpperMin             Decimal?  @map("G_SPEC_UPPER_MIN") @db.Decimal(12, 3)
+  gSpecUpperMax             Decimal?  @map("G_SPEC_UPPER_MAX") @db.Decimal(12, 3)
+  wLimitLowerMax            Decimal?  @map("W_LIMIT_LOWER_MAX") @db.Decimal(12, 3)
+  wLimitUpperMin            Decimal?  @map("W_LIMIT_UPPER_MIN") @db.Decimal(12, 3)
+  wLimitUpperMax            Decimal?  @map("W_LIMIT_UPPER_MAX") @db.Decimal(12, 3)
+  prodSpecLowerMax          Decimal?  @map("PROD_SPEC_LOWER_MAX") @db.Decimal(12, 3)
+  prodSpecUpperMin          Decimal?  @map("PROD_SPEC_UPPER_MIN") @db.Decimal(12, 3)
+  prodSpecUpperMax          Decimal?  @map("PROD_SPEC_UPPER_MAX") @db.Decimal(12, 3)
+  uom                       String?   @map("UOM") @db.NVarChar(10)
+  returnable                String?   @map("RETURNABLE") @db.NVarChar(3)
+  leastCount                String?   @map("LEAST_COUNT") @db.NVarChar(50)
+  companyId                 String?   @map("COMPANY_ID") @db.NVarChar(10)
+  creatUserIdCd             String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt                   DateTime? @map("CREAT_DT") @db.DateTime
+  lstUpdtUserIdCd           String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
-  serialNumbers               GaugeSerialNo[]
-  specifications              ToolsSpecification[]
-  priceMaster                 ToolsPriceMaster[]
-  details                     ToolsDetails[]
-  toolsMapping                ToolsMapping[]
-  machineMapping              ToolsMachineTrans[]
-  calibControlCard            GaugeControlCard[]
-  issueLines                  ToolsTransIssue[]
-  issueLinesByRef             ToolsTransIssue[] @relation("IssueLineToolByRef")
-  receivedTransLines          ToolsIssueReceivedTrans[]
-  calibIssueLines             ToolsTransIssueForCalibration[]
-  calibReceiveLines           ToolsTransReceiveForCalibration[]
-  consumptionLines            ToolsConsumptionTransIssue[]
-  poReceiveTrans              ToolsPoReceiveTrans[]
-  commonPurchaseItems         CommonPurchaseItem[]
+  serialNumbers       GaugeSerialNo[]
+  specifications      ToolsSpecification[]
+  priceMaster         ToolsPriceMaster[]
+  details             ToolsDetails[]
+  toolsMapping        ToolsMapping[]
+  machineMapping      ToolsMachineTrans[]
+  calibControlCard    GaugeControlCard[]
+  issueLines          ToolsTransIssue[]
+  issueLinesByRef     ToolsTransIssue[]                 @relation("IssueLineToolByRef")
+  receivedTransLines  ToolsIssueReceivedTrans[]
+  calibIssueLines     ToolsTransIssueForCalibration[]
+  calibReceiveLines   ToolsTransReceiveForCalibration[]
+  consumptionLines    ToolsConsumptionTransIssue[]
+  poReceiveTrans      ToolsPoReceiveTrans[]
+  commonPurchaseItems CommonPurchaseItem[]
+  unitStock           ToolsUnitStock[]
+  defects             InstrumentDefect[]
+  serviceRecords      InstrumentServiceRecord[]
+  importedMasterData  InstrumentImportedMasterData?
 
   @@map("GAUGEANDTOOLS")
 }
 
-model GaugeSerialNo {
-  refNo           Int       @id @map("REF_NO")
-  toolOrGaugeNo   String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  serialNo        Int?      @map("SERIAL_NO")
-  status          String?   @map("STATUS") @db.NVarChar(30)
-  make            String?   @map("MAKE") @db.NVarChar(50)
-  purchaseDt      DateTime? @map("C_DATE") @db.DateTime
-  nextPreDate     DateTime? @map("NXT_PRE_DATE") @db.DateTime
-  nextPreDone     Int?      @map("NXT_PRE_DONE")
-  currentStatus   Int?      @map("CURRENT_STATUS")
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+/// Exact client workbook fields that have no safe column in the legacy ERP master.
+model InstrumentImportedMasterData {
+  refNo              Int       @id @map("REF_NO")
+  calibrationDate    DateTime? @map("CALIBRATION_DATE") @db.DateTime
+  nextCalibrationDue DateTime? @map("NEXT_CALIBRATION_DUE") @db.DateTime
+  observedError      String?   @map("OBSERVED_ERROR") @db.NVarChar(200)
+  calibrationAgency  String?   @map("CALIBRATION_AGENCY") @db.NVarChar(100)
+  updatedAt          DateTime  @updatedAt @map("UPDATED_AT") @db.DateTime
 
-  tool            GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  tool GaugeAndTools @relation(fields: [refNo], references: [refNo], onDelete: Cascade)
+
+  @@map("TOOLS_APP_INSTRUMENT_MASTER_DATA")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TOOLS UNIT MASTER (app-owned — valid unit names, e.g. Unit 1 / Unit 2 / Unit 3)
+// Seeded via migration; managed via a settings page in future.
+// ═══════════════════════════════════════════════════════════════════
+
+model ToolsUnitMaster {
+  id            Int      @id @default(autoincrement()) @map("ID")
+  /// Display name exactly as it appears in the client's sheet, e.g. "Unit 1"
+  unitName      String   @unique @map("UNIT_NAME") @db.NVarChar(100)
+  isActive      Boolean  @default(true) @map("IS_ACTIVE")
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime @map("CREAT_DT") @db.DateTime
+
+  unitStockRows ToolsUnitStock[]
+
+  @@map("TOOLS_UNIT_MASTER")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TOOLS UNIT STOCK (app-owned — per-unit stock + calibration snapshot)
+// One row per (GaugeAndTools, Used Unit) pair, populated via import.
+// ═══════════════════════════════════════════════════════════════════
+
+model ToolsUnitStock {
+  id       Int    @id @default(autoincrement()) @map("ID")
+  /// FK → GaugeAndTools.refNo
+  refNo    Int    @map("REF_NO")
+  /// Matches TOOLS_UNIT_MASTER.UNIT_NAME — the "Used Unit" value from the import sheet
+  unitCode String @map("UNIT_CODE") @db.NVarChar(100)
+
+  // ── Per-unit Make (Q2 Option B) ──────────────────────────────────
+  make        String? @map("MAKE") @db.NVarChar(50)
+  /// Manufacturer serial number from the client calibration register.
+  mfgSerialNo String? @map("MFG_SERIAL_NO") @db.NVarChar(100)
+
+  // ── Quantity fields — nullable; populated manually post-import ───
+  qtyTotal Decimal? @map("QTY_TOTAL") @db.Decimal(10, 3)
+  qtyIn    Decimal? @map("QTY_IN") @db.Decimal(10, 3)
+  qtyOut   Decimal? @map("QTY_OUT") @db.Decimal(10, 3)
+  qtyNew   Decimal? @map("QTY_NEW") @db.Decimal(10, 3)
+  qtyInUse Decimal? @map("QTY_IN_USE") @db.Decimal(10, 3)
+
+  // ── Calibration snapshot (historical bulk-load via import) ───────
+  /// Last calibration date from the import sheet
+  calibDate     DateTime? @map("CALIB_DATE") @db.DateTime
+  /// Next calibration due date from the import sheet
+  nextCalibDate DateTime? @map("NEXT_CALIB_DATE") @db.DateTime
+  /// Observed measurement error string (free text)
+  observedError String?   @map("OBSERVED_ERROR") @db.NVarChar(200)
+  /// Calibration agency / lab name
+  calibAgency   String?   @map("CALIB_AGENCY") @db.NVarChar(100)
+
+  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
+
+  tool       GaugeAndTools   @relation(fields: [refNo], references: [refNo])
+  unitMaster ToolsUnitMaster @relation(fields: [unitCode], references: [unitName])
+
+  @@unique([refNo, unitCode], map: "TOOLS_UNIT_STOCK_ref_unit_uid")
+  @@index([unitCode])
+  @@map("TOOLS_UNIT_STOCK")
+}
+
+model GaugeSerialNo {
+  refNo         Int       @id @map("REF_NO")
+  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  toolRefNo     Int?      @map("TOOL_REF_NO")
+  serialNo      Int?      @map("SERIAL_NO")
+  status        String?   @map("STATUS") @db.NVarChar(30)
+  make          String?   @map("MAKE") @db.NVarChar(50)
+  purchaseDt    DateTime? @map("C_DATE") @db.DateTime
+  nextPreDate   DateTime? @map("NXT_PRE_DATE") @db.DateTime
+  nextPreDone   Int?      @map("NXT_PRE_DONE")
+  currentStatus Int?      @map("CURRENT_STATUS")
+  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
+
+  tool GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
 
   @@map("GAUGE_SERIAL_NO")
 }
 
 model ToolsDetails {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
+  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
   toolRefNo       Int?      @map("TOOL_REF_NO")
   noOfCavity      Int?      @map("NO_OF_CAVITY")
   runningCavity   Int?      @map("RUNNING_CAVITY")
@@ -272,7 +362,7 @@ model ToolsDetails {
   drawingNo       String?   @map("DRAWING_NO") @db.NVarChar(25)
   creatDt         DateTime? @map("CREAT_DT") @db.DateTime
 
-  tool            GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
+  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_DETAILS")
 }
@@ -294,57 +384,57 @@ model ToolsSpecification {
   prodSpecLowerMax Decimal?  @map("PROD_SPEC_LOWER_MAX") @db.Decimal(12, 3)
   creatDt          DateTime? @map("CREAT_DT") @db.DateTime
 
-  tool             GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
+  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_SPECIFICATION")
 }
 
 model ToolsPriceMaster {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  supCode         String?   @map("SUP_CODE") @db.NVarChar(10)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  revNo           String?   @map("REV_NO") @db.NVarChar(10)
-  revDate         DateTime? @map("REV_DATE") @db.DateTime
-  revStatus       String?   @map("REV_STATUS") @db.NVarChar(30)
+  rowId          Int       @id @default(autoincrement()) @map("ROW_ID")
+  supCode        String?   @map("SUP_CODE") @db.NVarChar(10)
+  toolRefNo      Int?      @map("TOOL_REF_NO")
+  revNo          String?   @map("REV_NO") @db.NVarChar(10)
+  revDate        DateTime? @map("REV_DATE") @db.DateTime
+  revStatus      String?   @map("REV_STATUS") @db.NVarChar(30)
   /// PENDING | APPROVED | REJECTED (ERP may still hold legacy Yes/No values)
-  approvalStatus  String?   @map("APPROVAL_STATUS") @db.NVarChar(30)
-  approvalDate    DateTime? @map("APPROVAL_DATE") @db.DateTime
+  approvalStatus String?   @map("APPROVAL_STATUS") @db.NVarChar(30)
+  approvalDate   DateTime? @map("APPROVAL_DATE") @db.DateTime
   /// Live rate — what GRN / Issue / Tool Master read. Not overwritten until approve.
-  rate            Decimal?  @map("RATE") @db.Decimal(12, 4)
+  rate           Decimal?  @map("RATE") @db.Decimal(12, 4)
   /// Proposed rate awaiting approval (Phase 1 workflow)
-  proposedRate    Decimal?  @map("PROPOSED_RATE") @db.Decimal(12, 4)
-  submittedBy     String?   @map("SUBMITTED_BY") @db.NVarChar(50)
-  submittedAt     DateTime? @map("SUBMITTED_AT") @db.DateTime
-  approvedBy      String?   @map("APPROVED_BY") @db.NVarChar(50)
-  approvedAt      DateTime? @map("APPROVED_AT") @db.DateTime
-  rejectedReason  String?   @map("REJECTED_REASON") @db.NVarChar(500)
-  remarks         String?   @map("REMARKS") @db.NVarChar(200)
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+  proposedRate   Decimal?  @map("PROPOSED_RATE") @db.Decimal(12, 4)
+  submittedBy    String?   @map("SUBMITTED_BY") @db.NVarChar(50)
+  submittedAt    DateTime? @map("SUBMITTED_AT") @db.DateTime
+  approvedBy     String?   @map("APPROVED_BY") @db.NVarChar(50)
+  approvedAt     DateTime? @map("APPROVED_AT") @db.DateTime
+  rejectedReason String?   @map("REJECTED_REASON") @db.NVarChar(500)
+  remarks        String?   @map("REMARKS") @db.NVarChar(200)
+  creatUserIdCd  String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt        DateTime  @map("CREAT_DT") @db.DateTime
 
-  tool            GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
+  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_PRICE_MASTER")
 }
 
 model ToolsMapping {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  supCode         String?   @map("SUP_CODE") @db.NVarChar(50)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+  rowId     Int      @id @default(autoincrement()) @map("ROW_ID")
+  supCode   String?  @map("SUP_CODE") @db.NVarChar(50)
+  toolRefNo Int?     @map("TOOL_REF_NO")
+  creatDt   DateTime @map("CREAT_DT") @db.DateTime
 
-  tool            GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
+  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_MAPPING")
 }
 
 model ToolsMachineTrans {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  macCode         String?   @map("MAC_CODE") @db.NVarChar(25)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId     Int       @id @default(autoincrement()) @map("ROW_ID")
+  toolRefNo Int?      @map("TOOL_REF_NO")
+  macCode   String?   @map("MAC_CODE") @db.NVarChar(25)
+  creatDt   DateTime? @map("CREAT_DT") @db.DateTime
 
-  tool            GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
+  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_MACHINE_TRANS")
 }
@@ -388,35 +478,35 @@ model GaugeToolsIssue {
 
 model ToolsTransIssue {
   // ERP ROW_ID is NOT identity — writers must supply max(ROW_ID)+1
-  rowId           Int       @id @map("ROW_ID")
-  dcNo            String    @map("DC_NO") @db.NVarChar(12)
-  toolOrGaugeNo   String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  issueQty        Decimal?  @map("ISSUE_QTY") @db.Decimal(10, 3)
-  partNo          String    @map("PART_NO") @db.NVarChar(50)
-  type            String?   @map("TYPE") @db.NVarChar(50)
-  serialNo        Int?      @map("SERIAL_NO")
-  name            String?   @map("NAME") @db.NVarChar(50)
-  description     String?   @map("DESCRIPTION") @db.NVarChar(500)
-  processName     String?   @map("NAME_OF_THE_PROCESS") @db.NVarChar(100)
-  machine         String?   @map("MACHINE") @db.NVarChar(50)
-  remarks         String?   @map("REMARKS") @db.NVarChar(100)
-  uom             String?   @map("UOM") @db.NVarChar(10)
-  issueType       String?   @map("ISSUE_TYPE") @db.NVarChar(25)
-  groupName       String?   @map("GROUP_NAME") @db.NVarChar(50)
-  issueToItemNo   String?   @map("ISSUE_TO_ITEM_NO") @db.NVarChar(15)
-  issueEmpName    String?   @map("ISSUE_EMP_NAME") @db.NVarChar(50)
-  returnable      String?   @map("RETURNABLE") @db.NVarChar(5)
-  price           Decimal?  @map("PRICE") @db.Decimal(18, 4)
-  amount          Decimal?  @map("AMOUNT") @db.Decimal(18, 4)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  status          String?   @map("STATUS") @db.NVarChar(10)
-  dueDate         DateTime? @map("DUE_DATE") @db.DateTime
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId         Int       @id @map("ROW_ID")
+  dcNo          String    @map("DC_NO") @db.NVarChar(12)
+  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  issueQty      Decimal?  @map("ISSUE_QTY") @db.Decimal(10, 3)
+  partNo        String    @map("PART_NO") @db.NVarChar(50)
+  type          String?   @map("TYPE") @db.NVarChar(50)
+  serialNo      Int?      @map("SERIAL_NO")
+  name          String?   @map("NAME") @db.NVarChar(50)
+  description   String?   @map("DESCRIPTION") @db.NVarChar(500)
+  processName   String?   @map("NAME_OF_THE_PROCESS") @db.NVarChar(100)
+  machine       String?   @map("MACHINE") @db.NVarChar(50)
+  remarks       String?   @map("REMARKS") @db.NVarChar(100)
+  uom           String?   @map("UOM") @db.NVarChar(10)
+  issueType     String?   @map("ISSUE_TYPE") @db.NVarChar(25)
+  groupName     String?   @map("GROUP_NAME") @db.NVarChar(50)
+  issueToItemNo String?   @map("ISSUE_TO_ITEM_NO") @db.NVarChar(15)
+  issueEmpName  String?   @map("ISSUE_EMP_NAME") @db.NVarChar(50)
+  returnable    String?   @map("RETURNABLE") @db.NVarChar(5)
+  price         Decimal?  @map("PRICE") @db.Decimal(18, 4)
+  amount        Decimal?  @map("AMOUNT") @db.Decimal(18, 4)
+  toolRefNo     Int?      @map("TOOL_REF_NO")
+  status        String?   @map("STATUS") @db.NVarChar(10)
+  dueDate       DateTime? @map("DUE_DATE") @db.DateTime
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
-  header          GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
-  tool            GaugeAndTools?  @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-  toolByRef       GaugeAndTools?  @relation("IssueLineToolByRef", fields: [toolRefNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
+  header    GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
+  tool      GaugeAndTools?  @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  toolByRef GaugeAndTools?  @relation("IssueLineToolByRef", fields: [toolRefNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("TOOLS_TRANS_ISSUE")
 }
@@ -440,43 +530,43 @@ model ToolsIssueReceived {
   creatDt         DateTime? @map("CREAT_DT") @db.DateTime
   lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
-  issueHeader     GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
-  lines           ToolsIssueReceivedTrans[]
+  issueHeader GaugeToolsIssue           @relation(fields: [dcNo], references: [dcNo])
+  lines       ToolsIssueReceivedTrans[]
 
   @@map("TOOLS_ISSUE_RECEIVED")
 }
 
 model ToolsIssueReceivedTrans {
   // ERP ROW_ID is NOT identity — writers must supply max(ROW_ID)+1
-  rowId           Int       @id @map("ROW_ID")
-  recNo           Int       @map("REC_NO")
-  toolOrGaugeNo   String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  serialNo        Int?      @map("SERIAL_NO")
-  quantity        Decimal?  @map("QUANTITY") @db.Decimal(10, 3)
-  status          String?   @map("STATUS") @db.NVarChar(30)
-  comments        String?   @map("COMMENTS") @db.NVarChar(30)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  toolIssRefNo    Int?      @map("TOOL_ISS_REF_NO")
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId         Int       @id @map("ROW_ID")
+  recNo         Int       @map("REC_NO")
+  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  serialNo      Int?      @map("SERIAL_NO")
+  quantity      Decimal?  @map("QUANTITY") @db.Decimal(10, 3)
+  status        String?   @map("STATUS") @db.NVarChar(30)
+  comments      String?   @map("COMMENTS") @db.NVarChar(30)
+  toolRefNo     Int?      @map("TOOL_REF_NO")
+  toolIssRefNo  Int?      @map("TOOL_ISS_REF_NO")
+  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
-  header          ToolsIssueReceived @relation(fields: [recNo], references: [recNo])
-  tool            GaugeAndTools?     @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  header ToolsIssueReceived @relation(fields: [recNo], references: [recNo])
+  tool   GaugeAndTools?     @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
 
   @@map("TOOLS_ISSUE_RECEIVED_TRANS")
 }
 
 model ToolsConsumptionTransIssue {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  workSheetRefNo  Int?      @map("WORK_SHEET_REF_NO")
-  toolOrGaugeNo   String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  issueRefNo      Int?      @map("ISSUE_REF_NO")
-  qty             Decimal?  @map("QTY") @db.Decimal(12, 2)
-  verified        String?   @map("VERIFIED") @db.NVarChar(5)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime  @map("CREAT_DT") @db.Date
+  rowId          Int      @id @default(autoincrement()) @map("ROW_ID")
+  workSheetRefNo Int?     @map("WORK_SHEET_REF_NO")
+  toolOrGaugeNo  String?  @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  issueRefNo     Int?     @map("ISSUE_REF_NO")
+  qty            Decimal? @map("QTY") @db.Decimal(12, 2)
+  verified       String?  @map("VERIFIED") @db.NVarChar(5)
+  creatUserIdCd  String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt        DateTime @map("CREAT_DT") @db.Date
 
-  tool            GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  tool GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
 
   @@map("TOOLS_CONSUMPTION_TRANS_ISSUE")
 }
@@ -505,53 +595,53 @@ model PurchaseApproval {
 
 /// Shared ERP Purchasing header — Tools can create (Phase 2); same table ERP uses.
 model CommonPurchaseOrder {
-  poOrderNo         String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
-  poDate            DateTime? @map("PO_DATE") @db.DateTime
-  validTill         DateTime? @map("VALID_TILL") @db.DateTime
-  orderStatusCd     Int?      @map("ORDER_STATUS_CD")
-  supCode           String?   @map("SUP_CODE") @db.NVarChar(10)
-  quotNo            String?   @map("QUOT_NO") @db.NVarChar(25)
-  remarks           String?   @map("REMARKS") @db.NVarChar(300)
-  contactName       String?   @map("CONTACT_NAME") @db.NVarChar(50)
-  creatUserIdCd     String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.DateTime
-  poGoodsType       String?   @map("PO_GOODS_TYPE") @db.NVarChar(50)
-  poCat             String?   @map("PO_CAT") @db.NVarChar(50)
-  purchaseType      String?   @map("PURCHASE_TYPE") @db.NVarChar(20)
-  currency          String?   @map("CURRENCY") @db.NVarChar(15)
-  lobType           String?   @map("LOB_TYPE") @db.NVarChar(50)
-  vendorType        String?   @map("VENDOR_TYPE") @db.NVarChar(15)
-  purchaseValue     Decimal?  @map("PURCHASE_VALUE") @db.Decimal(14, 4)
-  subTotValue       Decimal?  @map("SUB_TOT_VALUE") @db.Decimal(14, 4)
-  department        String?   @map("DEPARTMENT") @db.NVarChar(50)
-  approverCd        String?   @map("APPROVER_CD") @db.NVarChar(100)
+  poOrderNo     String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
+  poDate        DateTime? @map("PO_DATE") @db.DateTime
+  validTill     DateTime? @map("VALID_TILL") @db.DateTime
+  orderStatusCd Int?      @map("ORDER_STATUS_CD")
+  supCode       String?   @map("SUP_CODE") @db.NVarChar(10)
+  quotNo        String?   @map("QUOT_NO") @db.NVarChar(25)
+  remarks       String?   @map("REMARKS") @db.NVarChar(300)
+  contactName   String?   @map("CONTACT_NAME") @db.NVarChar(50)
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
+  poGoodsType   String?   @map("PO_GOODS_TYPE") @db.NVarChar(50)
+  poCat         String?   @map("PO_CAT") @db.NVarChar(50)
+  purchaseType  String?   @map("PURCHASE_TYPE") @db.NVarChar(20)
+  currency      String?   @map("CURRENCY") @db.NVarChar(15)
+  lobType       String?   @map("LOB_TYPE") @db.NVarChar(50)
+  vendorType    String?   @map("VENDOR_TYPE") @db.NVarChar(15)
+  purchaseValue Decimal?  @map("PURCHASE_VALUE") @db.Decimal(14, 4)
+  subTotValue   Decimal?  @map("SUB_TOT_VALUE") @db.Decimal(14, 4)
+  department    String?   @map("DEPARTMENT") @db.NVarChar(50)
+  approverCd    String?   @map("APPROVER_CD") @db.NVarChar(100)
 
-  supplier          Supplier? @relation(fields: [supCode], references: [supCode], onUpdate: NoAction, onDelete: NoAction)
-  lines             CommonPurchaseItem[]
+  supplier Supplier?            @relation(fields: [supCode], references: [supCode], onUpdate: NoAction, onDelete: NoAction)
+  lines    CommonPurchaseItem[]
 
   @@map("COMMON_PURCHASE_ORDER")
 }
 
 /// Shared ERP Purchasing lines — ROW_ID is NOT identity; allocate explicitly on create.
 model CommonPurchaseItem {
-  rowId             Int       @id @map("ROW_ID")
-  poOrderNo         String?   @map("PO_ORDER_NO") @db.NVarChar(16)
-  itemCode          String?   @map("ITEM_CODE") @db.NVarChar(25)
-  price             Decimal?  @map("PRICE") @db.Decimal(18, 3)
-  qty               Decimal?  @map("QTY") @db.Decimal(18, 3)
-  uom               String?   @map("UOM") @db.NVarChar(10)
-  comments          String?   @map("COMMENTS") @db.NVarChar(Max)
-  creatUserIdCd     String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime? @map("CREAT_DT") @db.DateTime
-  itemType          String?   @map("ITEM_TYPE") @db.NVarChar(50)
-  itemName          String?   @map("ITEM_NAME") @db.NVarChar(Max)
-  hsnCode           String?   @map("HSN_CODE") @db.NVarChar(20)
-  remarks           String?   @map("REMARKS") @db.NVarChar(50)
-  itemDesc          String?   @map("item_desc") @db.NVarChar(Max)
-  toolRefNo         Int?      @map("TOOL_REF_NO")
+  rowId         Int       @id @map("ROW_ID")
+  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(16)
+  itemCode      String?   @map("ITEM_CODE") @db.NVarChar(25)
+  price         Decimal?  @map("PRICE") @db.Decimal(18, 3)
+  qty           Decimal?  @map("QTY") @db.Decimal(18, 3)
+  uom           String?   @map("UOM") @db.NVarChar(10)
+  comments      String?   @map("COMMENTS") @db.NVarChar(Max)
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
+  itemType      String?   @map("ITEM_TYPE") @db.NVarChar(50)
+  itemName      String?   @map("ITEM_NAME") @db.NVarChar(Max)
+  hsnCode       String?   @map("HSN_CODE") @db.NVarChar(20)
+  remarks       String?   @map("REMARKS") @db.NVarChar(50)
+  itemDesc      String?   @map("item_desc") @db.NVarChar(Max)
+  toolRefNo     Int?      @map("TOOL_REF_NO")
 
-  order             CommonPurchaseOrder? @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: NoAction)
-  tool              GaugeAndTools?       @relation(fields: [toolRefNo], references: [refNo], onUpdate: NoAction, onDelete: NoAction)
+  order CommonPurchaseOrder? @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: NoAction)
+  tool  GaugeAndTools?       @relation(fields: [toolRefNo], references: [refNo], onUpdate: NoAction, onDelete: NoAction)
 
   @@map("COMMON_PURCHASE_ITEM")
 }
@@ -567,22 +657,22 @@ model ToolsPoFinance {
   lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
   lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
 
-  lines           ToolsPoFinanceLine[]
+  lines ToolsPoFinanceLine[]
 
   @@map("TOOLS_PO_FINANCE")
 }
 
 /// Per-line EXP_LEDGER_CODE (ERP naming) + optional Tools budget ref.
 model ToolsPoFinanceLine {
-  id              Int       @id @default(autoincrement()) @map("ID")
-  poOrderNo       String    @map("PO_ORDER_NO") @db.NVarChar(16)
-  poItemRowId     Int       @map("PO_ITEM_ROW_ID")
-  expLedgerCode   String?   @map("EXP_LEDGER_CODE") @db.NVarChar(25)
-  budgetCode      String?   @map("BUDGET_CODE") @db.NVarChar(50)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
+  id            Int      @id @default(autoincrement()) @map("ID")
+  poOrderNo     String   @map("PO_ORDER_NO") @db.NVarChar(16)
+  poItemRowId   Int      @map("PO_ITEM_ROW_ID")
+  expLedgerCode String?  @map("EXP_LEDGER_CODE") @db.NVarChar(25)
+  budgetCode    String?  @map("BUDGET_CODE") @db.NVarChar(50)
+  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime @map("CREAT_DT") @db.DateTime
 
-  header          ToolsPoFinance @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: Cascade)
+  header ToolsPoFinance @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: Cascade)
 
   @@unique([poItemRowId], map: "TOOLS_PO_FINANCE_LINE_item_uid")
   @@index([poOrderNo])
@@ -591,65 +681,65 @@ model ToolsPoFinanceLine {
 
 model ToolsPoReceive {
   /// GIR_NO is NOT IDENTITY in SQL Server — allocate MAX(GIR_NO)+1 on create.
-  girNo           Int       @id @map("GIR_NO")
-  girNoNew        String?   @map("GIR_NO_NEW") @db.NVarChar(20)
-  girDate         DateTime? @map("GIR_DATE") @db.DateTime
-  poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(16)
-  supCode         String?   @map("SUP_CODE") @db.NVarChar(10)
-  girStatus       String?   @map("GIR_STATUS") @db.NVarChar(10)
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  girNo         Int       @id @map("GIR_NO")
+  girNoNew      String?   @map("GIR_NO_NEW") @db.NVarChar(20)
+  girDate       DateTime? @map("GIR_DATE") @db.DateTime
+  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(16)
+  supCode       String?   @map("SUP_CODE") @db.NVarChar(10)
+  girStatus     String?   @map("GIR_STATUS") @db.NVarChar(10)
+  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
-  supplier        Supplier?       @relation(fields: [supCode], references: [supCode])
-  lines           ToolsPoReceiveTrans[]
+  supplier Supplier?             @relation(fields: [supCode], references: [supCode])
+  lines    ToolsPoReceiveTrans[]
 
   @@map("TOOLS_PO_RECEIVE")
 }
 
 model ToolsPoReceiveTrans {
   /// ROW_ID is NOT IDENTITY — allocate explicitly on create.
-  rowId           Int       @id @map("ROW_ID")
-  girNo           Int?      @map("GIR_NO")
-  itemCode        String?   @map("ITEM_CODE") @db.NVarChar(25)
-  itemType        String?   @map("ITEM_TYPE") @db.NVarChar(50)
-  qtyOrder        Decimal?  @map("QTY_ORDER") @db.Decimal(10, 2)
-  invQty          Decimal?  @map("INV_QTY") @db.Decimal(10, 2)
-  recQty          Decimal?  @map("REC_QTY") @db.Decimal(10, 2)
-  price           Decimal?  @map("PRICE") @db.Decimal(10, 2)
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId     Int       @id @map("ROW_ID")
+  girNo     Int?      @map("GIR_NO")
+  itemCode  String?   @map("ITEM_CODE") @db.NVarChar(25)
+  itemType  String?   @map("ITEM_TYPE") @db.NVarChar(50)
+  qtyOrder  Decimal?  @map("QTY_ORDER") @db.Decimal(10, 2)
+  invQty    Decimal?  @map("INV_QTY") @db.Decimal(10, 2)
+  recQty    Decimal?  @map("REC_QTY") @db.Decimal(10, 2)
+  price     Decimal?  @map("PRICE") @db.Decimal(10, 2)
+  toolRefNo Int?      @map("TOOL_REF_NO")
+  creatDt   DateTime? @map("CREAT_DT") @db.DateTime
 
-  grn             ToolsPoReceive?  @relation(fields: [girNo], references: [girNo])
-  tool            GaugeAndTools?   @relation(fields: [toolRefNo], references: [refNo])
+  grn  ToolsPoReceive? @relation(fields: [girNo], references: [girNo])
+  tool GaugeAndTools?  @relation(fields: [toolRefNo], references: [refNo])
 
   @@map("TOOLS_PO_RECEIVE_TRANS")
 }
 
 model ToolsPoSchMaster {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  schDate         DateTime? @map("SCH_DATE") @db.DateTime
-  poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(50)
-  status          String?   @map("STATUS") @db.NVarChar(20)
-  remarks         String?   @map("REMARKS") @db.NVarChar(300)
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
+  schDate       DateTime? @map("SCH_DATE") @db.DateTime
+  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(50)
+  status        String?   @map("STATUS") @db.NVarChar(20)
+  remarks       String?   @map("REMARKS") @db.NVarChar(300)
+  creatDt       DateTime  @map("CREAT_DT") @db.DateTime
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
 
-  lines           ToolsPoSchTrans[]
+  lines ToolsPoSchTrans[]
 
   @@map("TOOLS_PO_SCH_MASTER")
 }
 
 model ToolsPoSchTrans {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  refNo           Int       @map("REF_NO")
-  poTransNo       Int       @map("PO_TRANS_NO")
-  qty             Decimal?  @map("QTY") @db.Decimal(12, 2)
-  schStatus       String?   @map("SCH_STATUS") @db.NVarChar(20)
-  comments        String?   @map("COMMENTS") @db.NVarChar(300)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
+  refNo         Int       @map("REF_NO")
+  poTransNo     Int       @map("PO_TRANS_NO")
+  qty           Decimal?  @map("QTY") @db.Decimal(12, 2)
+  schStatus     String?   @map("SCH_STATUS") @db.NVarChar(20)
+  comments      String?   @map("COMMENTS") @db.NVarChar(300)
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
-  schedule        ToolsPoSchMaster @relation(fields: [refNo], references: [rowId])
+  schedule ToolsPoSchMaster @relation(fields: [refNo], references: [rowId])
 
   @@map("TOOLS_PO_SCH_TRANS")
 }
@@ -659,7 +749,7 @@ model ToolsPoSchTrans {
 // ═══════════════════════════════════════════════════════════════════
 
 model ToolsIssueForCalibration {
-  dcNo            Int       @id @map("DC_NO") @default(autoincrement())
+  dcNo            Int       @id @default(autoincrement()) @map("DC_NO")
   issueDate       DateTime? @map("ISSUE_DATE") @db.DateTime
   receiveName     String?   @map("RECEIVE_NAME") @db.NVarChar(25)
   subCode         String?   @map("SUB_CODE") @db.NVarChar(10)
@@ -670,8 +760,8 @@ model ToolsIssueForCalibration {
   creatDt         DateTime? @map("CREAT_DT") @db.DateTime
   lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
-  inHouseLines    ToolsTransIssueForCalibration[]
-  receiveHeaders  ToolsReceiveForCalibration[]
+  inHouseLines   ToolsTransIssueForCalibration[]
+  receiveHeaders ToolsReceiveForCalibration[]
 
   @@map("TOOLS_ISSUE_FOR_CALIBRATION")
 }
@@ -698,14 +788,14 @@ model ToolsTransIssueForCalibration {
   creatUserIdCd       String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
   creatDt             DateTime? @map("CREAT_DT") @db.DateTime
 
-  calibIssue      ToolsIssueForCalibration? @relation(fields: [dcNo], references: [dcNo])
-  tool            GaugeAndTools?            @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  calibIssue ToolsIssueForCalibration? @relation(fields: [dcNo], references: [dcNo])
+  tool       GaugeAndTools?            @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
 
   @@map("TOOLS_TRANS_ISSUE_FOR_CALIBRATION")
 }
 
 model ToolsReceiveForCalibration {
-  recNo           Int       @id @map("REC_NO") @default(autoincrement())
+  recNo           Int       @id @default(autoincrement()) @map("REC_NO")
   dcNo            Int       @map("DC_NO")
   receiveDate     DateTime? @map("RECEIVE_DATE") @db.DateTime
   partyDcNo       String?   @map("PARTY_DC_NO") @db.NVarChar(20)
@@ -716,56 +806,57 @@ model ToolsReceiveForCalibration {
   creatDt         DateTime? @map("CREAT_DT") @db.DateTime
   lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
-  calibIssue      ToolsIssueForCalibration @relation(fields: [dcNo], references: [dcNo])
-  lines           ToolsTransReceiveForCalibration[]
+  calibIssue ToolsIssueForCalibration          @relation(fields: [dcNo], references: [dcNo])
+  lines      ToolsTransReceiveForCalibration[]
 
   @@map("TOOLS_RECEIVE_FOR_CALIBRATION")
 }
 
 model ToolsTransReceiveForCalibration {
   // ROW_ID is IDENTITY in SQL Server — do not supply on create.
-  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
-  recNo           Int       @map("REC_NO")
-  dcNo            Int       @map("DC_NO")
-  toolOrGaugeNo   String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  description     String?   @map("DESCRIPTION") @db.NVarChar(50)
-  serialNo        Int?      @map("SERIAL_NO")
-  qty             Decimal?  @map("QTY") @db.Decimal(10, 3)
-  price           Decimal?  @map("PRICE") @db.Decimal(10, 3)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
+  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
+  recNo         Int       @map("REC_NO")
+  dcNo          Int       @map("DC_NO")
+  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  description   String?   @map("DESCRIPTION") @db.NVarChar(50)
+  serialNo      Int?      @map("SERIAL_NO")
+  qty           Decimal?  @map("QTY") @db.Decimal(10, 3)
+  price         Decimal?  @map("PRICE") @db.Decimal(10, 3)
+  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
 
-  header          ToolsReceiveForCalibration @relation(fields: [recNo], references: [recNo])
-  tool            GaugeAndTools?             @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  header ToolsReceiveForCalibration @relation(fields: [recNo], references: [recNo])
+  tool   GaugeAndTools?             @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
 
   @@map("TOOLS_TRANS_RECEIVE_FOR_CALIBRATION")
 }
 
 model GaugeControlCard {
-  rowId           Int       @id @map("ROW_ID")
-  toolOrGaugeNo   String    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(15)
-  type            String?   @map("TYPE") @db.NVarChar(25)
-  status          String?   @map("STATUS") @db.NVarChar(15)
-  frequency       String?   @map("FREQUENCY") @db.NVarChar(15)
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.Date
+  rowId         Int       @id @map("ROW_ID")
+  toolOrGaugeNo String    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(15)
+  type          String?   @map("TYPE") @db.NVarChar(25)
+  status        String?   @map("STATUS") @db.NVarChar(15)
+  frequency     String?   @map("FREQUENCY") @db.NVarChar(15)
+  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt       DateTime? @map("CREAT_DT") @db.Date
 
-  tool            GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-  history         GaugeControlCardTrans[]
+  tool    GaugeAndTools?          @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
+  history GaugeControlCardTrans[]
 
   @@unique([toolOrGaugeNo])
   @@map("GAUGE_CONTROL_CARD")
 }
 
 model GaugeControlCardTrans {
-  rowId           Int       @id @map("ROW_ID") @default(autoincrement())
-  refNo           Int       @map("REF_NO")
-  cDate           DateTime? @map("C_DATE") @db.Date
-  nextCDate       DateTime? @map("NEXT_C_DATE") @db.Date
-  remarks         String?   @map("REMARKS") @db.NVarChar(25)
-  creatDt         DateTime  @map("CREAT_DT") @db.Date
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  // ERP ROW_ID is NOT identity; every writer must allocate max(ROW_ID)+1.
+  rowId         Int       @id @map("ROW_ID")
+  refNo         Int       @map("REF_NO")
+  cDate         DateTime? @map("C_DATE") @db.Date
+  nextCDate     DateTime? @map("NEXT_C_DATE") @db.Date
+  remarks       String?   @map("REMARKS") @db.NVarChar(25)
+  creatDt       DateTime  @map("CREAT_DT") @db.Date
+  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
 
-  controlCard     GaugeControlCard @relation(fields: [refNo], references: [rowId])
+  controlCard GaugeControlCard @relation(fields: [refNo], references: [rowId])
 
   @@map("GAUGE_CONTROL_CARD_TRANS")
 }
@@ -775,15 +866,208 @@ model GaugeControlCardTrans {
 // ═══════════════════════════════════════════════════════════════════
 
 model CalibrationFrequencyMaster {
-  rowId             Int       @id @map("ROW_ID") @default(autoincrement())
-  prodToleranceMin  String?   @map("PROD_TOLERANCE_MIN") @db.NVarChar(50)
-  prodToleranceMax  Decimal?  @map("PROD_TOLERANCE_MAX")
-  calibFrequency     Int?      @map("CALIB_FREQUENCY")
-  creatUserIdCd     String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt           DateTime  @default(now()) @map("CREAT_DT")
-  lstUpdtUserIdCd   String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
+  rowId            Int      @id @default(autoincrement()) @map("ROW_ID")
+  prodToleranceMin String?  @map("PROD_TOLERANCE_MIN") @db.NVarChar(50)
+  prodToleranceMax Decimal? @map("PROD_TOLERANCE_MAX")
+  calibFrequency   Int?     @map("CALIB_FREQUENCY")
+  creatUserIdCd    String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
+  creatDt          DateTime @default(now()) @map("CREAT_DT")
+  lstUpdtUserIdCd  String?  @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
 
   @@map("CALIBRATION_FREQUENCY_MASTER")
+}
+
+// Full-fidelity result data owned by this app. Legacy ERP lifecycle tables have
+// short remark columns, so certificates and observation rows live here.
+model CalibrationResultDetail {
+  id                Int                            @id @default(autoincrement()) @map("ID")
+  issueLineRowId    Int                            @unique @map("ISSUE_LINE_ROW_ID")
+  toolOrGaugeNo     String                         @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  dcNo              Int?                           @map("DC_NO")
+  serialNo          Int?                           @map("SERIAL_NO")
+  resultStatus      String                         @map("RESULT_STATUS") @db.NVarChar(30)
+  certificateNo     String?                        @map("CERTIFICATE_NO") @db.NVarChar(100)
+  referenceStandard String?                        @map("REFERENCE_STANDARD") @db.NVarChar(200)
+  errorNoticed      String?                        @map("ERROR_NOTICED") @db.NVarChar(500)
+  comments          String?                        @map("COMMENTS") @db.NVarChar(1000)
+  calibratedBy      String?                        @map("CALIBRATED_BY") @db.NVarChar(100)
+  calibratedDate    DateTime                       @map("CALIBRATED_DATE") @db.DateTime
+  nextCalibDate     DateTime                       @map("NEXT_CALIB_DATE") @db.DateTime
+  location          String?                        @map("LOCATION") @db.NVarChar(100)
+  createdBy         String                         @map("CREATED_BY") @db.NVarChar(10)
+  createdAt         DateTime                       @default(now()) @map("CREATED_AT") @db.DateTime
+  updatedBy         String?                        @map("UPDATED_BY") @db.NVarChar(10)
+  updatedAt         DateTime                       @updatedAt @map("UPDATED_AT") @db.DateTime
+  observations      CalibrationResultObservation[]
+  deviations        CalibrationDeviation[]
+
+  @@index([toolOrGaugeNo, calibratedDate])
+  @@index([dcNo])
+  @@map("TOOLS_APP_CALIBRATION_RESULT")
+}
+
+model CalibrationResultObservation {
+  id            Int                     @id @default(autoincrement()) @map("ID")
+  resultId      Int                     @map("RESULT_ID")
+  lineNo        Int                     @map("LINE_NO")
+  parameter     String                  @map("PARAMETER") @db.NVarChar(100)
+  specification String?                 @map("SPECIFICATION") @db.NVarChar(200)
+  observedMin   String?                 @map("OBSERVED_MIN") @db.NVarChar(50)
+  observedMax   String?                 @map("OBSERVED_MAX") @db.NVarChar(50)
+  gaugeStatus   String?                 @map("GAUGE_STATUS") @db.NVarChar(30)
+  remarks       String?                 @map("REMARKS") @db.NVarChar(500)
+  createdAt     DateTime                @default(now()) @map("CREATED_AT") @db.DateTime
+  result        CalibrationResultDetail @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, lineNo])
+  @@map("TOOLS_APP_CALIBRATION_RESULT_OBS")
+}
+
+model InstrumentDefect {
+  id             Int                       @id @default(autoincrement()) @map("ID")
+  refNo          Int                       @map("REF_NO")
+  toolOrGaugeNo  String                    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  unitCode       String?                   @map("UNIT_CODE") @db.NVarChar(100)
+  reportedDate   DateTime                  @map("REPORTED_DATE") @db.DateTime
+  defectDetails  String                    @map("DEFECT_DETAILS") @db.NVarChar(1000)
+  errorDeviation String?                   @map("ERROR_DEVIATION") @db.NVarChar(500)
+  status         String                    @default("Defect Reported") @map("STATUS") @db.NVarChar(40)
+  disposition    String?                   @map("DISPOSITION") @db.NVarChar(100)
+  reportedBy     String                    @map("REPORTED_BY") @db.NVarChar(50)
+  createdAt      DateTime                  @default(now()) @map("CREATED_AT") @db.DateTime
+  updatedBy      String?                   @map("UPDATED_BY") @db.NVarChar(50)
+  updatedAt      DateTime                  @updatedAt @map("UPDATED_AT") @db.DateTime
+  tool           GaugeAndTools             @relation(fields: [refNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
+  serviceRecords InstrumentServiceRecord[]
+
+  @@index([refNo, reportedDate])
+  @@index([status])
+  @@map("TOOLS_APP_INSTRUMENT_DEFECT")
+}
+
+model InstrumentServiceRecord {
+  id                 Int               @id @default(autoincrement()) @map("ID")
+  defectId           Int?              @map("DEFECT_ID")
+  refNo              Int               @map("REF_NO")
+  toolOrGaugeNo      String            @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  serviceAgency      String?           @map("SERVICE_AGENCY") @db.NVarChar(100)
+  serviceDcNo        String?           @map("SERVICE_DC_NO") @db.NVarChar(30)
+  sentDate           DateTime?         @map("SENT_DATE") @db.DateTime
+  expectedReturnDate DateTime?         @map("EXPECTED_RETURN_DATE") @db.DateTime
+  receivedDate       DateTime?         @map("RECEIVED_DATE") @db.DateTime
+  repairDetails      String?           @map("REPAIR_DETAILS") @db.NVarChar(1000)
+  cost               Decimal?          @map("COST") @db.Decimal(18, 2)
+  verificationResult String?           @map("VERIFICATION_RESULT") @db.NVarChar(500)
+  status             String            @map("STATUS") @db.NVarChar(40)
+  finalStatus        String?           @map("FINAL_STATUS") @db.NVarChar(40)
+  createdBy          String            @map("CREATED_BY") @db.NVarChar(50)
+  createdAt          DateTime          @default(now()) @map("CREATED_AT") @db.DateTime
+  updatedBy          String?           @map("UPDATED_BY") @db.NVarChar(50)
+  updatedAt          DateTime          @updatedAt @map("UPDATED_AT") @db.DateTime
+  defect             InstrumentDefect? @relation(fields: [defectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tool               GaugeAndTools     @relation(fields: [refNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([refNo, sentDate])
+  @@index([defectId])
+  @@index([status])
+  @@map("TOOLS_APP_INSTRUMENT_SERVICE")
+}
+
+model CalibrationDeviation {
+  id               Int                      @id @default(autoincrement()) @map("ID")
+  resultId         Int?                     @map("RESULT_ID")
+  issueLineRowId   Int?                     @map("ISSUE_LINE_ROW_ID")
+  toolOrGaugeNo    String                   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  parameter        String                   @map("PARAMETER") @db.NVarChar(100)
+  expectedValue    String?                  @map("EXPECTED_VALUE") @db.NVarChar(100)
+  observedValue    String?                  @map("OBSERVED_VALUE") @db.NVarChar(100)
+  deviation        String                   @map("DEVIATION") @db.NVarChar(200)
+  permissibleLimit String?                  @map("PERMISSIBLE_LIMIT") @db.NVarChar(100)
+  resultStatus     String                   @map("RESULT_STATUS") @db.NVarChar(20)
+  correctiveAction String?                  @map("CORRECTIVE_ACTION") @db.NVarChar(1000)
+  recordedBy       String                   @map("RECORDED_BY") @db.NVarChar(50)
+  recordedAt       DateTime                 @default(now()) @map("RECORDED_AT") @db.DateTime
+  result           CalibrationResultDetail? @relation(fields: [resultId], references: [id])
+
+  @@index([toolOrGaugeNo, recordedAt])
+  @@index([resultId])
+  @@map("TOOLS_APP_CALIBRATION_DEVIATION")
+}
+
+// Authorized external calibration laboratories. Additive app-owned master;
+// legacy calibration issue headers continue storing the selected code/name.
+model AuthorizedCalibrationAgency {
+  id                  Int       @id @default(autoincrement()) @map("ID")
+  agencyCode          String    @unique @map("AGENCY_CODE") @db.NVarChar(10)
+  agencyName          String    @map("AGENCY_NAME") @db.NVarChar(100)
+  address             String?   @map("ADDRESS") @db.NVarChar(500)
+  contactPerson       String?   @map("CONTACT_PERSON") @db.NVarChar(100)
+  phone               String?   @map("PHONE") @db.NVarChar(30)
+  email               String?   @map("EMAIL") @db.NVarChar(150)
+  accreditationNo     String?   @map("ACCREDITATION_NO") @db.NVarChar(100)
+  accreditationExpiry DateTime? @map("ACCREDITATION_EXPIRY") @db.DateTime
+  capabilities        String?   @map("CAPABILITIES") @db.NVarChar(1000)
+  isAuthorized        Boolean   @default(true) @map("IS_AUTHORIZED")
+  isActive            Boolean   @default(true) @map("IS_ACTIVE")
+  createdBy           String    @map("CREATED_BY") @db.NVarChar(50)
+  createdAt           DateTime  @default(now()) @map("CREATED_AT") @db.DateTime
+  updatedBy           String?   @map("UPDATED_BY") @db.NVarChar(50)
+  updatedAt           DateTime  @updatedAt @map("UPDATED_AT") @db.DateTime
+
+  @@index([isActive, isAuthorized])
+  @@map("TOOLS_APP_CALIBRATION_AGENCY")
+}
+
+// App-owned calibration reminder configuration and delivery outbox.
+model CalibrationNotificationSetting {
+  id            Int      @id @default(1) @map("ID")
+  alertDays     Int      @default(15) @map("ALERT_DAYS")
+  emailEnabled  Boolean  @default(true) @map("EMAIL_ENABLED")
+  systemEnabled Boolean  @default(true) @map("SYSTEM_ENABLED")
+  updatedBy     String?  @map("UPDATED_BY") @db.NVarChar(50)
+  updatedAt     DateTime @updatedAt @map("UPDATED_AT") @db.DateTime
+
+  @@map("TOOLS_APP_NOTIFICATION_SETTING")
+}
+
+model CalibrationNotificationRecipient {
+  id        Int      @id @default(autoincrement()) @map("ID")
+  name      String   @map("NAME") @db.NVarChar(100)
+  email     String   @unique @map("EMAIL") @db.NVarChar(150)
+  unitCode  String?  @map("UNIT_CODE") @db.NVarChar(100)
+  responsibility String? @map("RESPONSIBILITY") @db.NVarChar(15)
+  isActive  Boolean  @default(true) @map("IS_ACTIVE")
+  createdBy String   @map("CREATED_BY") @db.NVarChar(50)
+  createdAt DateTime @default(now()) @map("CREATED_AT") @db.DateTime
+  updatedBy String?  @map("UPDATED_BY") @db.NVarChar(50)
+  updatedAt DateTime @updatedAt @map("UPDATED_AT") @db.DateTime
+
+  @@index([isActive, responsibility])
+  @@map("TOOLS_APP_NOTIFICATION_RECIPIENT")
+}
+
+model CalibrationNotification {
+  id             Int       @id @default(autoincrement()) @map("ID")
+  toolOrGaugeNo  String    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
+  unitCode       String?   @map("UNIT_CODE") @db.NVarChar(100)
+  dueDate        DateTime  @map("DUE_DATE") @db.DateTime
+  reminderDate   DateTime  @default(now()) @map("REMINDER_DATE") @db.DateTime
+  channel        String    @map("CHANNEL") @db.NVarChar(10)
+  recipientEmail String    @default("") @map("RECIPIENT_EMAIL") @db.NVarChar(150)
+  responsibility String?   @map("RESPONSIBILITY") @db.NVarChar(15)
+  ccAddress      String?   @map("CC_ADDRESS") @db.NVarChar(1000)
+  bccAddress     String?   @map("BCC_ADDRESS") @db.NVarChar(1000)
+  subject        String    @map("SUBJECT") @db.NVarChar(200)
+  message        String    @map("MESSAGE") @db.NVarChar(1000)
+  status         String    @default("PENDING") @map("STATUS") @db.NVarChar(20)
+  sentAt         DateTime? @map("SENT_AT") @db.DateTime
+  readAt         DateTime? @map("READ_AT") @db.DateTime
+  errorMessage   String?   @map("ERROR_MESSAGE") @db.NVarChar(500)
+  createdAt      DateTime  @default(now()) @map("CREATED_AT") @db.DateTime
+
+  @@unique([toolOrGaugeNo, unitCode, dueDate, channel, recipientEmail], map: "TOOLS_APP_NOTIFICATION_DEDUPE")
+  @@index([channel, status, createdAt])
+  @@map("TOOLS_APP_CALIBRATION_NOTIFICATION")
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -795,6 +1079,7 @@ model User {
   username     String    @unique @db.NVarChar(50)
   passwordHash String    @db.NVarChar(255)
   name         String    @db.NVarChar(100)
+  email        String?   @db.NVarChar(150)
   /// Matches rolePermissions keys / TOOLS_ROLE_PERMISSION.role
   role         String    @default("Viewer") @db.NVarChar(50)
   /// Optional ERP USER_ID for traceability — not used for auth; no FK
@@ -803,6 +1088,9 @@ model User {
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  userRole   UserRole?
+  unitScopes UserUnitScope[]
 
   @@map("TOOLS_APP_USER")
 }
@@ -826,21 +1114,21 @@ model RolePermission {
 // ═══════════════════════════════════════════════════════════════════
 
 model ToolDocument {
-  id             Int       @id @default(autoincrement())
-  toolOrGaugeNo  String    @db.NVarChar(25)
-  toolRefNo      Int?
+  id            Int       @id @default(autoincrement())
+  toolOrGaugeNo String    @db.NVarChar(25)
+  toolRefNo     Int?
   /// CALIB_CERTIFICATE | CALIB_REPORT | TOOL_MANUAL | DRAWING | DC_ATTACHMENT | OTHER
-  docType        String    @default("OTHER") @db.NVarChar(40)
-  originalName   String    @db.NVarChar(255)
-  storedName     String    @db.NVarChar(255)
-  mimeType       String    @db.NVarChar(120)
-  sizeBytes      Int
-  calibRowId     Int?
-  dcNo           String?   @db.NVarChar(20)
-  remarks        String?   @db.NVarChar(200)
-  creatUserIdCd  String    @db.NVarChar(50)
-  creatDt        DateTime  @default(now())
-  deletedAt      DateTime?
+  docType       String    @default("OTHER") @db.NVarChar(40)
+  originalName  String    @db.NVarChar(255)
+  storedName    String    @db.NVarChar(255)
+  mimeType      String    @db.NVarChar(120)
+  sizeBytes     Int
+  calibRowId    Int?
+  dcNo          String?   @db.NVarChar(20)
+  remarks       String?   @db.NVarChar(200)
+  creatUserIdCd String    @db.NVarChar(50)
+  creatDt       DateTime  @default(now())
+  deletedAt     DateTime?
 
   @@index([toolOrGaugeNo])
   @@index([calibRowId])
@@ -906,4 +1194,70 @@ model MaterialRequisitionTrans {
   @@index([toolOrGaugeNo])
   @@index([status])
   @@map("MATERIAL_REQUISITION_TRANS")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ROLES & PERMISSIONS MATRIX (Module-Level, Unit-Scoped)
+// Net-new tables; no ALTER/DROP on existing tables.
+// ═══════════════════════════════════════════════════════════════════
+
+model Role {
+  roleId        Int      @id @default(autoincrement()) @map("ROLE_ID")
+  roleName      String   @unique @map("ROLE_NAME") @db.NVarChar(50)
+  isSystemAdmin Boolean  @default(false) @map("IS_SYSTEM_ADMIN")
+  createdAt     DateTime @default(now()) @map("CREATED_AT")
+  updatedAt     DateTime @updatedAt @map("UPDATED_AT")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermissionMatrix[]
+
+  @@map("TOOLS_APP_ROLE")
+}
+
+model Module {
+  moduleId          Int      @id @default(autoincrement()) @map("MODULE_ID")
+  moduleKey         String   @unique @map("MODULE_KEY") @db.NVarChar(50)
+  moduleLabel       String   @map("MODULE_LABEL") @db.NVarChar(100)
+  moduleGroup       String   @map("MODULE_GROUP") @db.NVarChar(50)
+  applicableActions String   @map("APPLICABLE_ACTIONS") @db.NVarChar(255)
+  isBuilt           Boolean  @default(true) @map("IS_BUILT")
+  createdAt         DateTime @default(now()) @map("CREATED_AT")
+  updatedAt         DateTime @updatedAt @map("UPDATED_AT")
+
+  rolePermissions RolePermissionMatrix[]
+
+  @@map("TOOLS_APP_MODULE")
+}
+
+model RolePermissionMatrix {
+  roleId   Int     @map("ROLE_ID")
+  moduleId Int     @map("MODULE_ID")
+  action   String  @map("ACTION") @db.NVarChar(30)
+  allowed  Boolean @default(false) @map("ALLOWED")
+
+  role   Role   @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [moduleId], onDelete: Cascade)
+
+  @@id([roleId, moduleId, action])
+  @@map("TOOLS_APP_ROLE_PERMISSION_MATRIX")
+}
+
+model UserRole {
+  userId Int @id @map("USER_ID")
+  roleId Int @map("ROLE_ID")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+
+  @@map("TOOLS_APP_USER_ROLE")
+}
+
+model UserUnitScope {
+  userId    Int    @map("USER_ID")
+  unitScope String @map("UNIT_SCOPE") @db.NVarChar(20)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, unitScope])
+  @@map("TOOLS_APP_USER_UNIT_SCOPE")
 }

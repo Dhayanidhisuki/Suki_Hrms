@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash, Save, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash, Save, FileSpreadsheet, Download } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -17,7 +17,8 @@ import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
 import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { downloadExcel } from "@/lib/downloadExcel";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { COMPANY_UNITS, normalizeCompanyUnit } from "@/lib/companyUnits";
 
 // ERP uses "Active" for open DCs, "Cancelled"/"Closed" for closed DCs
 type IssueStatus = "OPEN" | "CLOSED" | "PARTIAL" | "Active" | "Closed" | "Cancelled";
@@ -87,6 +88,7 @@ interface Tool {
   qtyIn: number;
   totQty?: number;
   location?: string | null;
+  locationName?: string | null;
   returnable?: string | null;
   serialNoGenReq?: string | null;
   status: string;
@@ -171,6 +173,9 @@ function localToday() {
 export default function IssueToolPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const isMovement = pathname.startsWith("/dashboard/movement/");
+  const issueBasePath = isMovement ? "/dashboard/movement/history" : "/dashboard/transactions/issue";
   // List state
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -193,7 +198,7 @@ export default function IssueToolPage() {
   const [empId, setEmpId] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [issueOption, setIssueOption] = useState<string>("SubContractor");
+  const [issueOption, setIssueOption] = useState<string>(isMovement ? "Inhouse or SubContractor" : "SubContractor");
   const [dcRefNo, setDcRefNo] = useState("");
   const [returnable, setReturnable] = useState<"Yes" | "No">("Yes");
   const [transportName, setTransportName] = useState("");
@@ -202,6 +207,8 @@ export default function IssueToolPage() {
   const [lobType, setLobType] = useState<string>("AUTOMOTIVE");
   const [poOrderNo, setPoOrderNo] = useState("");
   const [fromUnit, setFromUnit] = useState("");
+  const [toUnit, setToUnit] = useState("");
+  const [movementType, setMovementType] = useState<"Internal" | "External">("Internal");
   const [issuePurpose, setIssuePurpose] = useState("");
   const [matType, setMatType] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -221,6 +228,7 @@ export default function IssueToolPage() {
 
   // Staged lines
   const [stagedLines, setStagedLines] = useState<StagedLine[]>([]);
+  const bulkMovementApplied = useRef(false);
 
   // Search/Dropdown selection state
   const [searchVal, setSearchVal] = useState("");
@@ -262,11 +270,12 @@ export default function IssueToolPage() {
     if (status && status !== "All") params.set("status", status);
     if (from) params.set("fromDate", from);
     if (to) params.set("toDate", to);
+    if (isMovement) params.set("movementOnly", "1");
     const res = await apiGet<{ items: ToolsIssueHeader[]; total: number }>(`/api/issue?${params}`);
     if (res.data?.items) setIssues(res.data.items);
     if (res.data?.total !== undefined) setTotal(res.data.total);
     setLoading(false);
-  }, [page, searchQuery, listStatusFilter, fromDate, toDate]);
+  }, [page, searchQuery, listStatusFilter, fromDate, toDate, isMovement]);
 
   // Debounced search handler
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -295,6 +304,14 @@ export default function IssueToolPage() {
     }
     setToolSearching(true);
     try {
+      if (isMovement) {
+        const result = await apiGet<{ items: Tool[] }>(
+          `/api/tools?search=${encodeURIComponent(q)}&pageSize=20`
+        );
+        setTools(result.data?.items ?? []);
+        setZeroStockHints([]);
+        return;
+      }
       // Prefer in-stock tools. If none, show zero-stock matches as disabled hints.
       const inStock = await apiGet<{ items: Tool[] }>(
         `/api/tools?search=${encodeURIComponent(q)}&pageSize=15&availableOnly=1`
@@ -314,7 +331,7 @@ export default function IssueToolPage() {
     } finally {
       setToolSearching(false);
     }
-  }, []);
+  }, [isMovement]);
 
   useEffect(() => {
     loadIssues();
@@ -335,7 +352,7 @@ export default function IssueToolPage() {
     const matches =
       t.name?.toLowerCase().includes(queryLower) ||
       t.toolOrGaugeNo.toLowerCase().includes(queryLower);
-    return matches && Number(t.qtyIn ?? 0) > 0;
+    return matches && (isMovement || Number(t.qtyIn ?? 0) > 0);
   });
 
   const getAvailableStock = (toolNo: string) => {
@@ -394,7 +411,7 @@ export default function IssueToolPage() {
           : `${t.name}${toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}`,
       right: (
         <span className="text-[10px] font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
-          {getAvailableStock(t.toolOrGaugeNo)} in-stock
+          {isMovement ? "Single instrument" : `${getAvailableStock(t.toolOrGaugeNo)} in-stock`}
         </span>
       ),
     })),
@@ -415,10 +432,29 @@ export default function IssueToolPage() {
     const toolNo = tool.toolOrGaugeNo;
     const currentAvail = getAvailableStock(toolNo);
     const serialTracked = toolMaintainsSerial(tool.serialNoGenReq);
-    if (!serialTracked && currentAvail <= 0) return;
+    if (!isMovement && !serialTracked && currentAvail <= 0) return;
+    if (isMovement && movementType === "Internal") {
+      const toolUnit = normalizeCompanyUnit(tool.locationName);
+      if (!toolUnit) {
+        setFormErrors((previous) => ({
+          ...previous,
+          lines: `${toolNo} has no valid Current Unit. Set it to Unit 1, Unit 2, or Unit 3 first.`,
+        }));
+        return;
+      }
+      if (fromUnit && fromUnit !== toolUnit) {
+        setFormErrors((previous) => ({
+          ...previous,
+          lines: `All instruments in one movement must come from ${fromUnit}. ${toolNo} belongs to ${toolUnit}.`,
+        }));
+        return;
+      }
+      setFromUnit(toolUnit);
+    }
 
     const existingIdx = stagedLines.findIndex((l) => l.toolOrGaugeNo === toolNo);
     if (existingIdx >= 0) {
+      if (isMovement) return;
       const updated = [...stagedLines];
       if (!serialTracked) {
         updated[existingIdx].issueQty = Math.min(
@@ -439,8 +475,8 @@ export default function IssueToolPage() {
           grouping: tool.grouping || "",
           type: tool.type || "",
           issueQty: 1,
-          qtyAvailable: Number(tool.qtyIn ?? 0),
-          totQty: Number(tool.totQty ?? tool.qtyIn ?? 0),
+          qtyAvailable: isMovement ? 1 : Number(tool.qtyIn ?? 0),
+          totQty: isMovement ? 1 : Number(tool.totQty ?? tool.qtyIn ?? 0),
           location: tool.location || "",
           returnable: tool.returnable === "No" ? "No" : returnable,
           serialNo: "",
@@ -448,7 +484,7 @@ export default function IssueToolPage() {
           processName: "",
           partNo: toolNo,
           price: 0,
-          maintainsSerial: serialTracked,
+          maintainsSerial: isMovement || serialTracked,
           machineOptions: tool.machines ?? [],
         },
       ]);
@@ -456,6 +492,104 @@ export default function IssueToolPage() {
     setSearchVal("");
     setFormErrors((prev) => ({ ...prev, lines: "" }));
   };
+
+  useEffect(() => {
+    if (!isMovement || !showCreate || bulkMovementApplied.current) return;
+    const raw = sessionStorage.getItem("bulkIssueLines");
+    if (!raw) return;
+    bulkMovementApplied.current = true;
+
+    void (async () => {
+      try {
+        const requested = JSON.parse(raw) as Array<{
+          refNo?: number;
+          toolOrGaugeNo?: string;
+          description?: string;
+        }>;
+        const valid = requested.filter((item) => item.toolOrGaugeNo?.trim());
+        if (valid.length === 0) {
+          toastError("No valid instruments were passed from Instrument Master.");
+          return;
+        }
+
+        const resolved = await Promise.all(
+          valid.map(async (item) => {
+            const toolNo = item.toolOrGaugeNo!.trim();
+            const result = await apiGet<{ items?: Tool[] }>(
+              `/api/tools?search=${encodeURIComponent(toolNo)}&pageSize=10`
+            );
+            const tool = result.data?.items?.find(
+              (row) =>
+                row.refNo === item.refNo ||
+                row.toolOrGaugeNo.trim().toLowerCase() === toolNo.toLowerCase()
+            );
+            return tool ? { tool, requested: item } : null;
+          })
+        );
+
+        const found = resolved.filter(
+          (entry): entry is { tool: Tool; requested: (typeof valid)[number] } => entry !== null
+        );
+        if (found.length === 0) {
+          toastError("Selected instruments could not be fetched from Tools Master.");
+          return;
+        }
+
+        const unitRows = found.map(({ tool }) => ({
+          tool,
+          unit: normalizeCompanyUnit(tool.locationName),
+        }));
+        const missingUnit = unitRows.find((entry) => !entry.unit);
+        if (movementType === "Internal" && missingUnit) {
+          setFormErrors((previous) => ({
+            ...previous,
+            lines: `${missingUnit.tool.toolOrGaugeNo} has no valid Current Unit. Update it in Instrument Master first.`,
+          }));
+          return;
+        }
+        const sourceUnits = [...new Set(unitRows.map((entry) => entry.unit).filter(Boolean))];
+        if (movementType === "Internal" && sourceUnits.length > 1) {
+          setFormErrors((previous) => ({
+            ...previous,
+            lines: "Selected instruments belong to different units. Create one movement per source unit.",
+          }));
+          return;
+        }
+
+        const staged = found.map(({ tool, requested: item }) => ({
+          toolOrGaugeNo: tool.toolOrGaugeNo,
+          toolName:
+            !tool.name || tool.name.trim().toUpperCase() === "N/A"
+              ? tool.toolOrGaugeNo
+              : tool.name,
+          description: item.description || tool.name || "",
+          grouping: tool.grouping || "",
+          type: tool.type || "",
+          issueQty: 1,
+          qtyAvailable: 1,
+          totQty: 1,
+          location: tool.location || "",
+          returnable: tool.returnable === "No" ? "No" : "Yes",
+          serialNo: "",
+          machine: tool.machines?.[0] || "",
+          processName: "",
+          partNo: tool.toolOrGaugeNo,
+          price: 0,
+          maintainsSerial: true,
+          machineOptions: tool.machines ?? [],
+        } satisfies StagedLine));
+
+        setStagedLines(staged);
+        if (sourceUnits[0]) setFromUnit(sourceUnits[0]);
+        setFormErrors((previous) => ({ ...previous, lines: "" }));
+        toastSuccess(`${staged.length} instrument(s) added to the movement.`);
+      } catch {
+        toastError("Could not load the selected instruments for movement.");
+      } finally {
+        sessionStorage.removeItem("bulkIssueLines");
+      }
+    })();
+  }, [isMovement, showCreate, movementType]);
 
   const patchLine = (index: number, patch: Partial<StagedLine>) => {
     setStagedLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
@@ -507,7 +641,7 @@ export default function IssueToolPage() {
     const today = localToday();
     setIssueDate(today);
     setDueDate(today);
-    setIssueOption("SubContractor");
+    setIssueOption(isMovement ? "Inhouse or SubContractor" : "SubContractor");
     setDcRefNo("");
     setReturnable("Yes");
     setTransportName("");
@@ -516,6 +650,8 @@ export default function IssueToolPage() {
     setLobType("AUTOMOTIVE");
     setPoOrderNo("");
     setFromUnit("");
+    setToUnit("");
+    setMovementType("Internal");
     setIssuePurpose("");
     setMatType("");
     setRequisitionPending("No");
@@ -650,14 +786,39 @@ export default function IssueToolPage() {
     void loadIssues();
   };
 
+  const downloadMovementDc = async (dcNo: string) => {
+    try {
+      const res = await fetch(`/api/issue/${encodeURIComponent(dcNo)}/pdf`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to download movement DC");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `Movement_DC_${dcNo}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Failed to download movement DC");
+    }
+  };
+
   const openEditIssue = (issue: ToolsIssueHeader) => {
+    const isExternalRecord = issue.issueOption?.startsWith("External:") ?? false;
     setEditIssue(issue);
     setReceiveName(issue.receiveName ?? "");
     setReceiveNameTwo(issue.receiveNameTwo ?? "");
     setSubCode(issue.subCode ?? "");
     setSupCode(issue.supCode ?? "");
     setCustCode(issue.custCode ?? "");
-    setIssueOption(issue.issueOption || "SubContractor");
+    setMovementType(isExternalRecord ? "External" : "Internal");
+    setIssueOption(isExternalRecord ? issue.issueOption?.slice("External:".length) || "SubContractor" : issue.issueOption || "SubContractor");
     setDueDate(issue.dueDate ? String(issue.dueDate).split("T")[0] : localToday());
     setTransportName(issue.transportName ?? "");
     setVehicleNo(issue.vehicleNo ?? "");
@@ -678,6 +839,7 @@ export default function IssueToolPage() {
       setFormErrors({ party: "Enter Customer Code" });
       return;
     }
+    const storedIssueOption = isMovement && movementType === "External" ? `External:${issueOption}` : issueOption;
     const res = await apiPut(`/api/issue/${encodeURIComponent(editIssue.dcNo)}`, {
       receiveName: receiveName.trim(),
       receiveNameTwo: receiveNameTwo || null,
@@ -686,14 +848,14 @@ export default function IssueToolPage() {
         issueOption === "Supplier" || issueOption === "Issue to Supplier" ? supCode || null : null,
       custCode: issueOption === "Customer" ? custCode.trim() : null,
       dueDate,
-      issueOption,
+      issueOption: storedIssueOption,
       returnable,
       transportName: transportName || null,
       vehicleNo: vehicleNo || null,
       comments: comments || null,
       lobType,
       poOrderNo: poOrderNo || null,
-      fromUnit: fromUnit || null,
+      fromUnit: isMovement && movementType === "External" ? null : fromUnit || null,
       issuePurpose: issuePurpose || null,
       matType: matType || null,
     });
@@ -730,22 +892,25 @@ export default function IssueToolPage() {
 
   const openCreate = useCallback(() => {
     setShowCreate(true);
-    router.replace("/dashboard/transactions/issue?action=add", { scroll: false });
-  }, [router]);
+    router.replace(`${isMovement ? "/dashboard/movement/create" : issueBasePath}?action=add`, { scroll: false });
+  }, [isMovement, issueBasePath, router]);
 
   const closeCreate = useCallback(() => {
     handleClearForm();
     setShowCreate(false);
-    router.replace("/dashboard/transactions/issue", { scroll: false });
+    router.replace(issueBasePath, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [issueBasePath, router]);
 
   useEffect(() => {
     const action = searchParams.get("action");
+    const requestedMovement = searchParams.get("movement");
     const fromReq = searchParams.get("requisitionPending");
     const qReqNo = (searchParams.get("reqNo") ?? "").trim();
     if (action === "add" || fromReq === "Yes" || qReqNo) {
       if (!showCreate) setShowCreate(true);
+      if (isMovement && requestedMovement === "external") setMovementType("External");
+      if (isMovement && requestedMovement === "internal") setMovementType("Internal");
       if (fromReq === "Yes" || qReqNo) {
         setRequisitionPending("Yes");
         setReqLinkLocked(true);
@@ -775,23 +940,28 @@ export default function IssueToolPage() {
     e.preventDefault();
     const errors: Record<string, string> = {};
 
-    if (!receiveName.trim()) errors.receiveName = "Receiver Name 1 is required";
+    if (!receiveName.trim()) errors.receiveName = isMovement ? "Receiver name is required" : "Receiver Name 1 is required";
+    const isInternalMovement = isMovement && movementType === "Internal";
+    const isExternalMovement = isMovement && movementType === "External";
+    if (isInternalMovement && !fromUnit.trim()) errors.fromUnit = "Select the source unit";
+    if (isInternalMovement && !toUnit.trim()) errors.toUnit = "Select the destination unit";
+    if (isInternalMovement && fromUnit.trim() === toUnit.trim()) errors.toUnit = "Destination must differ from source unit";
     if (!dueDate) errors.dueDate = "Return due date is required";
     if (!lobType || lobType === "-Select-") errors.lobType = "LOB Type is required";
-    if (issueOption === "SubContractor" && !subCode.trim()) {
+    if ((!isMovement || isExternalMovement) && issueOption === "SubContractor" && !subCode.trim()) {
       errors.party = "Select Party Name (SubContractor)";
     }
-    if ((issueOption === "Supplier" || issueOption === "Issue to Supplier") && !supCode.trim()) {
+    if ((!isMovement || isExternalMovement) && (issueOption === "Supplier" || issueOption === "Issue to Supplier") && !supCode.trim()) {
       errors.party = "Select Party Name (Supplier)";
     }
-    if (issueOption === "Customer" && !custCode.trim()) {
+    if ((!isMovement || isExternalMovement) && issueOption === "Customer" && !custCode.trim()) {
       errors.party = "Enter Customer Code";
     }
     if (stagedLines.length === 0) errors.lines = "At least one tool line item must be added to issue slip";
     if (requisitionPending === "Yes" && !reqNo.trim()) {
       errors.reqNo = "Select a pending requisition (ERP Requisition Pending = Yes)";
     }
-    const overStock = stagedLines.find(
+    const overStock = !isMovement && stagedLines.find(
       (l) => !l.maintainsSerial && (l.issueQty <= 0 || l.issueQty > l.qtyAvailable)
     );
     if (overStock) {
@@ -820,7 +990,7 @@ export default function IssueToolPage() {
       empId: Number.isFinite(empParsed) ? empParsed : 0,
       issueDate,
       dueDate,
-      issueOption,
+      issueOption: isInternalMovement ? "Internal Unit Movement" : isExternalMovement ? `External:${issueOption}` : issueOption,
       dcRefNo: dcRefNo || undefined,
       returnable,
       transportName: transportName || undefined,
@@ -828,7 +998,7 @@ export default function IssueToolPage() {
       comments: comments || undefined,
       lobType,
       poOrderNo: poOrderNo || undefined,
-      fromUnit: fromUnit || undefined,
+      fromUnit: isInternalMovement ? fromUnit || undefined : undefined,
       issuePurpose: issuePurpose || undefined,
       matType: matType || undefined,
       requisitionPending,
@@ -842,6 +1012,7 @@ export default function IssueToolPage() {
         serialNo: l.serialNo.trim() ? Number(l.serialNo) : undefined,
         returnable: l.returnable,
         price: l.price > 0 ? l.price : undefined,
+        toUnit: isInternalMovement ? toUnit.trim() : undefined,
       })),
     };
 
@@ -856,10 +1027,14 @@ export default function IssueToolPage() {
       const linkedReq =
         requisitionPending === "Yes" && reqNo.trim() ? reqNo.trim() : "";
       toastSuccess({
-        title: "Issue DC created",
+        title: isMovement ? "Movement created" : "Issue DC created",
         message: linkedReq
           ? `Issued against requisition ${linkedReq} to ${receiveName}.`
-          : `Tools issued successfully to ${receiveName}.`,
+          : isMovement
+            ? isInternalMovement
+              ? `Instrument movement created from ${fromUnit} to ${toUnit}.`
+              : `External instrument movement created for ${receiveName}.`
+            : `Tools issued successfully to ${receiveName}.`,
         detail: `DC #${res.data.issue.dcNo}`,
       });
       handleClearForm();
@@ -869,7 +1044,7 @@ export default function IssueToolPage() {
         router.replace("/dashboard/transactions/requisition-pending");
         return;
       }
-      router.replace("/dashboard/transactions/issue", { scroll: false });
+      router.replace(issueBasePath, { scroll: false });
       loadIssues(1, searchQuery, listStatusFilter);
       setPage(1);
     }
@@ -885,10 +1060,10 @@ export default function IssueToolPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-                Tools Issue
+                {isMovement ? "Instrument Movement" : "Tools Issue"}
               </h1>
               <p className="text-sm text-[var(--text-muted)] mt-0.5">
-                Issue tools/gauges to department or employee (GAUGE_TOOLS_ISSUE)
+                {isMovement ? "Move individually tracked instruments between company units" : "Issue tools/gauges to department or employee (GAUGE_TOOLS_ISSUE)"}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -910,7 +1085,7 @@ export default function IssueToolPage() {
                     className="group"
                   >
                     <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                    New Issue (DC)
+                    {isMovement ? "Create Movement" : "New Issue (DC)"}
                   </Button>
                 )}
               </RoleGate>
@@ -922,9 +1097,9 @@ export default function IssueToolPage() {
             items={[
               {
                 id: "total-dc-slips",
-                label: "Total Issue Slips",
+                label: isMovement ? "Total Movements" : "Total Issue Slips",
                 value: total,
-                subtext: "DC vouchers generated",
+                subtext: isMovement ? "Internal movement records" : "DC vouchers generated",
                 icon: FileText,
                 iconBg: "bg-[var(--primary-light)]",
                 iconColor: "text-[var(--primary)]",
@@ -932,9 +1107,9 @@ export default function IssueToolPage() {
               },
               {
                 id: "open-slips",
-                label: "Active Open Slips",
+                label: isMovement ? "Currently Moving" : "Active Open Slips",
                 value: issues.filter((i) => i.status === "OPEN" || i.status === "Active").length,
-                subtext: "Tools currently out on DC",
+                subtext: isMovement ? "Awaiting destination receipt" : "Tools currently out on DC",
                 icon: Clock,
                 iconBg: "bg-blue-50 dark:bg-blue-950/30",
                 iconColor: "text-blue-600 dark:text-blue-400",
@@ -942,9 +1117,9 @@ export default function IssueToolPage() {
               },
               {
                 id: "closed-slips",
-                label: "Closed Returns",
+                label: isMovement ? "Received Movements" : "Closed Returns",
                 value: issues.filter((i) => i.status === "CLOSED" || i.status === "Closed").length,
-                subtext: "Fully returned vouchers",
+                subtext: isMovement ? "Completed at destination" : "Fully returned vouchers",
                 icon: PackageCheck,
                 iconBg: "bg-emerald-50 dark:bg-emerald-950/30",
                 iconColor: "text-emerald-600 dark:text-emerald-400",
@@ -1001,7 +1176,7 @@ export default function IssueToolPage() {
                     id="issue-search-input"
                     value={searchQuery}
                     onChange={handleSearchChange}
-                    placeholder="Search DC, party…"
+                    placeholder={isMovement ? "Search movement or instrument…" : "Search DC, party…"}
                     widthClass="w-52"
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -1092,6 +1267,12 @@ export default function IssueToolPage() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
+                            {isMovement && (
+                              <Button type="button" size="sm" variant="outline" onClick={() => void downloadMovementDc(issue.dcNo)}>
+                                <Download className="h-3.5 w-3.5" />
+                                Download DC
+                              </Button>
+                            )}
                             <RoleGate permission="canCreateIssue">
                               {isOpenIssue(issue.status) && (
                                 <>
@@ -1189,8 +1370,8 @@ export default function IssueToolPage() {
             <OverlayModal
               open
               size="5xl"
-              title="Add Issue"
-              subtitle="Issue tools / gauges · DC No Auto"
+              title={isMovement ? "Create Movement" : "Add Issue"}
+              subtitle={isMovement ? "Transfer instruments between company units" : "Issue tools / gauges · DC No Auto"}
               onClose={closeCreate}
               footer={
                 <>
@@ -1207,6 +1388,137 @@ export default function IssueToolPage() {
               }
             >
               <form id="issue-create-form" onSubmit={handleSubmit} className="space-y-0">
+                {isMovement && (
+                  <FormModalSection title="Movement details">
+                    <div className="form-grid">
+                      <div className="md:col-span-2">
+                        <label className="form-label">Movement Type</label>
+                        <div
+                          role="group"
+                          aria-label="Movement type"
+                          className="grid w-full max-w-xl grid-cols-2 gap-1 rounded-xl border border-slate-300 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          {(["Internal", "External"] as const).map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              aria-pressed={movementType === type}
+                              onClick={() => {
+                                setMovementType(type);
+                                setIssueOption(type === "Internal" ? "Internal Unit Movement" : "SubContractor");
+                                setFromUnit("");
+                                setToUnit("");
+                                setSubCode("");
+                                setSupCode("");
+                                setCustCode("");
+                                setFormErrors({});
+                              }}
+                              className={`w-full rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                                movementType === type
+                                  ? "bg-blue-600 text-white shadow-sm"
+                                  : "bg-transparent text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                              }`}
+                            >
+                              {type} Movement
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-[var(--text-muted)]">
+                          {movementType === "Internal" ? "Transfer between company units." : "Send to a subcontractor, supplier, or customer and track its return."}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="form-label">Movement Date</label>
+                        <input type="date" value={issueDate} readOnly className="form-control cursor-not-allowed opacity-80" />
+                      </div>
+                      <div>
+                        <label className="form-label">Expected Receipt Date *</label>
+                        <input type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); setFormErrors((prev) => ({ ...prev, dueDate: "" })); }} className="form-control" />
+                        {formErrors.dueDate && <p className="form-error">{formErrors.dueDate}</p>}
+                      </div>
+                      {movementType === "Internal" && <div>
+                        <label className="form-label">From Unit *</label>
+                        <select value={fromUnit} onChange={(e) => { setFromUnit(e.target.value); setFormErrors((prev) => ({ ...prev, fromUnit: "" })); }} className="form-control">
+                          <option value="">Select source unit</option>
+                          {COMPANY_UNITS.map((unit) => <option key={unit.key} value={unit.label}>{unit.label}</option>)}
+                        </select>
+                        {formErrors.fromUnit && <p className="form-error">{formErrors.fromUnit}</p>}
+                      </div>}
+                      {movementType === "Internal" && <div>
+                        <label className="form-label">To Unit *</label>
+                        <select value={toUnit} onChange={(e) => { setToUnit(e.target.value); setFormErrors((prev) => ({ ...prev, toUnit: "" })); }} className="form-control">
+                          <option value="">Select destination unit</option>
+                          {COMPANY_UNITS.filter((unit) => unit.label !== fromUnit).map((unit) => <option key={unit.key} value={unit.label}>{unit.label}</option>)}
+                        </select>
+                        {formErrors.toUnit && <p className="form-error">{formErrors.toUnit}</p>}
+                      </div>}
+                      {movementType === "External" && <div>
+                        <label className="form-label">External Party Type</label>
+                        <select value={issueOption} onChange={(e) => { setIssueOption(e.target.value); setSubCode(""); setSupCode(""); setCustCode(""); setPartyQuery(""); }} className="form-control">
+                          <option value="SubContractor">Subcontractor</option>
+                          <option value="Supplier">Supplier</option>
+                          <option value="Customer">Customer</option>
+                        </select>
+                      </div>}
+                      {movementType === "External" && (issueOption === "Customer" ? (
+                        <div>
+                          <label className="form-label">Customer Code *</label>
+                          <input value={custCode} onChange={(e) => { setCustCode(e.target.value.toUpperCase()); setFormErrors((prev) => ({ ...prev, party: "" })); }} className="form-control font-mono uppercase" maxLength={12} />
+                          {formErrors.party && <p className="form-error">{formErrors.party}</p>}
+                        </div>
+                      ) : (
+                        <SearchSelect
+                          label={`${issueOption === "Supplier" ? "Supplier" : "Subcontractor"} *`}
+                          placeholder="Search code or name…"
+                          query={partyQuery}
+                          onQueryChange={setPartyQuery}
+                          selected={(issueOption === "Supplier" ? supCode : subCode) ? { primary: issueOption === "Supplier" ? supCode : subCode, secondary: issueOption === "Supplier" ? suppliers.find((s) => s.supCode === supCode)?.supName : subs.find((s) => s.subCode === subCode)?.subName } : null}
+                          onClear={() => { setSubCode(""); setSupCode(""); setPartyQuery(""); }}
+                          items={partySelectItems}
+                          onSelect={(item) => { if (issueOption === "Supplier") { setSupCode(item.id); setSubCode(""); } else { setSubCode(item.id); setSupCode(""); } setPartyQuery(""); setFormErrors((prev) => ({ ...prev, party: "" })); }}
+                          error={formErrors.party}
+                          emptyText="No parties match your search"
+                        />
+                      ))}
+                      <div>
+                        <label className="form-label">Receiver / Responsible Person *</label>
+                        <input value={receiveName} onChange={(e) => setReceiveName(e.target.value)} className="form-control" maxLength={50} placeholder="Name at destination unit" />
+                        {formErrors.receiveName && <p className="form-error">{formErrors.receiveName}</p>}
+                      </div>
+                      {movementType === "External" && <>
+                        <div>
+                          <label className="form-label">Returnable</label>
+                          <select value={returnable} onChange={(e) => setReturnable(e.target.value as "Yes" | "No")} className="form-control"><option value="Yes">Yes</option><option value="No">No</option></select>
+                        </div>
+                        <div>
+                          <label className="form-label">Reference / Challan No.</label>
+                          <input value={dcRefNo} onChange={(e) => setDcRefNo(e.target.value)} className="form-control" maxLength={20} />
+                        </div>
+                        <div>
+                          <label className="form-label">Transporter</label>
+                          <input value={transportName} onChange={(e) => setTransportName(e.target.value)} className="form-control" maxLength={50} />
+                        </div>
+                        <div>
+                          <label className="form-label">Vehicle No.</label>
+                          <input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="form-control" maxLength={25} />
+                        </div>
+                        <div>
+                          <label className="form-label">PO Number</label>
+                          <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className="form-control" maxLength={15} />
+                        </div>
+                      </>}
+                      <div>
+                        <label className="form-label">Purpose</label>
+                        <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} className="form-control" maxLength={100} placeholder="Reason for movement" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="form-label">Comments</label>
+                        <textarea value={comments} onChange={(e) => setComments(e.target.value)} maxLength={100} rows={2} className="form-control h-auto resize-y py-2" />
+                      </div>
+                    </div>
+                  </FormModalSection>
+                )}
+                <div className={isMovement ? "hidden" : "contents"}>
                 <FormModalSection title="Requisition Pending (ERP)">
                   <div className="form-grid">
                     <div>
@@ -1474,9 +1786,10 @@ export default function IssueToolPage() {
                     </div>
                   </div>
                 </FormModalSection>
+                </div>
 
                 <FormModalSection
-                  title="Tool line items"
+                  title={isMovement ? "Instruments to move" : "Tool line items"}
                   action={
                     <span className="text-xs font-semibold text-[var(--text-muted)]">
                       {stagedLines.length} staged · qty {stagedLines.reduce((sum, l) => sum + l.issueQty, 0)}
@@ -1484,8 +1797,9 @@ export default function IssueToolPage() {
                   }
                 >
                   <p className="text-xs text-[var(--text-muted)] -mt-1">
-                    Search an in-stock tool, then click to add a line. Same tool increases qty (up to Available).
-                    Stock reduces only when serial numbers are not maintained.
+                    {isMovement
+                      ? "Search and select an instrument. Each instrument is treated as one tracked asset; movement does not split stock by unit."
+                      : "Search an in-stock tool, then click to add a line. Same tool increases qty (up to Available). Stock reduces only when serial numbers are not maintained."}
                   </p>
 
                   <SearchSelect
@@ -1511,7 +1825,7 @@ export default function IssueToolPage() {
                     emptyText={
                       searchVal.trim().length < 2
                         ? "Type at least 2 characters"
-                        : `No in-stock tools match “${searchVal}”`
+                        : `No ${isMovement ? "instruments" : "in-stock tools"} match “${searchVal}”`
                     }
                     error={formErrors.lines}
                   />
@@ -1538,7 +1852,7 @@ export default function IssueToolPage() {
                                 <button
                                   type="button"
                                   aria-label="Decrease qty"
-                                  disabled={line.issueQty <= 1}
+                                  disabled={isMovement || line.issueQty <= 1}
                                   onClick={() => bumpQty(idx, -1)}
                                   className="w-6 h-6 rounded-md border border-[var(--border-main)] text-xs font-bold disabled:opacity-40 hover:bg-[var(--bg-hover)]"
                                 >
@@ -1547,15 +1861,16 @@ export default function IssueToolPage() {
                                 <input
                                   type="number"
                                   min={1}
-                                  max={line.maintainsSerial ? undefined : line.qtyAvailable}
+                                  max={isMovement ? 1 : line.maintainsSerial ? undefined : line.qtyAvailable}
                                   value={line.issueQty}
+                                  readOnly={isMovement}
                                   onChange={(e) => handleUpdateQty(idx, Number(e.target.value))}
                                   className="w-14 text-center text-xs border border-[var(--border-main)] rounded-lg py-1 bg-[var(--bg-card)] font-mono font-semibold"
                                 />
                                 <button
                                   type="button"
                                   aria-label="Increase qty"
-                                  disabled={!line.maintainsSerial && line.issueQty >= line.qtyAvailable}
+                                  disabled={isMovement || (!line.maintainsSerial && line.issueQty >= line.qtyAvailable)}
                                   onClick={() => bumpQty(idx, 1)}
                                   className="w-6 h-6 rounded-md border border-[var(--border-main)] text-xs font-bold disabled:opacity-40 hover:bg-[var(--bg-hover)]"
                                 >
@@ -1564,7 +1879,7 @@ export default function IssueToolPage() {
                               </div>
                             </td>
                             <td className="py-2 px-3 font-mono text-xs text-[var(--color-success-text)] font-bold">
-                              {line.maintainsSerial ? "Serial" : line.qtyAvailable}
+                              {isMovement ? "Single" : line.maintainsSerial ? "Serial" : line.qtyAvailable}
                             </td>
                             <td className="py-2 px-3">
                               <input

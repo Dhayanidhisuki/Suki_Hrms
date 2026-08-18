@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { GaugeAndToolsCreateSchema } from "@/lib/validators";
-import { computeToolRollupStatus, rollupStatusWhere, TOOL_ROLLUP_STATUSES } from "@/lib/toolStatusRollup";
 import {
   erpCreateDefaults,
   normalizeLocationAndLookups,
@@ -12,6 +13,12 @@ import {
 } from "@/lib/toolCreate";
 import { seedSerialsToMatchTotQty } from "@/lib/toolSerialSeed";
 import { mapSpecInputsToPersist } from "@/lib/toolSpecRows";
+import {
+  normalizeCompanyUnit,
+  scopeKeyToUnit,
+  unitStorageVariants,
+  type CompanyUnitLabel,
+} from "@/lib/companyUnits";
 
 function normalizeSerialFlag(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -53,10 +60,59 @@ function prismaWriteErrorMessage(error: unknown, fallback: string): string {
   return (line || msg).slice(0, 280);
 }
 
+const INSTRUMENT_STATUS_FILTERS = [
+  "Active",
+  "Under Calibration",
+  "Out of Service",
+  "Status Missing",
+  "No Unit",
+] as const;
+
+/** Status tabs on Instrument Master mirror the table's Status and Used Unit columns. */
+function instrumentStatusWhere(filter: string): Record<string, unknown> | null {
+  switch (filter) {
+    case "Active":
+      return { status: { in: ["Active", "Available"] } };
+    case "Under Calibration":
+      return { status: "Under Calibration" };
+    case "Out of Service":
+      return { status: "Out of Service" };
+    case "Status Missing":
+      return { OR: [{ status: null }, { status: "" }] };
+    case "No Unit":
+      return {
+        OR: [
+          { locationName: null },
+          { locationName: "" },
+          { locationName: "-Select-" },
+        ],
+      };
+    default:
+      return null;
+  }
+}
+
+function instrumentDisplayStatus(status: string | null, locationName: string | null): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (normalized === "under calibration") return "Under Calibration";
+  if (normalized === "out of service") return "Out of Service";
+  if (normalized === "active" || normalized === "available") return "Active";
+  if (!normalized) return "Status Missing";
+  if (!locationName || !locationName.trim() || locationName.trim() === "-Select-") return "No Unit";
+  return status!.trim();
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+
+  // Enforce module permission: tool_master (VIEW)
+  const perm = await checkModulePermission(session, "tool_master", "VIEW");
+  if (!perm.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
+
 
   const { searchParams } = req.nextUrl;
   const search = searchParams.get("search") ?? "";
@@ -65,9 +121,32 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type") ?? "";
   const name = searchParams.get("name") ?? "";
   const status = searchParams.get("status") ?? "";
+  const validity = (searchParams.get("validity") ?? "").toLowerCase();
   const onlyActive = searchParams.get("onlyActive") === "1";
   const critical = searchParams.get("critical") ?? ""; // Yes | No | ""
   const department = searchParams.get("department") ?? "";
+  const requestedUnit = normalizeCompanyUnit(searchParams.get("unit"));
+
+  let permittedUnits: CompanyUnitLabel[] | null = null;
+  const isSystemAdmin =
+    session.roleName === "Tools Admin" || session.userId.toLowerCase() === "admin";
+  if (!isSystemAdmin && session.userDbId != null) {
+    const scopes = await prisma.userUnitScope.findMany({
+      where: { userId: session.userDbId },
+      select: { unitScope: true },
+    });
+    if (scopes.length > 0 && !scopes.some((scope) => scope.unitScope === "COMMON")) {
+      permittedUnits = scopes
+        .map((scope) => scopeKeyToUnit(scope.unitScope))
+        .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit));
+    }
+  }
+  if (requestedUnit && permittedUnits && !permittedUnits.includes(requestedUnit)) {
+    return NextResponse.json({ error: "You do not have access to this unit" }, { status: 403 });
+  }
+  const effectiveUnits = requestedUnit ? [requestedUnit] : permittedUnits;
+
+  const catalog = (searchParams.get("catalog") ?? "relevant").toLowerCase();
   /** When "1", only return tools with qtyIn > 0 (Tool Issue picker). */
   const availableOnly = searchParams.get("availableOnly") === "1";
   /** When "1", only tools with HISTORY_CARD_REQ = Yes (History Card module). */
@@ -78,9 +157,36 @@ export async function GET(req: NextRequest) {
   const pageSize = Math.min(100, Number(searchParams.get("pageSize") ?? 20));
   const skip = (page - 1) * pageSize;
 
-  // Status filters on the roll-up computed from GAUGE_SERIAL_NO unit rows,
-  // never on GAUGEANDTOOLS.STATUS (verified to carry no lifecycle signal).
-  const statusWhere = status ? rollupStatusWhere(status) : null;
+  // Instrument Master filters mirror the Status and Used Unit columns shown in its table.
+  const statusWhere = status ? instrumentStatusWhere(status) : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueSoonEnd = new Date(today);
+  dueSoonEnd.setDate(dueSoonEnd.getDate() + 30);
+  const validityWhere = (() => {
+    if (validity === "valid") {
+      return { importedMasterData: { is: { nextCalibrationDue: { gt: dueSoonEnd } } } };
+    }
+    if (validity === "due-soon") {
+      return {
+        importedMasterData: {
+          is: { nextCalibrationDue: { gte: today, lte: dueSoonEnd } },
+        },
+      };
+    }
+    if (validity === "overdue") {
+      return { importedMasterData: { is: { nextCalibrationDue: { lt: today } } } };
+    }
+    if (validity === "no-due-date") {
+      return {
+        OR: [
+          { importedMasterData: { is: null } },
+          { importedMasterData: { is: { nextCalibrationDue: null } } },
+        ],
+      };
+    }
+    return null;
+  })();
 
   const searchClause = (() => {
     if (!search.trim()) return {};
@@ -124,6 +230,27 @@ export async function GET(req: NextRequest) {
         : {},
       critical === "Yes" || critical === "No" ? { criticalItem: critical } : {},
       department ? { deptName: { contains: department } } : {},
+      effectiveUnits?.length
+        ? { locationName: { in: effectiveUnits.flatMap(unitStorageVariants) } }
+        : {},
+
+      catalog === "relevant"
+        ? {
+            OR: [
+              { grouping: { contains: "INSTRUMENT" } },
+              { grouping: { contains: "TOOLS AND GAUGES" } },
+            ],
+          }
+        : catalog === "other"
+          ? {
+              NOT: {
+                OR: [
+                  { grouping: { contains: "INSTRUMENT" } },
+                  { grouping: { contains: "TOOLS AND GAUGES" } },
+                ],
+              },
+            }
+          : {},
       availableOnly ? { qtyIn: { gt: 0 } } : {},
       historyCardOnly
         ? { historyCardReq: { in: ["Yes", "Y", "YES"] } }
@@ -132,7 +259,7 @@ export async function GET(req: NextRequest) {
   };
 
   const where = {
-    AND: [...baseWhere.AND, statusWhere ?? {}],
+    AND: [...baseWhere.AND, statusWhere ?? {}, validityWhere ?? {}],
   };
 
   const orderBy =
@@ -144,39 +271,81 @@ export async function GET(req: NextRequest) {
           ? { grouping: "asc" as const }
           : { creatDt: "desc" as const };
 
-  const [rows, total] = await Promise.all([
-    prisma.gaugeAndTools.findMany({
-      where,
-      skip,
-      take: pageSize,
-      orderBy,
-      include: {
-        serialNumbers: true,
-        machineMapping: { select: { macCode: true } },
-      },
-    }),
-    prisma.gaugeAndTools.count({ where }),
-  ]);
+  try {
+    const [rows, total] = await Promise.all([
+      prisma.gaugeAndTools.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy,
+        include: {
+          machineMapping: { select: { macCode: true } },
+        },
+      }),
+      prisma.gaugeAndTools.count({ where }),
+    ]);
 
-  const items = rows.map(({ machineMapping, ...tool }) => ({
-    ...tool,
-    computedStatus: computeToolRollupStatus(
-      tool.serialNumbers.map((s) => s.status),
-      tool.activeItem
-    ),
-    machines: machineMapping
-      .map((m) => m.macCode)
-      .filter((code): code is string => Boolean(code)),
-  }));
+    // Fetch serial numbers separately to avoid Prisma Engine join panic when mixing refNo and toolOrGaugeNo relations
+    const toolNos = rows.map((r) => r.toolOrGaugeNo).filter((n): n is string => Boolean(n));
+    const serials =
+      toolNos.length > 0
+        ? await prisma.gaugeSerialNo.findMany({
+            where: { toolOrGaugeNo: { in: toolNos } },
+            select: { refNo: true, toolOrGaugeNo: true, status: true, serialNo: true, make: true },
+          })
+        : [];
+
+    const serialsByToolNo = new Map<string, typeof serials>();
+    for (const s of serials) {
+      if (!s.toolOrGaugeNo) continue;
+      const list = serialsByToolNo.get(s.toolOrGaugeNo) ?? [];
+      list.push(s);
+      serialsByToolNo.set(s.toolOrGaugeNo, list);
+    }
+
+    type ImportedMasterRow = {
+      refNo: number;
+      calibrationDate: Date | null;
+      nextCalibrationDue: Date | null;
+      observedError: string | null;
+      calibrationAgency: string | null;
+    };
+    const refNos = rows.map((row) => row.refNo);
+    const importedRows = refNos.length
+      ? await prisma.$queryRaw<ImportedMasterRow[]>(Prisma.sql`
+          SELECT
+            [REF_NO] AS [refNo],
+            [CALIBRATION_DATE] AS [calibrationDate],
+            [NEXT_CALIBRATION_DUE] AS [nextCalibrationDue],
+            [OBSERVED_ERROR] AS [observedError],
+            [CALIBRATION_AGENCY] AS [calibrationAgency]
+          FROM [dbo].[TOOLS_APP_INSTRUMENT_MASTER_DATA]
+          WHERE [REF_NO] IN (${Prisma.join(refNos)})
+        `)
+      : [];
+    const importedByRefNo = new Map(importedRows.map((row) => [row.refNo, row]));
+
+    const items = rows.map(({ machineMapping, ...tool }) => {
+      const toolSerials = serialsByToolNo.get(tool.toolOrGaugeNo ?? "") ?? [];
+      return {
+        ...tool,
+        importedMasterData: importedByRefNo.get(tool.refNo) ?? null,
+        serialNumbers: toolSerials,
+        computedStatus: instrumentDisplayStatus(tool.status, tool.locationName),
+        machines: machineMapping
+          .map((m) => m.macCode)
+          .filter((code): code is string => Boolean(code)),
+      };
+    });
 
   // Enrich each item with nextCalibDate from latest GaugeControlCardTrans
-  const toolNos = items.map((t) => t.toolOrGaugeNo).filter(Boolean) as string[];
-  let nextCalibMap: Map<string, Date | null> = new Map();
-  if (toolNos.length > 0) {
+  const enrichToolNos = items.map((t) => t.toolOrGaugeNo).filter(Boolean) as string[];
+  const nextCalibMap: Map<string, Date | null> = new Map();
+  if (enrichToolNos.length > 0) {
     try {
       // Get latest calibration card history per tool
       const cards = await prisma.gaugeControlCard.findMany({
-        where: { toolOrGaugeNo: { in: toolNos.map((n) => n.slice(0, 15)) } },
+        where: { toolOrGaugeNo: { in: enrichToolNos.map((n) => n.slice(0, 15)) } },
         select: {
           toolOrGaugeNo: true,
           history: { orderBy: { cDate: "desc" as const }, take: 1, select: { nextCDate: true } },
@@ -191,10 +360,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const enriched = items.map((t) => {
     let nextCalibDate = nextCalibMap.get(t.toolOrGaugeNo?.slice(0, 15) ?? "") ?? null;
+
+
 
     // If no history found but frequency is set, derive from tool creation date + frequency
     if (!nextCalibDate && (t.calibrationFrqMonths ?? 0) > 0) {
@@ -204,38 +373,79 @@ export async function GET(req: NextRequest) {
       nextCalibDate = derived;
     }
 
+    // Validity/Calibration Due is ALWAYS computed live at request time
+    // (Next Calibration Due − CURRENT_DATE) — never read from a stored column.
     let calibDueStatus: "overdue" | "due-soon" | "ok" | null = null;
-    if (nextCalibDate && t.calibrationFrqMonths) {
-      const diffDays = Math.ceil((nextCalibDate.getTime() - today.getTime()) / 86400000);
-      calibDueStatus = diffDays < 0 ? "overdue" : diffDays <= 30 ? "due-soon" : "ok";
+    let calibDueInDays: number | null = null;
+    if (nextCalibDate) {
+      calibDueInDays = Math.ceil((nextCalibDate.getTime() - today.getTime()) / 86400000);
+      calibDueStatus =
+        calibDueInDays < 0 ? "overdue" : calibDueInDays <= 30 ? "due-soon" : "ok";
     }
-    return { ...t, nextCalibDate: nextCalibDate ? nextCalibDate.toISOString() : null, calibDueStatus };
+    return {
+      ...t,
+      nextCalibDate: nextCalibDate ? nextCalibDate.toISOString() : null,
+      calibDueStatus,
+      calibDueInDays,
+    };
   });
 
   let statusCounts: Record<string, number> | undefined;
+  let validityCounts: Record<string, number> | undefined;
   if (includeCounts) {
     const [allCount, ...perStatus] = await Promise.all([
       prisma.gaugeAndTools.count({ where: baseWhere }),
-      ...TOOL_ROLLUP_STATUSES.map((badge) => {
-        const sw = rollupStatusWhere(badge);
+      ...INSTRUMENT_STATUS_FILTERS.map((badge) => {
+        const sw = instrumentStatusWhere(badge);
         return prisma.gaugeAndTools.count({
           where: { AND: [...baseWhere.AND, sw ?? {}] },
         });
       }),
     ]);
     statusCounts = { All: allCount };
-    TOOL_ROLLUP_STATUSES.forEach((badge, i) => {
+    INSTRUMENT_STATUS_FILTERS.forEach((badge, i) => {
       statusCounts![badge] = perStatus[i] ?? 0;
+    });
+
+    const validityFilters = {
+      Valid: { importedMasterData: { is: { nextCalibrationDue: { gt: dueSoonEnd } } } },
+      "Due Soon": {
+        importedMasterData: { is: { nextCalibrationDue: { gte: today, lte: dueSoonEnd } } },
+      },
+      Overdue: { importedMasterData: { is: { nextCalibrationDue: { lt: today } } } },
+      "No Due Date": {
+        OR: [
+          { importedMasterData: { is: null } },
+          { importedMasterData: { is: { nextCalibrationDue: null } } },
+        ],
+      },
+    };
+    const validityValues = await Promise.all(
+      Object.values(validityFilters).map((filter) =>
+        prisma.gaugeAndTools.count({ where: { AND: [...baseWhere.AND, filter] } })
+      )
+    );
+    validityCounts = { All: allCount };
+    Object.keys(validityFilters).forEach((label, index) => {
+      validityCounts![label] = validityValues[index] ?? 0;
     });
   }
 
-  return NextResponse.json({
-    items: enriched,
-    total,
-    page,
-    pageSize,
-    ...(statusCounts ? { statusCounts } : {}),
-  });
+    return NextResponse.json({
+      items: enriched,
+      total,
+      page,
+      pageSize,
+      ...(statusCounts ? { statusCounts } : {}),
+      ...(validityCounts ? { validityCounts } : {}),
+    });
+  } catch (error) {
+    console.error("GET /api/tools failed:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch tools" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -243,8 +453,11 @@ export async function POST(req: NextRequest) {
   const authCheck = await requireSession(session);
   if (!authCheck.ok) return authCheck.response;
 
-  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
-  if (!permCheck.ok) return permCheck.response;
+  // Enforce module permission: tool_master (CREATE)
+  const rbacPerm = await checkModulePermission(session, "tool_master", "CREATE");
+  if (!rbacPerm.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = GaugeAndToolsCreateSchema.safeParse(body);
@@ -290,12 +503,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (
-    toolData.historyCardReq === "Yes" &&
-    (toolData.calibrationFrqMonths == null || toolData.calibrationFrqMonths <= 0)
-  ) {
+  if (toolData.calibrationFrqMonths == null || toolData.calibrationFrqMonths <= 0) {
     return NextResponse.json(
-      { error: "Calibration Frequency (months) must be > 0 when History Card = Yes" },
+      { error: "Calibration Frequency (months) must be greater than 0" },
       { status: 400 }
     );
   }
@@ -340,7 +550,7 @@ export async function POST(req: NextRequest) {
           name: toolData.name.trim(),
           grouping: toolData.grouping.trim(),
           type: stripPlaceholder(toolData.type) ?? null,
-          description: stripPlaceholder(toolData.description) ?? null,
+          description: toolData.description ?? null,
           refNo: nextRef,
           serialNoGenReq: serialFlag ?? "N",
           qtyIn: toolData.qtyIn ?? toolData.totQty,
@@ -361,7 +571,7 @@ export async function POST(req: NextRequest) {
           machineSoftware: toolData.machineSoftware ?? defaults.machineSoftware,
           ineligibleForItc: toolData.ineligibleForItc ?? defaults.ineligibleForItc,
           isCustGiven: toolData.isCustGiven ?? defaults.isCustGiven,
-          historyCardReq: toolData.historyCardReq ?? defaults.historyCardReq,
+          historyCardReq: "Yes",
           companyId: normalized.companyId ?? defaults.companyId,
           // Do not invent a lifecycle STATUS — ERP leaves this null for new items.
           status: toolData.status === undefined ? null : toolData.status,
@@ -375,7 +585,7 @@ export async function POST(req: NextRequest) {
         await seedSerialsToMatchTotQty(tx, {
           toolRefNo: created.refNo,
           toolOrGaugeNo: created.toolOrGaugeNo,
-          totQty: created.totQty,
+          totQty: created.totQty ? Number(created.totQty) : null,
           userId,
           isAsset: created.isAsset,
           preventiveFrqMonths: created.preventiveFrqMonths,

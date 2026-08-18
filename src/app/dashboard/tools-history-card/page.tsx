@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, Package, ExternalLink, FileText, Orbit } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Package, ExternalLink, FileText, Orbit } from "lucide-react";
 import {
   HistoryCardShell,
   HistoryCardSearch,
@@ -68,6 +68,7 @@ export default function ToolsHistoryCardPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ToolHistoryItem | null>(null);
   const [units, setUnits] = useState<UnitHistoryRow[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
@@ -78,9 +79,15 @@ export default function ToolsHistoryCardPage() {
   const [detailView, setDetailView] = useState<"units" | "journey">("units");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadTools = useCallback(async (q = "") => {
+  const pageSize = 50;
+
+  const loadTools = useCallback(async (q = "", pageNo = 1) => {
     setLoading(true);
-    const params = new URLSearchParams({ pageSize: "50", historyCardOnly: "1" });
+    const params = new URLSearchParams({
+      page: String(pageNo),
+      pageSize: String(pageSize),
+      catalog: "relevant",
+    });
     if (q.trim()) params.set("search", q.trim());
     const res = await apiGet<{ items: ToolHistoryItem[]; total: number }>(
       `/api/tools?${params}`
@@ -91,13 +98,6 @@ export default function ToolsHistoryCardPage() {
     setLoading(false);
     return items;
   }, []);
-
-  useEffect(() => {
-    loadTools("").then((items) => {
-      if (items[0]) void selectTool(items[0], false);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadTools]);
 
   const selectTool = async (tool: ToolHistoryItem, scroll = true) => {
     setSelected(tool);
@@ -122,14 +122,30 @@ export default function ToolsHistoryCardPage() {
     }
   };
 
+  useEffect(() => {
+    // Initial server data hydration for this client-only history workspace.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadTools("", 1).then((items) => {
+      if (items[0]) void selectTool(items[0], false);
+    });
+  }, [loadTools]);
+
   const handleSearch = (val: string) => {
     setQuery(val);
+    setPage(1);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(async () => {
-      const items = await loadTools(val);
+      const items = await loadTools(val, 1);
       if (items[0]) void selectTool(items[0], false);
       else setSelected(null);
     }, 350);
+  };
+
+  const changePage = async (nextPage: number) => {
+    setPage(nextPage);
+    const items = await loadTools(query, nextPage);
+    if (items[0]) void selectTool(items[0], false);
+    else setSelected(null);
   };
 
   const handleCompletePm = async (unitRefNo: number) => {
@@ -159,7 +175,7 @@ export default function ToolsHistoryCardPage() {
           id: "hc-total",
           label: "History Card Tools",
           value: total,
-          subtext: "HISTORY_CARD_REQ = Yes",
+          subtext: "All tracked instruments and gauges",
         },
         {
           id: "hc-page-stock",
@@ -185,7 +201,7 @@ export default function ToolsHistoryCardPage() {
           value={query}
           onChange={handleSearch}
           placeholder="Search history-card tool number or name…"
-          hint="Only masters with History Card = Yes. Consumables like OTH_J00326 (History Card = No) are excluded."
+          hint="All relevant instruments and gauges are available. Use search or page navigation to find a card."
         />
       }
     >
@@ -193,7 +209,11 @@ export default function ToolsHistoryCardPage() {
         {/* Tool list */}
         <HistoryCardPanel
           title="Registered Cards"
-          subtitle={`Showing ${tools.length} of ${total.toLocaleString()}`}
+          subtitle={
+            total > 0
+              ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total.toLocaleString()}`
+              : "No registered cards"
+          }
           className="xl:col-span-5"
           bodyClassName="p-0"
         >
@@ -277,6 +297,35 @@ export default function ToolsHistoryCardPage() {
                   </div>
                 )}
               </div>
+              {total > pageSize && (
+                <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t-[0.5px] border-[var(--border-main)] bg-[var(--bg-card)] px-5 py-3">
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Page {page} of {Math.ceil(total / pageSize)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={loading || page <= 1}
+                      onClick={() => void changePage(page - 1)}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={loading || page >= Math.ceil(total / pageSize)}
+                      onClick={() => void changePage(page + 1)}
+                    >
+                      Next
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </HistoryCardPanel>
@@ -448,7 +497,7 @@ export default function ToolsHistoryCardPage() {
               {detailView === "journey" ? (
                 <HistoryCardPanel
                   title="360° Tool Journey"
-                  subtitle="PO · GRN · Issue · Receive · Calibration · Status — newest first"
+                  subtitle="Purchase · GRN · Movement · Calibration · Defect · Service · Documents · Status"
                   actions={
                     <button
                       type="button"

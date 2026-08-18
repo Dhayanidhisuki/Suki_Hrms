@@ -9,6 +9,9 @@ import {
   ChevronRight,
   FileText,
   Gauge,
+  ShieldAlert,
+  TriangleAlert,
+  Wrench,
   Orbit,
   Package,
   ShoppingCart,
@@ -23,6 +26,10 @@ const FILTERS: { type: JourneyEventType; label: string }[] = [
   { type: "issue", label: "Issue" },
   { type: "receive", label: "Receive" },
   { type: "calibration", label: "Calibration" },
+  { type: "defect", label: "Defect" },
+  { type: "service", label: "Service" },
+  { type: "deviation", label: "Deviation" },
+  { type: "document", label: "Documents" },
   { type: "status", label: "Status" },
 ];
 
@@ -54,6 +61,26 @@ const TYPE_STYLE: Record<
     icon: CalendarClock,
     chip: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
     rail: "bg-amber-500",
+  },
+  defect: {
+    icon: TriangleAlert,
+    chip: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
+    rail: "bg-red-500",
+  },
+  service: {
+    icon: Wrench,
+    chip: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
+    rail: "bg-orange-500",
+  },
+  deviation: {
+    icon: ShieldAlert,
+    chip: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+    rail: "bg-rose-500",
+  },
+  document: {
+    icon: FileText,
+    chip: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
+    rail: "bg-cyan-600",
   },
   status: {
     icon: Gauge,
@@ -164,12 +191,18 @@ export default function ToolJourneyTimeline({
     issue: true,
     receive: true,
     calibration: true,
+    defect: true,
+    service: true,
+    deviation: true,
+    document: true,
     status: true,
   });
   const [serialFilter, setSerialFilter] = useState<string>("ALL");
 
   useEffect(() => {
     let cancelled = false;
+    // Reset the previous instrument while the selected instrument's journey is fetched.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
     setData(null);
@@ -233,8 +266,8 @@ export default function ToolJourneyTimeline({
         <FileText className="w-9 h-9 text-[var(--text-muted)] mx-auto mb-3 opacity-50" />
         <p className="text-sm font-semibold text-[var(--text-primary)]">No journey events yet</p>
         <p className="text-xs text-[var(--text-muted)] mt-1 max-w-sm mx-auto">
-          PO, GRN, issue, receive, calibration, and status history will appear here as transactions
-          are recorded for this tool.
+          Purchase, movement, calibration, defect, service, deviation, document, and status history
+          will appear here as transactions are recorded for this instrument.
         </p>
       </div>
     );

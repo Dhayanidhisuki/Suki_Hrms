@@ -13,7 +13,7 @@ export const ERP_ISSUE_TYPES = [
   "For Trial",
 ] as const;
 
-export const ERP_COMPANY_UNITS = ["All", "Unit-1", "Unit-2", "Unit-3"] as const;
+export const ERP_COMPANY_UNITS = ["Unit 1", "Unit 2", "Unit 3"] as const;
 
 export const PLACEHOLDER_VALUES = new Set([
   "",

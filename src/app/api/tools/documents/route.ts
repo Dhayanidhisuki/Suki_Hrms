@@ -19,15 +19,16 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const toolOrGaugeNo = (searchParams.get("toolOrGaugeNo") ?? "").trim();
   const dcNo = (searchParams.get("dcNo") ?? "").trim();
+  const docType = (searchParams.get("docType") ?? "").trim();
+  const categoryGroup = (searchParams.get("categoryGroup") ?? "").trim();
+  const search = (searchParams.get("search") ?? "").trim();
+  const fromDt = (searchParams.get("fromDt") ?? "").trim();
+  const toDt = (searchParams.get("toDt") ?? "").trim();
   const calibRowIdRaw = searchParams.get("calibRowId");
   const calibRowId = calibRowIdRaw ? Number(calibRowIdRaw) : null;
-
-  if (!toolOrGaugeNo && !dcNo) {
-    return NextResponse.json(
-      { error: "toolOrGaugeNo or dcNo is required" },
-      { status: 400 }
-    );
-  }
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(searchParams.get("pageSize") ?? "30") || 30));
+  const includeStats = searchParams.get("includeStats") === "1" || searchParams.get("includeStats") === "true";
 
   try {
     if (!prisma.toolDocument) {
@@ -40,18 +41,112 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const items = await prisma.toolDocument.findMany({
-      where: {
-        deletedAt: null,
-        ...(toolOrGaugeNo ? { toolOrGaugeNo } : {}),
-        ...(dcNo ? { dcNo: dcNo.slice(0, 20) } : {}),
-        ...(calibRowId && Number.isFinite(calibRowId) ? { calibRowId } : {}),
-      },
-      orderBy: { creatDt: "desc" },
-      take: 100,
-    });
+    // Build where clause
+    const where: any = {
+      deletedAt: null,
+    };
 
-    return NextResponse.json({ items });
+    if (toolOrGaugeNo) {
+      where.toolOrGaugeNo = toolOrGaugeNo;
+    }
+    if (dcNo) {
+      where.dcNo = dcNo.slice(0, 20);
+    }
+    if (calibRowId && Number.isFinite(calibRowId)) {
+      where.calibRowId = calibRowId;
+    }
+
+    if (docType && isToolDocType(docType)) {
+      where.docType = docType;
+    } else if (categoryGroup && categoryGroup !== "ALL") {
+      if (categoryGroup === "CERTIFICATES") {
+        where.docType = { in: ["CALIB_CERTIFICATE", "CALIB_REPORT"] };
+      } else if (categoryGroup === "PHOTOS") {
+        where.docType = { in: ["TOOL_PHOTO", "CALIB_PHOTO", "DEFECT_PHOTO"] };
+      } else if (categoryGroup === "TECHNICAL") {
+        where.docType = { in: ["TOOL_MANUAL", "DRAWING"] };
+      } else if (categoryGroup === "LOGISTICS") {
+        where.docType = { in: ["DC_ATTACHMENT"] };
+      } else if (categoryGroup === "OTHER") {
+        where.docType = "OTHER";
+      }
+    }
+
+    if (fromDt || toDt) {
+      where.creatDt = {};
+      if (fromDt) {
+        where.creatDt.gte = new Date(`${fromDt}T00:00:00.000Z`);
+      }
+      if (toDt) {
+        where.creatDt.lte = new Date(`${toDt}T23:59:59.999Z`);
+      }
+    }
+
+    if (search) {
+      where.OR = [
+        { originalName: { contains: search } },
+        { toolOrGaugeNo: { contains: search } },
+        { dcNo: { contains: search } },
+        { remarks: { contains: search } },
+        { creatUserIdCd: { contains: search } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.toolDocument.findMany({
+        where,
+        orderBy: { creatDt: "desc" },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+      }),
+      prisma.toolDocument.count({ where }),
+    ]);
+
+    let stats = null;
+    if (includeStats) {
+      const [
+        totalDocs,
+        totalCerts,
+        totalPhotos,
+        totalManuals,
+      ] = await Promise.all([
+        prisma.toolDocument.count({ where: { deletedAt: null } }),
+        prisma.toolDocument.count({
+          where: {
+            deletedAt: null,
+            docType: { in: ["CALIB_CERTIFICATE", "CALIB_REPORT"] },
+          },
+        }),
+        prisma.toolDocument.count({
+          where: {
+            deletedAt: null,
+            docType: { in: ["TOOL_PHOTO", "CALIB_PHOTO", "DEFECT_PHOTO"] },
+          },
+        }),
+        prisma.toolDocument.count({
+          where: {
+            deletedAt: null,
+            docType: { in: ["TOOL_MANUAL", "DRAWING"] },
+          },
+        }),
+      ]);
+
+      stats = {
+        totalDocs,
+        totalCerts,
+        totalPhotos,
+        totalManuals,
+      };
+    }
+
+    return NextResponse.json({
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+      stats,
+    });
   } catch (err) {
     console.error("GET /api/tools/documents failed:", err);
     const message =

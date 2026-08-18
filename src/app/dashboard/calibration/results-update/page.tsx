@@ -14,6 +14,7 @@ import { SelectionFilter } from "@/components/ui/SelectionFilter";
 import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 import { toastSuccess, toastError } from "@/lib/appToast";
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
 interface CalibrationRecord {
   refNo: number;
@@ -36,6 +37,10 @@ interface CalibrationRecord {
   receiveName?: string | null;
   issueFor?: string | null;
   calibratedBy?: string | null;
+  certificateNo?: string | null;
+  referenceStandard?: string | null;
+  errorNoticed?: string | null;
+  comments?: string | null;
   gSpecUpperMin?: number | string | null;
   gSpecUpperMax?: number | string | null;
   wLimitLowerMax?: number | string | null;
@@ -45,8 +50,6 @@ interface CalibrationRecord {
   prodSpecUpperMin?: number | string | null;
   prodSpecUpperMax?: number | string | null;
 }
-
-type LocationOption = { locationName: string; area?: string | null; rack?: string | null };
 
 const fmtDate = (v?: string | null) => (v ? String(v).split("T")[0] : "—");
 const fmtNum = (v?: number | string | null) =>
@@ -103,12 +106,12 @@ type ObservedSpecRow = {
   spec?: string;
   obsMin: string;
   obsMax: string;
+  gaugeStatus: string;
   note: string;
 };
 
 export default function CalibrationResultsUpdatePage() {
   const [items, setItems] = useState<CalibrationRecord[]>([]);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -122,6 +125,7 @@ export default function CalibrationResultsUpdatePage() {
     search: "",
   });
   const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
+  const [pageOpenedAt] = useState(() => Date.now());
 
   const [selectedRecord, setSelectedRecord] = useState<CalibrationRecord | null>(null);
   const [uploadRecord, setUploadRecord] = useState<CalibrationRecord | null>(null);
@@ -182,18 +186,15 @@ export default function CalibrationResultsUpdatePage() {
     if (appliedFilters.fromDue) params.set("fromDue", appliedFilters.fromDue);
     if (appliedFilters.toDue) params.set("toDue", appliedFilters.toDue);
     if (appliedFilters.search.trim()) params.set("search", appliedFilters.search.trim());
-    const [res, locRes] = await Promise.all([
-      apiGet<{ items: CalibrationRecord[] }>(`/api/calibration/results-update?${params}`),
-      apiGet<{ items: LocationOption[] }>("/api/lookups/locations"),
-    ]);
+    const res = await apiGet<{ items: CalibrationRecord[] }>(`/api/calibration/results-update?${params}`);
     if (res.data?.items) setItems(res.data.items);
     else setItems([]);
-    if (locRes.data?.items) setLocations(locRes.data.items);
     setLoading(false);
   }, [appliedFilters]);
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   const loadObservedSpecs = async (toolOrGaugeNo: string) => {
@@ -238,6 +239,7 @@ export default function CalibrationResultsUpdatePage() {
             spec: s.specification || undefined,
             obsMin: s.minRange || "",
             obsMax: s.maxRange || "",
+            gaugeStatus: "",
             note: "",
           }))
       );
@@ -249,10 +251,10 @@ export default function CalibrationResultsUpdatePage() {
   const handleOpenUpdate = (rec: CalibrationRecord) => {
     setSelectedRecord(rec);
     setCalibResult("AVAILABLE FOR USE");
-    setCertificateNo("");
-    setReferenceStandard("");
-    setErrorNoticed("");
-    setComments(rec.remarks || "");
+    setCertificateNo(rec.certificateNo || "");
+    setReferenceStandard(rec.referenceStandard || "");
+    setErrorNoticed(rec.errorNoticed || "");
+    setComments(rec.comments || rec.remarks || "");
     setCalibratedBy(rec.calibratedBy || "");
     const today = new Date().toISOString().split("T")[0];
     const months =
@@ -288,8 +290,10 @@ export default function CalibrationResultsUpdatePage() {
         observedSpecs.length > 0
           ? observedSpecs.map((s) => ({
               parameter: s.parameter,
+              specification: s.spec,
               obsMin: s.obsMin.trim() || undefined,
               obsMax: s.obsMax.trim() || undefined,
+              gaugeStatus: s.gaugeStatus.trim() || calibResult,
               note: s.note.trim() || undefined,
             }))
           : undefined,
@@ -379,7 +383,7 @@ export default function CalibrationResultsUpdatePage() {
                 value: items.filter(
                   (i) =>
                     i.nextCDate &&
-                    new Date(i.nextCDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                    new Date(i.nextCDate) <= new Date(pageOpenedAt + 30 * 24 * 60 * 60 * 1000)
                 ).length,
                 subtext: "Upcoming calibration due date",
                 icon: RefreshCw,
@@ -505,6 +509,8 @@ export default function CalibrationResultsUpdatePage() {
                         "Calibration Freq",
                         "Last Calib Date",
                         "Next Calib Due",
+                        "Certificate No",
+                        "Calibrated By",
                         "Remarks",
                         "Status",
                         "Actions",
@@ -542,6 +548,12 @@ export default function CalibrationResultsUpdatePage() {
                         <td className="py-3.5 px-3 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
                           {fmtDate(item.nextCDate)}
                         </td>
+                        <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)]">
+                          {item.certificateNo || "—"}
+                        </td>
+                        <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
+                          {item.calibratedBy || "—"}
+                        </td>
                         <td className="py-3.5 px-3 text-xs text-[var(--text-muted)] max-w-[160px] truncate">
                           {item.remarks ?? "—"}
                         </td>
@@ -574,7 +586,7 @@ export default function CalibrationResultsUpdatePage() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                        <td colSpan={11} className="py-8 text-center text-sm text-[var(--text-muted)]">
                           No calibration pending records found.
                         </td>
                       </tr>
@@ -612,24 +624,14 @@ export default function CalibrationResultsUpdatePage() {
                 <ReadField label="Calib. Due Dt." value={fmtDate(selectedRecord.calibDueDate)} mono />
                 <ReadField label="Current Status" value={selectedRecord.status || "—"} />
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                    Location
-                  </label>
-                  <select
+                  <MasterSearchSelect
+                    kind="location"
+                    label="Location"
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="form-control"
-                  >
-                    <option value="">-Select-</option>
-                    {location && !locations.some((l) => l.locationName === location) && (
-                      <option value={location}>{location}</option>
-                    )}
-                    {locations.map((l) => (
-                      <option key={l.locationName} value={l.locationName}>
-                        {l.locationName}
-                      </option>
-                    ))}
-                  </select>
+                    selectedLabel={location}
+                    onChange={(value) => setLocation(value)}
+                    placeholder="Search location…"
+                  />
                 </div>
                 <ReadField
                   label="Calib. Freq (Months)"
@@ -674,7 +676,7 @@ export default function CalibrationResultsUpdatePage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Parameter", "Spec", "Obs Min", "Obs Max", "Note"].map((h) => (
+                          {["Parameter", "Spec", "Obs Min", "Obs Max", "Gauge Status", "Note"].map((h) => (
                             <th
                               key={h}
                               className="text-left text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2"
@@ -689,6 +691,24 @@ export default function CalibrationResultsUpdatePage() {
                           <tr key={`${row.parameter}-${idx}`}>
                             <td className="py-1.5 px-2 font-medium">{row.parameter}</td>
                             <td className="py-1.5 px-2 text-[var(--text-muted)]">{row.spec || "—"}</td>
+                            <td className="py-1.5 px-2">
+                              <select
+                                className="form-control"
+                                value={row.gaugeStatus}
+                                onChange={(e) =>
+                                  setObservedSpecs((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, gaugeStatus: e.target.value } : r
+                                    )
+                                  )
+                                }
+                              >
+                                <option value="">Use overall result</option>
+                                {RESULT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.value}</option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="py-1.5 px-2">
                               <input
                                 className="form-control font-mono"
@@ -750,11 +770,12 @@ export default function CalibrationResultsUpdatePage() {
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                    Error Noticed
+                    Error / Observation Code
                   </label>
                   <input
                     value={errorNoticed}
                     onChange={(e) => setErrorNoticed(e.target.value)}
+                    placeholder="Enter error or observation code"
                     className="w-full text-sm border border-[var(--border-main)] rounded-lg px-3 py-2 bg-[var(--bg-subtle)]"
                   />
                 </div>
@@ -857,7 +878,7 @@ export default function CalibrationResultsUpdatePage() {
                 defaultDocType="CALIB_CERTIFICATE"
                 allowedTypes={["CALIB_CERTIFICATE", "CALIB_REPORT", "OTHER"]}
                 title="Upload / Change Image & Certificate"
-                uploadButtonLabel="Upload/Change Image"
+                uploadButtonLabel="Upload Certificate"
                 compact
               />
 
@@ -884,7 +905,7 @@ export default function CalibrationResultsUpdatePage() {
           <div className="w-full max-w-lg bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] shadow-2xl overflow-hidden animate-fade-in my-auto">
             <div className="px-5 py-4 border-b border-[var(--border-main)] flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-[var(--text-primary)]">Upload / Change Image</h2>
+                <h2 className="text-base font-bold text-[var(--text-primary)]">Calibration Certificates</h2>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5 font-mono">
                   {uploadRecord.toolOrGaugeNo}
                   {uploadRecord.dcNo != null ? ` · DC #${uploadRecord.dcNo}` : ""}
@@ -905,8 +926,8 @@ export default function CalibrationResultsUpdatePage() {
                 dcNo={uploadRecord.dcNo != null ? String(uploadRecord.dcNo) : null}
                 defaultDocType="CALIB_CERTIFICATE"
                 allowedTypes={["CALIB_CERTIFICATE", "CALIB_REPORT", "OTHER"]}
-                title="Certificate / Image Files"
-                uploadButtonLabel="Upload/Change Image"
+                title="Certificates and Calibration Reports"
+                uploadButtonLabel="Upload Another Certificate"
               />
             </div>
             <div className="px-5 py-3 border-t border-[var(--border-main)] flex justify-end">

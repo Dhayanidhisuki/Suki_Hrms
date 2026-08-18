@@ -15,7 +15,11 @@ type AppUser = {
   id: number;
   username: string;
   name: string;
+  email: string | null;
   role: string;
+  roleId: number | null;
+  isSystemAdmin: boolean;
+  unitScopes: string[];
   erpUserCode: string | null;
   isActive: boolean;
   createdAt: string;
@@ -33,7 +37,9 @@ const emptyForm = {
   username: "",
   password: "",
   name: "",
-  role: "Viewer" as string,
+  email: "",
+  role: "Quality Engineer" as string,
+  unitScopes: ["COMMON"] as string[],
   erpUserCode: "",
 };
 
@@ -62,7 +68,7 @@ export default function UsersSettingsPage() {
   }, [showInactive]);
 
   useEffect(() => {
-    void loadData();
+    queueMicrotask(() => void loadData());
   }, [loadData]);
 
   const handleOpenAdd = () => {
@@ -78,7 +84,9 @@ export default function UsersSettingsPage() {
       username: row.username,
       password: "",
       name: row.name,
+      email: row.email ?? "",
       role: row.role,
+      unitScopes: row.unitScopes.length > 0 ? row.unitScopes : ["COMMON"],
       erpUserCode: row.erpUserCode ?? "",
     });
     setFormErrors({});
@@ -103,11 +111,29 @@ export default function UsersSettingsPage() {
     void loadData();
   };
 
+  const handleToggleUnitScope = (scope: string) => {
+    setForm((f) => {
+      let current = [...f.unitScopes];
+      if (scope === "COMMON") {
+        current = current.includes("COMMON") ? [] : ["COMMON"];
+      } else {
+        current = current.filter((s) => s !== "COMMON");
+        if (current.includes(scope)) {
+          current = current.filter((s) => s !== scope);
+        } else {
+          current.push(scope);
+        }
+      }
+      return { ...f, unitScopes: current };
+    });
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
     if (!editItem && !form.username.trim()) errors.username = "Username is required";
     if (!form.name.trim()) errors.name = "Name is required";
+    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = "Enter a valid email address";
     if (!form.role.trim()) errors.role = "Role is required";
     if (!editItem && form.password.length < 8) {
       errors.password = "Password must be at least 8 characters";
@@ -121,11 +147,16 @@ export default function UsersSettingsPage() {
     }
 
     setSaving(true);
+    const isSysAdmin = form.role === "Tools Admin";
+    const finalScopes = isSysAdmin ? [] : form.unitScopes.length === 0 ? ["COMMON"] : form.unitScopes;
+
     if (editItem) {
       const payload: Record<string, unknown> = {
         id: editItem.id,
         name: form.name.trim(),
+        email: form.email.trim() || null,
         role: form.role.trim(),
+        unitScopes: finalScopes,
         erpUserCode: form.erpUserCode.trim() || null,
       };
       if (form.password) payload.password = form.password;
@@ -141,7 +172,9 @@ export default function UsersSettingsPage() {
         username: form.username.trim(),
         password: form.password,
         name: form.name.trim(),
+        email: form.email.trim() || null,
         role: form.role.trim(),
+        unitScopes: finalScopes,
         erpUserCode: form.erpUserCode.trim() || null,
       });
       setSaving(false);
@@ -161,15 +194,19 @@ export default function UsersSettingsPage() {
     return (
       row.username.toLowerCase().includes(q) ||
       row.name.toLowerCase().includes(q) ||
+      (row.email || "").toLowerCase().includes(q) ||
       row.role.toLowerCase().includes(q) ||
       (row.erpUserCode || "").toLowerCase().includes(q)
     );
   });
 
+  const isFormSysAdmin = form.role === "Tools Admin";
+  const isCommonChecked = form.unitScopes.includes("COMMON");
+
   return (
     <SimpleMasterShell
-      title="Users"
-      subtitle="TOOLS_APP_USER — application login accounts (not ERP_USER)"
+      title="Users & Unit Scope"
+      subtitle="TOOLS_APP_USER — application login accounts, role permissions & unit scope"
       actions={
         <RoleGate permission="canManageUsers">
           <Button onClick={handleOpenAdd} variant="primary" className="group">
@@ -209,7 +246,7 @@ export default function UsersSettingsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                  {["Username", "Name", "Role", "ERP User", "Status", "Updated", "Actions"].map(
+                  {["Username", "Name", "Email", "Role", "Unit Scope", "Status", "Updated", "Actions"].map(
                     (col) => (
                       <th
                         key={col}
@@ -233,9 +270,38 @@ export default function UsersSettingsPage() {
                     <td className="py-3.5 px-3 font-semibold text-[var(--text-primary)]">
                       {row.name}
                     </td>
-                    <td className="py-3.5 px-3 text-[var(--text-secondary)]">{row.role}</td>
-                    <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-muted)]">
-                      {row.erpUserCode || "—"}
+                    <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
+                      {row.email || "—"}
+                    </td>
+                    <td className="py-3.5 px-3 text-[var(--text-secondary)]">
+                      <span className="inline-flex items-center gap-1">
+                        {row.role}
+                        {row.isSystemAdmin && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            Admin
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-3 text-xs">
+                      {row.isSystemAdmin ? (
+                        <span className="text-[var(--text-muted)] italic">All Units (Unscoped)</span>
+                      ) : row.unitScopes.includes("COMMON") || row.unitScopes.length === 0 ? (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-semibold text-[11px]">
+                          Common (All Units)
+                        </span>
+                      ) : (
+                        <div className="flex gap-1 flex-wrap">
+                          {row.unitScopes.map((s) => (
+                            <span
+                              key={s}
+                              className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[11px] font-mono font-medium"
+                            >
+                              {s === "UNIT1" ? "Unit 1" : s === "UNIT2" ? "Unit 2" : s === "UNIT3" ? "Unit 3" : s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-3">
                       <span
@@ -282,7 +348,7 @@ export default function UsersSettingsPage() {
                 {filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-8 text-center text-sm text-[var(--text-muted)]"
                     >
                       No users found.
@@ -299,10 +365,10 @@ export default function UsersSettingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <form
             onSubmit={handleSave}
-            className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl p-5 shadow-xl"
+            className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border-main)] rounded-2xl p-5 shadow-xl space-y-4"
           >
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
-              {editItem ? "Edit User" : "Add User"}
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              {editItem ? "Edit User & Scope" : "Add User & Scope"}
             </h2>
             <div className="space-y-3">
               <div>
@@ -355,10 +421,25 @@ export default function UsersSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--text-muted)]">
-                  Role
+                  Notification email (optional)
+                </label>
+                <input
+                  type="email"
+                  className="mt-1 w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-sm"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="user@company.com"
+                />
+                {formErrors.email && (
+                  <p className="text-xs text-red-600 mt-1">{formErrors.email}</p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--text-muted)]">
+                  Role (Single-Select)
                 </label>
                 <select
-                  className="mt-1 w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-sm font-medium"
                   value={form.role}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, role: e.target.value }))
@@ -371,6 +452,60 @@ export default function UsersSettingsPage() {
                   ))}
                 </select>
               </div>
+
+              {/* Unit Scope Selection Section */}
+              <div className="pt-2 border-t border-[var(--border-main)]">
+                <label className="text-xs font-semibold text-[var(--text-primary)] block mb-1">
+                  Unit Scope Assignment
+                </label>
+                {isFormSysAdmin ? (
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+                    Tools Admin has full access to all units. Unit scoping does not apply to System Admin.
+                  </div>
+                ) : (
+                  <div className="space-y-2 bg-[var(--bg-subtle)] p-3 rounded-lg border border-[var(--border-main)]">
+                    <label className="flex items-center gap-2.5 text-xs font-medium text-[var(--text-primary)] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isCommonChecked}
+                        onChange={() => handleToggleUnitScope("COMMON")}
+                        className="w-4 h-4 rounded border-[var(--border-main)] text-[var(--primary)]"
+                      />
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">Common (Wildcard — All Units)</span>
+                    </label>
+
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--border-main)]">
+                      {[
+                        { key: "UNIT1", label: "Unit 1" },
+                        { key: "UNIT2", label: "Unit 2" },
+                        { key: "UNIT3", label: "Unit 3" },
+                      ].map((u) => {
+                        const isChecked = isCommonChecked || form.unitScopes.includes(u.key);
+                        return (
+                          <label
+                            key={u.key}
+                            className={`flex items-center gap-2 text-xs p-2 rounded border transition-colors ${
+                              isCommonChecked
+                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60 dark:bg-slate-800 dark:border-slate-700"
+                                : "bg-[var(--bg-card)] border-[var(--border-main)] cursor-pointer hover:bg-[var(--bg-hover)]"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isCommonChecked}
+                              onChange={() => handleToggleUnitScope(u.key)}
+                              className="rounded border-[var(--border-main)] text-[var(--primary)] disabled:cursor-not-allowed"
+                            />
+                            <span>{u.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-xs font-medium text-[var(--text-muted)]">
                   ERP user code (optional)

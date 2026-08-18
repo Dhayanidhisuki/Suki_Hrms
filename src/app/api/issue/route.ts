@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { generateDocNumber } from "@/lib/autonumber";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsIssueCreateSchema } from "@/lib/validators";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
 function maintainsSerial(flag: string | null | undefined): boolean {
   const v = (flag ?? "").trim().toLowerCase();
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
   const statusFilter = searchParams.get("status");
   const search = searchParams.get("search") ?? "";
   const customerOnly = searchParams.get("customerOnly") === "1";
+  const movementOnly = searchParams.get("movementOnly") === "1";
   const fromDate = (searchParams.get("fromDate") ?? "").trim();
   const toDate = (searchParams.get("toDate") ?? "").trim();
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
@@ -55,6 +57,14 @@ export async function GET(req: NextRequest) {
       AND: [
         statusClause,
         customerOnly ? { custCode: { not: null } } : {},
+        movementOnly
+          ? {
+              OR: [
+                { lines: { some: { issueToItemNo: { not: null } } } },
+                { issueOption: { startsWith: "External:" } },
+              ],
+            }
+          : {},
         fromDate ? { issueDate: { gte: new Date(fromDate) } } : {},
         toDate
           ? { issueDate: { lte: new Date(`${toDate}T23:59:59.999`) } }
@@ -68,6 +78,7 @@ export async function GET(req: NextRequest) {
                 { custCode: { contains: search } },
                 { transportName: { contains: search } },
                 { poOrderNo: { contains: search } },
+                { lines: { some: { toolOrGaugeNo: { contains: search } } } },
               ],
             }
           : {},
@@ -155,6 +166,8 @@ export async function POST(req: NextRequest) {
   const commentsWithReq = againstReq
     ? `Req:${reqNoTrim}${comments ? ` | ${comments}` : ""}`.slice(0, 100)
     : comments || null;
+  const isInternalMovement = Boolean(fromUnit?.trim()) && lines.every((line) => Boolean(line.toUnit?.trim()));
+  const isMovementRecord = isInternalMovement || (issueOption ?? "").startsWith("External:");
 
   try {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
@@ -168,8 +181,39 @@ export async function POST(req: NextRequest) {
         if (!tool) {
           throw new Error(`Tool not found: ${line.toolOrGaugeNo}`);
         }
+        if (isInternalMovement) {
+          const currentUnit = normalizeCompanyUnit(tool.locationName);
+          const sourceUnit = normalizeCompanyUnit(fromUnit);
+          if (!currentUnit || currentUnit !== sourceUnit) {
+            throw new Error(
+              `${line.toolOrGaugeNo} belongs to ${currentUnit ?? "no valid unit"}, not ${sourceUnit ?? fromUnit}`
+            );
+          }
+        }
+        if (isMovementRecord) {
+          const activeMovement = await tx.toolsTransIssue.findFirst({
+            where: {
+              toolOrGaugeNo: line.toolOrGaugeNo,
+              status: { in: ["Open", "OPEN", "Active"] },
+              header: {
+                status: { in: ["Active", "OPEN", "Open", "PARTIAL"] },
+                OR: [
+                  { issueOption: "Internal Unit Movement" },
+                  { issueOption: { startsWith: "External:" } },
+                  { lines: { some: { issueToItemNo: { not: null } } } },
+                ],
+              },
+            },
+            select: { dcNo: true },
+          });
+          if (activeMovement) {
+            throw new Error(
+              `${line.toolOrGaugeNo} is already on open movement ${activeMovement.dcNo}`
+            );
+          }
+        }
         // ERP: stock reduces only when serial numbers are NOT maintained
-        if (!maintainsSerial(tool.serialNoGenReq) && Number(tool.qtyIn ?? 0) < line.issueQty) {
+        if (!isMovementRecord && !maintainsSerial(tool.serialNoGenReq) && Number(tool.qtyIn ?? 0) < line.issueQty) {
           throw new Error(
             `Insufficient stock for ${line.toolOrGaugeNo}. Available: ${tool.qtyIn ?? 0}, Requested: ${line.issueQty}`
           );
@@ -230,13 +274,18 @@ export async function POST(req: NextRequest) {
             description: tool?.description?.slice(0, 500),
             type: tool?.type?.slice(0, 50),
             groupName: tool?.grouping?.slice(0, 50),
+            issueToItemNo: line.toUnit?.slice(0, 15) || null,
             uom: tool?.uom?.slice(0, 10),
             issueType: tool?.issueType?.slice(0, 25),
             issueEmpName: receiveName?.slice(0, 50),
             returnable: lineReturnable,
             machine: line.machine?.slice(0, 50) || null,
             processName: line.processName?.slice(0, 100) || null,
-            remarks: line.remarks?.slice(0, 100) || null,
+            remarks:
+              line.remarks?.slice(0, 100) ||
+              (isInternalMovement && tool?.location
+                ? `Source rack/location: ${tool.location}`.slice(0, 100)
+                : null),
             serialNo: line.serialNo ?? null,
             price,
             amount,
@@ -249,7 +298,7 @@ export async function POST(req: NextRequest) {
         });
 
         // ERP note: stock reduced only where serial numbers are NOT maintained
-        if (tool && !maintainsSerial(tool.serialNoGenReq)) {
+        if (!isMovementRecord && tool && !maintainsSerial(tool.serialNoGenReq)) {
           await tx.gaugeAndTools.update({
             where: { toolOrGaugeNo: line.toolOrGaugeNo },
             data: {
@@ -263,10 +312,13 @@ export async function POST(req: NextRequest) {
         // ERP: Tools Master unit STATUS lives on GAUGE_SERIAL_NO
         // SubContractor/Customer → VENDOR USE; Employee / in-house → INHOUSE USE
         const opt = (issueOption || "").toLowerCase();
-        const unitStatus =
-          opt.includes("sub") || opt.includes("vendor") || opt.includes("cust")
+        const unitStatus = isInternalMovement
+          ? "IN MOVEMENT"
+          : opt.includes("sub") || opt.includes("vendor") || opt.includes("cust")
             ? "VENDOR USE"
-            : "INHOUSE USE";
+            : opt.startsWith("external:")
+              ? "VENDOR USE"
+              : "INHOUSE USE";
         try {
           if (line.serialNo != null) {
             await tx.gaugeSerialNo.updateMany({
@@ -302,6 +354,26 @@ export async function POST(req: NextRequest) {
           }
         } catch (err) {
           console.warn("Serial status update on issue skipped:", err);
+        }
+
+        // A single tracked instrument physically leaves the source rack as
+        // soon as an internal movement is issued. Do not assign it to the
+        // destination unit until that unit posts the receive transaction.
+        if (isInternalMovement && tool) {
+          const destinationUnit = normalizeCompanyUnit(line.toUnit);
+          await tx.gaugeAndTools.update({
+            where: { refNo: tool.refNo },
+            data: {
+              locationName: null,
+              location: null,
+              area: null,
+              rack: null,
+              locationOutputName: destinationUnit
+                ? `IN TRANSIT: ${normalizeCompanyUnit(fromUnit)} -> ${destinationUnit}`
+                : "IN TRANSIT",
+              lstUpdtUserIdCd: erpActor,
+            },
+          });
         }
       }
 

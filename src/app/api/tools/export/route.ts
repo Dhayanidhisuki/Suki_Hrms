@@ -6,13 +6,56 @@ import {
   buildExcelBuffer,
   buildPdfBuffer,
   exportFilename,
+  type ReportColumn,
 } from "@/lib/serverReportExport";
-import {
-  TOOLS_MASTER_EXPORT_COLUMNS,
-  columnsForTemplate,
-  mapToolToExportRow,
-  parseTemplateKind,
-} from "@/lib/toolsMasterImportExport";
+
+// ─── Export column layout ────────────────────────────────────────────────────
+// Uses master-level fields available on GAUGEANDTOOLS.
+// The old three-mode template download is no longer exposed in the UI.
+
+const TOOLS_MASTER_EXPORT_COLUMNS: ReportColumn[] = [
+  { key: "TOOL_OR_GAUGE_NO", label: "Equip No" },
+  { key: "DES", label: "Description" },
+  { key: "SIZE", label: "Size" },
+  { key: "LEAST_COUNT", label: "Least Count" },
+  { key: "LOCATION", label: "Used Location" },
+  { key: "CALIBRATION_FRQ_MONTHS", label: "Cal. Freq. (mths)" },
+  { key: "STATUS", label: "Status" },
+  { key: "REMARKS", label: "Remarks" },
+  { key: "GROUPING", label: "Grouping" },
+  { key: "TYPE", label: "Type" },
+  { key: "NAME", label: "Name" },
+];
+
+function mapToolToExportRow(tool: {
+  toolOrGaugeNo: string | null;
+  description: string | null;
+  size: string | null;
+  leastCount: string | null;
+  location: string | null;
+  calibrationFrqMonths: number | null;
+  status: string | null;
+  remarks: string | null;
+  grouping: string;
+  type: string | null;
+  name: string | null;
+}): Record<string, unknown> {
+  return {
+    TOOL_OR_GAUGE_NO: tool.toolOrGaugeNo ?? "",
+    DES: tool.description ?? "",
+    SIZE: tool.size ?? "",
+    LEAST_COUNT: tool.leastCount ?? "",
+    LOCATION: tool.location ?? "",
+    CALIBRATION_FRQ_MONTHS: tool.calibrationFrqMonths ?? "",
+    STATUS: tool.status ?? "",
+    REMARKS: tool.remarks ?? "",
+    GROUPING: tool.grouping ?? "",
+    TYPE: tool.type ?? "",
+    NAME: tool.name ?? "",
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildWhere(searchParams: URLSearchParams, selectedIds: number[]) {
   const search = searchParams.get("search") ?? "";
@@ -49,6 +92,8 @@ function parseIds(raw: string | null): number[] {
     .filter((n) => Number.isInteger(n) && n > 0);
 }
 
+// ─── Route handler ────────────────────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
@@ -59,52 +104,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "format must be xlsx or pdf" }, { status: 400 });
   }
 
-  const templateParam = req.nextUrl.searchParams.get("template");
-  const templateKind = templateParam ? parseTemplateKind(templateParam) : null;
-
   try {
-    // Empty template download for one of the 3 import formats
-    if (templateParam != null) {
-      if (!templateKind) {
-        return NextResponse.json(
-          { error: "template must be basic, full, or price" },
-          { status: 400 }
-        );
-      }
-      if (format !== "xlsx") {
-        return NextResponse.json({ error: "Template is only available as xlsx" }, { status: 400 });
-      }
-      const columns = columnsForTemplate(templateKind);
-      const buffer = buildExcelBuffer({
-        sheetName: "Tools Master",
-        columns,
-        rows: [],
-      });
-      const filename = exportFilename(`tools_master_${templateKind}_template`, "xlsx");
-      return new NextResponse(new Uint8Array(buffer), {
-        status: 200,
-        headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-          "X-Export-Count": "0",
-          "X-Export-Template": templateKind,
-        },
-      });
-    }
-
     const selectedIds = parseIds(req.nextUrl.searchParams.get("ids"));
     const where = buildWhere(req.nextUrl.searchParams, selectedIds);
     const items = await prisma.gaugeAndTools.findMany({
       where,
       orderBy: { creatDt: "desc" },
-      include: {
-        serialNumbers: { orderBy: { serialNo: "asc" } },
-        details: true,
-      },
     });
 
-    const rows = items.map(mapToolToExportRow);
+    const rows: Record<string, unknown>[] = items.map(mapToolToExportRow);
     const mode = selectedIds.length > 0 ? "selected" : "filtered";
     const subtitle =
       mode === "selected"

@@ -26,7 +26,7 @@ import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableC
 import { SelectionFilter } from "@/components/ui/SelectionFilter";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { downloadExcel } from "@/lib/downloadExcel";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 interface ToolMasterPreview {
   toolOrGaugeNo: string | null;
@@ -162,6 +162,10 @@ function monthEnd() {
 export default function ReceiveToolPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const isMovement = pathname.startsWith("/dashboard/movement/");
+  const requestedMovement = searchParams.get("movement");
+  const receiveBasePath = isMovement ? "/dashboard/movement/receive" : "/dashboard/transactions/receive";
   const [mode, setMode] = useState<"list" | "receive">("list");
 
   // List (GRN history)
@@ -236,6 +240,8 @@ export default function ReceiveToolPage() {
       });
       if (q.trim()) params.set("search", q.trim());
       if (pc.trim()) params.set("partyCode", pc.trim());
+      if (isMovement) params.set("movementOnly", "1");
+      if (isMovement && requestedMovement) params.set("movement", requestedMovement);
       const res = await apiGet<{
         items: HistoryRow[];
         total: number;
@@ -248,7 +254,7 @@ export default function ReceiveToolPage() {
       setOverdueTotal(res.data?.overdueTotal ?? 0);
       setLoading(false);
     },
-    [page, searchQuery, fromDate, toDate, vendorType, subFilter, partyFilterCode]
+    [page, searchQuery, fromDate, toDate, vendorType, subFilter, partyFilterCode, isMovement, requestedMovement]
   );
 
   const loadOpenIssues = useCallback(async () => {
@@ -262,10 +268,12 @@ export default function ReceiveToolPage() {
       subCode: pickerSub,
     });
     if (pickerSearch.trim()) params.set("search", pickerSearch.trim());
+    if (isMovement) params.set("movementOnly", "1");
+    if (isMovement && requestedMovement) params.set("movement", requestedMovement);
     const res = await apiGet<{ items: ToolsIssueHeader[] }>(`/api/receive?${params}`);
     setOpenIssues(res.data?.items ?? []);
     setOpenLoading(false);
-  }, [pickerFrom, pickerTo, pickerSub, pickerSearch]);
+  }, [pickerFrom, pickerTo, pickerSub, pickerSearch, isMovement, requestedMovement]);
 
   useEffect(() => {
     void loadHistory(1, "");
@@ -307,16 +315,16 @@ export default function ReceiveToolPage() {
     setPickerSubQuery("");
     setPartyQuery("");
     setPickerSearch("");
-    router.replace("/dashboard/transactions/receive?action=add", { scroll: false });
-  }, [router]);
+    router.replace(`${receiveBasePath}?action=add`, { scroll: false });
+  }, [receiveBasePath, router]);
 
   const closeReceiveForm = useCallback(() => {
     setMode("list");
     setStaged([]);
     setSelectedKeys(new Set());
     setErrors({});
-    router.replace("/dashboard/transactions/receive", { scroll: false });
-  }, [router]);
+    router.replace(receiveBasePath, { scroll: false });
+  }, [receiveBasePath, router]);
 
   useEffect(() => {
     const action = searchParams.get("action");
@@ -423,6 +431,7 @@ export default function ReceiveToolPage() {
     if (!activeDcNo) tempErrors.dc = "Add lines from an open DC first";
     if (!receiveDate) tempErrors.receiveDate = "Receive date is required";
     if (!staged.length) tempErrors.lines = "Receive list is empty";
+    if (isMovement && !location.trim()) tempErrors.location = "Destination rack / location is required";
     if (staged.some((l) => l.qty <= 0 || l.qty > l.maxQty)) {
       tempErrors.lines = "Check qty on each receive line";
     }
@@ -460,13 +469,13 @@ export default function ReceiveToolPage() {
 
     const grn = res.data?.header?.recNo;
     toastSuccess({
-      title: "Receive posted",
-      message: "Items/Asset receive saved.",
-      detail: grn ? `GRN #${grn} · DC #${activeDcNo}` : `DC #${activeDcNo}`,
+      title: isMovement ? "Movement received" : "Receive posted",
+      message: isMovement ? "Instrument ownership moved to the destination unit." : "Items/Asset receive saved.",
+      detail: grn ? `${isMovement ? "Receipt" : "GRN"} #${grn} · DC #${activeDcNo}` : `DC #${activeDcNo}`,
     });
     setMode("list");
     setStaged([]);
-    router.replace("/dashboard/transactions/receive", { scroll: false });
+    router.replace(receiveBasePath, { scroll: false });
     void loadHistory(1, searchQuery);
   };
 
@@ -485,16 +494,16 @@ export default function ReceiveToolPage() {
               <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-                    Tools Issue Receive
+                    {isMovement ? "Receive Movement" : "Tools Issue Receive"}
                   </h1>
                   <p className="text-sm text-[var(--text-muted)] mt-0.5">
-                    GRN history + Items/Asset Receive (TOOLS_ISSUE_RECEIVED)
+                    {isMovement ? "Confirm instruments received into their destination unit" : "GRN history + Items/Asset Receive (TOOLS_ISSUE_RECEIVED)"}
                   </p>
                 </div>
                 <RoleGate permission="canReceiveTool">
                   {mode !== "receive" && (
                     <Button type="button" variant="primary" onClick={openReceiveForm}>
-                      <Plus className="w-4 h-4" /> Receive
+                      <Plus className="w-4 h-4" /> {isMovement ? "Receive Movement" : "Receive"}
                     </Button>
                   )}
                 </RoleGate>
@@ -504,9 +513,9 @@ export default function ReceiveToolPage() {
                 items={[
                   {
                     id: "pending-returns",
-                    label: "Pending Return DCs",
+                    label: isMovement ? "Pending Movements" : "Pending Return DCs",
                     value: pendingTotal,
-                    subtext: "Open returnable issue slips",
+                    subtext: isMovement ? "Awaiting destination receipt" : "Open returnable issue slips",
                     title: "Open issue DCs with RETURNABLE ≠ No awaiting receive",
                     icon: ArrowDownLeft,
                     iconBg: "bg-[var(--primary-light)]",
@@ -515,7 +524,7 @@ export default function ReceiveToolPage() {
                   },
                   {
                     id: "overdue-returns",
-                    label: "Overdue Returns",
+                    label: isMovement ? "Overdue Movements" : "Overdue Returns",
                     value: overdueTotal,
                     subtext: "Due date before today",
                     title: "Pending return DCs with a real due date already past",
@@ -526,7 +535,7 @@ export default function ReceiveToolPage() {
                   },
                   {
                     id: "grn-total",
-                    label: "Matching GRNs",
+                    label: isMovement ? "Completed Receipts" : "Matching GRNs",
                     value: total,
                     subtext: "Receive headers in filters",
                     title: "TOOLS_ISSUE_RECEIVED headers matching current filters",
@@ -537,7 +546,7 @@ export default function ReceiveToolPage() {
                   },
                   {
                     id: "page-qty",
-                    label: "Qty on This Page",
+                    label: isMovement ? "Instruments on Page" : "Qty on This Page",
                     value: pageQty,
                     subtext: `${pageLines} line${pageLines === 1 ? "" : "s"} · page ${page}`,
                     title: "Sum of receive quantities on the current page",
@@ -799,8 +808,8 @@ export default function ReceiveToolPage() {
             <OverlayModal
               open
               size="5xl"
-              title="Add Receive"
-              subtitle="Items / Asset Receive · GRN Auto"
+              title={isMovement ? "Receive Movement" : "Add Receive"}
+              subtitle={isMovement ? "Confirm arrival at the destination unit" : "Items / Asset Receive · GRN Auto"}
               onClose={closeReceiveForm}
               footer={
                 <>
@@ -819,10 +828,10 @@ export default function ReceiveToolPage() {
               }
             >
               <form id="receive-create-form" onSubmit={handleConfirmReceive} className="space-y-0">
-                <FormModalSection title="Open DC picker">
+                <FormModalSection title={isMovement ? "Select pending movement" : "Open DC picker"}>
                   <div className="form-grid">
                     <div>
-                      <label className="form-label">GRN No</label>
+                      <label className="form-label">{isMovement ? "Receipt No." : "GRN No"}</label>
                       <input value="Auto" readOnly className="form-control opacity-70" />
                     </div>
                     <div>
@@ -1038,8 +1047,18 @@ export default function ReceiveToolPage() {
                       <input value={poOrderNo} onChange={(e) => setPoOrderNo(e.target.value)} className="form-control" maxLength={15} />
                     </div>
                     <div>
-                      <label className="form-label">Location</label>
-                      <input value={location} onChange={(e) => setLocation(e.target.value)} className="form-control" maxLength={50} />
+                      <label className="form-label">{isMovement ? "Destination Rack / Location *" : "Location"}</label>
+                      <input
+                        value={location}
+                        onChange={(e) => {
+                          setLocation(e.target.value);
+                          setErrors((previous) => ({ ...previous, location: "" }));
+                        }}
+                        className="form-control"
+                        maxLength={50}
+                        placeholder={isMovement ? "Rack or storage location in destination unit" : undefined}
+                      />
+                      {errors.location && <p className="form-error">{errors.location}</p>}
                     </div>
                     <div>
                       <label className="form-label">GE.No</label>

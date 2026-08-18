@@ -12,7 +12,7 @@ const globalForPrisma = globalThis as unknown as {
  * Changes when GaugeAndTools fields are regenerated — forces a new client.
  * Bump CLIENT_REV after `prisma generate` if Next still serves a stale client.
  */
-const CLIENT_REV = "grn-gir-no-alloc-2026-08-08";
+const CLIENT_REV = "instrument-master-data-2026-08-14-v8";
 const SCHEMA_STAMP = `${CLIENT_REV}:${Object.keys(Prisma.GaugeAndToolsScalarFieldEnum).sort().join(",")}`;
 
 function createPrismaClient() {
@@ -31,6 +31,16 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     purchaseApproval?: { findMany?: unknown };
     rolePermission?: { findMany?: unknown };
     toolsPoFinance?: { findMany?: unknown };
+    toolsUnitMaster?: { findMany?: unknown };
+    toolsUnitStock?: { findMany?: unknown };
+    authorizedCalibrationAgency?: { findMany?: unknown };
+    instrumentDefect?: { findMany?: unknown };
+    instrumentServiceRecord?: { findMany?: unknown };
+    calibrationDeviation?: { findMany?: unknown };
+    calibrationNotificationSetting?: { findUnique?: unknown };
+    calibrationNotificationRecipient?: { findMany?: unknown };
+    calibrationNotification?: { findMany?: unknown };
+    instrumentImportedMasterData?: { upsert?: unknown; findMany?: unknown };
   };
   return (
     typeof c.materialRequisitionTrans?.findMany === "function" &&
@@ -38,7 +48,18 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     typeof c.commonPurchaseOrder?.count === "function" &&
     typeof c.purchaseApproval?.findMany === "function" &&
     typeof c.rolePermission?.findMany === "function" &&
-    typeof c.toolsPoFinance?.findMany === "function"
+    typeof c.toolsPoFinance?.findMany === "function" &&
+    typeof c.toolsUnitMaster?.findMany === "function" &&
+    typeof c.toolsUnitStock?.findMany === "function" &&
+    typeof c.authorizedCalibrationAgency?.findMany === "function" &&
+    typeof c.instrumentDefect?.findMany === "function" &&
+    typeof c.instrumentServiceRecord?.findMany === "function" &&
+    typeof c.calibrationDeviation?.findMany === "function" &&
+    typeof c.calibrationNotificationSetting?.findUnique === "function" &&
+    typeof c.calibrationNotificationRecipient?.findMany === "function" &&
+    typeof c.calibrationNotification?.findMany === "function" &&
+    typeof c.instrumentImportedMasterData?.upsert === "function" &&
+    typeof c.instrumentImportedMasterData?.findMany === "function"
   );
 }
 
@@ -46,9 +67,10 @@ function getPrisma(): PrismaClient {
   const existing = globalForPrisma.prisma;
   const stampOk = globalForPrisma.schemaStamp === SCHEMA_STAMP;
   if (existing && stampOk && hasRequiredDelegates(existing)) return existing;
-  if (existing) {
-    void existing.$disconnect().catch(() => undefined);
-  }
+  // Never disconnect a previous development client here: another request may
+  // still own an interactive transaction on it. Immediate disconnect caused
+  // "Transaction not found" and empty engine responses during hot reload.
+  // The old instance becomes unreachable and exits with the dev process.
   const client = createPrismaClient();
   if (process.env.NODE_ENV !== "production") {
     globalForPrisma.prisma = client;

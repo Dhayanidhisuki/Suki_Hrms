@@ -12,6 +12,10 @@ export type JourneyEventType =
   | "issue"
   | "receive"
   | "calibration"
+  | "defect"
+  | "service"
+  | "deviation"
+  | "document"
   | "status";
 
 export type ToolJourneyEvent = {
@@ -135,9 +139,14 @@ export async function loadToolJourney(
     issueLines,
     receiveLines,
     calibIssueLines,
+    calibReceiveLines,
     calibPending,
     calibClosed,
     controlHistory,
+    defects,
+    services,
+    deviations,
+    documents,
     grnLines,
     poLines,
     schLines,
@@ -163,6 +172,7 @@ export async function loadToolJourney(
             status: true,
             issueOption: true,
             poOrderNo: true,
+            fromUnit: true,
           },
         },
       },
@@ -202,6 +212,24 @@ export async function loadToolJourney(
         },
       },
     }),
+    prisma.toolsTransReceiveForCalibration.findMany({
+      where: { OR: codesForLines.map((toolOrGaugeNo) => ({ toolOrGaugeNo })) },
+      orderBy: { creatDt: "desc" },
+      take: 200,
+      include: {
+        header: {
+          select: {
+            recNo: true,
+            dcNo: true,
+            receiveDate: true,
+            partyDcNo: true,
+            vendorCd: true,
+            receiverName: true,
+            status: true,
+          },
+        },
+      },
+    }),
     loadCalibResultsPending(500),
     loadCalibResultsClosed(500),
     prisma.gaugeControlCardTrans.findMany({
@@ -212,6 +240,26 @@ export async function loadToolJourney(
       },
       orderBy: { cDate: "desc" },
       take: 100,
+    }),
+    prisma.instrumentDefect.findMany({
+      where: { refNo: tool.refNo },
+      orderBy: { reportedDate: "desc" },
+      take: 200,
+    }),
+    prisma.instrumentServiceRecord.findMany({
+      where: { refNo: tool.refNo },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    prisma.calibrationDeviation.findMany({
+      where: { toolOrGaugeNo: { in: codesForLines } },
+      orderBy: { recordedAt: "desc" },
+      take: 200,
+    }),
+    prisma.toolDocument.findMany({
+      where: { toolOrGaugeNo: { in: codesForLines }, deletedAt: null },
+      orderBy: { creatDt: "desc" },
+      take: 200,
     }),
     // GET /api/po/grn source — itemCode variants + toolRefNo
     prisma.toolsPoReceiveTrans.findMany({
@@ -434,6 +482,8 @@ export async function loadToolJourney(
         status: h?.status || line.status,
         dueDate: toIsoDate(h?.dueDate)?.slice(0, 10),
         issueOption: h?.issueOption,
+        fromUnit: h?.fromUnit,
+        destination: line.issueToItemNo,
         poOrderNo: h?.poOrderNo,
         machine: line.machine,
         serialNo: line.serialNo,
@@ -532,6 +582,30 @@ export async function loadToolJourney(
     });
   }
 
+  for (const line of calibReceiveLines) {
+    const h = line.header;
+    events.push({
+      type: "calibration",
+      date:
+        toIsoDate(h?.receiveDate) ||
+        toIsoDate(line.creatDt) ||
+        new Date(0).toISOString(),
+      title: `Received from calibration · Rec ${h?.recNo ?? line.recNo}`,
+      subtitle: `DC ${h?.dcNo ?? line.dcNo} · ${h?.status || "Received"}`,
+      meta: {
+        recNo: h?.recNo ?? line.recNo,
+        dcNo: h?.dcNo ?? line.dcNo,
+        partyDcNo: h?.partyDcNo,
+        vendor: h?.vendorCd,
+        receiverName: h?.receiverName,
+        qty: num(line.qty),
+        serialNo: line.serialNo,
+      },
+      sourceId: `calib-receive-${line.rowId}`,
+      serialNo: line.serialNo != null ? String(line.serialNo) : null,
+    });
+  }
+
   for (const row of controlHistory) {
     const date =
       toIsoDate(row.cDate) || toIsoDate(row.creatDt) || new Date(0).toISOString();
@@ -549,6 +623,75 @@ export async function loadToolJourney(
         remarks: row.remarks,
       },
       sourceId: `control-${row.rowId}`,
+    });
+  }
+
+  for (const row of defects) {
+    events.push({
+      type: "defect",
+      date: toIsoDate(row.reportedDate) || toIsoDate(row.createdAt) || new Date(0).toISOString(),
+      title: `Defect · ${row.status}`,
+      subtitle: row.defectDetails,
+      meta: {
+        defectId: row.id,
+        unitCode: row.unitCode,
+        errorDeviation: row.errorDeviation,
+        reportedBy: row.reportedBy,
+      },
+      sourceId: `defect-${row.id}`,
+    });
+  }
+
+  for (const row of services) {
+    events.push({
+      type: "service",
+      date:
+        toIsoDate(row.receivedDate) ||
+        toIsoDate(row.sentDate) ||
+        toIsoDate(row.createdAt) ||
+        new Date(0).toISOString(),
+      title: `Service · ${row.finalStatus || row.status}`,
+      subtitle: row.serviceAgency || "Internal service",
+      meta: {
+        serviceId: row.id,
+        defectId: row.defectId,
+        sentDate: toIsoDate(row.sentDate)?.slice(0, 10),
+        receivedDate: toIsoDate(row.receivedDate)?.slice(0, 10),
+        repairDetails: row.repairDetails,
+        verificationResult: row.verificationResult,
+        cost: num(row.cost),
+      },
+      sourceId: `service-${row.id}`,
+    });
+  }
+
+  for (const row of deviations) {
+    events.push({
+      type: "deviation",
+      date: toIsoDate(row.recordedAt) || new Date(0).toISOString(),
+      title: `${row.parameter} · ${row.resultStatus}`,
+      subtitle: row.deviation,
+      meta: {
+        deviationId: row.id,
+        correctiveAction: row.correctiveAction,
+        resultStatus: row.resultStatus,
+      },
+      sourceId: `deviation-${row.id}`,
+    });
+  }
+
+  for (const row of documents) {
+    events.push({
+      type: "document",
+      date: toIsoDate(row.creatDt) || new Date(0).toISOString(),
+      title: row.docType,
+      subtitle: row.originalName,
+      meta: {
+        documentId: row.id,
+        fileName: row.originalName,
+        documentType: row.docType,
+      },
+      sourceId: `document-${row.id}`,
     });
   }
 
@@ -607,6 +750,10 @@ export async function loadToolJourney(
     issue: 0,
     receive: 0,
     calibration: 0,
+    defect: 0,
+    service: 0,
+    deviation: 0,
+    document: 0,
     status: 0,
   };
   for (const e of events) counts[e.type] += 1;

@@ -80,6 +80,7 @@ export async function GET(
 
   // Fetch latest calibration issue/result info for the calibration status panel
   let calibrationSummary = null;
+  let movementSummary = null;
   try {
     const latestLine = await prisma.toolsTransIssueForCalibration.findFirst({
       where: { toolOrGaugeNo: tool.toolOrGaugeNo },
@@ -156,6 +157,58 @@ export async function GET(
     // non-critical
   }
 
+  try {
+    const activeMovement = await prisma.toolsTransIssue.findFirst({
+      where: {
+        OR: [
+          { toolRefNo: tool.refNo },
+          ...(tool.toolOrGaugeNo ? [{ toolOrGaugeNo: tool.toolOrGaugeNo }] : []),
+        ],
+        status: { in: ["Open", "OPEN", "Active"] },
+        header: {
+          status: { in: ["Active", "OPEN", "Open", "PARTIAL"] },
+          OR: [
+            { issueOption: "Internal Unit Movement" },
+            { issueOption: { startsWith: "External:" } },
+            { lines: { some: { issueToItemNo: { not: null } } } },
+          ],
+        },
+      },
+      orderBy: { creatDt: "desc" },
+      include: {
+        header: {
+          select: {
+            dcNo: true,
+            issueDate: true,
+            dueDate: true,
+            fromUnit: true,
+            issueOption: true,
+            receiveName: true,
+            status: true,
+          },
+        },
+      },
+    });
+    if (activeMovement) {
+      const sourcePrefix = "Source rack/location: ";
+      movementSummary = {
+        dcNo: activeMovement.header.dcNo,
+        movementType: activeMovement.header.issueOption,
+        sourceUnit: activeMovement.header.fromUnit,
+        destinationUnit: activeMovement.issueToItemNo,
+        sourceRack: activeMovement.remarks?.startsWith(sourcePrefix)
+          ? activeMovement.remarks.slice(sourcePrefix.length).trim() || null
+          : null,
+        issueDate: activeMovement.header.issueDate,
+        expectedReceiptDate: activeMovement.header.dueDate,
+        issuedTo: activeMovement.header.receiveName,
+        status: activeMovement.status || activeMovement.header.status || "IN MOVEMENT",
+      };
+    }
+  } catch {
+    // Movement enrichment is non-critical to opening the instrument record.
+  }
+
   // Build unit grid after heal so STATUS matches lifecycle panel
   const unitHistory = await buildToolUnitHistory({
     refNo: tool.refNo,
@@ -168,7 +221,9 @@ export async function GET(
     tool.activeItem
   );
 
-  return NextResponse.json({ tool: { ...tool, unitHistory, computedStatus, calibrationSummary } });
+  return NextResponse.json({
+    tool: { ...tool, unitHistory, computedStatus, calibrationSummary, movementSummary },
+  });
 }
 
 export async function PUT(
@@ -199,6 +254,15 @@ export async function PUT(
 
   const { specifications, serialNoGenReq, refNo: ignoredRefNo, ...updateData } = parsed.data;
   void ignoredRefNo;
+  updateData.historyCardReq = "Yes";
+  updateData.caliPlannedWho = "N/A";
+  updateData.calibrationResponsibility = "N/A";
+  if (updateData.calibrationFrqMonths !== undefined && updateData.calibrationFrqMonths <= 0) {
+    return NextResponse.json(
+      { error: "Calibration Frequency (months) must be greater than 0" },
+      { status: 400 }
+    );
+  }
 
   const normalized = normalizeLocationAndLookups({
     location: updateData.location,
@@ -262,7 +326,7 @@ export async function PUT(
           ? { type: stripPlaceholder(updateData.type) ?? null }
           : {}),
         ...(updateData.description !== undefined
-          ? { description: stripPlaceholder(updateData.description) ?? null }
+          ? { description: updateData.description ?? null }
           : {}),
         ...(serialNoGenReq !== undefined
           ? { serialNoGenReq: normalizeSerialFlag(serialNoGenReq) }
@@ -301,7 +365,7 @@ export async function PUT(
       await seedSerialsToMatchTotQty(prisma, {
         toolRefNo: tool.refNo,
         toolOrGaugeNo: tool.toolOrGaugeNo,
-        totQty: tool.totQty,
+        totQty: tool.totQty ? Number(tool.totQty) : null,
         userId: erpActor,
         isAsset: tool.isAsset,
         preventiveFrqMonths: tool.preventiveFrqMonths,

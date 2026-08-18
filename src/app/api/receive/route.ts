@@ -4,14 +4,15 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsReceiveCreateSchema } from "@/lib/validators";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
-const OPEN_STATUSES = ["OPEN", "PARTIAL", "Active"] as const;
+const OPEN_STATUSES = ["OPEN", "PARTIAL", "Active"];
 
 /** Open slips that are expected back (exclude explicit non-returnable). */
 const pendingReturnWhere = {
   status: { in: [...OPEN_STATUSES] },
   NOT: { returnable: { in: ["No", "N", "NO"] } },
-} as const;
+};
 
 function overdueReturnWhere(today: Date) {
   // Ignore blank/sentinel ERP dates (common Access/SQL defaults) so overdue ≠ all pending.
@@ -43,6 +44,8 @@ export async function GET(req: NextRequest) {
   const openPicker = searchParams.get("open") === "1" || searchParams.get("history") !== "1";
   // Default = open issue DCs (existing callers). Receive list page passes history=1 for GRNs.
   const search = (searchParams.get("search") ?? "").trim();
+  const movementOnly = searchParams.get("movementOnly") === "1";
+  const movement = (searchParams.get("movement") ?? "").trim().toLowerCase();
   const subCode = (searchParams.get("subCode") ?? "").trim();
   const vendorType = (searchParams.get("vendorType") ?? "").trim();
   const partyCode = (searchParams.get("partyCode") ?? "").trim();
@@ -57,15 +60,29 @@ export async function GET(req: NextRequest) {
     today.setHours(0, 0, 0, 0);
 
     if (openPicker) {
+      const movementWhere = movementOnly
+        ? movement === "internal"
+          ? { issueOption: "Internal Unit Movement" }
+          : movement === "external"
+            ? { issueOption: { startsWith: "External:" } }
+            : {
+                OR: [
+                  { lines: { some: { issueToItemNo: { not: null } } } },
+                  { issueOption: { startsWith: "External:" } },
+                ],
+              }
+        : {};
       const where = {
         status: { in: [...OPEN_STATUSES] },
         AND: [
+          movementWhere,
           search
             ? {
                 OR: [
                   { dcNo: { contains: search } },
                   { receiveName: { contains: search } },
                   { subCode: { contains: search } },
+                  { lines: { some: { toolOrGaugeNo: { contains: search } } } },
                 ],
               }
             : {},
@@ -105,10 +122,10 @@ export async function GET(req: NextRequest) {
         }),
         prisma.gaugeToolsIssue.count({ where }),
         prisma.gaugeToolsIssue.count({
-          where: pendingReturnWhere,
+          where: { AND: [pendingReturnWhere, movementWhere] },
         }),
         prisma.gaugeToolsIssue.count({
-          where: overdueReturnWhere(today),
+          where: { AND: [overdueReturnWhere(today), movementWhere] },
         }),
       ]);
 
@@ -124,8 +141,21 @@ export async function GET(req: NextRequest) {
     }
 
     // GRN history list (TOOLS_ISSUE_RECEIVED) — ERP receive list page
+    const movementIssueWhere = movementOnly
+      ? movement === "internal"
+        ? { issueOption: "Internal Unit Movement" }
+        : movement === "external"
+          ? { issueOption: { startsWith: "External:" } }
+          : {
+              OR: [
+                { lines: { some: { issueToItemNo: { not: null } } } },
+                { issueOption: { startsWith: "External:" } },
+              ],
+            }
+      : {};
     const where = {
       AND: [
+        movementOnly ? { issueHeader: movementIssueWhere } : {},
         search
           ? {
               OR: [
@@ -134,6 +164,11 @@ export async function GET(req: NextRequest) {
                 { subCode: { contains: search } },
                 { contName: { contains: search } },
                 { creatUserIdCd: { contains: search } },
+                {
+                  issueHeader: {
+                    lines: { some: { toolOrGaugeNo: { contains: search } } },
+                  },
+                },
               ],
             }
           : {},
@@ -154,7 +189,11 @@ export async function GET(req: NextRequest) {
               ],
             }
           : {},
-        vendorType && vendorType !== "ALL" ? { vendorType } : {},
+        vendorType && vendorType !== "ALL"
+          ? movementOnly
+            ? { vendorType: { contains: vendorType } }
+            : { vendorType }
+          : {},
         fromDate ? { receiveDate: { gte: new Date(fromDate) } } : {},
         toDate
           ? { receiveDate: { lte: new Date(`${toDate}T23:59:59.999`) } }
@@ -182,10 +221,10 @@ export async function GET(req: NextRequest) {
       }),
       prisma.toolsIssueReceived.count({ where }),
       prisma.gaugeToolsIssue.count({
-        where: pendingReturnWhere,
+        where: { AND: [pendingReturnWhere, movementIssueWhere] },
       }),
       prisma.gaugeToolsIssue.count({
-        where: overdueReturnWhere(today),
+        where: { AND: [overdueReturnWhere(today), movementIssueWhere] },
       }),
     ]);
 
@@ -389,7 +428,27 @@ export async function POST(req: NextRequest) {
         const maintainsSerial =
           serialFlag === "yes" || serialFlag === "y" || serialFlag === "1" || serialFlag === "true";
 
-        if (master && toolNo && !maintainsSerial) {
+        const isMovementRecord = Boolean(
+          (issueHeader.fromUnit && issueLine.issueToItemNo) ||
+            issueHeader.issueOption?.startsWith("External:")
+        );
+        const destinationUnit = normalizeCompanyUnit(issueLine.issueToItemNo);
+        if (master && issueHeader.fromUnit && destinationUnit) {
+          const destinationRack = location?.trim()?.slice(0, 50) || null;
+          await tx.gaugeAndTools.update({
+            where: { refNo: master.refNo },
+            data: {
+              locationName: destinationUnit,
+              location: destinationRack,
+              rack: destinationRack,
+              locationOutputName: destinationRack
+                ? `${destinationUnit} / ${destinationRack}`
+                : `${destinationUnit} / Unassigned rack`,
+              lstUpdtUserIdCd: erpActor,
+            },
+          });
+        }
+        if (!isMovementRecord && master && toolNo && !maintainsSerial) {
           await tx.gaugeAndTools.update({
             where: { toolOrGaugeNo: toolNo },
             data: {
@@ -413,7 +472,7 @@ export async function POST(req: NextRequest) {
               await tx.gaugeSerialNo.updateMany({
                 where: {
                   toolOrGaugeNo: toolNo,
-                  status: { in: ["VENDOR USE", "INHOUSE USE"] },
+                  status: { in: ["VENDOR USE", "INHOUSE USE", "IN MOVEMENT"] },
                 },
                 data: { status: "AVAILABLE FOR USE" },
               });

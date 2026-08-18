@@ -14,6 +14,9 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "@/lib/SessionContext";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { apiGet, apiPatch } from "@/lib/apiClient";
+
+type CalibrationNotice = { id: number; subject: string; message: string; dueDate: string; readAt: string | null };
 
 function getInitials(name: string) {
   return name
@@ -29,6 +32,7 @@ export default function TopBar() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<CalibrationNotice[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -37,12 +41,24 @@ export default function TopBar() {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(new Date());
     const interval = setInterval(() => {
       setNow(new Date());
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    apiGet<{ items: CalibrationNotice[] }>("/api/notifications/calibration").then((res) => {
+      if (res.data) setNotifications(res.data.items);
+    });
+  }, []);
+
+  const markAllRead = async () => {
+    const res = await apiPatch("/api/notifications/calibration", { all: true });
+    if (!res.error) setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -119,7 +135,7 @@ export default function TopBar() {
             title="Notifications"
           >
             <Bell className="w-3.5 h-3.5" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-[var(--bg-card)]" />
+            {notifications.some((item) => !item.readAt) && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-[var(--bg-card)]" />}
           </button>
 
           {isNotifOpen && (
@@ -135,13 +151,14 @@ export default function TopBar() {
                       </span>
                     </div>
                   </div>
-                  <button className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold flex items-center gap-1 transition-colors">
+                  <button onClick={markAllRead} className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold flex items-center gap-1 transition-colors">
                     <Check size={10} /> Mark read
                   </button>
                 </div>
               </div>
-              <div className="p-8 text-center text-[var(--text-muted)] text-xs font-semibold">
-                All caught up!
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.slice(0, 10).map((item) => <div key={item.id} className={`border-b border-[var(--border-main)] p-3 ${item.readAt ? "" : "bg-amber-50"}`}><p className="text-xs font-semibold text-[var(--text-primary)]">{item.subject}</p><p className="mt-1 line-clamp-2 text-[10px] text-[var(--text-muted)]">{item.message}</p></div>)}
+                {!notifications.length && <div className="p-8 text-center text-[var(--text-muted)] text-xs font-semibold">All caught up!</div>}
               </div>
             </div>
           )}

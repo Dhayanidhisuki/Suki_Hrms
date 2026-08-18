@@ -31,7 +31,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageLoader } from "@/components/PageLoader";
 import { OverlayModal } from "@/components/ui/OverlayModal";
 import { toastSuccess, toastError } from "@/lib/appToast";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
+import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
 
 interface Tool {
   refNo: number | null;
@@ -44,6 +46,7 @@ interface Tool {
   grouping: string | null;
   type?: string | null;
   location?: string | null;
+  unit?: string | null;
   frequency?: string | null;
   /** ERP Cali. Plan — CALI_PLANNED_WHO */
   caliPlan?: string | null;
@@ -78,18 +81,11 @@ interface CalibrationIssueHeader {
   inHouseLines?: CalibrationIssueLine[];
 }
 
-interface SubOption {
-  id: string;
-  subCode: string;
-  subName: string;
-}
-
 interface StagedCalibLine {
   toolOrGaugeNo: string;
   name: string;
   grouping: string;
   type: string;
-  serialNo: string;
   location: string;
   calibDueDate: string;
   status: string;
@@ -130,16 +126,19 @@ function CalibrationIssuePage() {
   const searchParams = useSearchParams();
   const preselectTool = (searchParams.get("tool") ?? "").trim();
   const preselectApplied = useRef(false);
+  const bulkPreselectApplied = useRef(false);
 
   const [mode, setMode] = useState<"list" | "create" | "detail">("list");
   const [tools, setTools] = useState<Tool[]>([]);
   const [history, setHistory] = useState<CalibrationIssueHeader[]>([]);
-  const [subs, setSubs] = useState<SubOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [alertDays, setAlertDays] = useState(90);
   const [dueSoonCount, setDueSoonCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
   const [underCalibrationCount, setUnderCalibrationCount] = useState(0);
+  const [unitFilter, setUnitFilter] = useState("");
+  const [loadedUnit, setLoadedUnit] = useState("");
+  const [availableUnits, setAvailableUnits] = useState<string[]>(["Unit 1", "Unit 2", "Unit 3"]);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearch, setHistorySearch] = useState("");
@@ -179,6 +178,7 @@ function CalibrationIssuePage() {
   const [issueFor, setIssueFor] = useState("Calibration");
   const [toolsPoNo, setToolsPoNo] = useState("Any");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [staged, setStaged] = useState<StagedCalibLine[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -190,18 +190,19 @@ function CalibrationIssuePage() {
     if (appliedHistory.from) histParams.set("fromDate", appliedHistory.from);
     if (appliedHistory.to) histParams.set("toDate", appliedHistory.to);
     const histQs = histParams.toString();
-    const [tRes, hRes, sRes] = await Promise.all([
+    const [tRes, hRes] = await Promise.all([
       apiGet<{
         items: Tool[];
         alertDays?: number;
         dueSoonCount?: number;
         overdueCount?: number;
         underCalibrationCount?: number;
-      }>("/api/tools/calibration-due"),
+        activeUnit?: string;
+        availableUnits?: string[];
+      }>(`/api/tools/calibration-due${unitFilter ? `?unit=${encodeURIComponent(unitFilter)}` : ""}`),
       apiGet<{ items: CalibrationIssueHeader[]; total?: number }>(
         `/api/calibration/issue${histQs ? `?${histQs}` : ""}`
       ),
-      apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
     ]);
 
     if (tRes.data?.items) {
@@ -225,6 +226,9 @@ function CalibrationIssuePage() {
       setDueSoonCount(tRes.data.dueSoonCount ?? clientDueSoon);
       setOverdueCount(tRes.data.overdueCount ?? clientOverdue);
       setUnderCalibrationCount(tRes.data.underCalibrationCount ?? 0);
+      setLoadedUnit(tRes.data.activeUnit ?? unitFilter);
+      if (!unitFilter && tRes.data.activeUnit) setUnitFilter(tRes.data.activeUnit);
+      if (tRes.data.availableUnits?.length) setAvailableUnits(tRes.data.availableUnits);
     } else {
       setTools([]);
       setDueSoonCount(0);
@@ -239,12 +243,12 @@ function CalibrationIssuePage() {
     } else if (hRes.data?.items) {
       setHistory(hRes.data.items);
     }
-    setSubs(sRes.data?.items ?? []);
     setLoading(false);
-  }, [appliedHistory]);
+  }, [appliedHistory, unitFilter]);
 
   useEffect(() => {
-    void loadData();
+    const timer = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   useEffect(() => {
@@ -253,14 +257,84 @@ function CalibrationIssuePage() {
       (t) => t.toolOrGaugeNo.toLowerCase() === preselectTool.toLowerCase()
     );
     if (match) {
-      setMode("create");
-      setIssueFor("Calibration");
-      setIssueForFilter("Calibration");
-      setSelectedKeys(new Set([match.toolOrGaugeNo]));
-      setSearchQuery(match.toolOrGaugeNo);
       preselectApplied.current = true;
+      const timer = window.setTimeout(() => {
+        setMode("create");
+        setIssueFor("Calibration");
+        setIssueForFilter("Calibration");
+        setSelectedKeys(new Set([match.toolOrGaugeNo]));
+        setSearchQuery(match.toolOrGaugeNo);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [preselectTool, tools]);
+
+  useEffect(() => {
+    if (bulkPreselectApplied.current || tools.length === 0) return;
+    const raw = sessionStorage.getItem("bulkCalibIssueLines");
+    if (!raw) return;
+    try {
+      const requested = JSON.parse(raw) as Array<{
+        toolOrGaugeNo?: string;
+        description?: string;
+        location?: string;
+        unit?: string | null;
+        nextCalibDate?: string | null;
+      }>;
+      const requestedUnits = Array.from(new Set(
+        requested
+          .map((item) => normalizeCompanyUnit(item.unit))
+          .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
+      ));
+      if (requestedUnits.length > 1) {
+        bulkPreselectApplied.current = true;
+        sessionStorage.removeItem("bulkCalibIssueLines");
+        toastError("Select instruments from one company unit per calibration issue.");
+        return;
+      }
+      if (requestedUnits.length === 1 && requestedUnits[0] !== loadedUnit) {
+        if (requestedUnits[0] !== normalizeCompanyUnit(unitFilter)) {
+          const timer = window.setTimeout(() => setUnitFilter(requestedUnits[0]), 0);
+          return () => window.clearTimeout(timer);
+        }
+        return;
+      }
+      const requestedByNo = new Map(
+        requested
+          .filter((item) => item.toolOrGaugeNo?.trim())
+          .map((item) => [item.toolOrGaugeNo!.trim().toLowerCase(), item])
+      );
+      const selected = tools.filter((tool) => requestedByNo.has(tool.toolOrGaugeNo.toLowerCase()));
+      if (selected.length === 0) {
+        bulkPreselectApplied.current = true;
+        sessionStorage.removeItem("bulkCalibIssueLines");
+        toastError("The selected instruments are not currently eligible for calibration issue.");
+        return;
+      }
+      bulkPreselectApplied.current = true;
+      sessionStorage.removeItem("bulkCalibIssueLines");
+      window.setTimeout(() => {
+        setMode("create");
+        setIssueFor("Calibration");
+        setStaged(selected.map((tool) => {
+          const requestedItem = requestedByNo.get(tool.toolOrGaugeNo.toLowerCase());
+          return {
+            toolOrGaugeNo: tool.toolOrGaugeNo,
+            name: tool.name || requestedItem?.description || "—",
+            grouping: tool.grouping || "—",
+            type: tool.type || "—",
+            location: tool.location || requestedItem?.location || "—",
+            calibDueDate: formatDate(tool.nextCalibrationDate || requestedItem?.nextCalibDate || null),
+            status: "ISSUE FOR CALIBRATION",
+          };
+        }));
+      }, 0);
+    } catch {
+      bulkPreselectApplied.current = true;
+      sessionStorage.removeItem("bulkCalibIssueLines");
+      toastError("Could not read the selected calibration instruments.");
+    }
+  }, [tools, unitFilter, loadedUnit]);
 
   const groups = Array.from(new Set(tools.map((t) => t.grouping).filter(Boolean))) as string[];
   const types = Array.from(new Set(tools.map((t) => t.type).filter(Boolean))) as string[];
@@ -379,11 +453,12 @@ function CalibrationIssuePage() {
     .filter((t) => {
       if (t.daysLeft === null) return false;
       if (preselectTool && t.toolOrGaugeNo.toLowerCase() === preselectTool.toLowerCase()) return true;
-      return t.daysLeft <= 90;
+      return true;
     })
     .filter((t) => {
       if (groupFilter !== "ALL" && t.grouping !== groupFilter) return false;
       if (typeFilter !== "ALL" && t.type !== typeFilter) return false;
+      if (unitFilter && t.unit !== unitFilter) return false;
 
       const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
@@ -405,6 +480,10 @@ function CalibrationIssuePage() {
       return true;
     })
     .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
+
+  const visibleDueTools = showSelectedOnly
+    ? dueToolsList.filter((tool) => selectedKeys.has(tool.toolOrGaugeNo))
+    : dueToolsList;
 
 
   const toggleSelect = (toolNo: string) => {
@@ -434,7 +513,6 @@ function CalibrationIssuePage() {
         name: t.name || "—",
         grouping: t.grouping || "—",
         type: t.type || "—",
-        serialNo: t.serialNo != null ? String(t.serialNo) : "",
         location: t.location || "—",
         calibDueDate: formatDate(t.nextCalibrationDate),
         status: "ISSUE FOR CALIBRATION",
@@ -446,6 +524,7 @@ function CalibrationIssuePage() {
     }
     setStaged((prev) => [...prev, ...toAdd]);
     setSelectedKeys(new Set());
+    setShowSelectedOnly(false);
     setErrors((prev) => ({ ...prev, tools: "" }));
   };
 
@@ -458,6 +537,7 @@ function CalibrationIssuePage() {
     setToolsPoNo("Any");
     setStaged([]);
     setSelectedKeys(new Set());
+    setShowSelectedOnly(false);
     setErrors({});
   };
 
@@ -484,7 +564,6 @@ function CalibrationIssuePage() {
       lines: staged.map((l) => ({
         toolOrGaugeNo: l.toolOrGaugeNo,
         issueQty: 1,
-        serialNo: l.serialNo.trim() ? Number(l.serialNo) : undefined,
         calibDueDate: l.calibDueDate !== "—" ? l.calibDueDate : undefined,
       })),
     };
@@ -863,7 +942,7 @@ function CalibrationIssuePage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                            {["Tool No", "Name", "Group", "Qty", "Serial", "Due", "Status"].map((col) => (
+                            {["Tool No", "Name", "Group", "Due", "Status"].map((col) => (
                               <th key={col} className="text-left text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3">
                                 {col}
                               </th>
@@ -876,15 +955,13 @@ function CalibrationIssuePage() {
                               <td className="py-2 px-3 font-mono text-xs font-bold">{l.toolOrGaugeNo ?? "—"}</td>
                               <td className="py-2 px-3 text-xs">{l.tool?.name ?? "—"}</td>
                               <td className="py-2 px-3 text-xs">{l.grouping ?? "—"}</td>
-                              <td className="py-2 px-3 font-mono text-xs">{l.issueQty ?? 1}</td>
-                              <td className="py-2 px-3 font-mono text-xs">{l.serialNo ?? "—"}</td>
                               <td className="py-2 px-3 font-mono text-xs">{formatDate(l.dueDate)}</td>
                               <td className="py-2 px-3 text-xs">{l.status ?? "—"}</td>
                             </tr>
                           ))}
                           {(selectedDc.inHouseLines ?? []).length === 0 && (
                             <tr>
-                              <td colSpan={7} className="py-6 text-center text-sm text-[var(--text-muted)]">
+                              <td colSpan={5} className="py-6 text-center text-sm text-[var(--text-muted)]">
                                 No lines on this DC.
                               </td>
                             </tr>
@@ -935,7 +1012,21 @@ function CalibrationIssuePage() {
 
                 {/* Filters + source table */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3 overflow-hidden">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-0">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <label className={headerLabelCls}>Company Unit</label>
+                      <select
+                        value={unitFilter}
+                        onChange={(e) => {
+                          setUnitFilter(e.target.value);
+                          setSelectedKeys(new Set());
+                          setStaged([]);
+                        }}
+                        className={headerInputCls}
+                      >
+                        {availableUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                      </select>
+                    </div>
                     <div className="min-w-0">
                       <label className={headerLabelCls}>Issue for</label>
                       <select
@@ -1034,7 +1125,22 @@ function CalibrationIssuePage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[var(--text-primary)]">
+                        {selectedKeys.size} selected
+                      </span>
+                      {selectedKeys.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSelectedOnly((value) => !value)}
+                          className="text-[11px] font-semibold text-[var(--primary)] hover:underline"
+                        >
+                          {showSelectedOnly ? "Show all instruments" : "Review selected only"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                     {(dueFromDate || dueToDate) && (
                       <Button
                         type="button"
@@ -1054,29 +1160,36 @@ function CalibrationIssuePage() {
                         ? "Deselect All"
                         : "Select All"}
                     </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      className="h-8 text-xs"
+                      disabled={selectedKeys.size === 0}
+                      onClick={addToIssueList}
+                    >
+                      Add {selectedKeys.size || ""} to Issue List
+                    </Button>
+                    </div>
                   </div>
 
                   <p className="text-[11px] text-[var(--text-muted)] leading-snug">
-                    Same as ERP:{" "}
+                    Showing calibration activity for <span className="font-semibold text-[var(--primary)]">{unitFilter}</span>.{" "}
                     <span className="font-semibold text-[var(--text-secondary)]">Consider Date = No</span> lists all due
-                    tools (From/To ignored).{" "}
-                    <span className="font-semibold text-[var(--text-secondary)]">Cur.Status</span> ={" "}
-                    <span className="font-mono">GAUGE_SERIAL_NO.STATUS</span> (e.g. AVAILABLE FOR USE, NEW PURCHASE).{" "}
-                    Red due date = overdue · showing {dueToolsList.length} tool(s).
+                    instruments for this unit (From/To ignored). Red due date = overdue · showing {dueToolsList.length} instrument(s).
                   </p>
-                  <div className="overflow-auto max-h-64 border border-[var(--border-main)] rounded-lg">
+                  <div className="overflow-auto max-h-[min(52vh,520px)] overscroll-contain border border-[var(--border-main)] rounded-lg">
                     {loading ? (
                       <TableSkeleton rows={5} />
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                      <table className="w-full min-w-[1320px] text-sm">
+                        <thead className="sticky top-0 z-20 bg-[var(--bg-subtle)] shadow-[0_1px_0_var(--border-main)]">
+                          <tr className="border-b border-[var(--border-main)]">
                             {[
                               "",
                               "Gauge/Tool No",
+                              "Unit",
                               "Group",
                               "Type",
-                              "Sl.No",
                               "Description",
                               "Location",
                               "Cali. Plan",
@@ -1091,14 +1204,16 @@ function CalibrationIssuePage() {
                                   c === "Cali. Plan"
                                     ? "CALI_PLANNED_WHO from Tools Master"
                                     : c === "Cur.Status"
-                                      ? "ERP Cur.Status from GAUGE_SERIAL_NO (AVAILABLE FOR USE / NEW PURCHASE / …)"
+                                      ? "Current status from the instrument master"
                                       : c === "Cali.Due.Dt."
                                         ? "Next calibration due date. Red = overdue."
                                         : c === "P.S Min" || c === "P.S Max"
                                           ? "Product spec from Tools Master"
                                           : undefined
                                 }
-                                className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-1.5 px-2 whitespace-nowrap"
+                                className={`text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2 px-2 whitespace-nowrap bg-[var(--bg-subtle)] ${
+                                  c === "" ? "sticky left-0 z-30 w-11" : c === "Gauge/Tool No" ? "sticky left-11 z-30 min-w-40" : ""
+                                }`}
                               >
                                 {c}
                               </th>
@@ -1106,21 +1221,27 @@ function CalibrationIssuePage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-main)]">
-                          {dueToolsList.map((t) => {
+                          {visibleDueTools.map((t) => {
                             const checked = selectedKeys.has(t.toolOrGaugeNo);
                             const isOver = t.daysLeft !== null && t.daysLeft < 0;
                             return (
                               <tr
                                 key={t.refNo ?? t.toolOrGaugeNo}
-                                className={checked ? "bg-emerald-50 dark:bg-emerald-950/20" : "hover:bg-[var(--bg-hover)]"}
+                                onClick={() => toggleSelect(t.toolOrGaugeNo)}
+                                className={`${checked ? "bg-emerald-50 dark:bg-emerald-950/20" : "bg-[var(--bg-card)] hover:bg-[var(--bg-hover)]"} cursor-pointer`}
                               >
-                                <td className="py-1.5 px-2">
-                                  <input type="checkbox" checked={checked} onChange={() => toggleSelect(t.toolOrGaugeNo)} />
+                                <td className={`sticky left-0 z-10 w-11 py-2 px-2 ${checked ? "bg-emerald-50 dark:bg-emerald-950" : "bg-[var(--bg-card)]"}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={() => toggleSelect(t.toolOrGaugeNo)}
+                                  />
                                 </td>
-                                <td className="py-1.5 px-2 font-mono text-xs font-semibold">{t.toolOrGaugeNo}</td>
+                                <td className={`sticky left-11 z-10 min-w-40 py-2 px-2 font-mono text-xs font-semibold ${checked ? "bg-emerald-50 dark:bg-emerald-950" : "bg-[var(--bg-card)]"}`}>{t.toolOrGaugeNo}</td>
+                                <td className="py-1.5 px-2 text-xs font-semibold text-[var(--primary)]">{t.unit || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.grouping || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.type || "—"}</td>
-                                <td className="py-1.5 px-2 font-mono text-xs">{t.serialNo ?? "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.description || t.name || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.location && t.location !== "-Select-" ? t.location : "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.caliPlan || "—"}</td>
@@ -1133,10 +1254,12 @@ function CalibrationIssuePage() {
                               </tr>
                             );
                           })}
-                          {dueToolsList.length === 0 && (
+                          {visibleDueTools.length === 0 && (
                             <tr>
                               <td colSpan={12} className="py-6 text-center text-xs text-[var(--text-muted)]">
-                                {searchQuery.trim()
+                                {showSelectedOnly
+                                  ? "No instruments selected. Return to all instruments and select one or more rows."
+                                  : searchQuery.trim()
                                   ? "No matching due tools. Set Consider Date = No (ERP default), or check History Card = Yes + calibration frequency on Tools Master."
                                   : "No records found. With Consider Date = No, all due tools in the alert window are listed (ERP behaviour)."}
                               </td>
@@ -1147,24 +1270,27 @@ function CalibrationIssuePage() {
                     )}
                   </div>
 
-                  <div className="flex justify-center">
-                    <Button type="button" variant="primary" onClick={addToIssueList}>
-                      Add to Issue List
-                    </Button>
-                  </div>
+                  {selectedKeys.size > 0 && (
+                    <div className="sticky bottom-3 z-30 flex justify-center pointer-events-none">
+                      <Button type="button" variant="primary" onClick={addToIssueList} className="pointer-events-auto shadow-lg">
+                        Add {selectedKeys.size} Selected to Issue List
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Issue list */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div>
-                      <label className={headerLabelCls}>Party Name</label>
-                      <select value={subCode} onChange={(e) => setSubCode(e.target.value)} className={headerInputCls}>
-                        <option value="">--SELECT--</option>
-                        {subs.map((s) => (
-                          <option key={s.subCode} value={s.subCode}>{s.subCode} — {s.subName}</option>
-                        ))}
-                      </select>
+                      <MasterSearchSelect
+                        kind="subcontractor"
+                        label="Party Name"
+                        value={subCode}
+                        selectedLabel={subCode}
+                        onChange={(value) => setSubCode(value)}
+                        placeholder="Search code or party name…"
+                      />
                     </div>
                     <div>
                       <label className={headerLabelCls}>Receiver Name *</label>
@@ -1200,7 +1326,7 @@ function CalibrationIssuePage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["Gauge/Tool No", "Group", "Type", "Sl.No", "Description", "Location", "Cali.Due.Dt.", "Status", ""].map((c) => (
+                          {["Gauge/Tool No", "Group", "Type", "Description", "Location", "Cali.Due.Dt.", "Status", ""].map((c) => (
                             <th key={c} className="text-left text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-1.5 px-2">{c}</th>
                           ))}
                         </tr>
@@ -1211,7 +1337,6 @@ function CalibrationIssuePage() {
                             <td className="py-1.5 px-2 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
                             <td className="py-1.5 px-2 text-xs">{line.grouping}</td>
                             <td className="py-1.5 px-2 text-xs">{line.type}</td>
-                            <td className="py-1.5 px-2 font-mono text-xs">{line.serialNo || "—"}</td>
                             <td className="py-1.5 px-2 text-xs">{line.name}</td>
                             <td className="py-1.5 px-2 text-xs">{line.location}</td>
                             <td className="py-1.5 px-2 font-mono text-xs">{line.calibDueDate}</td>
@@ -1229,7 +1354,7 @@ function CalibrationIssuePage() {
                         ))}
                         {staged.length === 0 && (
                           <tr>
-                            <td colSpan={9} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                            <td colSpan={8} className="py-6 text-center text-xs text-[var(--text-muted)]">
                               No records found. Select tools above and click Add to Issue List.
                             </td>
                           </tr>
@@ -1268,19 +1393,14 @@ function CalibrationIssuePage() {
             />
           </div>
           <div>
-            <label className="form-label">Sub Code</label>
-            <select
-              className="form-control"
+            <MasterSearchSelect
+              kind="subcontractor"
+              label="Sub Code"
               value={editSubCode}
-              onChange={(e) => setEditSubCode(e.target.value)}
-            >
-              <option value="">—</option>
-              {subs.map((s) => (
-                <option key={s.subCode} value={s.subCode}>
-                  {s.subCode} — {s.subName}
-                </option>
-              ))}
-            </select>
+              selectedLabel={editSubCode}
+              onChange={(value) => setEditSubCode(value)}
+              placeholder="Search code or party name…"
+            />
           </div>
           <div>
             <label className="form-label">Issue For</label>
