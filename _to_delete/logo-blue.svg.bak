@@ -46,6 +46,8 @@
 <linearGradient id="paint_theme_blue_9" x1="832.529" y1="420.931" x2="844.67" y2="114.962" gradientUnits="userSpaceOnUse">
 <stop stop-color="#093C94"/><stop offset="0.649038" stop-color="#36D6FF"/>
 </linearGradient>
-<linearGradient id="paint_theme_blue_10" x1="311" y1="0" x2="311" y2="663.6" gradientUnits="userSpaceOnUse"><stop stop-color="#071C58"/><stop offset="0.550245" stop-color="#208BF8"/><stop offset="1" stop-color="#BFECFF"/></linearGradient>
+<linearGradient id="paint_theme_blue_10" x1="311" y1="117.727" x2="311" y2="1025.54" gradientUnits="userSpaceOnUse">
+<stop stop-color="#061953"/><stop offset="0.3" stop-color="#1A3B8F"/><stop offset="0.6" stop-color="#2090FF"/><stop offset="0.85" stop-color="#6CD3FE"/><stop offset="1" stop-color="white"/>
+</linearGradient>
 </defs>
 </svg>

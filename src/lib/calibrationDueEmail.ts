@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/sendEmail";
-import { digestTemplate, testEmailTemplate } from "@/lib/email/emailTemplates";
+import { digestTemplate, testEmailTemplate, emailLogoAttachment } from "@/lib/email/emailTemplates";
 import type { Prisma } from "@prisma/client";
 
 const DAY_MS = 86_400_000;
@@ -237,6 +237,7 @@ export async function runCalibrationTestEmail(testEmail: string, now = new Date(
       to: testEmail,
       subject,
       html: testEmailTemplate(item),
+      attachments: [emailLogoAttachment()],
     });
     await prisma.calibrationNotification.update({ where: { id: notification.id }, data: { status: "TEST_SENT" } });
     return { ok: true as const, recipient: testEmail, subject, tool: item, smtp };
@@ -303,8 +304,13 @@ export async function runCalibrationDueEmails(now = new Date(), options: { force
         to: delivery.user.email,
         cc: delivery.cc,
         subject,
-        html: digestTemplate(delivery.user, pending.map((entry) => entry.item)),
-      }); // digestTemplate now uses branded HTML from emailTemplates.ts
+        html: digestTemplate(
+          delivery.user,
+          pending.map((entry) => entry.item),
+          dailyDigestChannel(now),
+        ),
+        attachments: [emailLogoAttachment()],
+      }); // branded HTML + inline CID logo from emailTemplates.ts
       await prisma.calibrationNotification.updateMany({
         where: { id: { in: logs.map((log) => log.id) } },
         data: { status: "SENT", sentAt: new Date(), errorMessage: null, ccAddress: delivery.cc.join(", ") || null },

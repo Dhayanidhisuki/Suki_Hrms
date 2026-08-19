@@ -1,0 +1,4 @@
+export type DigestExportFormat = "pdf"|"xlsx";
+export function calibrationDigestExportUrl(u:number,c:string,f:DigestExportFormat){
+  return `http://192.168.2.110:3000/api/tools/calibration-due/digest?format=${f}&token=STUBTOKEN.${u}.${c}`;
+}

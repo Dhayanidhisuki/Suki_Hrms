@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, FormEvent } from "react";
-import { Lock, User, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
+import { Lock, User, AlertCircle, ShieldCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { LoginSchema } from "@/lib/validators";
 import { LogoSpinner } from "@/components/LogoSpinner";
@@ -13,6 +13,55 @@ function safeRedirectTarget(raw: string | null): string {
     return "/dashboard";
   }
   return raw;
+}
+
+/** Decorative circuit traces + chip modules behind the card. Purely visual. */
+function CircuitBackdrop() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 2024 1162"
+        preserveAspectRatio="xMidYMid slice"
+        fill="none"
+      >
+        <defs>
+          <pattern id="chipDots" width="14" height="14" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="#3a3f4a" />
+          </pattern>
+        </defs>
+
+        <g stroke="#23262d" strokeWidth="1.5" fill="none">
+          {/* upper-left trace */}
+          <path d="M0 142 H206 M206 142 H560 L620 202 V520 L680 580 V760 L620 820 V1162" />
+          {/* upper-right trace */}
+          <path d="M2024 142 H1818 M1818 142 H1464 L1404 202 V520 L1344 580 V760 L1404 820 V1162" />
+          {/* thin horizontals */}
+          <path d="M0 128 H44 M0 156 H44 M1980 128 H2024 M1980 156 H2024" />
+        </g>
+
+        {/* chip modules */}
+        <g>
+          <rect x="46" y="108" width="134" height="68" rx="10" fill="#131519" stroke="#2a2e36" />
+          <rect x="58" y="120" width="110" height="44" fill="url(#chipDots)" opacity="0.9" />
+          <rect x="1844" y="108" width="134" height="68" rx="10" fill="#131519" stroke="#2a2e36" />
+          <rect x="1856" y="120" width="110" height="44" fill="url(#chipDots)" opacity="0.9" />
+        </g>
+
+        {/* solder pads */}
+        <g fill="#c9d1d9">
+          <rect x="201" y="136" width="12" height="12" rx="2" />
+          <rect x="1811" y="136" width="12" height="12" rx="2" />
+        </g>
+      </svg>
+
+      {/* soft brand glow behind the card */}
+      <div
+        className="absolute left-1/2 top-1/2 h-[560px] w-[860px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px]"
+        style={{ background: "radial-gradient(closest-side, rgba(32,139,248,0.10), transparent)" }}
+      />
+    </div>
+  );
 }
 
 function LoginForm() {
@@ -76,30 +125,32 @@ function LoginForm() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[var(--bg-app,#0D1117)] text-[var(--text-primary,#f1f5f9)] flex items-center justify-center p-4 relative overflow-hidden">
-      <div
-        className="absolute inset-0 pointer-events-none opacity-40"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 50% at 20% 20%, color-mix(in srgb, var(--primary, #2563eb) 18%, transparent), transparent), radial-gradient(ellipse 60% 40% at 80% 75%, color-mix(in srgb, var(--primary, #2563eb) 12%, transparent), transparent)",
-        }}
-      />
+  const inputClass =
+    "block w-full rounded-xl border border-[#2a2e36] bg-[#141619] py-3.5 pl-11 pr-3.5 text-[15px] text-[#e6edf3] placeholder:text-[#6b7280] transition-colors focus:border-[#208bf8]/60 focus:outline-none focus:ring-2 focus:ring-[#208bf8]/25 disabled:opacity-60";
 
-      <div className="w-full max-w-md bg-[var(--bg-card,#161B22)]/95 border border-[var(--border-main,#30363d)] backdrop-blur-xl rounded-3xl shadow-2xl p-8 relative z-10">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo-blue.svg"
-              alt="SUKI TOOLS"
-              width={266}
-              height={84}
-              className="h-16 w-auto max-w-[min(100%,280px)] object-contain select-none"
-              draggable={false}
-            />
-          </div>
-          <p className="text-xs text-[var(--text-muted,#94a3b8)] font-medium">
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0b] p-4 text-[#e6edf3]">
+      <CircuitBackdrop />
+
+      <div className="relative z-10 w-full max-w-[420px] rounded-2xl border border-[#22252b] bg-[#131417] p-8 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)] sm:p-10">
+        {/* Brand lockup */}
+        <div className="mb-7 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-blue.svg"
+            alt="TOOLS by SUKI ERP"
+            width={1960}
+            height={635}
+            className="block h-auto w-[244px] select-none"
+            draggable={false}
+          />
+        </div>
+
+        <div className="mb-8 text-center">
+          <h1 className="text-[34px] font-bold leading-tight tracking-tight text-white">
+            Welcome Back
+          </h1>
+          <p className="mt-2.5 text-[14px] text-[#8b949e]">
             Sign in with your Tools Management account
           </p>
         </div>
@@ -107,24 +158,21 @@ function LoginForm() {
         {error && (
           <div
             role="alert"
-            className="mb-6 p-3.5 rounded-xl bg-[var(--color-danger-bg,rgba(244,63,94,0.1))] border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5"
+            className="mb-6 flex items-center gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300"
           >
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span className="font-medium">{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="login-username"
-              className="text-xs font-semibold text-[var(--text-muted,#94a3b8)] uppercase tracking-wider ml-1"
-            >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div>
+            <label htmlFor="login-username" className="sr-only">
               Username
             </label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <User className="h-4 w-4 text-[var(--text-muted,#64748b)] group-focus-within:text-[var(--primary,#60a5fa)] transition-colors" />
+            <div className="group relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                <User className="h-[18px] w-[18px] text-[#6b7280] transition-colors group-focus-within:text-[#208bf8]" />
               </div>
               <input
                 id="login-username"
@@ -132,27 +180,24 @@ function LoginForm() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}
-                className="block w-full pl-10 pr-3 py-3 bg-[var(--bg-subtle,#0f172a)]/60 border border-[var(--border-main,#334155)] rounded-xl text-sm placeholder:text-[var(--text-muted,#475569)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#3b82f6)]/40 focus:border-[var(--primary,#3b82f6)]/40 transition-all disabled:opacity-60"
-                placeholder="Enter your username"
+                className={inputClass}
+                placeholder="Username"
                 autoComplete="username"
                 autoFocus
               />
             </div>
             {fieldErrors.username && (
-              <p className="text-[11px] text-rose-400 ml-1">{fieldErrors.username}</p>
+              <p className="ml-1 mt-1.5 text-[11px] text-rose-400">{fieldErrors.username}</p>
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="login-password"
-              className="text-xs font-semibold text-[var(--text-muted,#94a3b8)] uppercase tracking-wider ml-1"
-            >
+          <div>
+            <label htmlFor="login-password" className="sr-only">
               Password
             </label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Lock className="h-4 w-4 text-[var(--text-muted,#64748b)] group-focus-within:text-[var(--primary,#60a5fa)] transition-colors" />
+            <div className="group relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                <Lock className="h-[18px] w-[18px] text-[#6b7280] transition-colors group-focus-within:text-[#208bf8]" />
               </div>
               <input
                 id="login-password"
@@ -160,38 +205,35 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
-                className="block w-full pl-10 pr-3 py-3 bg-[var(--bg-subtle,#0f172a)]/60 border border-[var(--border-main,#334155)] rounded-xl text-sm placeholder:text-[var(--text-muted,#475569)] focus:outline-none focus:ring-2 focus:ring-[var(--primary,#3b82f6)]/40 focus:border-[var(--primary,#3b82f6)]/40 transition-all disabled:opacity-60"
-                placeholder="Enter your password"
+                className={inputClass}
+                placeholder="Password"
                 autoComplete="current-password"
               />
             </div>
             {fieldErrors.password && (
-              <p className="text-[11px] text-rose-400 ml-1">{fieldErrors.password}</p>
+              <p className="ml-1 mt-1.5 text-[11px] text-rose-400">{fieldErrors.password}</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 bg-[var(--primary,#2563eb)] hover:opacity-90 text-white text-sm font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#3b82f6] py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-[#2f74e6] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
-              <span className="flex items-center gap-2">
+              <>
                 <LogoSpinner size={18} />
                 Signing in…
-              </span>
-            ) : (
-              <>
-                Sign In
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </>
+            ) : (
+              "Login"
             )}
           </button>
         </form>
 
-        <div className="mt-8 flex items-center justify-center gap-2 text-[10px] text-[var(--text-muted,#64748b)] font-medium uppercase tracking-widest">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          Internal access — accounts are admin-provisioned
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[10px] font-medium uppercase tracking-wider text-[#5b6371]">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+          <span>Internal access — admin-provisioned accounts</span>
         </div>
       </div>
     </div>
@@ -202,7 +244,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[var(--bg-app,#0D1117)] flex items-center justify-center">
+        <div className="flex min-h-screen items-center justify-center bg-[#0a0a0b]">
           <LogoSpinner size={56} />
         </div>
       }

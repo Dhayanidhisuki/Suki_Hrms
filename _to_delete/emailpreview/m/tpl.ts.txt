@@ -14,9 +14,9 @@
  */
 
 import path from "node:path";
-import type { DueCalibrationTool, NotificationUser } from "@/lib/calibrationDueEmail";
-import { calibrationDigestExportUrl } from "@/lib/calibrationPdfLink";
-import type { EmailAttachment } from "@/lib/email/sendEmail";
+import type { DueCalibrationTool, NotificationUser } from "./types.ts";
+import { calibrationDigestExportUrl } from "./links.ts";
+import type { EmailAttachment } from "./send.ts";
 
 // ─── Brand tokens ──────────────────────────────────────────────────────────────
 

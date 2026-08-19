@@ -1,0 +1,27 @@
+import fs from "node:fs";
+import { buildCalibrationDigestPdf, buildCalibrationDigestXlsx } from "../../src/lib/calibrationDigestExport.ts";
+
+const d = (s: string) => new Date(s + "T00:00:00");
+const today = d("2026-08-17");
+const mk = (no: string, name: string, unit: any, loc: string | null, due: string): any => {
+  const days = Math.round((d(due).getTime() - today.getTime()) / 86400000);
+  return { refNo: 1, toolOrGaugeNo: no, name, description: null, size: "0-25mm",
+    usedLocation: loc, unitCode: unit, responsibility: "Internal", dueDate: d(due),
+    daysRemaining: days, dueStatus: days < 0 ? "OVERDUE" : days === 0 ? "DUE_TODAY" : "DUE_SOON" };
+};
+const items = [
+  mk("MP-TRG-517 G6NG","TRG","UNIT1","Production","2026-08-12"),
+  mk("MP-TRG-638","TPG","UNIT1","Production","2026-08-12"),
+  mk("MP3-BG-28","Bore gauge","UNIT3",null,"2026-08-13"),
+  mk("MP3-CMM-01","CMM","UNIT3","QUALITY","2026-08-13"),
+  mk("MP-QRQ-207 G","QRG","UNIT1","Production","2026-08-17"),
+  mk("MP-BMIC-02","Blade Micrometer","UNIT1","Production","2026-09-01"),
+  mk("MP-DVC-67","Digital vernier caliper","UNIT1","QUALITY","2026-09-01"),
+];
+const meta = { recipientName:"Admin", roleName:"Tools Admin", companyName:"SUKI ERP", generatedAt: today };
+const pdf = buildCalibrationDigestPdf(items, meta);
+const xls = buildCalibrationDigestXlsx(items, meta);
+fs.writeFileSync("_to_delete/exporttest/list.pdf", pdf);
+fs.writeFileSync("_to_delete/exporttest/list.xlsx", xls);
+console.log("pdf bytes", pdf.length, "magic", pdf.subarray(0,5).toString());
+console.log("xlsx bytes", xls.length, "magic", xls.subarray(0,2).toString());
