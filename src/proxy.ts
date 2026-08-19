@@ -11,7 +11,8 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/favicon.ico") return true;
   // Next metadata file conventions (app/icon.*, app/apple-icon.*)
   if (pathname === "/icon" || pathname.startsWith("/icon/")) return true;
-  if (pathname === "/apple-icon" || pathname.startsWith("/apple-icon/")) return true;
+  if (pathname === "/apple-icon" || pathname.startsWith("/apple-icon/"))
+    return true;
   if (/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(pathname)) return true;
   return false;
 }
@@ -41,7 +42,7 @@ function requestIsHttps(req: NextRequest): boolean {
   return req.nextUrl.protocol === "https:";
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
   const auth = await verifyAuthTokenEdge(token);
@@ -51,7 +52,9 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/login" && auth.status === "ok") {
     const redirectParam = req.nextUrl.searchParams.get("redirect");
     const dest =
-      redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
+      redirectParam &&
+      redirectParam.startsWith("/") &&
+      !redirectParam.startsWith("//")
         ? redirectParam
         : "/dashboard";
     return NextResponse.redirect(new URL(dest, req.url));
@@ -70,12 +73,14 @@ export async function middleware(req: NextRequest) {
     if (pathname.startsWith("/api/")) {
       const res = NextResponse.json(
         { success: false, error: "Session expired" },
-        { status: 401 }
+        { status: 401 },
       );
       clearAuthCookie(res, secureCookie);
       return res;
     }
-    const res = NextResponse.redirect(new URL("/auth/session-expired", req.url));
+    const res = NextResponse.redirect(
+      new URL("/auth/session-expired", req.url),
+    );
     clearAuthCookie(res, secureCookie);
     return res;
   }
@@ -84,7 +89,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
