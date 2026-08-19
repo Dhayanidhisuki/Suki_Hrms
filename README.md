@@ -67,4 +67,5 @@ Screen status and test checklists: [`docs/module-wise-testing-guide.md`](./docs/
 | `npm run lint` | ESLint |
 | `npm run db:seed` | Seed admin user |
 | `npm run db:seed:demo-users` | Seed demo role users |
+| `npm run email:calibration-digest` | Send the daily calibration digest immediately |
 | `npm run tunnel:cloudflare` | Cloudflare tunnel helper |

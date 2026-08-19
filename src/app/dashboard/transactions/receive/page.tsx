@@ -9,6 +9,7 @@ import {
   Trash,
   Save,
   FileSpreadsheet,
+  FileDown,
 } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
@@ -64,6 +65,8 @@ interface ToolsIssueHeader {
   receiveName: string | null;
   receiveNameTwo?: string | null;
   subCode: string | null;
+  supCode?: string | null;
+  custCode?: string | null;
   issueOption?: string | null;
   empId: string | null;
   issueDate: string | null;
@@ -193,6 +196,7 @@ export default function ReceiveToolPage() {
   const [pickerSubQuery, setPickerSubQuery] = useState("");
   const [partyQuery, setPartyQuery] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [selectedOpenDcNo, setSelectedOpenDcNo] = useState("");
   const [staged, setStaged] = useState<StagedReceiveLine[]>([]);
   const [activeDcNo, setActiveDcNo] = useState("");
 
@@ -210,6 +214,27 @@ export default function ReceiveToolPage() {
   const [suppliers, setSuppliers] = useState<Array<{ supCode: string; supName: string }>>([]);
   const [partyFilterCode, setPartyFilterCode] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const downloadReceiveDc = async (recNo: number) => {
+    try {
+      const response = await fetch(`/api/receive/${recNo}/pdf`, { credentials: "include" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to download Receive DC");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `Receive_DC_REC-${recNo}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Failed to download Receive DC");
+    }
+  };
 
   const loadHistory = useCallback(
     async (
@@ -310,6 +335,7 @@ export default function ReceiveToolPage() {
     setGeNo("");
     setStaged([]);
     setSelectedKeys(new Set());
+    setSelectedOpenDcNo("");
     setActiveDcNo("");
     setErrors({});
     setPickerSubQuery("");
@@ -322,6 +348,7 @@ export default function ReceiveToolPage() {
     setMode("list");
     setStaged([]);
     setSelectedKeys(new Set());
+    setSelectedOpenDcNo("");
     setErrors({});
     router.replace(receiveBasePath, { scroll: false });
   }, [receiveBasePath, router]);
@@ -345,6 +372,9 @@ export default function ReceiveToolPage() {
   const flatOpenLines = openIssues.flatMap((issue) =>
     issue.lines.map((line) => ({ issue, line }))
   );
+  const visibleOpenLines = selectedOpenDcNo
+    ? flatOpenLines.filter(({ issue }) => issue.dcNo === selectedOpenDcNo)
+    : flatOpenLines;
 
   const dcToolSelectItems: SearchSelectItem[] = (() => {
     const q = pickerSearch.trim().toLowerCase();
@@ -473,6 +503,7 @@ export default function ReceiveToolPage() {
       message: isMovement ? "Instrument ownership moved to the destination unit." : "Items/Asset receive saved.",
       detail: grn ? `${isMovement ? "Receipt" : "GRN"} #${grn} · DC #${activeDcNo}` : `DC #${activeDcNo}`,
     });
+    if (grn) await downloadReceiveDc(grn);
     setMode("list");
     setStaged([]);
     router.replace(receiveBasePath, { scroll: false });
@@ -751,7 +782,7 @@ export default function ReceiveToolPage() {
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
                           {[
                             "#",
-                            "GRN No",
+                            isMovement ? "Receipt / Receive DC" : "GRN / Receive DC",
                             "GRN.Date",
                             "DC.No",
                             "Received From",
@@ -775,7 +806,23 @@ export default function ReceiveToolPage() {
                         {history.map((row, idx) => (
                           <tr key={`${row.recNo}-${row.toolOrGaugeNo}-${idx}`} className="hover:bg-[var(--bg-hover)]">
                             <td className="py-2.5 px-3 text-xs text-[var(--text-muted)]">{(page - 1) * pageSize + idx + 1}</td>
-                            <td className="py-2.5 px-3 font-mono text-xs font-semibold">{row.grnNo}</td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-semibold">{row.grnNo}</span>
+                                {history.findIndex((item) => item.recNo === row.recNo) === idx ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                                    onClick={() => void downloadReceiveDc(row.recNo)}
+                                    title={`Download Receive DC REC-${row.recNo}`}
+                                  >
+                                    <FileDown className="h-3.5 w-3.5" /> Download DC
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </td>
                             <td className="py-2.5 px-3 font-mono text-xs">{row.receiveDate ? String(row.receiveDate).split("T")[0] : "—"}</td>
                             <td className="py-2.5 px-3 font-mono text-xs">{row.dcNo}</td>
                             <td className="py-2.5 px-3 text-xs">{row.receivedFrom || "—"}</td>
@@ -896,10 +943,28 @@ export default function ReceiveToolPage() {
                       placeholder="Search DC or tool number…"
                       query={pickerSearch}
                       onQueryChange={setPickerSearch}
+                      selected={
+                        selectedOpenDcNo
+                          ? {
+                              primary: selectedOpenDcNo,
+                              secondary: `${visibleOpenLines.length} pending line item${visibleOpenLines.length === 1 ? "" : "s"}`,
+                            }
+                          : null
+                      }
+                      onClear={() => {
+                        setSelectedOpenDcNo("");
+                        setSelectedKeys(new Set());
+                        setPickerSearch("");
+                      }}
                       items={dcToolSelectItems}
                       onSelect={(item) => {
-                        // Select matching open lines (checkbox) for quick add
-                        const next = new Set(selectedKeys);
+                        const selectedDc = item.id.startsWith("dc:")
+                          ? item.id.slice(3)
+                          : item.id.startsWith("line:")
+                            ? item.id.slice(5).split(":")[0]
+                            : item.primary;
+                        // Keep one DC in context and expose all of its line items.
+                        const next = new Set<string>();
                         for (const { issue, line } of flatOpenLines) {
                           const key = `${issue.dcNo}:${lineKey(line)}`;
                           const tool = resolveToolNo(line).toLowerCase();
@@ -921,6 +986,7 @@ export default function ReceiveToolPage() {
                             next.add(key);
                           }
                         }
+                        setSelectedOpenDcNo(selectedDc);
                         setSelectedKeys(next);
                         setPickerSearch("");
                       }}
@@ -951,8 +1017,13 @@ export default function ReceiveToolPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-main)]">
-                          {flatOpenLines.map(({ issue, line }) => {
+                          {visibleOpenLines.map(({ issue, line }) => {
                             const key = `${issue.dcNo}:${lineKey(line)}`;
+                            const partyName = issue.subCode
+                              ? subs.find((s) => s.subCode === issue.subCode)?.subName
+                              : issue.supCode
+                                ? suppliers.find((s) => s.supCode === issue.supCode)?.supName
+                                : null;
                             return (
                               <tr key={key} className="hover:bg-[var(--bg-hover)]">
                                 <td className="py-2 px-2">
@@ -964,7 +1035,10 @@ export default function ReceiveToolPage() {
                                 </td>
                                 <td className="py-2 px-2 font-mono text-xs">{issue.dcNo}</td>
                                 <td className="py-2 px-2 text-xs">{issue.receiveName || "—"}</td>
-                                <td className="py-2 px-2 font-mono text-xs">{issue.subCode || "—"}</td>
+                                <td className="py-2 px-2 text-xs">
+                                  <span className="font-mono">{issue.subCode || issue.supCode || "—"}</span>
+                                  {partyName && <span className="block text-[10px] text-[var(--text-muted)] truncate max-w-[140px]">{partyName}</span>}
+                                </td>
                                 <td className="py-2 px-2 font-mono text-xs">{resolveToolNo(line)}</td>
                                 <td className="py-2 px-2 font-mono text-xs">{line.serialNo ?? "—"}</td>
                                 <td className="py-2 px-2 font-mono text-xs">{Number(line.issueQty)}</td>
@@ -974,7 +1048,7 @@ export default function ReceiveToolPage() {
                               </tr>
                             );
                           })}
-                          {flatOpenLines.length === 0 && (
+                          {visibleOpenLines.length === 0 && (
                             <tr>
                               <td colSpan={10} className="py-6 text-center text-xs text-[var(--text-muted)]">No records found.</td>
                             </tr>

@@ -15,6 +15,7 @@ import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
 import { ToolDocumentsPanel } from "@/components/ToolDocumentsPanel";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { MasterSearchSelect } from "@/components/ui/MasterSearchSelect";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface CalibrationRecord {
   refNo: number;
@@ -408,22 +409,22 @@ export default function CalibrationResultsUpdatePage() {
 
           <MasterTableCard
             toolbar={
-              <>
+              <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
                 <MasterSearchInput
                   id="calib-results-search"
                   value={query}
                   onChange={setQuery}
                   placeholder="Search tool, DC, issued to…"
-                  widthClass="w-52"
+                  widthClass="w-60"
                 />
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <SelectionFilter
                     id="calib-results-status-filter"
                     label="Status"
                     value={statusFilter}
                     anyValue="All"
                     anyLabel="Any"
-                    maxValueWidth="5.5rem"
+                    maxValueWidth="6rem"
                     onChange={setStatusFilter}
                     options={[
                       { value: "All", label: "Any" },
@@ -433,27 +434,31 @@ export default function CalibrationResultsUpdatePage() {
                       { value: "Available", label: "Available" },
                     ]}
                   />
-                  <input
-                    type="date"
-                    aria-label="Due from"
-                    className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
-                    value={fromDue}
-                    onChange={(e) => setFromDue(e.target.value)}
-                    title="Due From"
-                  />
-                  <input
-                    type="date"
-                    aria-label="Due to"
-                    className="h-7 text-[11px] border border-[var(--border-main)] rounded-md px-2 outline-none focus:ring-1 focus:ring-[var(--primary-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)]"
-                    value={toDue}
-                    onChange={(e) => setToDue(e.target.value)}
-                    title="Due To"
-                  />
+                  <div className="flex items-center gap-1 bg-[var(--bg-subtle)] px-2 py-1 rounded-lg border border-[var(--border-main)] text-xs text-[var(--text-muted)]">
+                    <span className="text-[11px] font-medium mr-1">Due:</span>
+                    <input
+                      type="date"
+                      aria-label="Due from"
+                      className="bg-transparent text-[11px] text-[var(--text-primary)] outline-none cursor-pointer"
+                      value={fromDue}
+                      onChange={(e) => setFromDue(e.target.value)}
+                      title="Due From"
+                    />
+                    <span>—</span>
+                    <input
+                      type="date"
+                      aria-label="Due to"
+                      className="bg-transparent text-[11px] text-[var(--text-primary)] outline-none cursor-pointer"
+                      value={toDue}
+                      onChange={(e) => setToDue(e.target.value)}
+                      title="Due To"
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    className="h-8 px-3 text-xs font-semibold"
                     onClick={() =>
                       setAppliedFilters({
                         openClosed,
@@ -465,120 +470,125 @@ export default function CalibrationResultsUpdatePage() {
                   >
                     Apply
                   </Button>
+                  <div className="h-4 w-px bg-[var(--border-main)] mx-0.5" />
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    className="h-8 px-2.5 text-xs font-medium text-[var(--text-secondary)]"
                     disabled={exporting !== null || items.length === 0}
                     onClick={() => void handleExport("xlsx")}
                     title="Download Excel"
                   >
-                    <FileSpreadsheet className="w-3 h-3" />
+                    <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
                     Excel
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 !rounded-md !px-2 !text-[11px]"
+                    className="h-8 px-2.5 text-xs font-medium text-[var(--text-secondary)]"
                     disabled={exporting !== null || items.length === 0}
                     onClick={() => void handleExport("pdf")}
                     title="Download PDF"
                   >
-                    <FileText className="w-3 h-3" />
+                    <FileText className="w-3.5 h-3.5 mr-1" />
                     PDF
                   </Button>
                 </div>
-              </>
+              </div>
             }
           >
             {loading ? (
-              <div className="p-4">
-                <TableSkeleton rows={5} />
+              <div className="p-5">
+                <TableSkeleton rows={6} />
               </div>
             ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                      {[
-                        "Tool / Gauge No",
-                        "Name",
-                        "Type",
-                        "Calibration Freq",
-                        "Last Calib Date",
-                        "Next Calib Due",
-                        "Certificate No",
-                        "Calibrated By",
-                        "Remarks",
-                        "Status",
-                        "Actions",
-                      ].map((col) => (
-                        <th
-                          key={col}
-                          className="text-left text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3"
-                        >
-                          {col}
-                        </th>
-                      ))}
+                    <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)] text-[11px] font-semibold text-[var(--text-muted)] tracking-wider uppercase">
+                      <th className="py-3 px-4 min-w-[140px]">Tool / Gauge No</th>
+                      <th className="py-3 px-4 min-w-[180px]">Name & Group</th>
+                      <th className="py-3 px-3 min-w-[90px]">Type</th>
+                      <th className="py-3 px-3 min-w-[100px]">Freq</th>
+                      <th className="py-3 px-3 min-w-[110px]">Last Calib</th>
+                      <th className="py-3 px-3 min-w-[110px]">Next Due</th>
+                      <th className="py-3 px-3 min-w-[120px]">Certificate No</th>
+                      <th className="py-3 px-3 min-w-[110px]">Calibrated By</th>
+                      <th className="py-3 px-3 min-w-[120px]">Remarks</th>
+                      <th className="py-3 px-3 min-w-[90px] text-center">Status</th>
+                      <th className="py-3 px-4 min-w-[160px] text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--border-main)]">
+                  <tbody className="divide-y divide-[var(--border-main)] text-xs">
                     {filtered.map((item) => (
-                      <tr key={item.refNo} className="hover:bg-[var(--bg-hover)] transition-colors">
-                        <td className="py-3.5 px-3 font-mono text-xs font-bold text-[var(--text-primary)]">
-                          {item.toolOrGaugeNo}
-                        </td>
-                        <td className="py-3.5 px-3 max-w-[180px]">
-                          <p className="font-medium text-[var(--text-primary)] truncate">{item.name ?? "—"}</p>
-                          {item.grouping && (
-                            <p className="text-[11px] text-[var(--text-muted)] truncate">{item.grouping}</p>
+                      <tr key={item.refNo} className="hover:bg-[var(--bg-hover)] transition-colors group">
+                        <td className="py-3 px-4 align-middle">
+                          <span className="font-mono font-bold text-[var(--text-primary)]">
+                            {item.toolOrGaugeNo}
+                          </span>
+                          {item.serialNo != null && (
+                            <span className="block font-mono text-[11px] text-[var(--text-muted)] mt-0.5">
+                              S/N: {item.serialNo}
+                            </span>
                           )}
                         </td>
-                        <td className="py-3.5 px-3 font-medium text-[var(--text-secondary)]">
-                          {item.type ?? "—"}
+                        <td className="py-3 px-4 align-middle">
+                          <p className="font-medium text-[var(--text-primary)] truncate max-w-[200px]" title={item.name ?? ""}>
+                            {item.name || "—"}
+                          </p>
+                          {item.grouping && (
+                            <p className="text-[11px] text-[var(--text-muted)] truncate max-w-[200px]" title={item.grouping}>
+                              {item.grouping}
+                            </p>
+                          )}
                         </td>
-                        <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-muted)]">
-                          {item.frequency || "—"}
-                        </td>
-                        <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-muted)]">
-                          {fmtDate(item.cDate)}
-                        </td>
-                        <td className="py-3.5 px-3 font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
-                          {fmtDate(item.nextCDate)}
-                        </td>
-                        <td className="py-3.5 px-3 font-mono text-xs text-[var(--text-secondary)]">
-                          {item.certificateNo || "—"}
-                        </td>
-                        <td className="py-3.5 px-3 text-xs text-[var(--text-secondary)]">
-                          {item.calibratedBy || "—"}
-                        </td>
-                        <td className="py-3.5 px-3 text-xs text-[var(--text-muted)] max-w-[160px] truncate">
-                          {item.remarks ?? "—"}
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            {item.status}
+                        <td className="py-3 px-3 align-middle text-[var(--text-secondary)]">
+                          <span className="inline-block px-2 py-0.5 rounded bg-[var(--bg-subtle)] border border-[var(--border-main)] text-[11px]">
+                            {item.type || "—"}
                           </span>
                         </td>
-                        <td className="py-3.5 px-3">
-                          <div className="flex items-center gap-2 flex-wrap">
+                        <td className="py-3 px-3 align-middle font-mono text-[var(--text-muted)]">
+                          {item.frequency || "—"}
+                        </td>
+                        <td className="py-3 px-3 align-middle font-mono text-[var(--text-muted)]">
+                          {fmtDate(item.cDate)}
+                        </td>
+                        <td className="py-3 px-3 align-middle font-mono font-semibold text-amber-600 dark:text-amber-400">
+                          {fmtDate(item.nextCDate)}
+                        </td>
+                        <td className="py-3 px-3 align-middle font-mono text-[var(--text-secondary)]">
+                          {item.certificateNo || <span className="text-[var(--text-muted)]">—</span>}
+                        </td>
+                        <td className="py-3 px-3 align-middle text-[var(--text-secondary)]">
+                          {item.calibratedBy || <span className="text-[var(--text-muted)]">—</span>}
+                        </td>
+                        <td className="py-3 px-3 align-middle text-[var(--text-muted)] max-w-[140px] truncate" title={item.remarks ?? ""}>
+                          {item.remarks || "—"}
+                        </td>
+                        <td className="py-3 px-3 align-middle text-center">
+                          <StatusBadge status={item.status} />
+                        </td>
+                        <td className="py-3 px-4 align-middle text-right">
+                          <div className="flex items-center justify-end gap-1.5">
                             <RoleGate permission="canManageCalibration">
-                              <Button
+                              <button
                                 type="button"
-                                variant="outline"
-                                size="sm"
                                 onClick={() => setUploadRecord(item)}
-                                title="Upload / change certificate or image"
+                                title="Upload certificate or image"
+                                className="inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium rounded-md border border-[var(--border-main)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] transition-colors"
                               >
-                                <Upload className="w-3.5 h-3.5" />
-                                Upload
-                              </Button>
-                              <Button onClick={() => handleOpenUpdate(item)} variant="primary" size="sm">
-                                Update Result
-                              </Button>
+                                <Upload className="w-3 h-3" />
+                                <span>Upload</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenUpdate(item)}
+                                className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-semibold rounded-md bg-[var(--primary)] text-white hover:opacity-90 transition-opacity shadow-xs"
+                              >
+                                <span>Update Result</span>
+                              </button>
                             </RoleGate>
                           </div>
                         </td>
@@ -586,7 +596,7 @@ export default function CalibrationResultsUpdatePage() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                        <td colSpan={11} className="py-12 text-center text-sm text-[var(--text-muted)]">
                           No calibration pending records found.
                         </td>
                       </tr>

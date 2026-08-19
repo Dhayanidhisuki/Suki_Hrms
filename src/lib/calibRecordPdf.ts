@@ -19,6 +19,7 @@ export type CalibRecordPdfData = {
   type?: string | null;
   status?: string | null;
   frequency?: string | null;
+  usedLocation?: string | null;
   lastCalibrated?: string | Date | null;
   nextCalibrationDate?: string | Date | null;
   remarks?: string | null;
@@ -72,6 +73,7 @@ export function buildCalibRecordPdfBuffer(data: CalibRecordPdfData): Buffer {
     ["Group", cell(data.grouping)],
     ["Type", cell(data.type)],
     ["Frequency", cell(data.frequency)],
+    ["Used Location", cell(data.usedLocation)],
     ["Status", cell(data.status)],
     ["Last Calibrated", fmtDate(data.lastCalibrated)],
     ["Next Due", fmtDate(data.nextCalibrationDate)],

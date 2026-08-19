@@ -3,15 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
 import { buildCalibRecordPdfBuffer } from "@/lib/calibRecordPdf";
+import { verifyCalibrationPdfToken } from "@/lib/calibrationPdfLink";
 
 export async function GET(req: NextRequest) {
-  const session = await getSession();
-  const check = await requireSession(session);
-  if (!check.ok) return check.response;
-
   const toolOrGaugeNo = (req.nextUrl.searchParams.get("toolOrGaugeNo") ?? "").trim();
   if (!toolOrGaugeNo) {
     return NextResponse.json({ error: "toolOrGaugeNo is required" }, { status: 400 });
+  }
+  const token = (req.nextUrl.searchParams.get("token") ?? "").trim();
+  if (!token || !verifyCalibrationPdfToken(token, toolOrGaugeNo)) {
+    const session = await getSession();
+    const check = await requireSession(session);
+    if (!check.ok) return check.response;
   }
 
   try {
@@ -23,6 +26,7 @@ export async function GET(req: NextRequest) {
         grouping: true,
         type: true,
         status: true,
+        location: true,
         calibrationFrqMonths: true,
       },
     });
@@ -92,6 +96,7 @@ export async function GET(req: NextRequest) {
         tool?.status ??
         null,
       frequency,
+      usedLocation: tool?.location ?? null,
       lastCalibrated: latestDone?.calibratedDate ?? null,
       nextCalibrationDate:
         earliest?.nxtCalibDate ?? earliest?.calibDueDate ?? earliest?.dueDate ?? null,

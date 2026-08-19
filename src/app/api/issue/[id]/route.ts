@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsIssueUpdateSchema } from "@/lib/validators";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
 const OPEN_STATUSES = ["Active", "OPEN", "Open", "PARTIAL"];
 
@@ -64,7 +65,10 @@ export async function PUT(
 
   const existing = await prisma.gaugeToolsIssue.findUnique({
     where: { dcNo: id },
-    include: { receivedHeaders: { select: { recNo: true } } },
+    include: {
+      lines: true,
+      receivedHeaders: { include: { lines: true } },
+    },
   });
   if (!existing) {
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
@@ -75,7 +79,6 @@ export async function PUT(
       { status: 400 }
     );
   }
-
   const data = parsed.data;
   const opt = (data.issueOption ?? existing.issueOption ?? "").toLowerCase();
   const nextCust =
@@ -91,6 +94,168 @@ export async function PUT(
     const erpActor = await resolveErpAuditUserId(authCheck.session);
 
     const issue = await prisma.$transaction(async (tx) => {
+      if (data.lines) {
+        const internalMovement =
+          (data.issueOption ?? existing.issueOption) === "Internal Unit Movement" ||
+          existing.lines.some((line) => Boolean(line.issueToItemNo));
+        const externalMovement = (data.issueOption ?? existing.issueOption)?.startsWith("External:") ?? false;
+        if (!internalMovement && !externalMovement) {
+          throw new Error("Line-item replacement is currently supported only for movement DCs");
+        }
+
+        const requestedToolNos = data.lines.map((line) => line.toolOrGaugeNo?.trim()).filter(Boolean) as string[];
+        if (requestedToolNos.length !== data.lines.length) {
+          throw new Error("Every movement line must contain an instrument number");
+        }
+        if (new Set(requestedToolNos.map((value) => value.toUpperCase())).size !== requestedToolNos.length) {
+          throw new Error("The same instrument cannot appear more than once on a movement DC");
+        }
+
+        const existingById = new Map(existing.lines.map((line) => [line.rowId, line]));
+        for (const line of data.lines) {
+          if (line.rowId != null) {
+            const saved = existingById.get(line.rowId);
+            if (!saved || saved.toolOrGaugeNo !== line.toolOrGaugeNo) {
+              throw new Error(`Invalid movement DC line: ${line.toolOrGaugeNo ?? line.rowId}`);
+            }
+          }
+        }
+
+        const keptIds = new Set(data.lines.flatMap((line) => line.rowId == null ? [] : [line.rowId]));
+        const removed = existing.lines.filter((line) => !keptIds.has(line.rowId));
+        const added = data.lines.filter((line) => line.rowId == null);
+        const receivedLines = existing.receivedHeaders.flatMap((header) => header.lines);
+
+        for (const line of removed) {
+          const wasReceived = receivedLines.some((received) =>
+            received.toolIssRefNo === line.rowId ||
+            (received.toolOrGaugeNo === line.toolOrGaugeNo &&
+              (line.serialNo == null || received.serialNo == null || received.serialNo === line.serialNo))
+          );
+          if (wasReceived) {
+            throw new Error(`${line.toolOrGaugeNo ?? "Instrument"} has already been received and cannot be removed`);
+          }
+          await tx.toolsTransIssue.delete({ where: { rowId: line.rowId } });
+          if (!line.toolOrGaugeNo) continue;
+          await tx.gaugeSerialNo.updateMany({
+            where: {
+              toolOrGaugeNo: line.toolOrGaugeNo,
+              ...(line.serialNo != null ? { serialNo: line.serialNo } : {}),
+              status: { in: ["IN MOVEMENT", "VENDOR USE"] },
+            },
+            data: { status: "AVAILABLE FOR USE" },
+          });
+          if (internalMovement) {
+            const prefix = "Source rack/location: ";
+            const sourceRack = line.remarks?.startsWith(prefix)
+              ? line.remarks.slice(prefix.length).trim() || null
+              : null;
+            await tx.gaugeAndTools.update({
+              where: { toolOrGaugeNo: line.toolOrGaugeNo },
+              data: {
+                locationName: data.fromUnit ?? existing.fromUnit,
+                location: sourceRack,
+                rack: sourceRack,
+                locationOutputName: sourceRack
+                  ? `${data.fromUnit ?? existing.fromUnit} / ${sourceRack}`
+                  : `${data.fromUnit ?? existing.fromUnit} / Unassigned rack`,
+                lstUpdtUserIdCd: erpActor,
+              },
+            });
+          }
+        }
+
+        let nextRowId =
+          ((await tx.toolsTransIssue.aggregate({ _max: { rowId: true } }))._max.rowId ?? 0) + 1;
+        for (const line of added) {
+          const toolNo = line.toolOrGaugeNo!;
+          const tool = await tx.gaugeAndTools.findUnique({ where: { toolOrGaugeNo: toolNo } });
+          if (!tool) throw new Error(`Instrument not found: ${toolNo}`);
+          const sourceUnit = normalizeCompanyUnit(data.fromUnit ?? existing.fromUnit);
+          const destinationUnit = normalizeCompanyUnit(line.toUnit);
+          if (internalMovement) {
+            const currentUnit = normalizeCompanyUnit(tool.locationName);
+            if (!sourceUnit || currentUnit !== sourceUnit) {
+              throw new Error(`${toolNo} belongs to ${currentUnit ?? "no valid unit"}, not ${sourceUnit ?? "the selected source"}`);
+            }
+            if (!destinationUnit || destinationUnit === sourceUnit) {
+              throw new Error(`Select a destination unit different from the source for ${toolNo}`);
+            }
+          }
+          const activeMovement = await tx.toolsTransIssue.findFirst({
+            where: {
+              toolOrGaugeNo: toolNo,
+              dcNo: { not: id },
+              status: { in: ["Open", "OPEN", "Active"] },
+              header: { status: { in: OPEN_STATUSES } },
+            },
+            select: { dcNo: true },
+          });
+          if (activeMovement) throw new Error(`${toolNo} is already on open DC ${activeMovement.dcNo}`);
+
+          let serial = line.serialNo ?? null;
+          let serialRefNo: number | null = null;
+          if (serial != null) {
+            const unit = await tx.gaugeSerialNo.findFirst({
+              where: { toolOrGaugeNo: toolNo, serialNo: serial },
+              select: { refNo: true, status: true },
+            });
+            if (!unit || !["", "AVAILABLE FOR USE", "AVAILABLE", "NEW PURCHASE"].includes((unit.status ?? "").trim().toUpperCase())) {
+              throw new Error(`Serial ${serial} for ${toolNo} is not available for movement`);
+            }
+            serialRefNo = unit.refNo;
+          } else {
+            const unit = await tx.gaugeSerialNo.findFirst({
+              where: {
+                toolOrGaugeNo: toolNo,
+                OR: [
+                  { status: null },
+                  { status: { in: ["AVAILABLE FOR USE", "Available", "NEW PURCHASE"] } },
+                ],
+              },
+              orderBy: { serialNo: "asc" },
+              select: { refNo: true, serialNo: true },
+            });
+            if (unit) {
+              serial = unit.serialNo;
+              serialRefNo = unit.refNo;
+            }
+          }
+          await tx.toolsTransIssue.create({
+            data: {
+              rowId: nextRowId++, dcNo: id, toolOrGaugeNo: toolNo, issueQty: 1,
+              partNo: toolNo.slice(0, 50), name: tool.name?.slice(0, 50),
+              description: tool.description?.slice(0, 500), type: tool.type?.slice(0, 50),
+              groupName: tool.grouping?.slice(0, 50), issueToItemNo: destinationUnit,
+              uom: tool.uom?.slice(0, 10), issueType: tool.issueType?.slice(0, 25),
+              issueEmpName: (data.receiveName ?? existing.receiveName)?.slice(0, 50),
+              returnable: data.returnable ?? existing.returnable ?? "Yes", serialNo: serial,
+              remarks: internalMovement && tool.location
+                ? `Source rack/location: ${tool.location}`.slice(0, 100) : null,
+              toolRefNo: tool.refNo, status: "Open",
+              dueDate: new Date(data.dueDate ?? existing.dueDate ?? new Date()),
+              creatUserIdCd: erpActor, creatDt: new Date(),
+            },
+          });
+          if (serialRefNo != null) {
+            await tx.gaugeSerialNo.update({
+              where: { refNo: serialRefNo },
+              data: { status: internalMovement ? "IN MOVEMENT" : "VENDOR USE" },
+            });
+          }
+          if (internalMovement) {
+            await tx.gaugeAndTools.update({
+              where: { toolOrGaugeNo: toolNo },
+              data: {
+                locationName: null, location: null, area: null, rack: null,
+                locationOutputName: `IN TRANSIT: ${sourceUnit} -> ${destinationUnit}`,
+                lstUpdtUserIdCd: erpActor,
+              },
+            });
+          }
+        }
+      }
+
       const header = await tx.gaugeToolsIssue.update({
         where: { dcNo: id },
         data: {
@@ -119,6 +284,7 @@ export async function PUT(
 
       if (data.lines?.length) {
         for (const line of data.lines) {
+          if (line.rowId == null) continue;
           await tx.toolsTransIssue.updateMany({
             where: { rowId: line.rowId, dcNo: id },
             data: {
@@ -130,7 +296,10 @@ export async function PUT(
         }
       }
 
-      return header;
+      return tx.gaugeToolsIssue.findUniqueOrThrow({
+        where: { dcNo: header.dcNo },
+        include: { lines: { include: { tool: true, toolByRef: true }, orderBy: { rowId: "asc" } } },
+      });
     });
 
     return NextResponse.json({ ok: true, issue });

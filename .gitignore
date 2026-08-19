@@ -44,3 +44,9 @@ next-env.d.ts
 
 # Tool document uploads (TOOLS_APP_DOCUMENT file store)
 /storage/
+
+# Temp / dev logs and scratch
+dev.log
+response.html
+scratch/
+*.xlsx

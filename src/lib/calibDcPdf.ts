@@ -2,10 +2,16 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getManproLogoDataUrl } from "@/lib/pdfBranding";
 import { drawPdfQr } from "@/lib/pdfQr";
+import { numberToWordsINR } from "@/lib/dcPdf";
 
 export type CalibDcPdfLine = {
   toolOrGaugeNo: string | null;
   name?: string | null;
+  description?: string | null;
+  size?: string | null;
+  detailedSpec?: string | null;
+  price?: number | null;
+  remarks?: string | null;
   grouping?: string | null;
   issueQty?: number | null;
   serialNo?: number | null;
@@ -16,6 +22,7 @@ export type CalibDcPdfLine = {
 
 export type CalibDcPdfHeader = {
   dcNo: number;
+  recipientName?: string | null;
   receiveName?: string | null;
   subCode?: string | null;
   subAddress1?: string | null;
@@ -142,12 +149,13 @@ export function buildCalibDcPdfBuffer(header: CalibDcPdfHeader): Buffer {
   doc.rect(x, 135, width, 78);
   doc.line(pageW / 2, 135, pageW / 2, 213);
   doc.setFontSize(8.5);
-  doc.text(`To, ${cell(header.receiveName)}`, 28, 151);
-  doc.text(`(${cell(header.subCode)})`, 28, 163);
+  const toName = header.recipientName || header.receiveName || "—";
+  doc.text(`To, ${cell(toName)}`, 28, 151);
+  if (header.subCode) doc.text(`(${cell(header.subCode)})`, 28, 163);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
-  doc.text(cell(header.subAddress1), 28, 176);
-  doc.text(cell(header.subAddress2), 28, 188);
+  if (header.subAddress1) doc.text(cell(header.subAddress1), 28, 176);
+  if (header.subAddress2) doc.text(cell(header.subAddress2), 28, 188);
   doc.setFont("helvetica", "bold");
   doc.text(`GSTIN : ${cell(header.subGstin)}`, 28, 201);
   doc.setFontSize(8);
@@ -161,20 +169,38 @@ export function buildCalibDcPdfBuffer(header: CalibDcPdfHeader): Buffer {
   doc.text(":   From SubContractor", pageW / 2 + 105, 179);
   doc.text(":   MANPRO Security", pageW / 2 + 105, 193);
 
-  autoTable(doc, {
-    startY: 213,
-    head: [["SL.No", "RC No", "Part No", "Part Name", "Heat No", "Material Spec", "Comments", "Qty", "Value"]],
-    body: header.lines.map((line, index) => [
+  let totalQty = 0;
+  let subTotal = 0;
+  const tableBody = header.lines.map((line, index) => {
+    const qty = Number(line.issueQty ?? 1);
+    const unitPrice = Number(line.price ?? 0);
+    const value = qty * unitPrice;
+    totalQty += qty;
+    subTotal += value;
+    const materialSpec = [line.detailedSpec, line.size ? `Size: ${line.size}` : null]
+      .filter(Boolean)
+      .join(" · ");
+
+    return [
       String(index + 1).padStart(2, "0"),
       header.toolsPoNo && header.toolsPoNo !== "Any" ? header.toolsPoNo : "—",
       cell(line.toolOrGaugeNo),
-      cell(line.name),
+      cell(line.name || line.description),
       line.serialNo != null ? String(line.serialNo) : "—",
-      cell(line.grouping),
-      cell(line.status || header.issueFor),
-      Number(line.issueQty ?? 1).toFixed(2),
-      "0.00",
-    ]),
+      cell(materialSpec || line.grouping),
+      cell(line.remarks || line.status),
+      qty.toFixed(2),
+      value.toFixed(2),
+    ];
+  });
+  const cgstAmount = subTotal * 0.09;
+  const sgstAmount = subTotal * 0.09;
+  const grandTotal = subTotal + cgstAmount + sgstAmount;
+
+  autoTable(doc, {
+    startY: 213,
+    head: [["SL.No", "RC No", "Part No", "Part Name", "Heat No", "Material Spec", "Comments", "Qty", "Value"]],
+    body: tableBody,
     theme: "grid",
     styles: { fontSize: 6.5, cellPadding: 2.5, lineColor: 0, lineWidth: 0.5, textColor: 0 },
     headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: "bold" },
@@ -191,13 +217,13 @@ export function buildCalibDcPdfBuffer(header: CalibDcPdfHeader): Buffer {
   const totalY = Math.max(tableEnd, 285);
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "bold");
-  doc.text(`Total Qty     ${header.lines.reduce((sum, line) => sum + Number(line.issueQty ?? 1), 0).toFixed(2)}`, 390, totalY + 14);
-  doc.text("Sub Total      0.00", 475, totalY + 14);
-  doc.text("CGST % 9.00   0.00", 475, totalY + 27);
-  doc.text("SGST % 9.00   0.00", 475, totalY + 40);
+  doc.text(`Total Qty     ${totalQty.toFixed(2)}`, 390, totalY + 14);
+  doc.text(`Sub Total      ${subTotal.toFixed(2)}`, 475, totalY + 14);
+  doc.text(`CGST % 9.00   ${cgstAmount.toFixed(2)}`, 475, totalY + 27);
+  doc.text(`SGST % 9.00   ${sgstAmount.toFixed(2)}`, 475, totalY + 40);
   doc.text("IGST % 0.00   0.00", 475, totalY + 53);
-  doc.text("Total             0.00", 475, totalY + 66);
-  doc.text("Total in Words: Rupees Zero Only", 28, totalY + 82);
+  doc.text(`Total             ${grandTotal.toFixed(2)}`, 475, totalY + 66);
+  doc.text(`Total in Words: ${numberToWordsINR(grandTotal)}`, 28, totalY + 82);
   doc.setFontSize(12);
   doc.text("NOT FOR SALE", pageW / 2, totalY + 104, { align: "center" });
   doc.setFontSize(8);

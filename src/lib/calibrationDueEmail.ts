@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/sendEmail";
-import { singleToolTemplate, digestTemplate, testEmailTemplate } from "@/lib/email/emailTemplates";
+import { digestTemplate, testEmailTemplate } from "@/lib/email/emailTemplates";
 import type { Prisma } from "@prisma/client";
 
 const DAY_MS = 86_400_000;
@@ -33,6 +33,8 @@ export type DueCalibrationTool = {
   toolOrGaugeNo: string;
   name: string | null;
   description: string | null;
+  size: string | null;
+  usedLocation: string | null;
   unitCode: UnitScope | null;
   responsibility: string;
   dueDate: Date;
@@ -65,20 +67,20 @@ export async function findDueCalibrationTools(warningDays: number, now = new Dat
       select: {
         unitCode: true,
         nextCalibDate: true,
-        tool: { select: { refNo: true, toolOrGaugeNo: true, name: true, description: true } },
+        tool: { select: { refNo: true, toolOrGaugeNo: true, name: true, description: true, size: true, location: true } },
       },
     }),
     prisma.instrumentImportedMasterData.findMany({
       where: { nextCalibrationDue: { lte: through }, tool: eligibleStatus },
       select: {
         nextCalibrationDue: true,
-        tool: { select: { refNo: true, toolOrGaugeNo: true, name: true, description: true, locationName: true } },
+        tool: { select: { refNo: true, toolOrGaugeNo: true, name: true, description: true, size: true, location: true, locationName: true } },
       },
     }),
   ]);
   const rows = new Map<string, DueCalibrationTool>();
   const add = (
-    tool: { refNo: number; toolOrGaugeNo: string | null; name: string | null; description: string | null },
+    tool: { refNo: number; toolOrGaugeNo: string | null; name: string | null; description: string | null; size: string | null; location: string | null },
     dueDate: Date | null,
     rawUnit: string | null,
   ) => {
@@ -90,6 +92,8 @@ export async function findDueCalibrationTools(warningDays: number, now = new Dat
       toolOrGaugeNo: tool.toolOrGaugeNo,
       name: tool.name,
       description: tool.description,
+      size: tool.size,
+      usedLocation: tool.location,
       unitCode,
       responsibility: "Internal",
       dueDate,
@@ -145,15 +149,10 @@ export function toolVisibleToUser(item: DueCalibrationTool, user: NotificationUs
   return user.unitScopes.includes(item.unitCode);
 }
 
-// singleToolTemplate, digestTemplate, and testEmailTemplate
-// are now imported from @/lib/email/emailTemplates
+// Digest and test templates are imported from @/lib/email/emailTemplates.
 
-function milestoneChannel(item: DueCalibrationTool, now: Date) {
-  if (item.daysRemaining === 15) return "D15";
-  if (item.daysRemaining === 7) return "D07";
-  if (item.daysRemaining === 0) return "D00";
-  if (item.daysRemaining < 0) return `O${now.toISOString().slice(2, 10).replaceAll("-", "")}`;
-  return null;
+function dailyDigestChannel(now: Date) {
+  return `D${now.toISOString().slice(2, 10).replaceAll("-", "")}`;
 }
 
 async function buildDeliveryPlan(now = new Date()) {
@@ -167,7 +166,9 @@ async function buildDeliveryPlan(now = new Date()) {
     findNotificationUsers(),
     prisma.calibrationNotificationRecipient.findMany({ where: { isActive: true } }),
   ]);
-  const milestones = allDue.filter((item) => milestoneChannel(item, now));
+  // Include the complete alert window in each morning digest. The dated
+  // channel below deduplicates delivery per recipient for that calendar run.
+  const milestones = allDue;
   const deliveries = users.flatMap((user) => {
     const items = milestones.filter((item) => toolVisibleToUser(item, user));
     if (!items.length) return [];
@@ -262,7 +263,7 @@ export async function runCalibrationDueEmails(now = new Date(), options: { force
   for (const delivery of plan.deliveries) {
     const pending: Array<{ item: DueCalibrationTool; channel: string; id?: number }> = [];
     for (const item of delivery.items) {
-      const channel = milestoneChannel(item, now)!;
+      const channel = dailyDigestChannel(now);
       const existing = await prisma.calibrationNotification.findFirst({ where: {
         toolOrGaugeNo: item.toolOrGaugeNo,
         unitCode: item.unitCode,

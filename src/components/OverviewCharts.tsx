@@ -601,10 +601,10 @@ export function CalibrationAgingDonut({
             </Pie>
             <Tooltip
               contentStyle={tooltipStyle}
-              formatter={(val: number | string, name: string) => {
+              formatter={(val: any, name: any) => {
                 const n = Number(val) || 0;
                 const pct = total ? Math.round((n / total) * 100) : 0;
-                return [`${n.toLocaleString()} (${pct}%)`, name];
+                return [`${n.toLocaleString()} (${pct}%)`, String(name ?? "")];
               }}
             />
           </PieChart>

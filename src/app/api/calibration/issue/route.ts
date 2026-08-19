@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibIssueCreateSchema } from "@/lib/validators";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
 function isCalibIssueLineOpen(status: string | null | undefined): boolean {
   const s = (status ?? "").trim().toUpperCase();
@@ -183,6 +184,33 @@ export async function POST(req: NextRequest) {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
 
     const toolNos = [...new Set(lines.map((line) => line.toolOrGaugeNo.trim()))];
+    const selectedTools = await prisma.gaugeAndTools.findMany({
+      where: { toolOrGaugeNo: { in: toolNos } },
+      select: { toolOrGaugeNo: true, locationName: true, status: true },
+    });
+    if (selectedTools.length !== toolNos.length) {
+      const found = new Set(selectedTools.map((tool) => tool.toolOrGaugeNo));
+      const missing = toolNos.find((toolNo) => !found.has(toolNo));
+      return NextResponse.json({ error: `Instrument not found: ${missing ?? "—"}` }, { status: 400 });
+    }
+    const selectedUnits = new Set(selectedTools.map((tool) => normalizeCompanyUnit(tool.locationName)));
+    if (selectedUnits.has(null) || selectedUnits.size !== 1) {
+      return NextResponse.json(
+        { error: "A calibration DC can contain instruments from one company unit only" },
+        { status: 400 }
+      );
+    }
+    const unavailable = selectedTools.find((tool) =>
+      ["UNDER CALIBRATION", "IN MOVEMENT", "VENDOR USE", "INHOUSE USE"].includes(
+        (tool.status || "").trim().toUpperCase()
+      )
+    );
+    if (unavailable) {
+      return NextResponse.json(
+        { error: `${unavailable.toolOrGaugeNo} is not available for calibration issue (${unavailable.status || "Unknown status"})` },
+        { status: 409 }
+      );
+    }
     const openExisting = await prisma.toolsTransIssueForCalibration.findFirst({
       where: {
         toolOrGaugeNo: { in: toolNos },

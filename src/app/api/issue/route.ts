@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
         type: true,
         grouping: true,
         uom: true,
+        size: true,
       },
     } as const;
 

@@ -446,12 +446,17 @@ export const ToolsIssueUpdateSchema = z.object({
   lines: z
     .array(
       z.object({
-        rowId: z.number().int().positive(),
+        rowId: z.number().int().positive().optional(),
+        toolOrGaugeNo: z.string().min(1).max(25).optional(),
+        issueQty: z.number().min(1).optional(),
+        serialNo: z.number().int().optional().nullable(),
+        toUnit: z.string().max(15).optional().nullable(),
         remarks: z.string().max(100).optional().nullable(),
         machine: z.string().max(50).optional().nullable(),
         processName: z.string().max(100).optional().nullable(),
       })
     )
+    .min(1, "At least one line item is required")
     .optional(),
 });
 
@@ -558,6 +563,16 @@ export const CalibIssueUpdateSchema = z.object({
   issueDate: z.string().datetime({ offset: true }).or(z.string().date()).optional(),
   issueFor: z.string().max(25).optional(),
   toolsPoNo: z.string().max(20).optional().nullable(),
+  lines: z
+    .array(
+      z.object({
+        rowId: z.number().int().positive().optional(),
+        toolOrGaugeNo: z.string().min(1).max(25),
+        calibDueDate: z.string().datetime({ offset: true }).or(z.string().date()).optional().nullable(),
+      })
+    )
+    .min(1, "At least one instrument is required")
+    .optional(),
 });
 
 // ── Calibration Results Update ───────────────────────────────────

@@ -28,6 +28,7 @@ import {
   ArrowUpDown,
   MoreVertical,
   Orbit,
+  ShoppingCart,
 } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
@@ -55,8 +56,21 @@ import { toastSuccess, toastError } from "@/lib/appToast";
 import { ERP_COMPANY_UNITS, ERP_ISSUE_TYPES } from "@/lib/toolCreate";
 import { ValidityBadge } from "@/components/ValidityBadge";
 import ToolJourneyTimeline from "@/components/ToolJourneyTimeline";
+import { normalizeCompanyUnit } from "@/lib/companyUnits";
 
 type ToolSatellite = null | "upload" | "mandatory";
+
+type CalibrationCartLine = {
+  refNo: number;
+  toolOrGaugeNo: string;
+  description: string;
+  grouping: string;
+  type: string;
+  size: string | null;
+  location: string;
+  unit: string;
+  nextCalibDate: string | null;
+};
 
 function RowActionMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -733,6 +747,15 @@ export default function ToolsMasterPage() {
   const [importTemplate, setImportTemplate] = useState<"master" | null>(null);
   // showImportChooser removed — single "Import Master Data" button replaces the chooser
   const [selectedRefNos, setSelectedRefNos] = useState<number[]>([]);
+  const [calibrationCart, setCalibrationCart] = useState<CalibrationCartLine[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(sessionStorage.getItem("calibrationCart") || "[]") as CalibrationCartLine[];
+    } catch {
+      return [];
+    }
+  });
+  const [calibrationCartOpen, setCalibrationCartOpen] = useState(false);
   const [machineModalTool, setMachineModalTool] = useState<GaugeAndTool | null>(null);
   const [machineItems, setMachineItems] = useState<Array<{ rowId: number; macCode: string | null; creatDt: string | null }>>([]);
   const [machineLoading, setMachineLoading] = useState(false);
@@ -778,6 +801,55 @@ export default function ToolsMasterPage() {
   const [formEntryKey, setFormEntryKey] = useState("");
   /** Search labels inside Add/Edit tool form */
   const [formFieldQuery, setFormFieldQuery] = useState("");
+
+  useEffect(() => {
+    sessionStorage.setItem("calibrationCart", JSON.stringify(calibrationCart));
+  }, [calibrationCart]);
+
+  const addToolsToCalibrationCart = (selected: GaugeAndTool[]) => {
+    const candidates = selected.filter((tool) => tool.toolOrGaugeNo?.trim());
+    if (!candidates.length) {
+      toastError("No valid instruments selected for calibration.");
+      return;
+    }
+    const candidateUnits = new Set(candidates.map((tool) => normalizeCompanyUnit(tool.locationName)));
+    const cartUnit = calibrationCart[0]?.unit || null;
+    if (candidateUnits.has(null) || candidateUnits.size !== 1) {
+      toastError("Select instruments from one company unit for each calibration cart.");
+      return;
+    }
+    const selectedUnit = Array.from(candidateUnits)[0];
+    if (!selectedUnit || (cartUnit && cartUnit !== selectedUnit)) {
+      toastError(`This cart contains ${cartUnit} instruments. Clear it before adding ${selectedUnit} instruments.`);
+      return;
+    }
+    const existing = new Set(calibrationCart.map((line) => line.refNo));
+    const additions = candidates.filter((tool) => !existing.has(tool.refNo)).map((tool) => ({
+      refNo: tool.refNo,
+      toolOrGaugeNo: tool.toolOrGaugeNo,
+      description: tool.description || tool.name || "—",
+      grouping: tool.grouping || "—",
+      type: tool.type || "—",
+      size: tool.size,
+      location: tool.location || "—",
+      unit: selectedUnit,
+      nextCalibDate: tool.importedMasterData?.nextCalibrationDue ?? tool.nextCalibDate ?? null,
+    }));
+    if (!additions.length) {
+      toastError("The selected instruments are already in the calibration cart.");
+      return;
+    }
+    setCalibrationCart((current) => [...current, ...additions]);
+    setSelectedRefNos([]);
+    setCalibrationCartOpen(true);
+    toastSuccess({ title: "Added to calibration cart", message: `${additions.length} instrument(s) added for ${selectedUnit}.` });
+  };
+
+  const checkoutCalibrationCart = () => {
+    if (!calibrationCart.length) return;
+    sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(calibrationCart));
+    router.push("/dashboard/calibration/issue?cart=1");
+  };
   const [formFieldHitCount, setFormFieldHitCount] = useState(0);
   const [formFieldActiveIdx, setFormFieldActiveIdx] = useState(0);
   const formFieldHitsRef = useRef<HTMLElement[]>([]);
@@ -2653,12 +2725,23 @@ export default function ToolsMasterPage() {
                     Instruments and gauges with calibration and current unit detail
                   </p>
                 </div>
-                <RoleGate permission="canEditMaster">
-                  <Button id="tools-add-btn" onClick={handleOpenAdd} variant="primary" className="group">
-                    <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
-                    Add Instrument
-                  </Button>
-                </RoleGate>
+                <div className="flex items-center gap-2">
+                  <RoleGate permission="canManageCalibration">
+                    <Button type="button" variant="outline" onClick={() => setCalibrationCartOpen(true)}>
+                      <ShoppingCart className="w-4 h-4" />
+                      Calibration Cart
+                      <span className="ml-1 rounded-full bg-[var(--primary)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        {calibrationCart.length}
+                      </span>
+                    </Button>
+                  </RoleGate>
+                  <RoleGate permission="canEditMaster">
+                    <Button id="tools-add-btn" onClick={handleOpenAdd} variant="primary" className="group">
+                      <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
+                      Add Instrument
+                    </Button>
+                  </RoleGate>
+                </div>
               </div>
 
               <ModuleKpiRow
@@ -3043,24 +3126,12 @@ export default function ToolsMasterPage() {
                         className="h-7 !rounded-md !px-2 !text-[11px]"
                         onClick={() => {
                           const selected = tools.filter((t) => selectedRefNos.includes(t.refNo));
-                          const lines = selected.map((t) => ({
-                            toolOrGaugeNo: t.toolOrGaugeNo ?? "",
-                            description: t.description || t.name || "",
-                            location: t.location || "",
-                            unit: unitFilter !== "All" ? unitFilter : t.locationName,
-                            nextCalibDate: t.importedMasterData?.nextCalibrationDue ?? t.nextCalibDate ?? null,
-                          }));
-                          if (lines.length === 0) {
-                            toastError("No valid instruments selected for calibration.");
-                            return;
-                          }
-                          sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
-                          router.push("/dashboard/calibration/issue?bulk=1");
+                          addToolsToCalibrationCart(selected);
                         }}
-                        title="Send selected instruments for calibration"
+                        title="Add selected instruments to the calibration cart"
                       >
-                        <Wrench className="w-3.5 h-3.5" />
-                        Send for Calibration
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        Add to Calibration Cart
                       </Button>
                     </RoleGate>
                     <Button
@@ -3282,29 +3353,12 @@ export default function ToolsMasterPage() {
                                     ) : (
                                       <button
                                         onClick={() => {
-                                          let lines = [];
                                           if (selectedRefNos.length > 0 && selectedRefNos.includes(t.refNo)) {
                                             const selected = tools.filter((t2) => selectedRefNos.includes(t2.refNo));
-                                            lines = selected.map((t2) => ({
-                                              refNo: t2.refNo,
-                                              toolOrGaugeNo: t2.toolOrGaugeNo,
-                                              description: t2.description || t2.name || "",
-                                              location: t2.location || "",
-                                              unit: unitFilter !== "All" ? unitFilter : t2.locationName,
-                                              nextCalibDate: t2.importedMasterData?.nextCalibrationDue ?? t2.nextCalibDate ?? null,
-                                            }));
+                                            addToolsToCalibrationCart(selected);
                                           } else {
-                                            lines = [{
-                                              refNo: t.refNo,
-                                              toolOrGaugeNo: t.toolOrGaugeNo,
-                                              description: t.description || t.name || "",
-                                              location: t.location || "",
-                                              unit: unitFilter !== "All" ? unitFilter : t.locationName,
-                                              nextCalibDate: t.importedMasterData?.nextCalibrationDue ?? t.nextCalibDate ?? null,
-                                            }];
+                                            addToolsToCalibrationCart([t]);
                                           }
-                                          sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
-                                          router.push("/dashboard/calibration/issue?fromMaster=1");
                                         }}
                                         className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium hover:bg-[var(--bg-hover)] ${
                                           effectiveCalibDueStatus === "overdue"
@@ -3313,11 +3367,11 @@ export default function ToolsMasterPage() {
                                             ? "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
                                             : "hover:bg-amber-50 text-[var(--text-muted)] hover:text-amber-600"
                                         }`}
-                                        title="Send for calibration"
-                                        aria-label="Send for calibration"
+                                        title="Add to calibration cart"
+                                        aria-label="Add to calibration cart"
                                       >
                                         <Wrench className="w-4 h-4" />
-                                        Send for calibration
+                                        Add to calibration cart
                                       </button>
                                     )}
                                   </RoleGate>
@@ -3446,19 +3500,13 @@ export default function ToolsMasterPage() {
                     <Button
                       onClick={() => {
                         if (!selectedTool?.toolOrGaugeNo) return;
-                        const lines = [{
-                          toolOrGaugeNo: selectedTool.toolOrGaugeNo,
-                          issueQty: 1,
-                          unit: selectedTool.locationName,
-                        }];
-                        sessionStorage.setItem("bulkCalibIssueLines", JSON.stringify(lines));
-                        router.push("/dashboard/calibration/issue?bulk=1");
+                        addToolsToCalibrationCart([selectedTool]);
                       }}
                       variant="outline"
                       size="sm"
-                      title="Send this instrument for calibration"
+                      title="Add this instrument to the calibration cart"
                     >
-                      <Wrench className="w-4 h-4" /> Send for Calibration
+                      <ShoppingCart className="w-4 h-4" /> Add to Calibration Cart
                     </Button>
                   </RoleGate>
                   <RoleGate permission="canEditMaster">
@@ -3763,7 +3811,7 @@ export default function ToolsMasterPage() {
                     <span className="text-base">📋</span>
                     <span>This instrument has not been sent for calibration yet. Expected first calibration due by <strong>
                       {new Date(selectedTool.calibrationSummary.nextCalibDate as unknown as string).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
-                    </strong>. Go to <Link href="/dashboard/calibration/issue" className="text-[var(--primary)] font-semibold hover:underline">Calibration → Issue</Link> to begin.</span>
+                    </strong>. Go to <Link href="/dashboard/masters/tools?calibration=1" className="text-[var(--primary)] font-semibold hover:underline">Calibration → Issue</Link> to begin.</span>
                   </div>
                 )}
 
@@ -5274,6 +5322,73 @@ export default function ToolsMasterPage() {
           )}
         </main>
       </div>
+
+      <OverlayModal
+        open={calibrationCartOpen}
+        onClose={() => setCalibrationCartOpen(false)}
+        title={`Calibration Cart${calibrationCart[0]?.unit ? ` · ${calibrationCart[0].unit}` : ""}`}
+        subtitle="Review instruments before entering calibration issue details"
+        size="lg"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setCalibrationCartOpen(false)}>
+              Continue Selecting
+            </Button>
+            <Button type="button" variant="primary" disabled={!calibrationCart.length} onClick={checkoutCalibrationCart}>
+              <Wrench className="w-4 h-4" /> Continue to Issue
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {calibrationCart.length > 0 && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2">
+              <p className="text-xs text-[var(--text-secondary)]">
+                One-unit cart locked to <span className="font-semibold text-[var(--text-primary)]">{calibrationCart[0].unit}</span>
+              </p>
+              <button type="button" className="text-xs font-semibold text-red-600" onClick={() => setCalibrationCart([])}>
+                Clear Cart
+              </button>
+            </div>
+          )}
+          <div className="max-h-[55vh] overflow-auto rounded-xl border border-[var(--border-main)]">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-[var(--bg-subtle)]">
+                <tr>
+                  {['Instrument', 'Description', 'Size', 'Used Location', 'Unit', 'Next Calibration', ''].map((label) => (
+                    <th key={label} className="p-2 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-main)]">
+                {calibrationCart.map((line) => (
+                  <tr key={line.refNo}>
+                    <td className="p-2 font-mono font-semibold">{line.toolOrGaugeNo}</td>
+                    <td className="p-2">{line.description}</td>
+                    <td className="p-2">{line.size || '—'}</td>
+                    <td className="p-2">{line.location}</td>
+                    <td className="p-2 font-semibold">{line.unit}</td>
+                    <td className="p-2 font-mono">{line.nextCalibDate ? String(line.nextCalibDate).slice(0, 10) : '—'}</td>
+                    <td className="p-1 text-right">
+                      <button
+                        type="button"
+                        title="Remove from calibration cart"
+                        className="p-1.5 text-[var(--text-muted)] hover:text-red-600"
+                        onClick={() => setCalibrationCart((current) => current.filter((item) => item.refNo !== line.refNo))}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {calibrationCart.length === 0 && (
+                  <tr><td colSpan={7} className="p-8 text-center text-sm text-[var(--text-muted)]">Your calibration cart is empty.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </OverlayModal>
 
       {machineModalTool && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">

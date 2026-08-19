@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash, Save, FileSpreadsheet, Download } from "lucide-react";
+import { Plus, Trash, Save, FileSpreadsheet, Download, Eye, Pencil } from "lucide-react";
 import Sidebar from "@/app/dashboard/components/Sidebar";
 import TopBar from "@/app/dashboard/components/TopBar";
 import RoleGate from "@/app/dashboard/components/RoleGate";
@@ -14,6 +14,7 @@ import { OverlayModal } from "@/components/ui/OverlayModal";
 import { FormModalSection } from "@/components/ui/form";
 import { SearchSelect, type SearchSelectItem } from "@/components/ui/SearchSelect";
 import { StatusPillTabs } from "@/components/ui/StatusPillTabs";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MasterSearchInput, MasterTableCard } from "@/components/ui/MasterTableCard";
 import { toastSuccess, toastError } from "@/lib/appToast";
 import { downloadExcel } from "@/lib/downloadExcel";
@@ -30,6 +31,7 @@ interface ToolMasterPreview {
   type: string | null;
   grouping: string | null;
   uom: string | null;
+  size?: string | null;
 }
 
 interface ToolsIssueLine {
@@ -79,12 +81,21 @@ interface ToolsIssueHeader {
   lines: ToolsIssueLine[];
 }
 
+interface EditableMovementLine {
+  rowId?: number;
+  toolOrGaugeNo: string;
+  name: string;
+  serialNo: number | null;
+  toUnit: string | null;
+}
+
 interface Tool {
   refNo: number;
   toolOrGaugeNo: string;
   name: string;
   grouping: string;
   type?: string | null;
+  size?: string | null;
   qtyIn: number;
   totQty?: number;
   location?: string | null;
@@ -121,6 +132,7 @@ interface StagedLine {
   toolOrGaugeNo: string;
   toolName: string;
   description: string;
+  size: string;
   grouping: string;
   type: string;
   issueQty: number;
@@ -175,7 +187,11 @@ export default function IssueToolPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isMovement = pathname.startsWith("/dashboard/movement/");
-  const issueBasePath = isMovement ? "/dashboard/movement/history" : "/dashboard/transactions/issue";
+  const requestedMovementParam = searchParams.get("movement");
+  const movementDashboardPath = requestedMovementParam === "internal" || requestedMovementParam === "external"
+    ? `/dashboard/movement/history?movement=${requestedMovementParam}`
+    : "/dashboard/movement/history";
+  const issueBasePath = isMovement ? movementDashboardPath : "/dashboard/transactions/issue";
   // List state
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -223,6 +239,8 @@ export default function IssueToolPage() {
   >([]);
   const [loadingPendingReqs, setLoadingPendingReqs] = useState(false);
   const [editIssue, setEditIssue] = useState<ToolsIssueHeader | null>(null);
+  const [viewIssue, setViewIssue] = useState<ToolsIssueHeader | null>(null);
+  const [editMovementLines, setEditMovementLines] = useState<EditableMovementLine[]>([]);
   const [subs, setSubs] = useState<SubOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupOption[]>([]);
 
@@ -246,7 +264,6 @@ export default function IssueToolPage() {
   }, [showCreate]);
 
   useEffect(() => {
-    if (!showCreate) return;
     void (async () => {
       const [subRes, supRes] = await Promise.all([
         apiGet<{ items?: SubOption[] }>("/api/subcontractors?pageSize=200"),
@@ -255,7 +272,7 @@ export default function IssueToolPage() {
       setSubs(subRes.data?.items ?? []);
       setSuppliers(supRes.data?.items ?? []);
     })();
-  }, [showCreate]);
+  }, []);
 
   const loadIssues = useCallback(async (
     p = page,
@@ -351,6 +368,7 @@ export default function IssueToolPage() {
     if (!queryLower) return false;
     const matches =
       t.name?.toLowerCase().includes(queryLower) ||
+      t.size?.toLowerCase().includes(queryLower) ||
       t.toolOrGaugeNo.toLowerCase().includes(queryLower);
     return matches && (isMovement || Number(t.qtyIn ?? 0) > 0);
   });
@@ -407,8 +425,8 @@ export default function IssueToolPage() {
       primary: t.toolOrGaugeNo,
       secondary:
         !t.name || t.name.trim().toUpperCase() === "N/A"
-          ? t.grouping
-          : `${t.name}${toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}`,
+          ? `${t.grouping}${t.size ? ` · Size: ${t.size}` : ""}`
+          : `${t.name}${t.size ? ` · Size: ${t.size}` : ""}${toolMaintainsSerial(t.serialNoGenReq) ? " · Serial tracked" : ""}`,
       right: (
         <span className="text-[10px] font-bold text-[var(--color-success-text)] font-mono bg-[var(--color-success-bg)] px-2 py-0.5 rounded-full border border-[var(--border-main)]">
           {isMovement ? "Single instrument" : `${getAvailableStock(t.toolOrGaugeNo)} in-stock`}
@@ -418,7 +436,7 @@ export default function IssueToolPage() {
     ...zeroStockHints.map((t) => ({
       id: `zero-${t.refNo}`,
       primary: t.toolOrGaugeNo,
-      secondary: t.name || t.grouping,
+      secondary: `${t.name || t.grouping}${t.size ? ` · Size: ${t.size}` : ""}`,
       disabled: true,
       right: (
         <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
@@ -472,6 +490,7 @@ export default function IssueToolPage() {
           toolOrGaugeNo: toolNo,
           toolName: displayName,
           description: tool.name || "",
+          size: tool.size || "",
           grouping: tool.grouping || "",
           type: tool.type || "",
           issueQty: 1,
@@ -563,6 +582,7 @@ export default function IssueToolPage() {
               ? tool.toolOrGaugeNo
               : tool.name,
           description: item.description || tool.name || "",
+          size: tool.size || "",
           grouping: tool.grouping || "",
           type: tool.type || "",
           issueQty: 1,
@@ -747,6 +767,7 @@ export default function IssueToolPage() {
         toolOrGaugeNo: toolNo,
         toolName: tool?.name || l.toolName || toolNo,
         description: tool?.name ? (l.description || "") : l.description || "",
+        size: tool?.size || "",
         grouping: tool?.grouping || l.grouping || "",
         type: tool?.type || "",
         issueQty,
@@ -826,6 +847,17 @@ export default function IssueToolPage() {
     setLobType(issue.lobType || "AUTOMOTIVE");
     setPoOrderNo(issue.poOrderNo ?? "");
     setFromUnit(issue.fromUnit ?? "");
+    setToUnit(issue.lines.find((line) => line.issueToItemNo)?.issueToItemNo ?? "");
+    setEditMovementLines(issue.lines.flatMap((line) => {
+      const toolOrGaugeNo = line.toolOrGaugeNo ?? line.tool?.toolOrGaugeNo ?? line.partNo;
+      return toolOrGaugeNo ? [{
+        rowId: line.rowId,
+        toolOrGaugeNo,
+        name: line.name ?? line.tool?.name ?? line.toolByRef?.name ?? "—",
+        serialNo: line.serialNo ?? null,
+        toUnit: line.issueToItemNo ?? null,
+      }] : [];
+    }));
     setIssuePurpose(issue.issuePurpose ?? "");
     setMatType(issue.matType ?? "");
     setReturnable(issue.returnable === "No" ? "No" : "Yes");
@@ -837,6 +869,10 @@ export default function IssueToolPage() {
     if (!editIssue) return;
     if (issueOption === "Customer" && !custCode.trim()) {
       setFormErrors({ party: "Enter Customer Code" });
+      return;
+    }
+    if (isMovement && editMovementLines.length === 0) {
+      setFormErrors({ lines: "A movement DC must contain at least one instrument" });
       return;
     }
     const storedIssueOption = isMovement && movementType === "External" ? `External:${issueOption}` : issueOption;
@@ -858,6 +894,15 @@ export default function IssueToolPage() {
       fromUnit: isMovement && movementType === "External" ? null : fromUnit || null,
       issuePurpose: issuePurpose || null,
       matType: matType || null,
+      ...(isMovement ? {
+        lines: editMovementLines.map((line) => ({
+          ...(line.rowId != null ? { rowId: line.rowId } : {}),
+          toolOrGaugeNo: line.toolOrGaugeNo,
+          issueQty: 1,
+          serialNo: line.serialNo,
+          toUnit: movementType === "Internal" ? (line.toUnit || toUnit) : null,
+        })),
+      } : {}),
     });
     if (res.error) {
       toastError(res.error.message);
@@ -892,8 +937,16 @@ export default function IssueToolPage() {
 
   const openCreate = useCallback(() => {
     setShowCreate(true);
-    router.replace(`${isMovement ? "/dashboard/movement/create" : issueBasePath}?action=add`, { scroll: false });
-  }, [isMovement, issueBasePath, router]);
+    if (isMovement) {
+      const params = new URLSearchParams({ action: "add" });
+      if (requestedMovementParam === "internal" || requestedMovementParam === "external") {
+        params.set("movement", requestedMovementParam);
+      }
+      router.replace(`/dashboard/movement/create?${params.toString()}`, { scroll: false });
+      return;
+    }
+    router.replace(`${issueBasePath}?action=add`, { scroll: false });
+  }, [isMovement, issueBasePath, requestedMovementParam, router]);
 
   const closeCreate = useCallback(() => {
     handleClearForm();
@@ -904,7 +957,7 @@ export default function IssueToolPage() {
 
   useEffect(() => {
     const action = searchParams.get("action");
-    const requestedMovement = searchParams.get("movement");
+    const requestedMovement = requestedMovementParam;
     const fromReq = searchParams.get("requisitionPending");
     const qReqNo = (searchParams.get("reqNo") ?? "").trim();
     if (action === "add" || fromReq === "Yes" || qReqNo) {
@@ -1139,7 +1192,7 @@ export default function IssueToolPage() {
           />
 
           {/* ── Issue list (stays mounted under overlay) ── */}
-            <StatusPillTabs
+            {!isMovement && <StatusPillTabs
               className="mb-3"
               idPrefix="issue-status-pill"
               value={listStatusFilter}
@@ -1167,7 +1220,7 @@ export default function IssueToolPage() {
                   ).length,
                 },
               ]}
-            />
+            />}
 
             <MasterTableCard
               toolbar={
@@ -1250,10 +1303,76 @@ export default function IssueToolPage() {
                     ? `No ${listStatusFilter === "All" ? "" : listStatusFilter.toLowerCase() + " "}records found${searchQuery ? ` for "${searchQuery}"` : ""}.`
                     : "No issue records found. Create a new issue to get started."}
                 </div>
+              ) : isMovement ? (
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                        {["DC No", "Receive Name", "Movement Type", "Issue Date", "Tools on DC", "Status", "Actions"].map((col) => (
+                          <th key={col} className="text-left text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {issues.map((issue) => {
+                        const preview = issue.lines
+                          .map((line) => line.toolOrGaugeNo || line.tool?.toolOrGaugeNo || line.partNo)
+                          .filter(Boolean)
+                          .slice(0, 3)
+                          .join(", ");
+                        const external = issue.issueOption?.startsWith("External:") ?? false;
+                        const partyName = issue.subCode
+                          ? subs.find((s) => s.subCode === issue.subCode)?.subName
+                          : issue.supCode
+                            ? suppliers.find((s) => s.supCode === issue.supCode)?.supName
+                            : null;
+                        return (
+                          <tr key={issue.dcNo} className="hover:bg-[var(--bg-hover)]">
+                            <td className="py-2.5 px-3 font-mono text-xs font-bold">{issue.dcNo}</td>
+                            <td className="py-2.5 px-3 text-xs font-semibold">
+                              <div>{issue.receiveName ?? "—"}</div>
+                              {partyName && <div className="text-[11px] font-normal text-[var(--text-muted)] truncate max-w-[200px]">{partyName}</div>}
+                            </td>
+                            <td className="py-2.5 px-3 text-xs">{external ? "External" : "Internal"}</td>
+                            <td className="py-2.5 px-3 font-mono text-xs">{issue.issueDate ? issue.issueDate.split("T")[0] : "—"}</td>
+                            <td className="py-2.5 px-3 text-xs">
+                              {issue.lines.length > 0 ? <span className="font-mono">{preview}{issue.lines.length > 3 ? "…" : ""} · {issue.lines.length}</span> : "—"}
+                            </td>
+                            <td className="py-2.5 px-3"><StatusBadge status={issue.status} /></td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-1">
+                                <button type="button" title="Open movement DC" onClick={() => setViewIssue(issue)} className="inline-flex p-1.5 rounded-lg text-[var(--primary)] hover:bg-[var(--primary-light)]">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                {isOpenIssue(issue.status) && (
+                                  <RoleGate permission="canCreateIssue">
+                                    <button type="button" title="Edit movement DC" onClick={() => openEditIssue(issue)} className="inline-flex p-1.5 rounded-lg text-[var(--primary)] hover:bg-[var(--primary-light)]">
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  </RoleGate>
+                                )}
+                                <button type="button" title="Download movement DC PDF" onClick={() => void downloadMovementDc(issue.dcNo)} className="inline-flex p-1.5 rounded-lg text-[var(--primary)] hover:bg-[var(--primary-light)]">
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div className="divide-y divide-[var(--border-main)]">
                   {issues.map((issue) => {
                     const sc = statusConfig[issue.status] ?? statusConfig["OPEN"];
+                    const partyName = issue.subCode
+                      ? subs.find((s) => s.subCode === issue.subCode)?.subName
+                      : issue.supCode
+                        ? suppliers.find((s) => s.supCode === issue.supCode)?.supName
+                        : null;
                     return (
                       <div key={issue.dcNo} className="p-4">
                         <div className="flex items-center justify-between mb-3 gap-3">
@@ -1262,8 +1381,8 @@ export default function IssueToolPage() {
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
                               {issue.receiveName ?? "—"} · Issued {issue.issueDate ? issue.issueDate.split("T")[0] : "—"} · Due {issue.dueDate ? issue.dueDate.split("T")[0] : "—"}
                               {issue.custCode ? ` · Cust ${issue.custCode}` : ""}
-                              {issue.supCode ? ` · Sup ${issue.supCode}` : ""}
-                              {issue.subCode ? ` · Sub ${issue.subCode}` : ""}
+                              {issue.supCode ? ` · Sup ${issue.supCode}${partyName ? ` (${partyName})` : ""}` : ""}
+                              {issue.subCode ? ` · Sub ${issue.subCode}${partyName ? ` (${partyName})` : ""}` : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1279,8 +1398,8 @@ export default function IssueToolPage() {
                                   <Button type="button" size="sm" variant="outline" onClick={() => openEditIssue(issue)}>
                                     Edit
                                   </Button>
-                                  <Button type="button" size="sm" variant="outline" onClick={() => void handleCancelIssue(issue.dcNo)}>
-                                    Cancel DC
+                                  <Button type="button" size="sm" variant="outline" onClick={() => void handleCancelIssue(issue.dcNo)} className="text-[var(--color-danger-text)] border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg)]">
+                                    Cancel
                                   </Button>
                                 </>
                               )}
@@ -1366,6 +1485,59 @@ export default function IssueToolPage() {
                 </div>
               )}
             </MasterTableCard>
+          {viewIssue && isMovement && (
+            <OverlayModal
+              open
+              size="xl"
+              title={`Movement DC ${viewIssue.dcNo}`}
+              subtitle={`${viewIssue.issueOption?.startsWith("External:") ? "External" : "Internal"} movement details`}
+              onClose={() => setViewIssue(null)}
+              footer={
+                <>
+                  <button type="button" className="form-btn-cancel" onClick={() => setViewIssue(null)}>Close</button>
+                  {isOpenIssue(viewIssue.status) && (
+                    <button type="button" className="form-btn-cancel" onClick={() => { const issue = viewIssue; setViewIssue(null); openEditIssue(issue); }}>
+                      <Pencil className="w-4 h-4" /> Edit
+                    </button>
+                  )}
+                  <button type="button" className="form-btn-save" onClick={() => void downloadMovementDc(viewIssue.dcNo)}>
+                    <Download className="w-4 h-4" /> Download DC PDF
+                  </button>
+                </>
+              }
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs rounded-xl border border-[var(--border-main)] bg-[var(--bg-subtle)] p-3">
+                  <div><p className="form-label">Receive Name</p><p className="font-semibold">{viewIssue.receiveName ?? "—"}</p></div>
+                  <div><p className="form-label">Movement Type</p><p className="font-semibold">{viewIssue.issueOption?.startsWith("External:") ? "External" : "Internal"}</p></div>
+                  <div><p className="form-label">Issue Date</p><p className="font-mono font-semibold">{viewIssue.issueDate?.split("T")[0] ?? "—"}</p></div>
+                  <div><p className="form-label">Status</p><StatusBadge status={viewIssue.status} /></div>
+                  <div><p className="form-label">From Unit</p><p className="font-semibold">{viewIssue.fromUnit ?? "—"}</p></div>
+                  <div><p className="form-label">Due Date</p><p className="font-mono">{viewIssue.dueDate?.split("T")[0] ?? "—"}</p></div>
+                  <div><p className="form-label">Purpose</p><p>{viewIssue.issuePurpose ?? "—"}</p></div>
+                  <div><p className="form-label">Vehicle No</p><p>{viewIssue.vehicleNo ?? "—"}</p></div>
+                </div>
+                <div className="overflow-auto border border-[var(--border-main)] rounded-xl">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--bg-subtle)]"><tr>{["Tool No", "Name", "Group", "Serial", "Destination", "Status"].map((col) => <th key={col} className="text-left text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider py-2 px-3">{col}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-[var(--border-main)]">
+                      {viewIssue.lines.map((line) => {
+                        const master = line.tool ?? line.toolByRef;
+                        return <tr key={line.rowId}>
+                          <td className="py-2.5 px-3 font-mono text-xs font-bold">{line.toolOrGaugeNo || master?.toolOrGaugeNo || line.partNo}</td>
+                          <td className="py-2.5 px-3 text-xs">{line.name || master?.name || "—"}</td>
+                          <td className="py-2.5 px-3 text-xs">{line.groupName || master?.grouping || "—"}</td>
+                          <td className="py-2.5 px-3 font-mono text-xs">{line.serialNo ?? "—"}</td>
+                          <td className="py-2.5 px-3 text-xs">{line.issueToItemNo || viewIssue.receiveName || "—"}</td>
+                          <td className="py-2.5 px-3 text-xs">{line.status ?? "—"}</td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </OverlayModal>
+          )}
           {showCreate && (
             <OverlayModal
               open
@@ -1834,7 +2006,7 @@ export default function IssueToolPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
-                          {["#", "Item No", "Description", "Qty", "Avl", "Price", "Amount", "Machine", "Part No", "Process", "Ret.?", "Sl.No", ""].map((col) => (
+                          {["#", "Item No", "Description", "Size", "Qty", "Avl", "Price", "Amount", "Machine", "Part No", "Process", "Ret.?", "Sl.No", ""].map((col) => (
                             <th key={col} className="text-left text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider py-2.5 px-3">
                               {col}
                             </th>
@@ -1847,6 +2019,7 @@ export default function IssueToolPage() {
                             <td className="py-2 px-3 text-xs text-[var(--text-muted)]">{idx + 1}</td>
                             <td className="py-2 px-3 font-mono text-xs font-semibold">{line.toolOrGaugeNo}</td>
                             <td className="py-2 px-3 text-xs">{line.toolName}</td>
+                            <td className="py-2 px-3 text-xs font-mono whitespace-nowrap">{line.size || "—"}</td>
                             <td className="py-2 px-3">
                               <div className="inline-flex items-center gap-1">
                                 <button
@@ -1963,7 +2136,7 @@ export default function IssueToolPage() {
                         ))}
                         {stagedLines.length === 0 && (
                           <tr>
-                            <td colSpan={13} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
+                            <td colSpan={14} className="py-8 text-center text-xs text-[var(--text-muted)] font-medium">
                               No records found. Search Tools Or Gauge No above to add.
                             </td>
                           </tr>
@@ -2079,6 +2252,83 @@ export default function IssueToolPage() {
                     <input value={comments} onChange={(e) => setComments(e.target.value)} className="form-control" maxLength={100} />
                   </div>
                 </div>
+                {isMovement && (
+                  <FormModalSection title="Instruments on movement DC">
+                    <div className="space-y-2">
+                      <div>
+                        <label className="form-label">Add instrument</label>
+                        <input
+                          className="form-control"
+                          value={searchVal}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setSearchVal(value);
+                            if (toolSearchTimer.current) clearTimeout(toolSearchTimer.current);
+                            toolSearchTimer.current = setTimeout(() => void fetchToolsForSearch(value), 300);
+                          }}
+                          placeholder="Type at least 2 characters…"
+                        />
+                      </div>
+                      {searchVal.trim().length >= 2 && searchResults.length > 0 && (
+                        <div className="max-h-32 overflow-auto border border-[var(--border-main)] rounded-lg divide-y divide-[var(--border-main)]">
+                          {searchResults.filter((tool) => !editMovementLines.some((line) => line.toolOrGaugeNo === tool.toolOrGaugeNo)).map((tool) => (
+                            <button
+                              key={tool.refNo}
+                              type="button"
+                              className="w-full flex items-center justify-between p-2 text-left hover:bg-[var(--bg-hover)]"
+                              onClick={() => {
+                                const sourceUnit = normalizeCompanyUnit(tool.locationName);
+                                if (movementType === "Internal" && sourceUnit !== normalizeCompanyUnit(fromUnit)) {
+                                  setFormErrors({ lines: `${tool.toolOrGaugeNo} does not belong to ${fromUnit}.` });
+                                  return;
+                                }
+                                setEditMovementLines((current) => [...current, {
+                                  toolOrGaugeNo: tool.toolOrGaugeNo,
+                                  name: tool.name || tool.toolOrGaugeNo,
+                                  serialNo: null,
+                                  toUnit: movementType === "Internal" ? toUnit : null,
+                                }]);
+                                setSearchVal("");
+                                setTools([]);
+                                setFormErrors((current) => ({ ...current, lines: "" }));
+                              }}
+                            >
+                              <span className="font-mono text-xs font-semibold">{tool.toolOrGaugeNo}</span>
+                              <span className="text-xs text-[var(--text-muted)]">
+                                {tool.name}{tool.size ? ` · Size: ${tool.size}` : ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {movementType === "Internal" && (
+                        <div>
+                          <label className="form-label">Destination for newly added instruments</label>
+                          <select className="form-control" value={toUnit} onChange={(event) => setToUnit(event.target.value)}>
+                            <option value="">Select destination…</option>
+                            {COMPANY_UNITS.filter((unit) => unit.label !== normalizeCompanyUnit(fromUnit)).map((unit) => <option key={unit.key} value={unit.label}>{unit.label}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {formErrors.lines && <p className="form-error">{formErrors.lines}</p>}
+                      <div className="max-h-56 overflow-auto border border-[var(--border-main)] rounded-lg">
+                        <table className="w-full text-xs">
+                          <thead className="bg-[var(--bg-subtle)]"><tr><th className="text-left p-2">Instrument</th><th className="text-left p-2">Name</th><th className="text-left p-2">Destination</th><th className="w-10" /></tr></thead>
+                          <tbody className="divide-y divide-[var(--border-main)]">
+                            {editMovementLines.map((line) => (
+                              <tr key={line.rowId ?? line.toolOrGaugeNo}>
+                                <td className="p-2 font-mono font-semibold">{line.toolOrGaugeNo}</td>
+                                <td className="p-2">{line.name}</td>
+                                <td className="p-2">{line.toUnit ?? (movementType === "Internal" ? toUnit : "External")}</td>
+                                <td className="p-1"><button type="button" title="Remove line" className="p-1 text-red-600" onClick={() => setEditMovementLines((current) => current.filter((item) => item !== line))}><Trash className="w-4 h-4" /></button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </FormModalSection>
+                )}
               </form>
             </OverlayModal>
           )}

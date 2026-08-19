@@ -10,6 +10,7 @@ export type DcPdfLine = {
   description?: string | null;
   type?: string | null;
   destinationUnit?: string | null;
+  usedLocation?: string | null;
   issueQty?: number | null;
   serialNo?: string | number | null;
   dueDate?: string | Date | null;
@@ -28,11 +29,13 @@ export type DcType = "ISSUE" | "CALIBRATION" | "MOVEMENT";
 export type DcPdfHeader = {
   dcType?: DcType;
   dcNo: number | string;
+  recipientName?: string | null;
   receiveName?: string | null;
   receiver?: string | null;
   fromUnit?: string | null;
   purpose?: string | null;
   subCode?: string | null;
+  natureOfWork?: string | null;
   issueDate?: string | Date | null;
   issueFor?: string | null;
   toolsPoNo?: string | null;
@@ -152,10 +155,21 @@ function buildMovementDcPdfBuffer(data: DcPdfHeader): Buffer {
   doc.text(`Purpose: ${data.purpose || data.issueFor || "—"}`, 40, 205);
   autoTable(doc, {
     startY: 224,
-    head: [["#", "Instrument / Gauge No.", "Description", "Type", "From Unit", "To Unit", "Status"]],
-    body: data.lines.map((line, index) => [index + 1, line.toolOrGaugeNo || "—", line.description || line.name || "—", line.type || line.grouping || "—", data.fromUnit || "—", line.destinationUnit || "—", line.status || "In Movement"]),
-    styles: { fontSize: 8, cellPadding: 4, lineWidth: 0.3, lineColor: [180, 180, 180], overflow: "ellipsize" },
-    headStyles: { fillColor: [37, 141, 245], textColor: [255, 255, 255], overflow: "ellipsize" },
+    margin: { left: marginX, right: marginX },
+    head: [["#", "Instrument / Gauge No.", "Description", "Type", "Used Location", "From Unit", "To Unit", "Status"]],
+    body: data.lines.map((line, index) => [
+      index + 1,
+      line.toolOrGaugeNo || "—",
+      line.description || line.name || "—",
+      line.type || line.grouping || "—",
+      line.usedLocation || "—",
+      data.fromUnit || "—",
+      line.destinationUnit || "—",
+      line.status || "In Movement",
+    ]),
+    theme: "grid",
+    styles: { fontSize: 8, cellPadding: 4, lineWidth: 0.5, lineColor: [0, 0, 0], textColor: [0, 0, 0], overflow: "ellipsize" },
+    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", overflow: "ellipsize" },
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const y = Math.min(((doc as any).lastAutoTable?.finalY ?? 300) + 30, 700);
@@ -243,17 +257,19 @@ function buildExternalDcPdfBuffer(header: DcPdfHeader): Buffer {
   // Left Column: Recipient Info
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
-  const recipientName = header.receiveName || "M/S.MANPRO EQUIPMENTS PRIVATE LIMITED";
-  const recipientUnit = header.subCode ? `(${header.subCode})` : header.issueFor ? `(${header.issueFor})` : "(UNIT III)";
+  const recipientName = header.recipientName || header.receiveName || header.companyName || "M/S.MANPRO EQUIPMENTS PRIVATE LIMITED";
+  const recipientUnit = header.subCode ? `(${header.subCode})` : header.issueFor ? `(${header.issueFor})` : "";
   doc.text(`To, ${recipientName}`, marginX + 8, curY + 14);
   if (recipientUnit) doc.text(recipientUnit, marginX + 8, curY + 25);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
-  doc.text(header.recipientAddress1 || "E6, 7TH MAIN ROAD, 4TH CROSS STREET, SIPCOT", marginX + 8, curY + 37);
-  doc.text(header.recipientAddress2 || "INDUSTRIAL PARK, IRUNGATTUKOTTAI, KANCHEEPURAM - 602117", marginX + 8, curY + 49);
+  const addr1 = header.recipientAddress1 || "";
+  const addr2 = header.recipientAddress2 || "";
+  if (addr1) doc.text(addr1, marginX + 8, curY + 37);
+  if (addr2) doc.text(addr2, marginX + 8, curY + 49);
   doc.setFont("helvetica", "bold");
-  doc.text(`GSTIN: ${header.recipientGstin || "33AAFCM6958H1Z7"}`, marginX + 8, curY + 65);
+  doc.text(`GSTIN: ${header.recipientGstin || "—"}`, marginX + 8, curY + 65);
 
   // Right Column: Logistics Metadata
   const rightX = marginX + colW + 8;
@@ -265,7 +281,7 @@ function buildExternalDcPdfBuffer(header: DcPdfHeader): Buffer {
   doc.text("Gate Copy", rightX, curY + 56);
 
   doc.setFont("helvetica", "normal");
-  doc.text(`:   ${header.vehicleNo || "TN13AC9731"}`, rightX + 120, curY + 14);
+  doc.text(`:   ${header.vehicleNo || "—"}`, rightX + 120, curY + 14);
   doc.text(":   SubContractor", rightX + 120, curY + 28);
   doc.text(":   From SubContractor", rightX + 120, curY + 42);
   doc.text(":   MANPRO Security", rightX + 120, curY + 56);
@@ -282,12 +298,12 @@ function buildExternalDcPdfBuffer(header: DcPdfHeader): Buffer {
     totalQty += qty;
     subTotal += qty * val;
 
-    const rcNo = line.rcNo || `RC-J${String(idx + 101224).padStart(6, "0")}`;
+    const rcNo = line.rcNo || "—";
     const partNo = line.toolOrGaugeNo || "—";
     const partName = line.name || line.grouping || "EQUIPMENT ITEM";
-    const heatNo = line.heatNo || (line.serialNo != null ? String(line.serialNo) : "S-35963");
-    const matSpec = line.materialSpec || line.grouping || "ASME SA-479 S31603";
-    const comments = line.remarks || line.status || "GOOD";
+    const heatNo = line.heatNo || (line.serialNo != null ? String(line.serialNo) : "—");
+    const matSpec = line.materialSpec || line.grouping || "—";
+    const comments = line.remarks || line.status || "—";
 
     return [
       String(idx + 1).padStart(2, "0"),
@@ -390,11 +406,11 @@ function buildExternalDcPdfBuffer(header: DcPdfHeader): Buffer {
   doc.setFontSize(8);
   const instructY = finalY + 30;
   const instructLeft = [
-    ["Process to be done", ":"],
+    ["Process to be done", `:   ${header.natureOfWork || header.purpose || "—"}`],
     ["Remarks", `:   ${header.comments || "SEND FOR OWN USE"}`],
-    ["Packages", `:   ${header.packages || "Bundle"}`],
+    ["Packages", `:   ${header.packages || "—"}`],
     ["Transport Mode", `:   ${header.transportName || "By Road"}`],
-    ["Net.Wt", `:   ${header.netWeight || "68.48"}`],
+    ["Net.Wt", `:   ${header.netWeight || "—"}`],
   ];
 
   let iy = instructY;

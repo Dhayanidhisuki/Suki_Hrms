@@ -515,14 +515,16 @@ export async function GET(req: NextRequest) {
     // Enrich serial + unit status from GAUGE_SERIAL_NO for Cur.Status
     const allToolNos = Array.from(byTool.keys());
     const unitByTool = new Map<string, CompanyUnitLabel | null>();
+    const sizeByTool = new Map<string, string | null>();
     if (allToolNos.length > 0) {
       const masters = await prisma.gaugeAndTools.findMany({
         where: { toolOrGaugeNo: { in: allToolNos } },
-        select: { toolOrGaugeNo: true, locationName: true },
+        select: { toolOrGaugeNo: true, locationName: true, size: true },
       });
       for (const master of masters) {
         if (master.toolOrGaugeNo) {
           unitByTool.set(master.toolOrGaugeNo, normalizeCompanyUnit(master.locationName));
+          sizeByTool.set(master.toolOrGaugeNo, master.size);
         }
       }
       try {
@@ -566,6 +568,7 @@ export async function GET(req: NextRequest) {
       .map((i) => ({
         ...i,
         unit: unitByTool.get(i.toolOrGaugeNo) ?? null,
+        size: sizeByTool.get(i.toolOrGaugeNo) ?? null,
         // One master row is one tracked instrument; master status is authoritative.
         status: i.status || i.unitStatus || "—",
         curStatus: i.status || i.unitStatus || "—",

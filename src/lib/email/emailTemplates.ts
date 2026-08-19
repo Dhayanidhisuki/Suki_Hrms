@@ -9,6 +9,7 @@
  */
 
 import type { DueCalibrationTool, NotificationUser } from "@/lib/calibrationDueEmail";
+import { calibrationPdfEmailUrl } from "@/lib/calibrationPdfLink";
 
 // ─── Brand tokens ──────────────────────────────────────────────────────────────
 
@@ -48,6 +49,12 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
   });
+}
+
+function pdfButton(item: DueCalibrationTool, compact = false): string {
+  const url = calibrationPdfEmailUrl(item.toolOrGaugeNo);
+  if (!url) return "—";
+  return `<a href="${escapeHtml(url)}" style="display:inline-block;background-color:${BRAND.primary};color:#ffffff;text-decoration:none;font-size:${compact ? "10px" : "12px"};font-weight:700;padding:${compact ? "6px 9px" : "9px 14px"};border-radius:6px;white-space:nowrap;">Download PDF</a>`;
 }
 
 type StatusMeta = {
@@ -170,9 +177,12 @@ export function singleToolTemplate(item: DueCalibrationTool): string {
       </tr>
       ${detailRow("Tool / Gauge No.", escapeHtml(item.toolOrGaugeNo), true)}
       ${detailRow("Tool Name", toolName)}
+      ${detailRow("Size", escapeHtml(item.size || "—"), true)}
       ${detailRow("Unit", escapeHtml(unitLabel(item.unitCode)), true)}
+      ${detailRow("Used Location", escapeHtml(item.usedLocation || "—"), true)}
       ${detailRow("Due Date", `<strong style="color:${meta.color};">${formatDate(item.dueDate)}</strong>`)}
       ${detailRow("Status", `<span style="background-color:${meta.bg};color:${meta.color};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;">${escapeHtml(meta.label)}</span>`, true)}
+      ${detailRow("Calibration PDF", pdfButton(item), true)}
     </table>
 
     <!-- CTA note -->
@@ -210,11 +220,14 @@ export function digestTemplate(user: NotificationUser, items: DueCalibrationTool
       <tr style="background-color:${bg};">
         <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:13px;font-weight:600;color:${BRAND.textPrimary};white-space:nowrap;">${escapeHtml(item.toolOrGaugeNo)}</td>
         <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:13px;color:${BRAND.textPrimary};">${escapeHtml(item.name || item.description || "—")}</td>
+        <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:12px;color:${BRAND.textSecondary};white-space:nowrap;">${escapeHtml(item.size || "—")}</td>
         <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:12px;color:${BRAND.textSecondary};white-space:nowrap;">${escapeHtml(unitLabel(item.unitCode))}</td>
+        <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:12px;color:${BRAND.textSecondary};">${escapeHtml(item.usedLocation || "—")}</td>
         <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};font-size:12px;color:${BRAND.textSecondary};white-space:nowrap;">${formatDate(item.dueDate)}</td>
         <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};white-space:nowrap;">
           <span style="background-color:${meta.bg};color:${meta.color};font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;">${meta.emoji} ${escapeHtml(meta.label)}</span>
         </td>
+        <td style="padding:12px 14px;border-bottom:1px solid ${BRAND.borderLight};white-space:nowrap;">${pdfButton(item, true)}</td>
       </tr>`;
   }).join("");
 
@@ -233,9 +246,12 @@ export function digestTemplate(user: NotificationUser, items: DueCalibrationTool
       <tr style="background-color:${BRAND.bgHeader};">
         <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;white-space:nowrap;">Tool / Gauge No.</th>
         <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Tool Name</th>
+        <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;white-space:nowrap;">Size</th>
         <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;white-space:nowrap;">Unit</th>
+        <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Used Location</th>
         <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;white-space:nowrap;">Due Date</th>
         <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Status</th>
+        <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">PDF</th>
       </tr>
       ${tableRows}
     </table>
@@ -297,9 +313,12 @@ export function testEmailTemplate(item: DueCalibrationTool): string {
       </tr>
       ${detailRow("Tool / Gauge No.", escapeHtml(item.toolOrGaugeNo), true)}
       ${detailRow("Tool Name", toolName)}
+      ${detailRow("Size", escapeHtml(item.size || "—"), true)}
       ${detailRow("Unit", escapeHtml(unitLabel(item.unitCode)), true)}
+      ${detailRow("Used Location", escapeHtml(item.usedLocation || "—"), true)}
       ${detailRow("Due Date", `<strong style="color:${meta.color};">${formatDate(item.dueDate)}</strong>`)}
       ${detailRow("Status", `<span style="background-color:${meta.bg};color:${meta.color};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;">${escapeHtml(meta.label)}</span>`, true)}
+      ${detailRow("Calibration PDF", pdfButton(item), true)}
     </table>
 
     <p style="margin:0;font-size:13px;color:${BRAND.textSecondary};line-height:1.7;">

@@ -115,6 +115,11 @@ export async function GET(req: NextRequest) {
           where,
           include: {
             lines: { include: { tool: toolPreview, toolByRef: toolPreview } },
+            receivedHeaders: {
+              select: {
+                lines: { select: { toolIssRefNo: true, quantity: true } },
+              },
+            },
           },
           orderBy: { issueDate: "desc" },
           take: pageSize,
@@ -129,8 +134,26 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
+      const pendingItems = items
+        .map(({ receivedHeaders, ...issue }) => {
+          const receivedByIssueRow = new Map<number, number>();
+          for (const received of receivedHeaders.flatMap((header) => header.lines)) {
+            if (received.toolIssRefNo == null) continue;
+            receivedByIssueRow.set(
+              received.toolIssRefNo,
+              (receivedByIssueRow.get(received.toolIssRefNo) ?? 0) + Number(received.quantity ?? 0)
+            );
+          }
+          const lines = issue.lines.flatMap((line) => {
+            const remaining = Number(line.issueQty ?? 0) - (receivedByIssueRow.get(line.rowId) ?? 0);
+            return remaining > 0 ? [{ ...line, issueQty: remaining }] : [];
+          });
+          return { ...issue, lines };
+        })
+        .filter((issue) => issue.lines.length > 0);
+
       return NextResponse.json({
-        items,
+        items: pendingItems,
         total,
         page,
         pageSize,
@@ -333,7 +356,14 @@ export async function POST(req: NextRequest) {
     const result = await prisma.$transaction(async (tx) => {
       const issueHeader = await tx.gaugeToolsIssue.findUnique({
         where: { dcNo },
-        include: { lines: true },
+        include: {
+          lines: true,
+          receivedHeaders: {
+            select: {
+              lines: { select: { toolIssRefNo: true, quantity: true } },
+            },
+          },
+        },
       });
       if (!issueHeader) {
         throw new Error(`Issue DC ${dcNo} not found`);
@@ -381,9 +411,14 @@ export async function POST(req: NextRequest) {
         }
 
         const issuedQty = Number(issueLine.issueQty ?? 0);
-        if (line.quantity > issuedQty) {
+        const alreadyReceivedQty = issueHeader.receivedHeaders
+          .flatMap((received) => received.lines)
+          .filter((received) => received.toolIssRefNo === issueLine.rowId)
+          .reduce((sum, received) => sum + Number(received.quantity ?? 0), 0);
+        const remainingQty = Math.max(0, issuedQty - alreadyReceivedQty);
+        if (line.quantity > remainingQty) {
           throw new Error(
-            `Return qty ${line.quantity} exceeds issued ${issuedQty} on line #${line.issueRowId}`
+            `Return qty ${line.quantity} exceeds remaining ${remainingQty} on line #${line.issueRowId}`
           );
         }
 
@@ -489,7 +524,10 @@ export async function POST(req: NextRequest) {
         (sum, l) => sum + Number(l.issueQty ?? 0),
         0
       );
-      const nextStatus = totalReturning >= totalIssued ? "Closed" : "PARTIAL";
+      const totalPreviouslyReturned = issueHeader.receivedHeaders
+        .flatMap((received) => received.lines)
+        .reduce((sum, received) => sum + Number(received.quantity ?? 0), 0);
+      const nextStatus = totalPreviouslyReturned + totalReturning >= totalIssued ? "Closed" : "PARTIAL";
 
       await tx.gaugeToolsIssue.update({
         where: { dcNo },

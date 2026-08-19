@@ -45,6 +45,7 @@ interface Tool {
   curStatus?: string | null;
   grouping: string | null;
   type?: string | null;
+  size?: string | null;
   location?: string | null;
   unit?: string | null;
   frequency?: string | null;
@@ -67,7 +68,15 @@ interface CalibrationIssueLine {
   resultStatus: string | null;
   calibratedBy: string | null;
   dueDate: string | null;
-  tool?: { name: string | null; description: string | null } | null;
+  tool?: { name: string | null; description: string | null; locationName?: string | null } | null;
+}
+
+interface EditableCalibrationLine {
+  rowId?: number;
+  toolOrGaugeNo: string;
+  name: string;
+  grouping: string;
+  calibDueDate: string;
 }
 
 interface CalibrationIssueHeader {
@@ -124,6 +133,7 @@ function dateOnly(dateStr: string | null | undefined): string | null {
 
 function CalibrationIssuePage() {
   const searchParams = useSearchParams();
+  const isCartCheckout = searchParams.get("cart") === "1";
   const preselectTool = (searchParams.get("tool") ?? "").trim();
   const preselectApplied = useRef(false);
   const bulkPreselectApplied = useRef(false);
@@ -159,6 +169,9 @@ function CalibrationIssuePage() {
   const [editIssueFor, setEditIssueFor] = useState("Calibration");
   const [editIssueDate, setEditIssueDate] = useState("");
   const [editToolsPoNo, setEditToolsPoNo] = useState("");
+  const [editLines, setEditLines] = useState<EditableCalibrationLine[]>([]);
+  const [editAddToolNo, setEditAddToolNo] = useState("");
+  const [editUnit, setEditUnit] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [pdfBusyDc, setPdfBusyDc] = useState<number | null>(null);
   const [lastIssuedDc, setLastIssuedDc] = useState<number | null>(null);
@@ -270,13 +283,15 @@ function CalibrationIssuePage() {
   }, [preselectTool, tools]);
 
   useEffect(() => {
-    if (bulkPreselectApplied.current || tools.length === 0) return;
+    if (bulkPreselectApplied.current || (!isCartCheckout && tools.length === 0)) return;
     const raw = sessionStorage.getItem("bulkCalibIssueLines");
     if (!raw) return;
     try {
       const requested = JSON.parse(raw) as Array<{
         toolOrGaugeNo?: string;
         description?: string;
+        grouping?: string;
+        type?: string;
         location?: string;
         unit?: string | null;
         nextCalibDate?: string | null;
@@ -297,6 +312,24 @@ function CalibrationIssuePage() {
           const timer = window.setTimeout(() => setUnitFilter(requestedUnits[0]), 0);
           return () => window.clearTimeout(timer);
         }
+        return;
+      }
+      if (isCartCheckout) {
+        bulkPreselectApplied.current = true;
+        sessionStorage.removeItem("bulkCalibIssueLines");
+        window.setTimeout(() => {
+          setMode("create");
+          setIssueFor("Calibration");
+          setStaged(requested.filter((item) => item.toolOrGaugeNo?.trim()).map((item) => ({
+            toolOrGaugeNo: item.toolOrGaugeNo!.trim(),
+            name: item.description || "—",
+            grouping: item.grouping || "—",
+            type: item.type || "—",
+            location: item.location || "—",
+            calibDueDate: formatDate(item.nextCalibDate || null),
+            status: "ISSUE FOR CALIBRATION",
+          })));
+        }, 0);
         return;
       }
       const requestedByNo = new Map(
@@ -334,7 +367,7 @@ function CalibrationIssuePage() {
       sessionStorage.removeItem("bulkCalibIssueLines");
       toastError("Could not read the selected calibration instruments.");
     }
-  }, [tools, unitFilter, loadedUnit]);
+  }, [tools, unitFilter, loadedUnit, isCartCheckout]);
 
   const groups = Array.from(new Set(tools.map((t) => t.grouping).filter(Boolean))) as string[];
   const types = Array.from(new Set(tools.map((t) => t.type).filter(Boolean))) as string[];
@@ -417,13 +450,43 @@ function CalibrationIssuePage() {
     setEditIssueFor(ci.issueFor || "Calibration");
     setEditIssueDate(ci.issueDate ? String(ci.issueDate).slice(0, 10) : localToday());
     setEditToolsPoNo(ci.toolsPoNo ?? "");
+    const sourceUnit = normalizeCompanyUnit(
+      (ci.inHouseLines ?? []).find((line) => line.tool?.locationName)?.tool?.locationName
+    ) ?? "";
+    setEditUnit(sourceUnit);
+    if (sourceUnit && normalizeCompanyUnit(unitFilter) !== sourceUnit) setUnitFilter(sourceUnit);
+    setEditLines((ci.inHouseLines ?? []).map((line) => ({
+      rowId: line.rowId,
+      toolOrGaugeNo: line.toolOrGaugeNo ?? "",
+      name: line.tool?.name ?? "—",
+      grouping: line.grouping ?? "—",
+      calibDueDate: dateOnly(line.dueDate) ?? "",
+    })).filter((line) => Boolean(line.toolOrGaugeNo)));
+    setEditAddToolNo("");
     setEditOpen(true);
+  };
+
+  const addEditCalibrationLine = () => {
+    const tool = tools.find((item) => item.toolOrGaugeNo === editAddToolNo);
+    if (!tool || editLines.some((line) => line.toolOrGaugeNo === tool.toolOrGaugeNo)) return;
+    setEditLines((current) => [...current, {
+      toolOrGaugeNo: tool.toolOrGaugeNo,
+      name: tool.name ?? "—",
+      grouping: tool.grouping ?? "—",
+      calibDueDate: dateOnly(tool.nextCalibrationDate) ?? "",
+    }]);
+    setEditAddToolNo("");
   };
 
   const saveEditDc = async () => {
     if (!selectedDc) return;
     if (!editReceiveName.trim()) {
       toastError("Receive Name is required.");
+      return;
+    }
+    const canEditLines = (selectedDc.status || "").toUpperCase() === "OPEN";
+    if (canEditLines && editLines.length === 0) {
+      toastError("A calibration DC must contain at least one instrument.");
       return;
     }
     setSubmitting(true);
@@ -435,6 +498,13 @@ function CalibrationIssuePage() {
         issueFor: editIssueFor,
         issueDate: editIssueDate || undefined,
         toolsPoNo: editToolsPoNo.trim() || null,
+        ...(canEditLines ? {
+          lines: editLines.map((line) => ({
+            ...(line.rowId != null ? { rowId: line.rowId } : {}),
+            toolOrGaugeNo: line.toolOrGaugeNo,
+            calibDueDate: line.calibDueDate || null,
+          })),
+        } : {}),
       }
     );
     setSubmitting(false);
@@ -465,6 +535,7 @@ function CalibrationIssuePage() {
         !q ||
         t.toolOrGaugeNo.toLowerCase().includes(q) ||
         (t.name || "").toLowerCase().includes(q) ||
+        (t.size || "").toLowerCase().includes(q) ||
         (t.status || "").toLowerCase().includes(q);
 
       if (!matchesSearch) return false;
@@ -588,6 +659,7 @@ function CalibrationIssuePage() {
       setSelectedKeys(new Set());
       setErrors({});
       setLastIssuedDc(dcNo ?? null);
+      if (isCartCheckout) sessionStorage.removeItem("calibrationCart");
       await loadData();
       toastSuccess({
         title: "Calibration DC issued",
@@ -994,7 +1066,7 @@ function CalibrationIssuePage() {
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setMode("list")}
+                    onClick={() => isCartCheckout ? window.location.assign("/dashboard/masters/tools") : setMode("list")}
                     className="inline-flex items-center gap-1 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-widest"
                   >
                     <ArrowLeft className="w-4 h-4" /> Back
@@ -1011,7 +1083,7 @@ function CalibrationIssuePage() {
                 </div>
 
                 {/* Filters + source table */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3 overflow-hidden">
+                {!isCartCheckout && <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3 overflow-hidden">
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 min-w-0">
                     <div className="min-w-0">
                       <label className={headerLabelCls}>Company Unit</label>
@@ -1118,7 +1190,7 @@ function CalibrationIssuePage() {
                         <input
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Gauge / Tool No…"
+                          placeholder="Tool no, name or size…"
                           className={`${headerInputCls} pl-7`}
                         />
                       </div>
@@ -1191,6 +1263,7 @@ function CalibrationIssuePage() {
                               "Group",
                               "Type",
                               "Description",
+                              "Size",
                               "Location",
                               "Cali. Plan",
                               "Cali.Due.Dt.",
@@ -1243,6 +1316,7 @@ function CalibrationIssuePage() {
                                 <td className="py-1.5 px-2 text-xs">{t.grouping || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.type || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.description || t.name || "—"}</td>
+                                <td className="py-1.5 px-2 text-xs font-mono">{t.size || "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.location && t.location !== "-Select-" ? t.location : "—"}</td>
                                 <td className="py-1.5 px-2 text-xs">{t.caliPlan || "—"}</td>
                                 <td className={`py-1.5 px-2 font-mono text-xs ${isOver ? "text-[var(--color-danger-text)] font-bold" : ""}`}>
@@ -1256,7 +1330,7 @@ function CalibrationIssuePage() {
                           })}
                           {visibleDueTools.length === 0 && (
                             <tr>
-                              <td colSpan={12} className="py-6 text-center text-xs text-[var(--text-muted)]">
+                              <td colSpan={13} className="py-6 text-center text-xs text-[var(--text-muted)]">
                                 {showSelectedOnly
                                   ? "No instruments selected. Return to all instruments and select one or more rows."
                                   : searchQuery.trim()
@@ -1277,10 +1351,15 @@ function CalibrationIssuePage() {
                       </Button>
                     </div>
                   )}
-                </div>
+                </div>}
 
                 {/* Issue list */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] px-4 py-3 space-y-3">
+                  {isCartCheckout && (
+                    <div className="rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                      Calibration cart checkout · <span className="font-semibold text-[var(--text-primary)]">{unitFilter}</span> · {staged.length} instrument(s)
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div>
                       <MasterSearchSelect
@@ -1430,6 +1509,59 @@ function CalibrationIssuePage() {
               value={editToolsPoNo}
               onChange={(e) => setEditToolsPoNo(e.target.value)}
             />
+          </div>
+          <div className="border-t border-[var(--border-main)] pt-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="form-label mb-0">Line Items {editUnit ? `· ${editUnit}` : ""}</label>
+              {(selectedDc?.status || "").toUpperCase() !== "OPEN" && (
+                <span className="text-[10px] text-[var(--text-muted)]">Read-only after processing starts</span>
+              )}
+            </div>
+            {(selectedDc?.status || "").toUpperCase() === "OPEN" && (
+              <div className="flex gap-2">
+                <select
+                  className="form-control"
+                  value={editAddToolNo}
+                  onChange={(event) => setEditAddToolNo(event.target.value)}
+                >
+                  <option value="">Select an eligible instrument…</option>
+                  {tools.filter((tool) =>
+                    normalizeCompanyUnit(tool.unit) === editUnit &&
+                    !editLines.some((line) => line.toolOrGaugeNo === tool.toolOrGaugeNo)
+                  ).map((tool) => (
+                    <option key={tool.toolOrGaugeNo} value={tool.toolOrGaugeNo}>
+                      {tool.toolOrGaugeNo} — {tool.name ?? "Unnamed"}{tool.size ? ` — Size: ${tool.size}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <Button type="button" variant="outline" disabled={!editAddToolNo} onClick={addEditCalibrationLine}>
+                  <Plus className="w-4 h-4" /> Add
+                </Button>
+              </div>
+            )}
+            <div className="max-h-52 overflow-auto border border-[var(--border-main)] rounded-lg">
+              <table className="w-full text-xs">
+                <thead className="bg-[var(--bg-subtle)]">
+                  <tr><th className="text-left p-2">Instrument</th><th className="text-left p-2">Name</th><th className="text-left p-2">Due</th><th className="w-10" /></tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-main)]">
+                  {editLines.map((line) => (
+                    <tr key={line.rowId ?? line.toolOrGaugeNo}>
+                      <td className="p-2 font-mono font-semibold">{line.toolOrGaugeNo}</td>
+                      <td className="p-2">{line.name}</td>
+                      <td className="p-2 font-mono">{line.calibDueDate || "—"}</td>
+                      <td className="p-1">
+                        {(selectedDc?.status || "").toUpperCase() === "OPEN" && (
+                          <button type="button" title="Remove line" className="p-1 text-red-600" onClick={() => setEditLines((current) => current.filter((item) => item !== line))}>
+                            <Trash className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>

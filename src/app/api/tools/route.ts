@@ -194,6 +194,7 @@ export async function GET(req: NextRequest) {
     const fieldMap: Record<string, object> = {
       toolorgaugeno: { toolOrGaugeNo: { contains: q } },
       description: { description: { contains: q } },
+      size: { size: { contains: q } },
       name: { name: { contains: q } },
       olditemno: { oldItemNo: { contains: q } },
       location: {
@@ -212,6 +213,7 @@ export async function GET(req: NextRequest) {
         { toolOrGaugeNo: { contains: q } },
         { name: { contains: q } },
         { description: { contains: q } },
+        { size: { contains: q } },
         { oldItemNo: { contains: q } },
         { location: { contains: q } },
         { locationName: { contains: q } },

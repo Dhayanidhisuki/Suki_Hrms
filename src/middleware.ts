@@ -4,6 +4,7 @@ import { AUTH_COOKIE_NAME, verifyAuthTokenEdge } from "./lib/authTokenEdge";
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login") return true;
   if (pathname === "/auth/session-expired") return true;
+  if (pathname.startsWith("/verify/dc/")) return true;
   if (pathname.startsWith("/api/auth/")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname.startsWith("/static")) return true;

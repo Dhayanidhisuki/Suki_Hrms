@@ -89,14 +89,14 @@ const navSections: NavSection[] = [
       {
         label: "Internal Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/create?movement=internal", icon: ArrowUpRight },
+          { label: "Create Movement", href: "/dashboard/movement/history?movement=internal", icon: ArrowUpRight },
           { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal", icon: ArrowDownLeft },
         ],
       },
       {
         label: "External Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/create?movement=external", icon: ArrowUpRight },
+          { label: "Create Movement", href: "/dashboard/movement/history?movement=external", icon: ArrowUpRight },
           { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external", icon: ArrowDownLeft },
         ],
       },
@@ -108,7 +108,8 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "Issue", href: "/dashboard/calibration/issue", icon: ArrowUpRight },
+          { label: "Issue", href: "/dashboard/masters/tools?calibration=1", icon: ArrowUpRight },
+          { label: "DC History", href: "/dashboard/calibration/issue", icon: History },
           { label: "Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft },
           { label: "Result Update", href: "/dashboard/calibration/results-update", icon: ClipboardList },
           { label: "Documents & Photos", href: "/dashboard/documents", icon: FileText },
@@ -341,9 +342,15 @@ export default function Sidebar() {
             <img key={logos.icon} src={logos.icon} alt="Suki logo icon" className="w-9 h-9 object-contain" />
           </div>
         ) : (
-          <div className="w-full overflow-hidden">
+          <div className="flex w-full justify-center overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img key={logos.full} src={logos.full} alt="Suki logo" className="w-full h-12 object-contain object-left" style={{ maxWidth: "200px" }} />
+            <img
+              key={logos.full}
+              src={logos.full}
+              alt="Suki logo"
+              className="h-12 w-full object-contain object-center"
+              style={{ maxWidth: "200px" }}
+            />
           </div>
         )}
       </div>
