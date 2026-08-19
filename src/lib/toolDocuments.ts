@@ -36,12 +36,6 @@ export const ALLOWED_MIME: Record<string, string[]> = Object.entries(EXT_MIME).r
 
 export const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10 MB
 
-export function docsRoot(): string {
-  return (
-    process.env.TOOL_DOCS_ROOT?.trim() ||
-    path.join(process.cwd(), "storage", "tool-docs")
-  );
-}
 
 /** Sanitize tool folder segment */
 export function safeToolFolder(toolOrGaugeNo: string): string {
@@ -88,7 +82,7 @@ export async function persistToolDocumentFile(opts: {
 }): Promise<{ storedName: string; absolutePath: string; relativeDir: string }> {
   const folder = safeToolFolder(opts.toolOrGaugeNo);
   const relativeDir = folder;
-  const dir = path.join(docsRoot(), relativeDir);
+  const dir = path.join(process.env.TOOL_DOCS_ROOT!, relativeDir);
   await mkdir(dir, { recursive: true });
 
   const ext = extensionFor(opts.originalName, opts.mimeType);
@@ -99,7 +93,7 @@ export async function persistToolDocumentFile(opts: {
 }
 
 export function absoluteDocPath(toolOrGaugeNo: string, storedName: string): string {
-  return path.join(docsRoot(), safeToolFolder(toolOrGaugeNo), storedName);
+  return path.join(process.env.TOOL_DOCS_ROOT!, safeToolFolder(toolOrGaugeNo), storedName);
 }
 
 export async function removeDocFile(toolOrGaugeNo: string, storedName: string) {
