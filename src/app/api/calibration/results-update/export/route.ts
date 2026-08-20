@@ -10,6 +10,8 @@ import {
   buildPdfBuffer,
   exportFilename,
 } from "@/lib/serverReportExport";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -22,7 +24,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = await loadCalibResultsPending(1000);
+    const unitScope = await resolveUnitScope(check.session);
+    let rows = await loadCalibResultsPending(1000);
+    if (!unitScope.unrestricted) {
+      const toolNos = [...new Set(rows.map((row) => row.toolOrGaugeNo).filter(Boolean))];
+      const tools = await prisma.gaugeAndTools.findMany({
+        where: { toolOrGaugeNo: { in: toolNos } },
+        select: { toolOrGaugeNo: true, locationName: true },
+      });
+      const allowed = new Set(tools.filter((tool) => unitIsAllowed(unitScope, tool.locationName)).map((tool) => tool.toolOrGaugeNo));
+      rows = rows.filter((row) => allowed.has(row.toolOrGaugeNo));
+    }
     const columns = [...CALIB_RESULTS_EXPORT_COLUMNS];
     const filename = exportFilename("calibration_results_pending", format);
 

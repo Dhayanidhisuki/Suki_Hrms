@@ -26,6 +26,7 @@ interface SessionContextValue {
   loading: boolean;
   refreshSession: () => Promise<void>;
   can: (permission: PermissionKey) => boolean;
+  canModule: (moduleKey: string) => boolean;
 }
 
 /** Roles that receive full app access (matches server permissionsCache). */
@@ -41,6 +42,7 @@ const SessionContext = createContext<SessionContextValue>({
   loading: true,
   refreshSession: async () => {},
   can: () => false,
+  canModule: () => false,
 });
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -48,12 +50,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<RolePermissionFlags | null>(
     null
   );
+  const [modulePermissions, setModulePermissions] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   const refreshSession = useCallback(async () => {
     const res = await apiGet<{
       user: SessionUser;
       permissions?: RolePermissionFlags;
+      modulePermissions?: Record<string, boolean>;
     }>("/api/auth/me");
     if (res.data?.user) {
       setUser(res.data.user);
@@ -62,15 +66,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           rolePermissions[res.data.user.roleName] ??
           rolePermissions.Viewer
       );
+      setModulePermissions(res.data.modulePermissions ?? {});
     } else {
       setUser(null);
       setPermissions(null);
+      setModulePermissions({});
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    void refreshSession();
+    queueMicrotask(() => void refreshSession());
   }, [refreshSession]);
 
   const can = (permission: PermissionKey): boolean => {
@@ -85,8 +91,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return Boolean(perms[permission]);
   };
 
+  const canModule = (moduleKey: string): boolean => Boolean(modulePermissions[moduleKey]);
+
   return (
-    <SessionContext.Provider value={{ user, loading, refreshSession, can }}>
+    <SessionContext.Provider value={{ user, loading, refreshSession, can, canModule }}>
       {children}
     </SessionContext.Provider>
   );

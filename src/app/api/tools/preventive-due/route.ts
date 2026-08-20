@@ -7,6 +7,7 @@ import {
   isAssetYes,
   preventiveDueStatus,
 } from "@/lib/preventiveFlow";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 /**
  * GET /api/tools/preventive-due
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(check.session);
 
   const alertDays = Number(
     req.nextUrl.searchParams.get("alertDays") ??
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest) {
         grouping: true,
         type: true,
         status: true,
+        locationName: true,
         isAsset: true,
         preventiveMethod: true,
         preventiveFrqMonths: true,
@@ -79,6 +82,7 @@ export async function GET(req: NextRequest) {
 
     const items: Row[] = [];
     for (const t of tools) {
+      if (!unitIsAllowed(unitScope, t.locationName)) continue;
       if (!isAssetYes(t.isAsset) && !(t.preventiveFrqMonths && t.preventiveFrqMonths > 0)) {
         continue;
       }

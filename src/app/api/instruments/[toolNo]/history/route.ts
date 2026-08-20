@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 type Event = { id: string; type: string; date: Date | null; title: string; detail: string; status?: string | null };
 
@@ -11,8 +12,12 @@ export async function GET(_req: Request, context: { params: Promise<{ toolNo: st
   if (!check.ok) return check.response;
   const { toolNo: encoded } = await context.params;
   const toolNo = decodeURIComponent(encoded);
-  const tool = await prisma.gaugeAndTools.findUnique({ where: { toolOrGaugeNo: toolNo }, select: { refNo: true, toolOrGaugeNo: true, description: true, grouping: true, status: true } });
+  const tool = await prisma.gaugeAndTools.findUnique({ where: { toolOrGaugeNo: toolNo }, select: { refNo: true, toolOrGaugeNo: true, description: true, grouping: true, status: true, locationName: true } });
   if (!tool) return NextResponse.json({ error: "Instrument not found" }, { status: 404 });
+  const unitScope = await resolveUnitScope(check.session);
+  if (!unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
+  }
 
   const [calibrations, movements, documents, defects, services, deviations] = await Promise.all([
     prisma.calibrationResultDetail.findMany({ where: { toolOrGaugeNo: toolNo }, orderBy: { calibratedDate: "desc" } }),

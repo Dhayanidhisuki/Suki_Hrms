@@ -171,7 +171,9 @@ export const SEED_MODULES = [
   },
 ];
 
-export async function ensureRbacSeeded() {
+let seedPromise: Promise<void> | null = null;
+
+async function seedRbac() {
   // 1. Ensure Roles
   const rolesData = [
     { roleName: "Tools Admin", isSystemAdmin: true },
@@ -206,44 +208,46 @@ export async function ensureRbacSeeded() {
     }
   }
 
-  // 3. Ensure Starting Permission Matrix if matrix is empty
-  const matrixCount = await prisma.rolePermissionMatrix.count();
-  if (matrixCount === 0) {
-    const defaultMatrix: Array<{ roleName: string; moduleKey: string; action: string; allowed: boolean }> = [];
-
-    for (const m of SEED_MODULES) {
-      const actions = m.applicableActions.split(",");
-      for (const act of actions) {
-        // Quality Manager gets VIEW, CREATE, EDIT, APPROVE, SEND_FOR_CALIBRATION
-        const qmAllowed = act !== "DELETE";
-        defaultMatrix.push({ roleName: "Quality Manager", moduleKey: m.moduleKey, action: act, allowed: qmAllowed });
-
-        // Quality Engineer gets VIEW, CREATE, EDIT, SEND_FOR_CALIBRATION (no APPROVE, no DELETE)
-        const qeAllowed = act === "VIEW" || act === "CREATE" || act === "EDIT" || act === "SEND_FOR_CALIBRATION";
-        defaultMatrix.push({ roleName: "Quality Engineer", moduleKey: m.moduleKey, action: act, allowed: qeAllowed });
-
-        // Calibration Engineer gets Calibration & Reports & Masters VIEW/CREATE/EDIT
-        const isCalibModule =
-          m.moduleGroup === "Calibration Masters" ||
-          m.moduleKey.includes("calibration") ||
-          m.moduleKey === "history_card" ||
-          m.moduleKey === "tool_master" ||
-          m.moduleKey === "reports";
-        const ceAllowed = isCalibModule && (act === "VIEW" || act === "CREATE" || act === "EDIT" || act === "SEND_FOR_CALIBRATION");
-        defaultMatrix.push({ roleName: "Calibration Engineer", moduleKey: m.moduleKey, action: act, allowed: ceAllowed });
-      }
+  // 3. Add missing permission rows without resetting changes made in Settings.
+  // This keeps new roles/modules secure by default while making seeding idempotent.
+  const defaultAllowed = (roleName: string, moduleKey: string, action: string) => {
+    if (roleName === "Viewer") return false;
+    if (roleName === "Store Keeper") {
+      return (moduleKey === "tool_master" && action === "VIEW") ||
+        (moduleKey === "tool_issue_receive" && (action === "VIEW" || action === "CREATE"));
     }
+    if (roleName === "Purchase Coordinator") {
+      return moduleKey === "purchase" && ["VIEW", "CREATE", "EDIT", "APPROVE"].includes(action);
+    }
+    if (roleName === "Quality Manager") return action !== "DELETE";
+    if (roleName === "Quality Engineer") {
+      return ["VIEW", "CREATE", "EDIT", "SEND_FOR_CALIBRATION"].includes(action);
+    }
+    if (roleName === "Calibration Engineer") {
+      const isCalibModule =
+        moduleKey === "tool_master" || moduleKey === "reports" || moduleKey === "history_card" ||
+        moduleKey === "gauge_type" || moduleKey === "calibration_frequency" ||
+        moduleKey === "authorized_agencies" || moduleKey.includes("calibration") ||
+        moduleKey === "documents";
+      return isCalibModule && ["VIEW", "CREATE", "EDIT", "SEND_FOR_CALIBRATION"].includes(action);
+    }
+    return false;
+  };
 
-    for (const item of defaultMatrix) {
-      const roleId = roleMap.get(item.roleName);
-      const moduleId = moduleMap.get(item.moduleKey);
-      if (roleId && moduleId) {
+  for (const role of rolesData) {
+    const roleId = roleMap.get(role.roleName);
+    if (!roleId || role.isSystemAdmin) continue;
+    for (const seedModule of SEED_MODULES) {
+      for (const action of seedModule.applicableActions.split(",")) {
         await prisma.rolePermissionMatrix.upsert({
-          where: {
-            roleId_moduleId_action: { roleId, moduleId, action: item.action },
+          where: { roleId_moduleId_action: { roleId, moduleId: moduleMap.get(seedModule.moduleKey)!, action } },
+          update: {},
+          create: {
+            roleId,
+            moduleId: moduleMap.get(seedModule.moduleKey)!,
+            action,
+            allowed: defaultAllowed(role.roleName, seedModule.moduleKey, action),
           },
-          update: { allowed: item.allowed },
-          create: { roleId, moduleId, action: item.action, allowed: item.allowed },
         });
       }
     }
@@ -265,4 +269,12 @@ export async function ensureRbacSeeded() {
       await prisma.userRole.create({ data: { userId: user.id, roleId } });
     }
   }
+}
+
+export function ensureRbacSeeded(): Promise<void> {
+  seedPromise ??= seedRbac().catch((error) => {
+    seedPromise = null;
+    throw error;
+  });
+  return seedPromise;
 }

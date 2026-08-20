@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
+import { resolveUnitScope, unitIsAllowed, type ResolvedUnitScope } from "@/lib/unitScope";
 import {
   buildExcelBuffer,
   buildPdfBuffer,
@@ -34,7 +35,7 @@ function mapStatus(v: string | null | undefined) {
   return s === "ACTIVE" || s === "A" ? "Active" : v ? String(v) : "";
 }
 
-async function loadCategory(category: Category): Promise<{
+async function loadCategory(category: Category, unitScope: ResolvedUnitScope): Promise<{
   title: string;
   subtitle: string;
   filename: string;
@@ -86,7 +87,8 @@ async function loadCategory(category: Category): Promise<{
           { key: "calibrationFrqMonths", label: "Calib Freq (Months)" },
           { key: "creatDt", label: "Created" },
         ],
-        rows: items as unknown as Record<string, unknown>[],
+        rows: items
+          .filter((item) => unitIsAllowed(unitScope, item.locationName)) as unknown as Record<string, unknown>[],
       };
     }
 
@@ -111,6 +113,7 @@ async function loadCategory(category: Category): Promise<{
               grouping: true,
               type: true,
               status: true,
+              locationName: true,
               calibrationFrqMonths: true,
             },
           },
@@ -121,6 +124,7 @@ async function loadCategory(category: Category): Promise<{
       for (const line of lines) {
         const toolNo = line.toolOrGaugeNo;
         if (!toolNo) continue;
+        if (!unitIsAllowed(unitScope, line.tool?.locationName)) continue;
         const next = line.nxtCalibDate ?? line.calibDueDate ?? line.dueDate;
         const existing = byTool.get(toolNo);
         const existingNext = existing?.nextCalibrationDate
@@ -247,6 +251,7 @@ async function loadCategory(category: Category): Promise<{
               issueQty: true,
               name: true,
               status: true,
+              tool: { select: { locationName: true } },
             },
           },
         },
@@ -273,6 +278,7 @@ async function loadCategory(category: Category): Promise<{
           continue;
         }
         for (const line of issue.lines) {
+          if (!unitIsAllowed(unitScope, line.tool?.locationName)) continue;
           rows.push({
             dcNo: issue.dcNo,
             receiveName: issue.receiveName,
@@ -339,7 +345,8 @@ export async function GET(
   }
 
   try {
-    const data = await loadCategory(category);
+    const unitScope = await resolveUnitScope(check.session);
+    const data = await loadCategory(category, unitScope);
     if (!data.rows.length) {
       return NextResponse.json({ error: "No records found for this report" }, { status: 404 });
     }

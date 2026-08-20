@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { buildToolUnitHistory } from "@/lib/toolUnitHistory";
 import { computeNextPreDate, isAssetYes } from "@/lib/preventiveFlow";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 export async function GET(
   _req: NextRequest,
@@ -19,6 +20,10 @@ export async function GET(
   const tool = await prisma.gaugeAndTools.findUnique({ where: { refNo } });
   if (!tool) {
     return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  }
+  const unitScope = await resolveUnitScope(check.session);
+  if (!unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
 
   const unitHistory = await buildToolUnitHistory({
@@ -48,6 +53,10 @@ export async function POST(
   const tool = await prisma.gaugeAndTools.findUnique({ where: { refNo } });
   if (!tool) {
     return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  }
+  const unitScope = await resolveUnitScope(authCheck.session);
+  if (!unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
   if (!tool.toolOrGaugeNo) {
     return NextResponse.json(

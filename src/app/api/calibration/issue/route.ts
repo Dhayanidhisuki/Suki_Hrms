@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibIssueCreateSchema } from "@/lib/validators";
 import { normalizeCompanyUnit } from "@/lib/companyUnits";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 function isCalibIssueLineOpen(status: string | null | undefined): boolean {
   const s = (status ?? "").trim().toUpperCase();
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(session);
 
   try {
     const statusFilter = req.nextUrl.searchParams.get("status");
@@ -105,6 +107,7 @@ export async function GET(req: NextRequest) {
         };
       })
       .filter((item) => {
+        if (!unitScope.unrestricted && !item.inHouseLines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName))) return false;
         if (awaitingReceive) {
           return item.status === "OPEN" || item.status === "PARTIAL";
         }
@@ -170,6 +173,7 @@ export async function POST(req: NextRequest) {
 
   const permCheck = await requirePermission(authCheck.session, "canManageCalibration");
   if (!permCheck.ok) return permCheck.response;
+  const unitScope = await resolveUnitScope(authCheck.session);
 
   const body = await req.json();
   const parsed = CalibIssueCreateSchema.safeParse(body);
@@ -194,6 +198,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Instrument not found: ${missing ?? "—"}` }, { status: 400 });
     }
     const selectedUnits = new Set(selectedTools.map((tool) => normalizeCompanyUnit(tool.locationName)));
+      if (!selectedTools.every((tool) => unitIsAllowed(unitScope, tool.locationName))) {
+        return NextResponse.json({ error: "You do not have access to one or more instrument units" }, { status: 403 });
+      }
     if (selectedUnits.has(null) || selectedUnits.size !== 1) {
       return NextResponse.json(
         { error: "A calibration DC can contain instruments from one company unit only" },

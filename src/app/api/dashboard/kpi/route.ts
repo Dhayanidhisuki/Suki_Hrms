@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
+import { resolveUnitScope, unitIsAllowed, type ResolvedUnitScope } from "@/lib/unitScope";
 
 /** Unique tools in the calibration alert window (+ due this week). */
-async function getCalibrationDueStats(now: Date) {
+async function getCalibrationDueStats(now: Date, unitScope: ResolvedUnitScope) {
   const alertDays = Number(process.env.CALIBRATION_ALERT_DAYS ?? 90);
   const alertDate = new Date(now);
   alertDate.setDate(alertDate.getDate() + alertDays);
@@ -19,6 +20,26 @@ async function getCalibrationDueStats(now: Date) {
     const existing = byTool.get(toolNo);
     if (!existing || next < existing) byTool.set(toolNo, next);
   };
+
+  try {
+    if (!unitScope.unrestricted) {
+      const toolNos = [...byTool.keys()];
+      const tools = toolNos.length
+        ? await prisma.gaugeAndTools.findMany({
+            where: { toolOrGaugeNo: { in: toolNos } },
+            select: { toolOrGaugeNo: true, locationName: true },
+          })
+        : [];
+      const allowedTools = new Set(
+        tools.filter((tool) => unitIsAllowed(unitScope, tool.locationName)).map((tool) => tool.toolOrGaugeNo)
+      );
+      for (const toolNo of toolNos) {
+        if (!allowedTools.has(toolNo)) byTool.delete(toolNo);
+      }
+    }
+  } catch (err) {
+    console.warn("KPI unit scope filter skipped:", err);
+  }
 
   try {
     const lines = await prisma.toolsTransIssueForCalibration.findMany({
@@ -114,6 +135,7 @@ export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(session);
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -141,13 +163,17 @@ export async function GET() {
     ] = await Promise.all([
       prisma.gaugeAndTools.count(),
       // Tools with qty out on shop floor (exclude under-calibration masters)
-      prisma.gaugeAndTools
-        .count({
+      // Count unique tools currently out on active (open) issue DCs.
+      // qtyOut is not reliably maintained in this dataset, so we derive
+      // the count from open transaction lines instead.
+      prisma.toolsTransIssue
+        .findMany({
           where: {
-            qtyOut: { gt: 0 },
-            NOT: { status: { in: underCalStatuses } },
+            header: { status: { in: ["Active", "ACTIVE", "OPEN", "open"] } },
           },
+          select: { toolOrGaugeNo: true },
         })
+        .then((lines) => new Set(lines.map((l) => l.toolOrGaugeNo).filter(Boolean)).size)
         .catch(() => 0),
       // Tools currently under calibration / issued for calib (master status)
       prisma.gaugeAndTools
@@ -203,7 +229,7 @@ export async function GET() {
           },
         },
       }),
-      getCalibrationDueStats(now),
+      getCalibrationDueStats(now, unitScope),
     ]);
 
     // If database returned data, process and return real data

@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsReceiveCreateSchema } from "@/lib/validators";
 import { normalizeCompanyUnit } from "@/lib/companyUnits";
+import { resolveUnitScope, allowedUnitStorageValues } from "@/lib/unitScope";
 
 const OPEN_STATUSES = ["OPEN", "PARTIAL", "Active"];
 
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(check.session);
 
   const { searchParams } = req.nextUrl;
   const openPicker = searchParams.get("open") === "1" || searchParams.get("history") !== "1";
@@ -75,6 +77,7 @@ export async function GET(req: NextRequest) {
       const where = {
         status: { in: [...OPEN_STATUSES] },
         AND: [
+          unitScope.unrestricted ? {} : { fromUnit: { in: allowedUnitStorageValues(unitScope) } },
           movementWhere,
           search
             ? {
@@ -152,9 +155,15 @@ export async function GET(req: NextRequest) {
         })
         .filter((issue) => issue.lines.length > 0);
 
+      const scopedItems = unitScope.unrestricted
+        ? pendingItems
+        : pendingItems.filter((issue) => {
+            const unit = normalizeCompanyUnit(issue.fromUnit);
+            return unit !== null && unitScope.units.includes(unit);
+          });
       return NextResponse.json({
-        items: pendingItems,
-        total,
+        items: scopedItems,
+        total: unitScope.unrestricted ? total : scopedItems.length,
         page,
         pageSize,
         pendingTotal,
@@ -178,6 +187,7 @@ export async function GET(req: NextRequest) {
       : {};
     const where = {
       AND: [
+        unitScope.unrestricted ? {} : { issueHeader: { fromUnit: { in: allowedUnitStorageValues(unitScope) } } },
         movementOnly ? { issueHeader: movementIssueWhere } : {},
         search
           ? {
@@ -235,6 +245,7 @@ export async function GET(req: NextRequest) {
               receiveName: true,
               subCode: true,
               issueDate: true,
+              fromUnit: true,
             },
           },
         },
@@ -251,7 +262,13 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    const items = rows.flatMap((r) => {
+    const scopedRows = unitScope.unrestricted
+      ? rows
+      : rows.filter((row) => {
+          const unit = normalizeCompanyUnit(row.issueHeader?.fromUnit);
+          return unit !== null && unitScope.units.includes(unit);
+        });
+    const items = scopedRows.flatMap((r) => {
       if (!r.lines.length) {
         return [
           {
@@ -300,7 +317,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       items,
-      total,
+      total: unitScope.unrestricted ? total : items.length,
       page,
       pageSize,
       pendingTotal,

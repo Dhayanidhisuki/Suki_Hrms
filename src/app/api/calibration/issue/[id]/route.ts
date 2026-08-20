@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibIssueUpdateSchema } from "@/lib/validators";
 import { normalizeCompanyUnit } from "@/lib/companyUnits";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 function isCalibIssueLineOpen(status: string | null | undefined): boolean {
   const s = (status ?? "").trim().toUpperCase();
@@ -48,6 +49,7 @@ export async function GET(
   if (!check.ok) return check.response;
 
   const { id } = await params;
+  const unitScope = await resolveUnitScope(check.session);
   const issue = await prisma.toolsIssueForCalibration.findUnique({
     where: { dcNo: Number(id) },
     include: {
@@ -58,6 +60,9 @@ export async function GET(
 
   if (!issue) {
     return NextResponse.json({ error: "Calibration issue not found" }, { status: 404 });
+  }
+  if (!issue.inHouseLines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName))) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
 
   const status = deriveHeaderStatus(issue);
@@ -100,6 +105,10 @@ export async function PUT(
   });
   if (!existing) {
     return NextResponse.json({ error: "Calibration issue not found" }, { status: 404 });
+  }
+  const unitScope = await resolveUnitScope(authCheck.session);
+  if (!existing.inHouseLines.every((line) => unitIsAllowed(unitScope, line.tool?.locationName))) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
 
   const status = deriveHeaderStatus(existing);

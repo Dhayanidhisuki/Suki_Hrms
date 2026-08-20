@@ -6,6 +6,7 @@ import { generateDocNumber } from "@/lib/autonumber";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsIssueCreateSchema } from "@/lib/validators";
 import { normalizeCompanyUnit } from "@/lib/companyUnits";
+import { resolveUnitScope, unitIsAllowed, allowedUnitStorageValues } from "@/lib/unitScope";
 
 function maintainsSerial(flag: string | null | undefined): boolean {
   const v = (flag ?? "").trim().toLowerCase();
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(check.session);
 
   const { searchParams } = req.nextUrl;
   const statusFilter = searchParams.get("status");
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
     const where = {
       AND: [
         statusClause,
+        unitScope.unrestricted ? {} : { fromUnit: { in: allowedUnitStorageValues(unitScope) } },
         customerOnly ? { custCode: { not: null } } : {},
         movementOnly
           ? {
@@ -112,7 +115,18 @@ export async function GET(req: NextRequest) {
       prisma.gaugeToolsIssue.count({ where }),
     ]);
 
-    return NextResponse.json({ items, total, page, pageSize });
+    const scopedItems = unitScope.unrestricted
+      ? items
+      : items.filter((item) => {
+          const unit = normalizeCompanyUnit(item.fromUnit);
+          return unit !== null && unitScope.units.includes(unit);
+        });
+    return NextResponse.json({
+      items: scopedItems,
+      total: unitScope.unrestricted ? total : scopedItems.length,
+      page,
+      pageSize,
+    });
   } catch (error) {
     console.error("Error fetching issue records:", error);
     return NextResponse.json({ items: [], total: 0, page: 1, pageSize: 50 });
@@ -126,6 +140,7 @@ export async function POST(req: NextRequest) {
 
   const permCheck = await requirePermission(authCheck.session, "canCreateIssue");
   if (!permCheck.ok) return permCheck.response;
+  const unitScope = await resolveUnitScope(authCheck.session);
 
   const body = await req.json();
   const parsed = ToolsIssueCreateSchema.safeParse(body);
@@ -169,6 +184,9 @@ export async function POST(req: NextRequest) {
     : comments || null;
   const isInternalMovement = Boolean(fromUnit?.trim()) && lines.every((line) => Boolean(line.toUnit?.trim()));
   const isMovementRecord = isInternalMovement || (issueOption ?? "").startsWith("External:");
+  if (isInternalMovement && !unitIsAllowed(unitScope, fromUnit)) {
+    return NextResponse.json({ error: "You do not have access to the source unit" }, { status: 403 });
+  }
 
   try {
     const erpActor = await resolveErpAuditUserId(authCheck.session);
@@ -181,6 +199,9 @@ export async function POST(req: NextRequest) {
         });
         if (!tool) {
           throw new Error(`Tool not found: ${line.toolOrGaugeNo}`);
+        }
+        if (!unitIsAllowed(unitScope, tool.locationName)) {
+          throw new Error(`${line.toolOrGaugeNo} belongs to a unit outside your assigned scope`);
         }
         if (isInternalMovement) {
           const currentUnit = normalizeCompanyUnit(tool.locationName);

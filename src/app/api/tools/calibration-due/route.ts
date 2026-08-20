@@ -5,10 +5,10 @@ import { requireSession } from "@/lib/auth";
 import {
   COMPANY_UNITS,
   normalizeCompanyUnit,
-  scopeKeyToUnit,
   unitStorageVariants,
   type CompanyUnitLabel,
 } from "@/lib/companyUnits";
+import { resolveUnitScope } from "@/lib/unitScope";
 
 /**
  * Calibration due list.
@@ -22,20 +22,10 @@ export async function GET(req: NextRequest) {
   if (!check.ok) return check.response;
 
   const requestedUnit = normalizeCompanyUnit(req.nextUrl.searchParams.get("unit"));
-  let permittedUnits: CompanyUnitLabel[] | null = null;
-  const isSystemAdmin =
-    session.roleName === "Tools Admin" || session.userId.toLowerCase() === "admin";
-  if (!isSystemAdmin && session.userDbId != null) {
-    const scopes = await prisma.userUnitScope.findMany({
-      where: { userId: session.userDbId },
-      select: { unitScope: true },
-    });
-    if (scopes.length > 0 && !scopes.some((scope) => scope.unitScope === "COMMON")) {
-      permittedUnits = scopes
-        .map((scope) => scopeKeyToUnit(scope.unitScope))
-        .filter((unit): unit is CompanyUnitLabel => Boolean(unit));
-    }
-  }
+  const resolvedScope = await resolveUnitScope(session);
+  const permittedUnits: CompanyUnitLabel[] | null = resolvedScope.unrestricted
+    ? null
+    : resolvedScope.units;
   if (requestedUnit && permittedUnits && !permittedUnits.includes(requestedUnit)) {
     return NextResponse.json({ error: "You do not have access to this unit" }, { status: 403 });
   }

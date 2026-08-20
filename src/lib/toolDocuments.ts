@@ -36,6 +36,12 @@ export const ALLOWED_MIME: Record<string, string[]> = Object.entries(EXT_MIME).r
 
 export const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10 MB
 
+export function docsRoot(): string {
+  return (
+    process.env.TOOL_DOCS_ROOT?.trim() ||
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "tool-docs")
+  );
+}
 
 /** Sanitize tool folder segment */
 export function safeToolFolder(toolOrGaugeNo: string): string {

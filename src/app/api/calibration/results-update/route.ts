@@ -5,6 +5,7 @@ import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibResultsUpdateSchema } from "@/lib/validators";
 import { loadCalibResultsPending, loadCalibResultsClosed } from "@/lib/calibResultsData";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 function normalizeResult(result: string): {
   resultStatus: string;
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(session);
 
   try {
     const search = (req.nextUrl.searchParams.get("search") ?? "").trim().toLowerCase();
@@ -72,6 +74,8 @@ export async function GET(req: NextRequest) {
       const closed = await loadCalibResultsClosed(take);
       items = [...items, ...closed];
     }
+
+    items = items.filter((item) => unitIsAllowed(unitScope, item.locationName));
 
     if (fromDue) {
       const from = new Date(fromDue).getTime();
@@ -121,6 +125,7 @@ export async function POST(req: NextRequest) {
 
   const permCheck = await requirePermission(authCheck.session, "canManageCalibration");
   if (!permCheck.ok) return permCheck.response;
+  const unitScope = await resolveUnitScope(authCheck.session);
 
   const body = await req.json();
   const parsed = CalibResultsUpdateSchema.safeParse(body);
@@ -145,6 +150,13 @@ export async function POST(req: NextRequest) {
   } = parsed.data;
 
   try {
+    const targetTool = await prisma.gaugeAndTools.findUnique({
+      where: { toolOrGaugeNo },
+      select: { locationName: true },
+    });
+    if (!targetTool || !unitIsAllowed(unitScope, targetTool.locationName)) {
+      return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
+    }
     const erpActor = await resolveErpAuditUserId(authCheck.session);
     const normalized = normalizeResult(result);
 

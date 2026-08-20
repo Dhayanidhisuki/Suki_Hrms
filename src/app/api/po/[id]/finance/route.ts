@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { PurchaseOrderFinanceUpdateSchema } from "@/lib/validators";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 async function creatUserCode(session: {
   userId: string;
@@ -47,10 +48,14 @@ export async function PUT(
 
   const po = await prisma.commonPurchaseOrder.findUnique({
     where: { poOrderNo },
-    select: { poOrderNo: true },
+    select: { poOrderNo: true, lines: { select: { tool: { select: { locationName: true } } } } },
   });
   if (!po) {
     return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  }
+  const unitScope = await resolveUnitScope(authCheck.session);
+  if (!unitScope.unrestricted && !po.lines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName))) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
 
   const { paymentStatus, paymentDate, remarks } = parsed.data;

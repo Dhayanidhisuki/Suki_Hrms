@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
 import { buildCalibDcPdfBuffer } from "@/lib/calibDcPdf";
 import { dcVerificationUrl } from "@/lib/dcQrUrl";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 export async function GET(
   req: NextRequest,
@@ -30,6 +31,10 @@ export async function GET(
 
     if (!issue) {
       return NextResponse.json({ error: "Calibration issue not found" }, { status: 404 });
+    }
+    const unitScope = await resolveUnitScope(check.session);
+    if (!issue.inHouseLines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName))) {
+      return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
     }
 
     const receives = issue.receiveHeaders?.length ?? 0;

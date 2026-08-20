@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 type MonthCell = { plan: boolean; actual: boolean };
 type CalendarRow = {
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(session);
 
   const year = Number(req.nextUrl.searchParams.get("year") ?? new Date().getFullYear());
   const issueFor = (req.nextUrl.searchParams.get("issueFor") ?? "ALL").trim();
@@ -216,6 +218,22 @@ export async function GET(req: NextRequest) {
           const actM = monthInYear(last, year);
           if (actM) row.months[actM].actual = true;
         }
+      }
+    }
+
+    if (!unitScope.unrestricted) {
+      const toolNos = [...map.values()].map((row) => row.toolOrGaugeNo);
+      const tools = toolNos.length
+        ? await prisma.gaugeAndTools.findMany({
+            where: { toolOrGaugeNo: { in: toolNos } },
+            select: { toolOrGaugeNo: true, locationName: true },
+          })
+        : [];
+      const allowed = new Set(
+        tools.filter((tool) => unitIsAllowed(unitScope, tool.locationName)).map((tool) => tool.toolOrGaugeNo)
+      );
+      for (const [key, row] of map) {
+        if (!allowed.has(row.toolOrGaugeNo)) map.delete(key);
       }
     }
 

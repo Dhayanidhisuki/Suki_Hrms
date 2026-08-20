@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE_NAME, verifyAuthTokenEdge } from "./lib/authTokenEdge";
+import { isAdminOnlyPath, isAdminRole } from "./lib/adminRoles";
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login") return true;
@@ -65,6 +66,17 @@ export async function proxy(req: NextRequest) {
   }
 
   if (auth.status === "ok") {
+    // Settings — and the user / role admin APIs behind it — are admin-only.
+    // Every non-admin role is bounced here, at the edge, before the route runs.
+    if (isAdminOnlyPath(pathname) && !isAdminRole(auth.payload.role)) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden" },
+          { status: 403 }
+        );
+      }
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
     return NextResponse.next();
   }
 

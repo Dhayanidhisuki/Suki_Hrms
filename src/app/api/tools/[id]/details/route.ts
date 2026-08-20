@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession } from "@/lib/auth";
+import { requireSession, requirePermission } from "@/lib/auth";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 import { z } from "zod";
 
 const ToolsDetailsSchema = z.object({
@@ -32,6 +33,10 @@ export async function GET(
 
   const tool = await prisma.gaugeAndTools.findUnique({ where: { refNo: toolRefNo } });
   if (!tool) return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  const unitScope = await resolveUnitScope(check.session);
+  if (!unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
+  }
 
   const details = await prisma.toolsDetails.findFirst({
     where: { toolRefNo },
@@ -51,6 +56,8 @@ export async function PUT(
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const permission = await requirePermission(check.session, "canEditMaster");
+  if (!permission.ok) return permission.response;
 
   const { id } = await params;
   const toolRefNo = parseInt(id, 10);
@@ -58,6 +65,10 @@ export async function PUT(
 
   const tool = await prisma.gaugeAndTools.findUnique({ where: { refNo: toolRefNo } });
   if (!tool) return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  const unitScope = await resolveUnitScope(check.session);
+  if (!unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = ToolsDetailsSchema.safeParse(body);

@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
-import { roleHasPermission } from "@/lib/permissionsCache";
+import { checkLegacyPermission } from "@/lib/rbac";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 import { PurchaseOrderCreateSchema } from "@/lib/validators";
 import {
   allocateItemRowIds,
@@ -76,8 +77,9 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(check.session);
 
-  const canCreate = await roleHasPermission(check.session.roleName, "canCreatePO");
+  const canCreate = await checkLegacyPermission(check.session, "canCreatePO");
 
   const sp = req.nextUrl.searchParams;
   const page = Math.max(1, Number(sp.get("page") || 1));
@@ -123,10 +125,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const canUpdateFinance = await roleHasPermission(
-      check.session.roleName,
-      "canUpdateFinance"
-    );
+    const canUpdateFinance = await checkLegacyPermission(check.session, "canUpdateFinance");
 
     const [total, rows] = await Promise.all([
       po.count({ where }),
@@ -140,14 +139,17 @@ export async function GET(req: NextRequest) {
           lines: {
             orderBy: { rowId: "asc" },
             include: {
-              tool: { select: { refNo: true, toolOrGaugeNo: true, name: true } },
+                tool: { select: { refNo: true, toolOrGaugeNo: true, name: true, locationName: true } },
             },
           },
         },
       }),
     ]);
 
-    const poNos = rows.map((r) => r.poOrderNo);
+    const scopedRows = unitScope.unrestricted
+      ? rows
+      : rows.filter((row) => row.lines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName)));
+    const poNos = scopedRows.map((r) => r.poOrderNo);
     const financeRows =
       poNos.length > 0
         ? await prisma.toolsPoFinance.findMany({
@@ -157,7 +159,7 @@ export async function GET(req: NextRequest) {
         : [];
     const financeByPo = new Map(financeRows.map((f) => [f.poOrderNo, f]));
 
-    const items = rows.map((row) => {
+    const items = scopedRows.map((row) => {
       const lines = row.lines ?? [];
       const lineCount = lines.length;
       const toolLineCount = lines.filter((l) => l.toolRefNo != null).length;
@@ -218,7 +220,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       items,
-      total,
+      total: unitScope.unrestricted ? total : scopedRows.length,
       page,
       pageSize,
       source: "COMMON_PURCHASE_ORDER",

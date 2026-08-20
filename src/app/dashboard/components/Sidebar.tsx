@@ -28,6 +28,7 @@ import {
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "@/lib/SessionContext";
+import { isAdminRole } from "@/lib/adminRoles";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const LOGO_BY_THEME: Record<string, { full: string; icon: string }> = {
@@ -41,6 +42,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  moduleKey?: string;
   badge?: string;
 }
 
@@ -63,7 +65,7 @@ const navSections: NavSection[] = [
       {
         items: [
           { label: "Tools Overview", href: "/dashboard", icon: LayoutDashboard },
-          { label: "Transaction Overview", href: "/dashboard/overview/transactions", icon: BarChart3 },
+          { label: "Transaction Overview", href: "/dashboard/overview/transactions", icon: BarChart3, moduleKey: "reports" },
         ],
       },
     ],
@@ -74,10 +76,10 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "All Instruments & Gauges", href: "/dashboard/masters/tools", icon: Package },
-          { label: "Defect & Services", href: "/dashboard/instruments/defects", icon: AlertTriangle },
-          { label: "Supplier", href: "/dashboard/masters/suppliers", icon: Building2 },
-          { label: "Subcontractor", href: "/dashboard/masters/subcontractors", icon: Handshake },
+          { label: "All Instruments & Gauges", href: "/dashboard/masters/tools", icon: Package, moduleKey: "tool_master" },
+          { label: "Defect & Services", href: "/dashboard/instruments/defects", icon: AlertTriangle, moduleKey: "tool_master" },
+          { label: "Supplier", href: "/dashboard/masters/suppliers", icon: Building2, moduleKey: "supplier_master" },
+          { label: "Subcontractor", href: "/dashboard/masters/subcontractors", icon: Handshake, moduleKey: "subcontractor_master" },
         ],
       },
     ],
@@ -89,15 +91,15 @@ const navSections: NavSection[] = [
       {
         label: "Internal Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/history?movement=internal", icon: ArrowUpRight },
-          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal", icon: ArrowDownLeft },
+          { label: "Create Movement", href: "/dashboard/movement/history?movement=internal", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
         ],
       },
       {
         label: "External Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/history?movement=external", icon: ArrowUpRight },
-          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external", icon: ArrowDownLeft },
+          { label: "Create Movement", href: "/dashboard/movement/history?movement=external", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
         ],
       },
     ],
@@ -108,11 +110,11 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "Issue", href: "/dashboard/masters/tools?calibration=1", icon: ArrowUpRight },
-          { label: "DC History", href: "/dashboard/calibration/issue", icon: History },
-          { label: "Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft },
-          { label: "Result Update", href: "/dashboard/calibration/results-update", icon: ClipboardList },
-          { label: "Documents & Photos", href: "/dashboard/documents", icon: FileText },
+          { label: "Issue", href: "/dashboard/masters/tools?calibration=1", icon: ArrowUpRight, moduleKey: "calibration_issue" },
+          { label: "DC History", href: "/dashboard/calibration/issue", icon: History, moduleKey: "calibration_issue" },
+          { label: "Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft, moduleKey: "calibration_receive" },
+          { label: "Result Update", href: "/dashboard/calibration/results-update", icon: ClipboardList, moduleKey: "calibration_results" },
+          { label: "Documents & Photos", href: "/dashboard/documents", icon: FileText, moduleKey: "documents" },
         ],
       },
     ],
@@ -123,15 +125,15 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "History Card", href: "/dashboard/tools-history-card", icon: History },
-          { label: "Current Status", href: "/dashboard/tools-history-card/status", icon: Gauge },
-          { label: "Current Holder", href: "/dashboard/tools-history-card/holder", icon: Users },
-          { label: "Issue History", href: "/dashboard/movement/history", icon: ArrowUpRight },
-          { label: "Receive History", href: "/dashboard/movement/receive", icon: ArrowDownLeft },
-          { label: "Calibration Records", href: "/dashboard/tools-history-card/calibration", icon: CalendarClock },
-          { label: "Calibration Results", href: "/dashboard/tools-history-card/calibration-results", icon: ClipboardList },
-          { label: "GRN History", href: "/dashboard/tools-history-card/grn", icon: Package },
-          { label: "Purchase Orders", href: "/dashboard/tools-history-card/purchase-orders", icon: FileText },
+          { label: "History Card", href: "/dashboard/tools-history-card", icon: History, moduleKey: "history_card" },
+          { label: "Current Status", href: "/dashboard/tools-history-card/status", icon: Gauge, moduleKey: "history_card" },
+          { label: "Current Holder", href: "/dashboard/tools-history-card/holder", icon: Users, moduleKey: "history_card" },
+          { label: "Issue History", href: "/dashboard/movement/history", icon: ArrowUpRight, moduleKey: "history_card" },
+          { label: "Receive History", href: "/dashboard/movement/receive", icon: ArrowDownLeft, moduleKey: "history_card" },
+          { label: "Calibration Records", href: "/dashboard/tools-history-card/calibration", icon: CalendarClock, moduleKey: "history_card" },
+          { label: "Calibration Results", href: "/dashboard/tools-history-card/calibration-results", icon: ClipboardList, moduleKey: "history_card" },
+          { label: "GRN History", href: "/dashboard/tools-history-card/grn", icon: Package, moduleKey: "history_card" },
+          { label: "Purchase Orders", href: "/dashboard/tools-history-card/purchase-orders", icon: FileText, moduleKey: "history_card" },
         ],
       },
     ],
@@ -142,12 +144,12 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "All Tool Reports", href: "/dashboard/reports/tools", icon: BarChart3 },
-          { label: "Calibration Reports", href: "/dashboard/reports/calibration", icon: CalendarClock },
-          { label: "Supplier Report", href: "/dashboard/reports/suppliers", icon: Users },
-          { label: "Subcontractor Report", href: "/dashboard/reports/subcontractors", icon: Building2 },
-          { label: "Tools History Report", href: "/dashboard/reports/tools-history", icon: History },
-          { label: "Purchase Order Report", href: "/dashboard/reports/purchase-orders", icon: FileText },
+          { label: "All Tool Reports", href: "/dashboard/reports/tools", icon: BarChart3, moduleKey: "reports" },
+          { label: "Calibration Reports", href: "/dashboard/reports/calibration", icon: CalendarClock, moduleKey: "reports" },
+          { label: "Supplier Report", href: "/dashboard/reports/suppliers", icon: Users, moduleKey: "reports" },
+          { label: "Subcontractor Report", href: "/dashboard/reports/subcontractors", icon: Building2, moduleKey: "reports" },
+          { label: "Tools History Report", href: "/dashboard/reports/tools-history", icon: History, moduleKey: "reports" },
+          { label: "Purchase Order Report", href: "/dashboard/reports/purchase-orders", icon: FileText, moduleKey: "reports" },
         ],
       },
     ],
@@ -159,10 +161,10 @@ const navSections: NavSection[] = [
       {
         label: "Access & Notifications",
         items: [
-          { label: "Users", href: "/dashboard/settings/users", icon: Users },
-          { label: "Roles & Permissions", href: "/dashboard/settings/roles", icon: Shield },
-          { label: "Email Notifications", href: "/dashboard/settings/notifications/email", icon: Bell },
-          { label: "Audit Trail", href: "/dashboard/settings/audit-trail", icon: History },
+          { label: "Users", href: "/dashboard/settings/users", icon: Users, moduleKey: "settings_users" },
+          { label: "Roles & Permissions", href: "/dashboard/settings/roles", icon: Shield, moduleKey: "settings_roles" },
+          { label: "Email Notifications", href: "/dashboard/settings/notifications/email", icon: Bell, moduleKey: "email_notifications" },
+          { label: "Audit Trail", href: "/dashboard/settings/audit-trail", icon: History, moduleKey: "settings_users" },
         ],
       },
     ],
@@ -249,7 +251,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
-  const { user } = useSession();
+  const { user, loading, canModule } = useSession();
   const { theme } = useTheme();
   const displayUser = user;
   const logos = LOGO_BY_THEME[theme] ?? LOGO_BY_THEME.blue;
@@ -303,11 +305,19 @@ export default function Sidebar() {
     flyoutTimeoutRef.current = setTimeout(() => setFlyoutSection(null), 150);
   };
 
+  // Settings is admin-only. Hidden while the session is still loading
+  // (user === null) so it never flashes for a non-admin.
+  const canSeeSettings = loading || isAdminRole(displayUser?.roleName) || canModule("settings_users") || canModule("settings_roles");
+
   const filteredSections = navSections
+    .filter((section) => section.label !== "Settings" || canSeeSettings)
     .map((section) => {
-      if (!searchQuery.trim()) return section;
+      const accessGroups = section.groups
+        .map((group) => ({ ...group, items: group.items.filter((item) => !item.moduleKey || loading || canModule(item.moduleKey)) }))
+        .filter((group) => group.items.length > 0);
+      if (!searchQuery.trim()) return { ...section, groups: accessGroups };
       const q = searchQuery.toLowerCase();
-      const groups = section.groups
+      const groups = accessGroups
         .map((group) => ({
           ...group,
           items: group.items.filter(

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SessionData } from "./session";
-import { roleHasPermission } from "./permissionsCache";
+import { isAdminRole } from "./adminRoles";
+import { checkLegacyPermission } from "./rbac";
 
 const UNAUTHORIZED = NextResponse.json(
   { success: false, error: "Unauthorized" },
@@ -38,17 +39,16 @@ export async function requirePermission(
   session: SessionData,
   permission: string
 ): Promise<{ ok: false; response: Response } | { ok: true }> {
-  const isSysAdmin =
-    session.roleName === "Tools Admin" ||
-    session.roleName === "Admin" ||
-    session.userId.toLowerCase() === "admin" ||
-    session.userId.toLowerCase().startsWith("demo");
-
-  if (isSysAdmin) {
+  // Admin bypass is role-based only.
+  //
+  // The previous `userId.startsWith("demo")` clause granted EVERY permission to
+  // any account whose username began with "demo", regardless of its role — so a
+  // demo user downgraded to Viewer still passed every server-side check. Removed.
+  if (isAdminRole(session.roleName)) {
     return { ok: true };
   }
 
-  const allowed = await roleHasPermission(session.roleName, permission);
+  const allowed = await checkLegacyPermission(session, permission);
   if (!allowed) {
     return { ok: false, response: FORBIDDEN };
   }

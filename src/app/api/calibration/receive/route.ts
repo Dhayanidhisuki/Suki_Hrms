@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { requireSession, requirePermission } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibReceiveCreateSchema } from "@/lib/validators";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 function isCalibIssueLineOpen(status: string | null | undefined): boolean {
   const s = (status ?? "").trim().toUpperCase();
@@ -35,6 +36,7 @@ export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(session);
 
   try {
     const items = await prisma.toolsReceiveForCalibration.findMany({
@@ -55,7 +57,9 @@ export async function GET() {
       },
     });
 
-    const mapped = items.map((item) => ({
+    const mapped = items
+      .filter((item) => unitScope.unrestricted || item.lines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName)))
+      .map((item) => ({
       ...item,
       calibIssue: item.calibIssue
         ? {
@@ -67,7 +71,7 @@ export async function GET() {
             status: deriveIssueStatus(item.calibIssue.inHouseLines ?? []),
           }
         : null,
-    }));
+      }));
 
     return NextResponse.json({ items: mapped, total: mapped.length });
   } catch (error) {
@@ -86,6 +90,7 @@ export async function POST(req: NextRequest) {
 
   const permCheck = await requirePermission(authCheck.session, "canManageCalibration");
   if (!permCheck.ok) return permCheck.response;
+  const unitScope = await resolveUnitScope(authCheck.session);
 
   const body = await req.json();
   const parsed = CalibReceiveCreateSchema.safeParse(body);
@@ -115,6 +120,14 @@ export async function POST(req: NextRequest) {
 
     if (!issue) {
       return NextResponse.json({ error: `Calibration DC #${dcNo} not found` }, { status: 400 });
+    }
+    const issueToolNos = issue.inHouseLines.map((line) => line.toolOrGaugeNo).filter((value): value is string => Boolean(value));
+    const issueTools = await prisma.gaugeAndTools.findMany({
+      where: { toolOrGaugeNo: { in: issueToolNos } },
+      select: { locationName: true },
+    });
+    if (!issueTools.every((tool) => unitIsAllowed(unitScope, tool.locationName))) {
+      return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
     }
 
     const openLines = issue.inHouseLines.filter((l) =>

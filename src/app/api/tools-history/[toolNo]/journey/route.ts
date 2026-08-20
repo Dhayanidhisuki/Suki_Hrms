@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { requireSession } from "@/lib/auth";
 import { loadToolJourney } from "@/lib/toolJourney";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/tools-history/[toolNo]/journey
@@ -19,6 +21,14 @@ export async function GET(
   const toolNo = decodeURIComponent(raw || "").trim();
   if (!toolNo) {
     return NextResponse.json({ error: "toolNo is required" }, { status: 400 });
+  }
+  const tool = await prisma.gaugeAndTools.findUnique({
+    where: { toolOrGaugeNo: toolNo },
+    select: { locationName: true },
+  });
+  const unitScope = await resolveUnitScope(check.session);
+  if (!tool || !unitIsAllowed(unitScope, tool.locationName)) {
+    return NextResponse.json({ error: "You do not have access to this instrument unit" }, { status: 403 });
   }
 
   const refNoParam = Number(req.nextUrl.searchParams.get("refNo") || "");

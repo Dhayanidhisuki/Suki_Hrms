@@ -8,11 +8,13 @@ import {
   allocateGrnTransRowIds,
   allocateNextGirNo,
 } from "@/lib/poNumbering";
+import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check.response;
+  const unitScope = await resolveUnitScope(check.session);
 
   const sp = req.nextUrl.searchParams;
   const page = Math.max(1, Number(sp.get("page") || 1));
@@ -69,16 +71,19 @@ export async function GET(req: NextRequest) {
           supplier: true,
           lines: {
             include: {
-              tool: { select: { toolOrGaugeNo: true, name: true } },
+              tool: { select: { toolOrGaugeNo: true, name: true, locationName: true } },
             },
           },
         },
       }),
     ]);
 
+    const scopedItems = unitScope.unrestricted
+      ? items
+      : items.filter((item) => item.lines.some((line) => unitIsAllowed(unitScope, line.tool?.locationName)));
     return NextResponse.json({
-      items,
-      total,
+      items: scopedItems,
+      total: unitScope.unrestricted ? total : scopedItems.length,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),

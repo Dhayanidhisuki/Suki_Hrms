@@ -148,7 +148,7 @@ export default function UsersSettingsPage() {
 
     setSaving(true);
     const isSysAdmin = form.role === "Tools Admin";
-    const finalScopes = isSysAdmin ? [] : form.unitScopes.length === 0 ? ["COMMON"] : form.unitScopes;
+    const finalScopes = isSysAdmin ? [] : form.unitScopes;
 
     if (editItem) {
       const payload: Record<string, unknown> = {

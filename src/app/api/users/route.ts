@@ -7,6 +7,7 @@ import {
   AppUserCreateSchema,
   AppUserUpdateSchema,
 } from "@/lib/validators";
+import { COMPANY_UNITS } from "@/lib/companyUnits";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,20 @@ function mapUser(u: {
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   };
+}
+
+function parseUnitScopes(value: unknown): { ok: true; scopes: string[] } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, scopes: [] };
+  if (!Array.isArray(value)) return { ok: false, error: "unitScopes must be an array" };
+  const scopes = [...new Set(value.map((item) => String(item).trim().toUpperCase()))];
+  const valid = new Set(["COMMON", ...COMPANY_UNITS.map((unit) => unit.key)]);
+  if (scopes.some((scope) => !valid.has(scope))) {
+    return { ok: false, error: "unitScopes must contain only COMMON, UNIT1, UNIT2, or UNIT3" };
+  }
+  if (scopes.includes("COMMON") && scopes.length > 1) {
+    return { ok: false, error: "COMMON cannot be combined with a specific unit" };
+  }
+  return { ok: true, scopes };
 }
 
 /** GET /api/users — list app users (admin). */
@@ -114,7 +129,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { username, password, name, email, role, erpUserCode } = parsed.data;
-  const unitScopes: string[] = Array.isArray(body?.unitScopes) ? body.unitScopes : [];
+  const parsedScopes = parseUnitScopes(body?.unitScopes);
+  if (!parsedScopes.ok) return NextResponse.json({ error: parsedScopes.error }, { status: 400 });
+  const unitScopes = parsedScopes.scopes;
 
   const existing = await prisma.user.findFirst({
     where: { username },
@@ -208,7 +225,9 @@ export async function PUT(req: NextRequest) {
   }
 
   const { id, password, name, email, role, erpUserCode, isActive } = parsed.data;
-  const unitScopes: string[] = Array.isArray(body?.unitScopes) ? body.unitScopes : [];
+  const parsedScopes = parseUnitScopes(body?.unitScopes);
+  if (!parsedScopes.ok) return NextResponse.json({ error: parsedScopes.error }, { status: 400 });
+  const unitScopes = parsedScopes.scopes;
 
   const existing = await prisma.user.findFirst({
     where: { id, deletedAt: null },
