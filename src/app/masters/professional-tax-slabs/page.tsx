@@ -1,3 +1,5 @@
+'use client';
+
 import SlabPage from '@/components/SlabPage';
 import type { Column, FieldDef } from '@/components/ui';
 

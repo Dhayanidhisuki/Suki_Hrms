@@ -1,5 +1,5 @@
 /**
- * Next.js Edge middleware — JWT verification + route protection.
+ * Next.js Proxy — JWT verification + route protection.
  *
  * Uses jose (Edge-compatible) for token verification.
  *
@@ -15,7 +15,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { verifyTokenJose } from '@/lib/jwt';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if this is a protected route
