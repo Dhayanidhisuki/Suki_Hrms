@@ -1,0 +1,195 @@
+# CI/CD for suki-tools (manprotools) on 202-cloud-server.
+#
+# The runner is a `shell` executor living inside the Hyper-V VM, so it builds
+# straight into the same Docker engine that runs the stack. Images never cross
+# the network -- no registry push/pull, which is both faster and sidesteps the
+# known registry defect on this GitLab instance.
+#
+# Deploys are MANUAL. Pushing to main does not create a pipeline; someone has
+# to press Run pipeline. Same policy as the other stacks on this host.
+
+variables:
+  APP: "suki-tools"
+  STACK_DIR: "/opt/stacks/suki-tools"
+  HEALTH_URL: "http://172.31.0.10:3001/"
+  GIT_DEPTH: "1"
+
+  # Shown as a dropdown on the Run pipeline page. Consumed ONLY by the manual
+  # db-task job -- a normal deploy never touches the schema.
+  DB_SCRIPT:
+    value: "prisma:status"
+    options:
+      - "prisma:status"
+      - "prisma:validate"
+      - "prisma:generate"
+      - "prisma:migrate-deploy"
+      - "prisma:db-push"
+      - "db:seed"
+      - "db:seed:demo-users"
+      - "db:seed:role-permissions"
+      - "email:calibration-digest"
+    description: >-
+      Database command for the manual db-task job, run against PRODUCTION.
+      prisma:status = read-only, shows pending migrations (safe default).
+      prisma:migrate-deploy = apply committed migrations (safe, idempotent).
+      prisma:db-push = sync schema straight from code with NO migration
+      history and --accept-data-loss; it can drop columns without asking --
+      only for fixing drift. db:seed* run the prisma seed scripts.
+      email:calibration-digest SENDS REAL EMAIL -- not a dry run.
+.deploy_rules: &deploy_rules
+  - if: $CI_PIPELINE_SOURCE == "web"
+  - if: $CI_PIPELINE_SOURCE == "api"
+  - if: $CI_PIPELINE_SOURCE == "trigger"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+
+stages:
+  - build
+  - deploy
+  - verify
+  - cleanup
+
+# ---------------------------------------------------------------------------
+# BUILD - tag the current :latest as :previous first, so rollback has a target.
+# ---------------------------------------------------------------------------
+build:
+  stage: build
+  rules:
+    - *deploy_rules
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"   # build only, no deploy
+  script:
+    - set -euo pipefail
+    - |
+      if docker image inspect "$APP:latest" >/dev/null 2>&1; then
+        docker tag "$APP:latest" "$APP:previous"
+        echo "tagged current :latest as :previous"
+      else
+        echo "no existing :latest - first build, nothing to preserve"
+      fi
+    - docker build -t "$APP:$CI_COMMIT_SHA" -t "$APP:latest" .
+    - docker image inspect "$APP:$CI_COMMIT_SHA" --format 'built {{.Id}} ({{.Size}} bytes)'
+
+# ---------------------------------------------------------------------------
+# DEPLOY - compose recreates the container from the image built above.
+# ---------------------------------------------------------------------------
+deploy:
+  stage: deploy
+  needs: [build]
+  rules:
+    - *deploy_rules
+  environment:
+    name: production
+    url: https://manprotools.sukierp.com
+  script:
+    - set -euo pipefail
+    - cd "$STACK_DIR"
+    - docker compose up -d --no-build --remove-orphans
+    - docker compose ps
+
+# ---------------------------------------------------------------------------
+# VERIFY - fail the pipeline if the app does not actually come back up.
+# A deploy that silently leaves a dead container is worse than a failed one.
+# ---------------------------------------------------------------------------
+verify:
+  stage: verify
+  needs: [deploy]
+  rules:
+    - *deploy_rules
+  script:
+    - set -euo pipefail
+    - |
+      for i in $(seq 1 30); do
+        code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || echo 000)
+        echo "attempt $i: $code"
+        case "$code" in
+          2*|3*) echo "healthy"; exit 0 ;;
+        esac
+        sleep 10
+      done
+      echo "did not become healthy in 5 minutes - container logs follow:"
+      docker logs --tail 100 "$APP"
+      exit 1
+
+# ---------------------------------------------------------------------------
+# CLEANUP - image retention. Each build tags a ~3.7 GB image set with the
+# commit SHA. Without this the VM disk fills and takes every stack on it down.
+# Keeps the newest 3 SHA tags plus :latest and :previous (rollback needs both).
+# allow_failure so it can never block a release.
+# ---------------------------------------------------------------------------
+cleanup:
+  stage: cleanup
+  needs: [verify]
+  rules:
+    - *deploy_rules
+  allow_failure: true
+  script:
+    - set -euo pipefail
+    - |
+      keep=$(docker images "$APP" --format '{{.Tag}}' \
+             | grep -Ev '^(latest|previous)$' | head -3 | tr '\n' ' ')
+      echo "keeping: $keep latest previous"
+      for tag in $(docker images "$APP" --format '{{.Tag}}' | grep -Ev '^(latest|previous)$'); do
+        case " $keep " in
+          *" $tag "*) ;;
+          *) echo "removing $APP:$tag"; docker image rm "$APP:$tag" || true ;;
+        esac
+      done
+    - docker image prune -f
+    - df -h / | tail -1
+
+# ---------------------------------------------------------------------------
+# ROLLBACK - manual. Retags :previous back to :latest and redeploys.
+# Goes exactly one step back, and is not repeatable (afterwards :previous and
+# :latest point at the same image). To go further back, deploy a specific SHA.
+# ---------------------------------------------------------------------------
+rollback:
+  stage: deploy
+  needs: []
+  when: manual
+  rules:
+    - *deploy_rules
+  environment:
+    name: production
+  script:
+    - set -euo pipefail
+    - docker image inspect "$APP:previous" >/dev/null
+    - docker tag "$APP:previous" "$APP:latest"
+    - cd "$STACK_DIR"
+    - docker compose up -d --no-build
+    - docker compose ps
+
+# ---------------------------------------------------------------------------
+# DB-TASK — manual, standalone, independent of any code deploy.
+#
+# Runs ONE database command inside a throwaway container built from the same
+# image as the app, so it uses the same Prisma client and the same .env.
+# Nothing here runs automatically: `deploy` never touches the schema.
+#
+# Pick the command with the DB_SCRIPT variable on the Run pipeline screen.
+# ---------------------------------------------------------------------------
+db-task:
+  stage: deploy
+  needs: []
+  when: manual
+  rules:
+    - *deploy_rules
+  allow_failure: true
+  environment:
+    name: production
+  script:
+    - set -euo pipefail
+    - cd "$STACK_DIR"
+    - |
+      case "$DB_SCRIPT" in
+        prisma:status)            CMD="./node_modules/.bin/prisma migrate status" ;;
+        prisma:validate)          CMD="./node_modules/.bin/prisma validate" ;;
+        prisma:generate)          CMD="./node_modules/.bin/prisma generate" ;;
+        prisma:migrate-deploy)    CMD="./node_modules/.bin/prisma migrate deploy" ;;
+        prisma:db-push)           CMD="./node_modules/.bin/prisma db push --accept-data-loss" ;;
+        db:seed)                  CMD="./node_modules/.bin/tsx prisma/seed.ts" ;;
+        db:seed:demo-users)       CMD="./node_modules/.bin/tsx prisma/seed-demo-users.ts" ;;
+        db:seed:role-permissions) CMD="./node_modules/.bin/tsx prisma/seed-role-permissions.ts" ;;
+        email:calibration-digest) CMD="./node_modules/.bin/tsx scripts/run-calibration-digest.ts" ;;
+        *) echo "unknown DB_SCRIPT: $DB_SCRIPT"; exit 1 ;;
+      esac
+      echo "running against PRODUCTION: $CMD"
+      docker compose run --rm --no-deps --entrypoint sh app -c "$CMD"
