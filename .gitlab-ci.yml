@@ -23,7 +23,6 @@ variables:
       - "prisma:validate"
       - "prisma:generate"
       - "prisma:migrate-deploy"
-      - "prisma:db-push"
       - "db:seed"
       - "db:seed:demo-users"
       - "db:seed:role-permissions"
@@ -31,11 +30,35 @@ variables:
     description: >-
       Database command for the manual db-task job, run against PRODUCTION.
       prisma:status = read-only, shows pending migrations (safe default).
-      prisma:migrate-deploy = apply committed migrations (safe, idempotent).
-      prisma:db-push = sync schema straight from code with NO migration
-      history and --accept-data-loss; it can drop columns without asking --
-      only for fixing drift. db:seed* run the prisma seed scripts.
-      email:calibration-digest SENDS REAL EMAIL -- not a dry run.
+      prisma:migrate-deploy = apply committed migrations. NOTE: this database
+      has no _prisma_migrations history, so migrate-deploy will currently fail
+      on the first migration rather than do anything -- see the DANGER note
+      below. db:seed* run the prisma seed scripts. email:calibration-digest
+      SENDS REAL EMAIL -- it is not a dry run.
+
+# ---------------------------------------------------------------------------
+# DANGER, and why `prisma:db-push` is deliberately NOT offered here.
+#
+# Unlike the other stacks on this host, this app does not own its database.
+# DATABASE_URL points at ERPDB_Manpro, a shared ERP database of ~868 tables,
+# of which schema.prisma models only a small read-only subset plus the app's
+# own TOOLS_APP_* tables.
+#
+# `prisma db push --accept-data-loss` makes the database match the schema.
+# Measured against the live database on 2026-08-29, that plan was:
+#
+#     832 DropTable, 1358 DropForeignKey, 22 CreateTable
+#
+# i.e. one click would drop the entire ERP database. The option is removed
+# rather than merely documented. If it is ever genuinely needed, run it by
+# hand against a restored copy first -- never from this dropdown.
+#
+# Related open defect: the TOOLS_APP_* tables this app needs do not exist in
+# ERPDB_Manpro, and no database reachable by this login contains them, so
+# login currently fails with P2021. That is a pre-existing DATABASE_URL
+# problem, not a packaging one. See 202-containerised-apps.md.
+# ---------------------------------------------------------------------------
+
 .deploy_rules: &deploy_rules
   - if: $CI_PIPELINE_SOURCE == "web"
   - if: $CI_PIPELINE_SOURCE == "api"
@@ -184,7 +207,6 @@ db-task:
         prisma:validate)          CMD="./node_modules/.bin/prisma validate" ;;
         prisma:generate)          CMD="./node_modules/.bin/prisma generate" ;;
         prisma:migrate-deploy)    CMD="./node_modules/.bin/prisma migrate deploy" ;;
-        prisma:db-push)           CMD="./node_modules/.bin/prisma db push --accept-data-loss" ;;
         db:seed)                  CMD="./node_modules/.bin/tsx prisma/seed.ts" ;;
         db:seed:demo-users)       CMD="./node_modules/.bin/tsx prisma/seed-demo-users.ts" ;;
         db:seed:role-permissions) CMD="./node_modules/.bin/tsx prisma/seed-role-permissions.ts" ;;
