@@ -9,6 +9,7 @@
 # to press Run pipeline. Same policy as the other stacks on this host.
 
 variables:
+  SCAN_IMAGES: "suki-tools:latest"
   APP: "suki-tools"
   STACK_DIR: "/opt/stacks/suki-tools"
   HEALTH_URL: "http://172.31.0.10:3001/"
@@ -67,6 +68,7 @@ variables:
 
 stages:
   - build
+  - scan
   - deploy
   - verify
   - cleanup
@@ -181,7 +183,7 @@ rollback:
     - docker compose ps
 
 # ---------------------------------------------------------------------------
-# DB-TASK — manual, standalone, independent of any code deploy.
+# DB-TASK â€” manual, standalone, independent of any code deploy.
 #
 # Runs ONE database command inside a throwaway container built from the same
 # image as the app, so it uses the same Prisma client and the same .env.
@@ -215,3 +217,9 @@ db-task:
       esac
       echo "running against PRODUCTION: $CMD"
       docker compose run --rm --no-deps --entrypoint sh app -c "$CMD"
+
+# --- shared security scanning (ops/ci-templates), added 2026-08-29 ---
+include:
+  - project: ops/ci-templates
+    file: security-scan.yml
+    ref: main
