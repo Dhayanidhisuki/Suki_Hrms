@@ -17,7 +17,13 @@ export async function GET(request: NextRequest) {
   };
 
   const [data, total] = await Promise.all([
-    prisma.unit.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.unit.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: { company: { select: { id: true, name: true } } },
+    }),
     prisma.unit.count({ where }),
   ]);
 

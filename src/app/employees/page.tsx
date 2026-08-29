@@ -1,12 +1,15 @@
 /**
- * Employee Master — List page
- * Shows all active employees with search + pagination.
+ * Employee Master — list page.
+ * Real DB data, server-side pagination/search/filtering, themed via the
+ * shared ui kit (DataTable) instead of hardcoded gray classes.
  */
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { DataTable, type Column } from '@/components/ui';
 
 interface ExpirySummary {
   total: number;
@@ -19,22 +22,22 @@ interface ExpirySummary {
 interface EmployeeListItem {
   id: number;
   employeeCode: string;
+  oldEmployeeCode: string | null;
   firstName: string;
   middleName: string | null;
   lastName: string;
   status: string;
-  personalDetails: {
-    mobileNumber: string | null;
-    personalEmail: string | null;
-  } | null;
+  isActive: boolean;
+  company: { id: number; name: string } | null;
   jobInfos: Array<{
-    jobTitle: string | null;
     department: { name: string };
     designation: { name: string };
     employeeType: { name: string };
+    unit: { name: string } | null;
   }>;
   reportingManager: { firstName: string; lastName: string; employeeCode: string } | null;
   documentExpirySummary: ExpirySummary;
+  createdAt: string;
 }
 
 interface ApiResponse {
@@ -42,7 +45,15 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
+const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  active: { bg: 'var(--success-soft)', fg: 'var(--success)' },
+  'on-leave': { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  terminated: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  resigned: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+};
+
 export default function EmployeeListPage() {
+  const router = useRouter();
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,171 +86,128 @@ export default function EmployeeListPage() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchEmployees();
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to soft-delete this employee?')) return;
-    const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      fetchEmployees();
-    } else {
-      alert('Failed to delete employee');
-    }
-  };
+  const columns: Column<EmployeeListItem>[] = [
+    { key: 'oldEmployeeCode', label: 'Employee Code', className: 'font-medium', render: (row) => row.oldEmployeeCode ?? '—' },
+    { key: 'employeeCode', label: 'Reference Code', sortable: true },
+    {
+      key: 'name',
+      label: 'Name',
+      render: (row) => (
+        <span className="inline-flex items-center gap-2">
+          <Link href={`/employees/${row.id}`} className="hover:underline" style={{ color: 'var(--accent)' }}>
+            {row.firstName} {row.middleName ?? ''} {row.lastName}
+          </Link>
+          {!row.isActive && (
+            <span
+              className="px-2 py-0.5 text-xs font-medium rounded-full"
+              style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}
+            >
+              Inactive
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: 'company', label: 'Company/Unit', render: (row) => row.jobInfos[0]?.unit?.name ?? row.company?.name ?? '—' },
+    { key: 'department', label: 'Department', render: (row) => row.jobInfos[0]?.department.name ?? '—' },
+    { key: 'designation', label: 'Designation', render: (row) => row.jobInfos[0]?.designation.name ?? '—' },
+    { key: 'employeeType', label: 'Type', render: (row) => row.jobInfos[0]?.employeeType.name ?? '—' },
+    {
+      key: 'reportingManager',
+      label: 'Reporting Manager',
+      render: (row) =>
+        row.reportingManager
+          ? `${row.reportingManager.firstName} ${row.reportingManager.lastName}`
+          : '—',
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (row) => {
+        const tone = STATUS_TONE[row.status] ?? { bg: 'var(--surface-muted)', fg: 'var(--foreground-muted)' };
+        return (
+          <span
+            className="px-2 py-0.5 text-xs font-medium rounded-full"
+            style={{ backgroundColor: tone.bg, color: tone.fg }}
+          >
+            {row.status}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'documents',
+      label: 'Docs',
+      render: (row) => {
+        const s = row.documentExpirySummary;
+        if (s.total === 0) return <span style={{ color: 'var(--foreground-muted)' }}>—</span>;
+        return (
+          <span className="text-xs">
+            {s.expired > 0 && <span style={{ color: 'var(--danger)' }}>{s.expired} expired</span>}
+            {s.expired > 0 && s.expiringSoon > 0 && <span style={{ color: 'var(--foreground-muted)' }}>, </span>}
+            {s.expiringSoon > 0 && <span style={{ color: 'var(--warning)' }}>{s.expiringSoon} expiring</span>}
+            {s.expired === 0 && s.expiringSoon === 0 && (
+              <span style={{ color: 'var(--foreground-muted)' }}>{s.total} valid</span>
+            )}
+          </span>
+        );
+      },
+    },
+  ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Employee Master</h1>
-        <Link
-          href="/employees/new"
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition"
-        >
-          + Add Employee
-        </Link>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            Employee Master
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+            {pagination.total} employee{pagination.total !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/employees/export${search ? `?search=${encodeURIComponent(search)}` : ''}`}
+            className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
+            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+          >
+            Export CSV
+          </a>
+          <Link
+            href="/employees/new"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            + Add Employee
+          </Link>
+        </div>
       </div>
 
-      {/* Search */}
-      <form onSubmit={handleSearch} className="mb-4 flex gap-2">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by code or name..."
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400"
-        />
-        <button
-          type="submit"
-          className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition"
-        >
-          Search
-        </button>
-      </form>
-
       {error && (
-        <div className="bg-gray-50 border border-gray-300 text-gray-700 px-4 py-3 rounded-lg mb-4">
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}
+        >
           {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="text-center py-8 text-gray-500">Loading...</div>
-      ) : employees.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          No employees found. Click &quot;Add Employee&quot; to create one.
-        </div>
-      ) : (
-        <>
-          {/* Table */}
-          <div className="overflow-x-auto bg-white rounded-lg shadow">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Designation</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Docs</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {employees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {emp.employeeCode}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {emp.firstName} {emp.middleName ?? ''} {emp.lastName}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {emp.jobInfos[0]?.department.name ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {emp.jobInfos[0]?.designation.name ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {emp.jobInfos[0]?.employeeType.name ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 rounded-full border ${
-                        emp.status === 'active'
-                          ? 'font-semibold border-gray-300 text-gray-700'
-                          : emp.status === 'resigned' || emp.status === 'terminated'
-                          ? 'font-medium border-gray-200 text-gray-400'
-                          : 'font-semibold border-gray-400 text-gray-700'
-                      }`}>
-                        {emp.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {emp.documentExpirySummary.total === 0 ? (
-                        <span className="text-gray-400">—</span>
-                      ) : (
-                        <span>
-                          {emp.documentExpirySummary.expired > 0 && (
-                            <span className="font-bold text-gray-900">{emp.documentExpirySummary.expired} expired</span>
-                          )}
-                          {emp.documentExpirySummary.expired > 0 && emp.documentExpirySummary.expiringSoon > 0 && <span className="text-gray-400">, </span>}
-                          {emp.documentExpirySummary.expiringSoon > 0 && (
-                            <span className="font-semibold text-gray-700">{emp.documentExpirySummary.expiringSoon} expiring</span>
-                          )}
-                          {emp.documentExpirySummary.expired === 0 && emp.documentExpirySummary.expiringSoon === 0 && (
-                            <span className="text-gray-400">{emp.documentExpirySummary.total} valid</span>
-                          )}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Link href={`/employees/${emp.id}`} className="text-gray-700 hover:text-gray-900 mr-3">
-                        View
-                      </Link>
-                      <Link href={`/employees/${emp.id}/edit`} className="text-gray-700 hover:text-gray-900 mr-3">
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => handleDelete(emp.id)}
-                        className="text-gray-500 hover:text-gray-900"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pagination.totalPages > 1 && (
-            <div className="flex justify-center items-center gap-2 mt-4">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1 rounded border border-gray-300 disabled:opacity-50 hover:bg-gray-50"
-              >
-                Prev
-              </button>
-              <span className="text-sm text-gray-600">
-                Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
-                disabled={page === pagination.totalPages}
-                className="px-3 py-1 rounded border border-gray-300 disabled:opacity-50 hover:bg-gray-50"
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        data={employees}
+        pagination={pagination}
+        loading={loading}
+        searchValue={search}
+        searchPlaceholder="Search by code or name..."
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
+        onPageChange={setPage}
+        onEdit={(row) => router.push(`/employees/${row.id}`)}
+        emptyMessage='No employees found. Click "Add Employee" to create one.'
+      />
     </div>
   );
 }

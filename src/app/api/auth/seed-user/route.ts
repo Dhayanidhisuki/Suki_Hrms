@@ -30,7 +30,14 @@ export async function POST() {
   // 3. Upsert the admin user
   const user = await prisma.user.upsert({
     where: { email: 'admin@suki.hrms' },
-    update: {},
+    // Re-seeding must REPAIR an existing row, otherwise a user created with a
+    // stale hash (or later deactivated) can never sign in again.
+    update: {
+      passwordHash,
+      roleId: role.id,
+      isActive: true,
+      deletedAt: null,
+    },
     create: {
       email: 'admin@suki.hrms',
       passwordHash,

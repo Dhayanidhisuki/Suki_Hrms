@@ -13,68 +13,89 @@ import { signTokenNode } from '@/lib/jwt';
 import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { email, password } = body;
+  try {
+    let body: { email?: string; password?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
 
-  if (!email || !password) {
-    return NextResponse.json(
-      { error: 'Email and password are required' },
-      { status: 400 }
-    );
-  }
+    const { email, password } = body;
 
-  // Find user by email — only active, non-deleted
-  const user = await prisma.user.findFirst({
-    where: {
-      email,
-      isActive: true,
-      deletedAt: null,
-    },
-    include: {
-      role: { select: { id: true, code: true } },
-    },
-  });
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
 
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Invalid credentials' },
-      { status: 401 }
-    );
-  }
+    // Find user by email — only active, non-deleted
+    const user = await prisma.user.findFirst({
+      where: {
+        email,
+        isActive: true,
+        deletedAt: null,
+      },
+      include: {
+        role: { select: { id: true, code: true } },
+      },
+    });
 
-  // Compare password
-  const passwordMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordMatch) {
-    return NextResponse.json(
-      { error: 'Invalid credentials' },
-      { status: 401 }
-    );
-  }
+    if (!user) {
+      // Response stays generic on purpose; the distinction is logged so the
+      // developer can tell "no such user" from "wrong password".
+      console.warn(`[login] no active user for ${email}`);
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
 
-  // Issue JWT (jsonwebtoken — Node runtime)
-  const token = signTokenNode({
-    userId: user.id,
-    roleId: user.role.id,
-    roleCode: user.role.code,
-  });
+    // Compare password
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatch) {
+      console.warn(`[login] password mismatch for ${email}`);
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
 
-  // Create response with user info
-  const response = NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
+    // Issue JWT (jsonwebtoken — Node runtime)
+    const token = signTokenNode({
+      userId: user.id,
+      roleId: user.role.id,
       roleCode: user.role.code,
-    },
-  });
+    });
 
-  // Set httpOnly cookie
-  response.cookies.set('hrms-token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24, // 24 hours
-  });
+    // Create response with user info
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        roleCode: user.role.code,
+      },
+    });
 
-  return response;
+    // Set httpOnly cookie
+    response.cookies.set('hrms-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24, // 24 hours
+    });
+
+    return response;
+  } catch (error) {
+    // Most likely: the database is unreachable or the Prisma client is stale.
+    // Log the real cause to the server console and return JSON so the browser
+    // can always parse the response.
+    console.error('[POST /api/auth/login]', error);
+    const detail = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      {
+        error:
+          process.env.NODE_ENV === 'production'
+            ? 'Something went wrong. Please try again.'
+            : `Server error: ${detail.split('\n')[0]}`,
+      },
+      { status: 500 }
+    );
+  }
 }

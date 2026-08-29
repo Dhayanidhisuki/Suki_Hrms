@@ -27,7 +27,7 @@ export default function ThemeToggle() {
   if (!mounted) {
     return (
       <div
-        className="w-9 h-9 rounded-lg border"
+        className="hidden h-11 w-11 rounded-full border sm:block"
         style={{ borderColor: "var(--border)" }}
         aria-hidden
       />
@@ -38,7 +38,7 @@ export default function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-      className="w-9 h-9 rounded-lg border flex items-center justify-center transition-colors hover:opacity-80"
+      className="hidden h-11 w-11 place-items-center rounded-full border transition-colors hover:opacity-80 sm:grid"
       style={{
         borderColor: "var(--border)",
         background: "var(--surface)",

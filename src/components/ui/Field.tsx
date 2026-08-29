@@ -16,11 +16,13 @@ export interface FieldDef {
   required?: boolean;
   placeholder?: string;
   options?: FieldOption[];
-  min?: number;
-  max?: number;
+  min?: number | string; // string for date-type fields, e.g. '2026-08-30'
+  max?: number | string;
+  maxLength?: number;
   step?: string;
   defaultValue?: string | number | boolean;
   helpText?: string;
+  disabled?: boolean;
 }
 
 interface FieldProps {
@@ -36,7 +38,12 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
       ? 'border-red-400 focus:ring-red-400'
       : 'focus:ring-[var(--accent)]'
   }`;
-  const baseStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: error ? '#f87171' : 'var(--border)' };
+  const baseStyle = {
+    backgroundColor: def.disabled ? 'var(--surface-muted)' : 'var(--surface)',
+    color: 'var(--foreground)',
+    borderColor: error ? '#f87171' : 'var(--border)',
+    opacity: def.disabled ? 0.7 : 1,
+  };
 
   return (
     <div className="flex flex-col gap-1">
@@ -64,6 +71,7 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           onChange={(e) => onChange(e.target.value)}
           placeholder={def.placeholder}
           required={def.required}
+          disabled={def.disabled}
           className={inputClass}
           style={baseStyle}
           rows={3}
@@ -71,8 +79,15 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
       ) : def.type === 'select' ? (
         <select
           value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // <option value> is always a DOM string — look up the matching
+            // option to preserve its original type (e.g. a numeric id),
+            // since a raw string would fail number-typed validation.
+            const match = def.options?.find((opt) => String(opt.value) === e.target.value);
+            onChange(match ? match.value : e.target.value);
+          }}
           required={def.required}
+          disabled={def.disabled}
           className={inputClass}
           style={baseStyle}
         >
@@ -98,8 +113,10 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           }
           placeholder={def.placeholder}
           required={def.required}
+          disabled={def.disabled}
           min={def.min}
           max={def.max}
+          maxLength={def.maxLength}
           step={def.step}
           className={inputClass}
           style={baseStyle}

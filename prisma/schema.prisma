@@ -70,7 +70,7 @@ model SubDepartment {
   updatedAt    DateTime  @updatedAt
 
   department Department @relation(fields: [departmentId], references: [id])
-  jobInfos    JobInfo[]     @relation("SubDepartmentJobInfos")
+  jobInfos   JobInfo[]  @relation("SubDepartmentJobInfos")
 
   @@index([departmentId])
   @@map("SubDepartment")
@@ -141,7 +141,9 @@ model Category {
 //   @@map("Site")
 // }
 
-model Unit {
+// Q3 RESOLVED: full Company master added (multi-company future-proofing).
+// Unit is reused as Branch/Site/Plant/Work Location, scoped to a Company.
+model Company {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
@@ -151,8 +153,28 @@ model Unit {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  units     Unit[]
+  employees Employee[]
+
+  @@map("Company")
+}
+
+// Unit doubles as Branch/Site/Plant/Work Location — scoped to a Company.
+model Unit {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
   jobInfos JobInfo[]
 
+  @@index([companyId])
   @@map("Unit")
 }
 
@@ -200,7 +222,7 @@ model TDSSlab {
   code          String    @db.NVarChar(20)
   minSalary     Decimal   @db.Decimal(18, 2)
   maxSalary     Decimal?  @db.Decimal(18, 2) // NULL = no upper limit
-  ratePercent   Decimal   @db.Decimal(5, 2)  // e.g. 5.00, 10.00, 20.00
+  ratePercent   Decimal   @db.Decimal(5, 2) // e.g. 5.00, 10.00, 20.00
   effectiveFrom DateTime
   effectiveTo   DateTime? // NULL = currently active
   isActive      Boolean   @default(true)
@@ -233,8 +255,8 @@ model ProfessionalTaxSlab {
 model EsiRate {
   id                       Int       @id @default(autoincrement())
   code                     String    @db.NVarChar(20)
-  employeeContributionRate Decimal   @db.Decimal(5, 2)  // e.g. 0.75
-  employerContributionRate Decimal   @db.Decimal(5, 2)  // e.g. 3.25
+  employeeContributionRate Decimal   @db.Decimal(5, 2) // e.g. 0.75
+  employerContributionRate Decimal   @db.Decimal(5, 2) // e.g. 3.25
   wageCeilingMonthly       Decimal   @db.Decimal(18, 2) // max monthly wage for ESI applicability
   effectiveFrom            DateTime
   effectiveTo              DateTime? // NULL = currently active
@@ -251,9 +273,9 @@ model EsiRate {
 model PfRate {
   id                       Int       @id @default(autoincrement())
   code                     String    @db.NVarChar(20)
-  employeeContributionRate Decimal   @db.Decimal(5, 2)  // e.g. 12.00
-  employerContributionRate Decimal   @db.Decimal(5, 2)  // e.g. 12.00 (or 3.67 + 8.33 EPS)
-  pensionContributionRate  Decimal?  @db.Decimal(5, 2)  // EPS share, e.g. 8.33
+  employeeContributionRate Decimal   @db.Decimal(5, 2) // e.g. 12.00
+  employerContributionRate Decimal   @db.Decimal(5, 2) // e.g. 12.00 (or 3.67 + 8.33 EPS)
+  pensionContributionRate  Decimal?  @db.Decimal(5, 2) // EPS share, e.g. 8.33
   wageCeilingMonthly       Decimal   @db.Decimal(18, 2) // max monthly wage for PF applicability
   effectiveFrom            DateTime
   effectiveTo              DateTime? // NULL = currently active
@@ -274,8 +296,8 @@ model ShiftMaster {
   id           Int       @id @default(autoincrement())
   code         String    @unique @db.NVarChar(20)
   name         String    @db.NVarChar(100)
-  startTime    String    @db.NVarChar(8)  // "09:00" (HH:mm)
-  endTime      String    @db.NVarChar(8)  // "18:00" (HH:mm)
+  startTime    String    @db.NVarChar(8) // "09:00" (HH:mm)
+  endTime      String    @db.NVarChar(8) // "18:00" (HH:mm)
   graceMinutes Int       @default(0)
   description  String?   @db.NVarChar(500)
   isActive     Boolean   @default(true)
@@ -284,7 +306,7 @@ model ShiftMaster {
   updatedAt    DateTime  @updatedAt
 
   shiftPlans ShiftPlan[]
-  jobInfos    JobInfo[]
+  jobInfos   JobInfo[]
 
   @@map("ShiftMaster")
 }
@@ -298,8 +320,8 @@ model ShiftPlan {
   shiftMasterId Int
   code          String    @unique @db.NVarChar(20)
   name          String    @db.NVarChar(100)
-  startTime     String?   @db.NVarChar(8)  // override ShiftMaster if set
-  endTime       String?   @db.NVarChar(8)  // override ShiftMaster if set
+  startTime     String?   @db.NVarChar(8) // override ShiftMaster if set
+  endTime       String?   @db.NVarChar(8) // override ShiftMaster if set
   description   String?   @db.NVarChar(500)
   isActive      Boolean   @default(true)
   deletedAt     DateTime?
@@ -307,7 +329,7 @@ model ShiftPlan {
   updatedAt     DateTime  @updatedAt
 
   shiftMaster ShiftMaster @relation(fields: [shiftMasterId], references: [id])
-  jobInfos    JobInfo[]    @relation("ShiftPlanJobInfos")
+  jobInfos    JobInfo[]   @relation("ShiftPlanJobInfos")
 
   @@index([shiftMasterId])
   @@map("ShiftPlan")
@@ -318,9 +340,9 @@ model OTPlan {
   id                     Int       @id @default(autoincrement())
   code                   String    @unique @db.NVarChar(20)
   name                   String    @db.NVarChar(100)
-  otRateMultiplier       Decimal   @db.Decimal(5, 2)  // e.g. 1.50, 2.00
-  applicableAfterMinutes Int       @default(0)        // OT kicks in after N minutes
-  maxOtHoursPerDay       Int?      // NULL = no cap
+  otRateMultiplier       Decimal   @db.Decimal(5, 2) // e.g. 1.50, 2.00
+  applicableAfterMinutes Int       @default(0) // OT kicks in after N minutes
+  maxOtHoursPerDay       Int? // NULL = no cap
   description            String?   @db.NVarChar(500)
   isActive               Boolean   @default(true)
   deletedAt              DateTime?
@@ -336,15 +358,15 @@ model OTPlan {
 
 // Q10: Drafted with category grouping + label/value + sortOrder.
 model DropdownMaster {
-  id         Int       @id @default(autoincrement())
-  category   String    @db.NVarChar(50)  // grouping key, e.g. "gender", "blood_group"
-  label      String    @db.NVarChar(100) // display text
-  value      String    @db.NVarChar(100) // stored value
-  sortOrder  Int       @default(0)
-  isActive   Boolean   @default(true)
-  deletedAt  DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        Int       @id @default(autoincrement())
+  category  String    @db.NVarChar(50) // grouping key, e.g. "gender", "blood_group"
+  label     String    @db.NVarChar(100) // display text
+  value     String    @db.NVarChar(100) // stored value
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([category, value])
   @@index([category])
@@ -421,10 +443,10 @@ model Role {
 model Permission {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.NVarChar(50) // e.g. "employee.view", "payroll.run"
-  module      String    @db.NVarChar(50)         // top-level module, e.g. "employee"
-  submodule   String?   @db.NVarChar(50)         // sub-module, e.g. "profile"
-  page        String?   @db.NVarChar(50)         // page-level, e.g. "list"
-  action      String    @db.NVarChar(20)         // "view" | "create" | "edit" | "delete" | "export"
+  module      String    @db.NVarChar(50) // top-level module, e.g. "employee"
+  submodule   String?   @db.NVarChar(50) // sub-module, e.g. "profile"
+  page        String?   @db.NVarChar(50) // page-level, e.g. "list"
+  action      String    @db.NVarChar(20) // "view" | "create" | "edit" | "delete" | "export"
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -467,7 +489,8 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  role         Role      @relation(fields: [roleId], references: [id])
+  role     Role      @relation(fields: [roleId], references: [id])
+  employee Employee?
 
   @@index([roleId])
   @@map("User")
@@ -517,118 +540,235 @@ model User {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // E1: Manual code entry for now. Auto-generation pattern TBD.
+// Q3/emp-code RESOLVED: employeeCode is unique per Company, not globally.
 model Employee {
-  id                 Int       @id @default(autoincrement())
-  employeeCode       String    @unique @db.NVarChar(20)
-  firstName          String    @db.NVarChar(100)
-  middleName         String?   @db.NVarChar(100)
-  lastName           String    @db.NVarChar(100)
+  id                 Int     @id @default(autoincrement())
+  companyId          Int
+  userId             Int?    @unique // optional linked login account (Job Profile tab)
+  employeeCode       String  @db.NVarChar(20)
+  oldEmployeeCode    String? @db.NVarChar(20)
+  title              String? @db.NVarChar(10) // Mr/Mrs/Ms/Dr — via DropdownMaster
+  firstName          String  @db.NVarChar(100)
+  middleName         String? @db.NVarChar(100)
+  lastName           String  @db.NVarChar(100)
+  profilePhotoPath   String? @db.NVarChar(500)
+  signaturePath      String? @db.NVarChar(500)
   // E2: Status as flexible string — constrain via DropdownMaster later
-  status             String    @default("active") @db.NVarChar(20) // active | on-leave | terminated | resigned
+  status             String  @default("active") @db.NVarChar(20) // active | on-leave | terminated | resigned
+  guestEmployee      Boolean @default(false)
+  inductionStatus    String? @db.NVarChar(30)
   // E8: Self-referential FK for reporting manager
   reportingManagerId Int?
 
-  isActive           Boolean   @default(true)
-  deletedAt          DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
 
   // Self-referential relation for reporting manager
   // NoAction required to break cyclic cascade through child tables
-  reportingManager   Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  directReports      Employee[] @relation("EmployeeToManager")
+  reportingManager Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  directReports    Employee[] @relation("EmployeeToManager")
 
   // 1:1 relations
-  personalDetails    PersonalDetails?
-  bankDetail         EmployeeBankDetail?
-  exitInterview      ExitInterview?
+  personalDetails PersonalDetails?
+  contactDetails  EmployeeContactDetails?
+  bankDetail      EmployeeBankDetail?
+  passport        EmployeePassport?
+  kyc             EmployeeKyc?
+  exitInterview   ExitInterview?
 
   // 1:N relations (versioned tables are 1:N, not 1:1)
-  jobInfos           JobInfo[]
-  salaryStructures   SalaryStructure[]
-  dependents         EmployeeDependent[]
-  experiences        EmployeeExperience[]
-  educations         EmployeeEducation[]
-  documents          EmployeeDocument[]
-  assetAllocations   EmployeeAssetAllocation[]
+  jobInfos          JobInfo[]
+  salaryStructures  SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
+  salaryRevisions   EmployeeSalaryRevision[]
+  ctcRecords        EmployeeCtc[]
+  dependents        EmployeeDependent[]
+  experiences       EmployeeExperience[]
+  educations        EmployeeEducation[]
+  documents         EmployeeDocument[]
+  assetAllocations  EmployeeAssetAllocation[]
+  emergencyContacts EmployeeEmergencyContact[]
+  skills            EmployeeSkill[]
+  activities        EmployeeActivity[]
 
+  @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
   @@index([status])
   @@map("Employee")
 }
 
 // Personal details — 1:1 with Employee
+// Address + emergency-contact fields moved to EmployeeContactDetails /
+// EmployeeEmergencyContact (spec: Contact Details is a separate tab).
 model PersonalDetails {
-  id             Int       @id @default(autoincrement())
-  employeeId     Int       @unique
-  dateOfBirth    DateTime?
-  gender         String?   @db.NVarChar(20)   // via DropdownMaster
-  bloodGroup     String?   @db.NVarChar(10)   // via DropdownMaster
-  maritalStatus  String?   @db.NVarChar(20)   // via DropdownMaster
-  nationality    String?   @db.NVarChar(50)
-  religion       String?   @db.NVarChar(50)
-  category       String?   @db.NVarChar(50)   // via DropdownMaster (general category)
-  physicallyChallenged Boolean @default(false)
-  // Contact
-  personalEmail  String?   @db.NVarChar(100)
-  mobileNumber   String?   @db.NVarChar(20)
-  alternatePhone String?   @db.NVarChar(20)
-  // Address
-  presentAddress String?   @db.NVarChar(500)
-  permanentAddress String? @db.NVarChar(500)
-  // Emergency contact
-  emergencyContactName  String? @db.NVarChar(100)
-  emergencyContactPhone String? @db.NVarChar(20)
-  emergencyContactRelation String? @db.NVarChar(50)
+  id                           Int       @id @default(autoincrement())
+  employeeId                   Int       @unique
+  dateOfBirth                  DateTime?
+  gender                       String?   @db.NVarChar(20) // via DropdownMaster
+  bloodGroup                   String?   @db.NVarChar(10) // via DropdownMaster
+  maritalStatus                String?   @db.NVarChar(20) // via DropdownMaster
+  marriageDate                 DateTime?
+  numberOfChildren             Int?
+  nationality                  String?   @db.NVarChar(50)
+  religion                     String?   @db.NVarChar(50)
+  category                     String?   @db.NVarChar(50) // via DropdownMaster (general category)
+  physicallyChallenged         Boolean   @default(false)
+  physicallyChallengedCategory String?   @db.NVarChar(50)
+  internationalWorker          Boolean   @default(false)
+  heightCm                     Decimal?  @db.Decimal(5, 2)
+  weightKg                     Decimal?  @db.Decimal(5, 2)
+  shirtSize                    String?   @db.NVarChar(10)
+  pantSize                     String?   @db.NVarChar(10)
+  shoeSize                     String?   @db.NVarChar(10)
+  issuedMobileNumber           String?   @db.NVarChar(20)
+  mobileDeductionApplicable    Boolean   @default(false)
+  canteenAllowanceApplicable   Boolean   @default(false)
+  loanInstalmentMonth          String?   @db.NVarChar(20)
+  // Personal email only — phone/mobile live on EmployeeContactDetails
+  personalEmail                String?   @db.NVarChar(100)
+  ndaDocument                  Boolean   @default(false)
+  fitnessCertificate           Boolean   @default(false)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee       Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@map("PersonalDetails")
+}
+
+// Contact Details — 1:1 with Employee. Structured permanent/present address.
+model EmployeeContactDetails {
+  id                    Int     @id @default(autoincrement())
+  employeeId            Int     @unique
+  // Permanent address
+  permanentAddressLine1 String? @db.NVarChar(200)
+  permanentAddressLine2 String? @db.NVarChar(200)
+  permanentCity         String? @db.NVarChar(100)
+  permanentState        String? @db.NVarChar(100)
+  permanentPincode      String? @db.NVarChar(10)
+  permanentMobile       String? @db.NVarChar(20)
+  // Present address
+  sameAsPermanent       Boolean @default(false)
+  presentAddressLine1   String? @db.NVarChar(200)
+  presentAddressLine2   String? @db.NVarChar(200)
+  presentCity           String? @db.NVarChar(100)
+  presentState          String? @db.NVarChar(100)
+  presentPincode        String? @db.NVarChar(10)
+  presentMobile         String? @db.NVarChar(20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeeContactDetails")
+}
+
+// Emergency contacts — 1:N with Employee. Only one may be isPrimary (app-layer enforced).
+model EmployeeEmergencyContact {
+  id             Int     @id @default(autoincrement())
+  employeeId     Int
+  contactName    String  @db.NVarChar(100)
+  relationship   String  @db.NVarChar(50)
+  address        String? @db.NVarChar(500)
+  homePhone      String? @db.NVarChar(20)
+  mobile         String? @db.NVarChar(20)
+  alternatePhone String? @db.NVarChar(20)
+  email          String? @db.NVarChar(100)
+  isPrimary      Boolean @default(false)
+  remarks        String? @db.NVarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeEmergencyContact")
 }
 
 // E3: JobInfo is versioned — effectiveFrom/effectiveTo for job history.
 //     Only one record with effectiveTo = NULL = current job info.
 //     FKs into existing Org structure tables — no redefinition.
 model JobInfo {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
+  id                               Int       @id @default(autoincrement())
+  employeeId                       Int
   // FKs into merged Org tables
-  departmentId    Int
-  subDepartmentId Int?
-  designationId   Int
-  employeeTypeId  Int
-  categoryId      Int?
-  gradeId         Int?
-  levelId         Int?
-  unitId          Int?
-  shiftMasterId   Int?
-  shiftPlanId     Int?
+  departmentId                     Int
+  subDepartmentId                  Int?
+  designationId                    Int
+  employeeTypeId                   Int
+  categoryId                       Int?
+  gradeId                          Int?
+  levelId                          Int?
+  unitId                           Int?
+  shiftMasterId                    Int?
+  shiftPlanId                      Int?
   // Job details
-  jobTitle        String?   @db.NVarChar(100)
-  joinDate        DateTime
-  confirmationDate DateTime?
-  probationEndDate DateTime?
+  jobTitle                         String?   @db.NVarChar(100)
+  subCategory                      String?   @db.NVarChar(50)
+  productionLine                   String?   @db.NVarChar(100)
+  additionalRole                   String?   @db.NVarChar(100)
+  teamGroup                        String?   @db.NVarChar(100)
+  joinDate                         DateTime
+  confirmationDate                 DateTime?
+  // probationEndDate is server-computed (joinDate + probationPeriodMonths),
+  // never accepted directly from the client — see calculateProbationEndDate.
+  probationPeriodMonths            Int?
+  probationEndDate                 DateTime?
+  // Shift / attendance config
+  shiftRequired                    Boolean   @default(false)
+  dailySheetRequired               Boolean   @default(false)
+  // Documents/config flags
+  petrolAllowance                  Boolean   @default(false)
+  // Payroll configuration
+  wageType                         String?   @db.NVarChar(20) // monthly | daily | hourly
+  paymentMode                      String?   @db.NVarChar(20) // bank | cash | cheque
+  // Official access
+  officialEmail                    String?   @db.NVarChar(100)
+  // Statutory applicability
+  esiApplicable                    Boolean   @default(false)
+  professionalTaxApplicable        Boolean   @default(false)
+  bonusApplicable                  Boolean   @default(false)
+  ltaEligible                      Boolean   @default(false)
+  pfRestrictionAmount              Decimal?  @db.Decimal(18, 2)
+  // Attendance and overtime
+  overtimeAllowed                  Boolean   @default(false)
+  overtimeFactor                   Decimal?  @db.Decimal(5, 2)
+  overtimeRatePerHour              Decimal?  @db.Decimal(18, 2)
+  lossOfMinutesDeductionApplicable Boolean   @default(false)
+  allowedLossOfMinutes             Int?
+  numberOfLeavesAllowed            Decimal?  @db.Decimal(5, 2)
+  permissionRequestAllowed         Boolean   @default(false)
+  permissionHours                  Decimal?  @db.Decimal(5, 2)
+  // Company resources
+  companyContact1                  String?   @db.NVarChar(20)
+  companyContact2                  String?   @db.NVarChar(20)
+  ipAddress1                       String?   @db.NVarChar(50)
+  ipAddress2                       String?   @db.NVarChar(50)
   // Versioning
-  effectiveFrom   DateTime
-  effectiveTo     DateTime?  // NULL = current
+  effectiveFrom                    DateTime
+  effectiveTo                      DateTime? // NULL = current
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee       @relation(fields: [employeeId], references: [id])
-  department      Department     @relation(fields: [departmentId], references: [id])
-  subDepartment   SubDepartment? @relation("SubDepartmentJobInfos", fields: [subDepartmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  designation     Designation    @relation(fields: [designationId], references: [id])
-  employeeType    EmployeeType   @relation(fields: [employeeTypeId], references: [id])
-  category        Category?      @relation(fields: [categoryId], references: [id])
-  grade           Grade?         @relation(fields: [gradeId], references: [id])
-  level           Level?         @relation(fields: [levelId], references: [id])
-  unit            Unit?          @relation(fields: [unitId], references: [id])
-  shiftMaster     ShiftMaster?   @relation(fields: [shiftMasterId], references: [id])
-  shiftPlan       ShiftPlan?     @relation("ShiftPlanJobInfos", fields: [shiftPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee      Employee       @relation(fields: [employeeId], references: [id])
+  department    Department     @relation(fields: [departmentId], references: [id])
+  subDepartment SubDepartment? @relation("SubDepartmentJobInfos", fields: [subDepartmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation   Designation    @relation(fields: [designationId], references: [id])
+  employeeType  EmployeeType   @relation(fields: [employeeTypeId], references: [id])
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  grade         Grade?         @relation(fields: [gradeId], references: [id])
+  level         Level?         @relation(fields: [levelId], references: [id])
+  unit          Unit?          @relation(fields: [unitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shiftMaster   ShiftMaster?   @relation(fields: [shiftMasterId], references: [id])
+  shiftPlan     ShiftPlan?     @relation("ShiftPlanJobInfos", fields: [shiftPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
   @@index([departmentId])
@@ -640,29 +780,29 @@ model JobInfo {
 // E4: SalaryStructure is versioned — effectiveFrom/effectiveTo.
 //     Only one active record at a time. CTC breakdown fields.
 model SalaryStructure {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
   // CTC breakdown
-  basic           Decimal   @db.Decimal(18, 2)
-  hra             Decimal   @db.Decimal(18, 2)
-  conveyanceAllowance Decimal @db.Decimal(18, 2) @default(0)
-  medicalAllowance     Decimal @db.Decimal(18, 2) @default(0)
-  specialAllowance     Decimal @db.Decimal(18, 2) @default(0)
-  otherAllowance       Decimal @db.Decimal(18, 2) @default(0)
+  basic               Decimal   @db.Decimal(18, 2)
+  hra                 Decimal   @db.Decimal(18, 2)
+  conveyanceAllowance Decimal   @default(0) @db.Decimal(18, 2)
+  medicalAllowance    Decimal   @default(0) @db.Decimal(18, 2)
+  specialAllowance    Decimal   @default(0) @db.Decimal(18, 2)
+  otherAllowance      Decimal   @default(0) @db.Decimal(18, 2)
   // Statutory
-  pfApplicable    Boolean   @default(true)
-  esiApplicable   Boolean   @default(false)
+  pfApplicable        Boolean   @default(true)
+  esiApplicable       Boolean   @default(false)
   // Totals
-  monthlyCtc      Decimal   @db.Decimal(18, 2)
-  annualCtc       Decimal   @db.Decimal(18, 2)
+  monthlyCtc          Decimal   @db.Decimal(18, 2)
+  annualCtc           Decimal   @db.Decimal(18, 2)
   // Versioning
-  effectiveFrom   DateTime
-  effectiveTo     DateTime?  // NULL = current
+  effectiveFrom       DateTime
+  effectiveTo         DateTime? // NULL = current
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@index([effectiveFrom, effectiveTo])
@@ -671,36 +811,36 @@ model SalaryStructure {
 
 // E9: Separate bank detail table — 1:1 for now, may extend to multiple.
 model EmployeeBankDetail {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int       @unique
-  bankName        String?   @db.NVarChar(100)
-  branchName      String?   @db.NVarChar(100)
-  accountNumber   String?   @db.NVarChar(30)
-  ifscCode        String?   @db.NVarChar(20)
-  accountType     String?   @db.NVarChar(20)  // savings | current | salary
-  isPrimary       Boolean   @default(true)
+  id            Int     @id @default(autoincrement())
+  employeeId    Int     @unique
+  bankName      String? @db.NVarChar(100)
+  branchName    String? @db.NVarChar(100)
+  accountNumber String? @db.NVarChar(30)
+  ifscCode      String? @db.NVarChar(20)
+  accountType   String? @db.NVarChar(20) // savings | current | salary
+  isPrimary     Boolean @default(true)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@map("EmployeeBankDetail")
 }
 
 // Dependents — 1:N with Employee
 model EmployeeDependent {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
-  name            String    @db.NVarChar(100)
-  relationship    String    @db.NVarChar(50)   // spouse | son | daughter | father | mother | other
-  dateOfBirth     DateTime?
-  isDependent     Boolean   @default(true)     // for insurance/tax purposes
+  id           Int       @id @default(autoincrement())
+  employeeId   Int
+  name         String    @db.NVarChar(100)
+  relationship String    @db.NVarChar(50) // spouse | son | daughter | father | mother | other
+  dateOfBirth  DateTime?
+  isDependent  Boolean   @default(true) // for insurance/tax purposes
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@map("EmployeeDependent")
@@ -708,19 +848,19 @@ model EmployeeDependent {
 
 // Previous work experience — 1:N with Employee
 model EmployeeExperience {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
-  companyName     String    @db.NVarChar(100)
-  designation     String    @db.NVarChar(100)
-  fromDate        DateTime
-  toDate          DateTime?  // NULL = current job
-  reasonForLeaving String?  @db.NVarChar(500)
-  lastDrawnSalary Decimal?  @db.Decimal(18, 2)
+  id               Int       @id @default(autoincrement())
+  employeeId       Int
+  companyName      String    @db.NVarChar(100)
+  designation      String    @db.NVarChar(100)
+  fromDate         DateTime
+  toDate           DateTime? // NULL = current job
+  reasonForLeaving String?   @db.NVarChar(500)
+  lastDrawnSalary  Decimal?  @db.Decimal(18, 2)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@map("EmployeeExperience")
@@ -728,18 +868,18 @@ model EmployeeExperience {
 
 // Education qualifications — 1:N with Employee
 model EmployeeEducation {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
-  qualification   String    @db.NVarChar(100)   // e.g. "B.Tech", "MCA"
-  institution     String?   @db.NVarChar(200)
-  university      String?   @db.NVarChar(200)
-  yearOfPassing   Int?
-  percentage      Decimal?  @db.Decimal(5, 2)
+  id            Int      @id @default(autoincrement())
+  employeeId    Int
+  qualification String   @db.NVarChar(100) // e.g. "B.Tech", "MCA"
+  institution   String?  @db.NVarChar(200)
+  university    String?  @db.NVarChar(200)
+  yearOfPassing Int?
+  percentage    Decimal? @db.Decimal(5, 2)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@map("EmployeeEducation")
@@ -749,22 +889,22 @@ model EmployeeEducation {
 //     Also handles KPI/JD attachments via docType field (E6).
 //     File upload is a placeholder stub — no actual file storage in this branch.
 model EmployeeDocument {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
-  docType         String    @db.NVarChar(30)
+  id         Int       @id @default(autoincrement())
+  employeeId Int
+  docType    String    @db.NVarChar(30)
   // "aadhaar" | "pan" | "passport" | "driving_license" | "kpi" | "jd" | "other"
-  docNumber       String?   @db.NVarChar(50)    // e.g. Aadhaar number, PAN number
-  fileName        String?   @db.NVarChar(200)   // placeholder — actual file path/URL later
-  filePath        String?   @db.NVarChar(500)   // placeholder — actual file storage later
+  docNumber  String?   @db.NVarChar(50) // e.g. Aadhaar number, PAN number
+  fileName   String?   @db.NVarChar(200) // placeholder — actual file path/URL later
+  filePath   String?   @db.NVarChar(500) // placeholder — actual file storage later
   // Expiry tracking
-  issuedDate      DateTime?
-  expiryDate      DateTime?                     // NULL = no expiry
-  isVerified      Boolean   @default(false)
+  issuedDate DateTime?
+  expiryDate DateTime? // NULL = no expiry
+  isVerified Boolean   @default(false)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@index([docType])
@@ -776,18 +916,22 @@ model EmployeeDocument {
 // Single-source-of-truth: no asset data duplicated on Employee.
 // Read-only reference — actual asset management logic is a future phase.
 model EmployeeAssetAllocation {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int
-  assetMasterId   Int
-  allocatedDate   DateTime  @default(now())
-  returnedDate    DateTime?  // NULL = currently allocated
-  notes           String?   @db.NVarChar(500)
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int
+  assetMasterId      Int
+  serialNumber       String?   @db.NVarChar(50)
+  model              String?   @db.NVarChar(100)
+  assetValue         Decimal?  @db.Decimal(12, 2)
+  allocatedDate      DateTime  @default(now())
+  expectedReturnDate DateTime?
+  returnedDate       DateTime? // NULL = currently allocated
+  notes              String?   @db.NVarChar(500)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee     @relation(fields: [employeeId], references: [id])
-  assetMaster     AssetMaster  @relation(fields: [assetMasterId], references: [id])
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  assetMaster AssetMaster @relation(fields: [assetMasterId], references: [id])
 
   @@index([employeeId])
   @@index([assetMasterId])
@@ -796,19 +940,226 @@ model EmployeeAssetAllocation {
 
 // E7: Exit interview — 1:1 with Employee, created on exit.
 model ExitInterview {
-  id              Int       @id @default(autoincrement())
-  employeeId      Int       @unique
-  exitDate        DateTime
-  exitReason      String?   @db.NVarChar(500)
-  exitType        String    @db.NVarChar(20)   // resignation | termination | retirement
-  interviewNotes  String?   @db.NVarChar(2000)
-  interviewDate   DateTime?
-  interviewedBy   String?   @db.NVarChar(100)
+  id             Int       @id @default(autoincrement())
+  employeeId     Int       @unique
+  exitDate       DateTime
+  exitReason     String?   @db.NVarChar(500)
+  exitType       String    @db.NVarChar(20) // resignation | termination | retirement
+  interviewNotes String?   @db.NVarChar(2000)
+  interviewDate  DateTime?
+  interviewedBy  String?   @db.NVarChar(100)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@map("ExitInterview")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. PASSPORT — 1:1 with Employee
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeePassport {
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int       @unique
+  passportNumber     String?   @db.NVarChar(30)
+  placeOfIssue       String?   @db.NVarChar(100)
+  countryOfIssue     String?   @db.NVarChar(50)
+  issueDate          DateTime?
+  expiryDate         DateTime?
+  filePath           String?   @db.NVarChar(500)
+  verificationStatus String?   @db.NVarChar(20) // pending | verified | rejected
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeePassport")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. KYC & STATUTORY — 1:1 with Employee. Single source of truth (spec §6.14).
+//    panNumberEnc / aadhaarNumberEnc are ciphertext (src/lib/crypto.ts,
+//    AES-256-GCM). Bank account fields remain owned by EmployeeBankDetail —
+//    both are edited under the same employee.kyc.* permission gate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeKyc {
+  id                   Int       @id @default(autoincrement())
+  employeeId           Int       @unique
+  pfNumber             String?   @db.NVarChar(30)
+  uanNumber            String?   @db.NVarChar(20)
+  esiNumber            String?   @db.NVarChar(20)
+  panNumberEnc         String?   @db.NVarChar(255)
+  aadhaarNumberEnc     String?   @db.NVarChar(255)
+  drivingLicenceNumber String?   @db.NVarChar(30)
+  drivingLicenceExpiry DateTime?
+  electionCardNumber   String?   @db.NVarChar(30)
+  rationCardNumber     String?   @db.NVarChar(30)
+  verificationStatus   String?   @db.NVarChar(20) // pending | verified | rejected
+  verifiedByUserId     Int?
+  verifiedDate         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeeKyc")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. SKILL MATRIX — 1:N with Employee
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeSkill {
+  id                Int       @id @default(autoincrement())
+  employeeId        Int
+  skillCategory     String?   @db.NVarChar(100)
+  skillName         String    @db.NVarChar(100) // skill / machine / operation
+  proficiencyLevel  String?   @db.NVarChar(30) // via workflow proficiency reference
+  levelPercentage   Decimal?  @db.Decimal(5, 2)
+  certified         Boolean   @default(false)
+  certificateNumber String?   @db.NVarChar(50)
+  certifiedDate     DateTime?
+  expiryDate        DateTime?
+  evaluatedBy       String?   @db.NVarChar(100)
+  remarks           String?   @db.NVarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeSkill")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. EMPLOYEE ACTIVITY — 1:N with Employee. Read-only audit timeline.
+//     Written via src/lib/activity-log.ts inside each mutating endpoint's
+//     transaction. Never store passwords or full sensitive KYC/bank values.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeActivity {
+  id                Int      @id @default(autoincrement())
+  employeeId        Int
+  activityType      String   @db.NVarChar(50) // e.g. "created" | "job_info_updated" | "status_changed"
+  activityAt        DateTime @default(now())
+  performedByUserId Int?
+  module            String   @db.NVarChar(50) // e.g. "basic" | "personal" | "contact" | "job_profile"
+  oldValue          String?  @db.NVarChar(2000)
+  newValue          String?  @db.NVarChar(2000)
+  remarks           String?  @db.NVarChar(500)
+  source            String?  @db.NVarChar(30) // "web" | "api" | "seed"
+  relatedRecordId   Int?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([activityAt])
+  @@map("EmployeeActivity")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. DYNAMIC SALARY COMPONENTS (replaces hardcoded SalaryStructure columns)
+//     Only one EmployeeSalaryRevision per employee may have effectiveTo = NULL
+//     — enforced via SQL Server trigger, same Option D pattern as the slab
+//     tables (see prisma/triggers/tr_EmployeeSalaryRevision_no_overlap.sql).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SalaryComponent {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique @db.NVarChar(30)
+  name      String    @db.NVarChar(100)
+  type      String    @db.NVarChar(30) // earning | deduction | employer_contribution
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  employeeComponents EmployeeSalaryComponent[]
+
+  @@map("SalaryComponent")
+}
+
+model EmployeeSalaryRevision {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
+  financialYear       String?   @db.NVarChar(10) // e.g. "2026-27"
+  grossSalary         Decimal   @db.Decimal(18, 2)
+  netSalary           Decimal?  @db.Decimal(18, 2)
+  lastUpdatedByUserId Int?
+  effectiveFrom       DateTime
+  effectiveTo         DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee   Employee                  @relation(fields: [employeeId], references: [id])
+  components EmployeeSalaryComponent[]
+
+  @@index([employeeId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("EmployeeSalaryRevision")
+}
+
+model EmployeeSalaryComponent {
+  id                Int     @id @default(autoincrement())
+  salaryRevisionId  Int
+  salaryComponentId Int
+  amount            Decimal @db.Decimal(18, 2)
+
+  salaryRevision  EmployeeSalaryRevision @relation(fields: [salaryRevisionId], references: [id])
+  salaryComponent SalaryComponent        @relation(fields: [salaryComponentId], references: [id])
+
+  @@unique([salaryRevisionId, salaryComponentId])
+  @@map("EmployeeSalaryComponent")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. CTC — versioned like salary revision, same overlap-prevention approach.
+//     Manually configured values only — no CTC/PF/ESI/gratuity formulas
+//     invented here (spec §6.6 explicitly forbids inventing formulas).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeCtc {
+  id                   Int       @id @default(autoincrement())
+  employeeId           Int
+  basic                Decimal   @db.Decimal(18, 2)
+  specialAllowance     Decimal   @default(0) @db.Decimal(18, 2)
+  hra                  Decimal   @default(0) @db.Decimal(18, 2)
+  conveyanceAllowance  Decimal   @default(0) @db.Decimal(18, 2)
+  washAllowance        Decimal   @default(0) @db.Decimal(18, 2)
+  canteen              Decimal   @default(0) @db.Decimal(18, 2)
+  dislocationAllowance Decimal   @default(0) @db.Decimal(18, 2)
+  otherAllowance       Decimal   @default(0) @db.Decimal(18, 2)
+  shiftAllowance       Decimal   @default(0) @db.Decimal(18, 2)
+  attendanceBonus      Decimal   @default(0) @db.Decimal(18, 2)
+  employeePf           Decimal   @default(0) @db.Decimal(18, 2)
+  employeeEsi          Decimal   @default(0) @db.Decimal(18, 2)
+  bonus                Decimal   @default(0) @db.Decimal(18, 2)
+  lta                  Decimal   @default(0) @db.Decimal(18, 2)
+  medicalClaim         Decimal   @default(0) @db.Decimal(18, 2)
+  gratuity             Decimal   @default(0) @db.Decimal(18, 2)
+  employerPf           Decimal   @default(0) @db.Decimal(18, 2)
+  employerEsi          Decimal   @default(0) @db.Decimal(18, 2)
+  otherBenefits        Decimal   @default(0) @db.Decimal(18, 2)
+  nonMonetaryBenefits  Decimal   @default(0) @db.Decimal(18, 2)
+  monthlyCtc           Decimal   @db.Decimal(18, 2)
+  annualCtc            Decimal   @db.Decimal(18, 2)
+  effectiveFrom        DateTime
+  effectiveTo          DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("EmployeeCtc")
 }

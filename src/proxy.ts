@@ -19,20 +19,29 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check if this is a protected route
-  const isApiRoute = pathname.startsWith('/api/protected/') || pathname.startsWith('/api/masters/');
-  const isUiRoute = pathname.startsWith('/masters/');
+  const isApiRoute =
+    pathname.startsWith('/api/protected/') ||
+    pathname.startsWith('/api/masters/') ||
+    pathname.startsWith('/api/employees') ||
+    pathname.startsWith('/api/uploads');
+  const isUiRoute = pathname.startsWith('/masters/') || pathname.startsWith('/employees');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();
   }
 
-  // Extract token — API routes use Authorization header, UI routes use cookie
+  // Extract token — API routes prefer the Authorization header (for
+  // non-browser/API clients) but fall back to the session cookie, since
+  // browser fetch() calls from our own pages send it automatically and
+  // don't set an Authorization header. UI routes always use the cookie.
   let token: string | null = null;
 
   if (isApiRoute) {
     const authHeader = request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.substring(7);
+    } else {
+      token = request.cookies.get('hrms-token')?.value ?? null;
     }
   } else if (isUiRoute) {
     token = request.cookies.get('hrms-token')?.value ?? null;
@@ -77,5 +86,11 @@ export const config = {
     '/api/protected/:path*',
     '/api/masters/:path*',
     '/masters/:path*',
+    '/api/employees/:path*',
+    '/api/employees',
+    '/api/uploads/:path*',
+    '/api/uploads',
+    '/employees/:path*',
+    '/employees',
   ],
 };

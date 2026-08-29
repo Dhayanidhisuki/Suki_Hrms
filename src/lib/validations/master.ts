@@ -18,7 +18,6 @@ export const departmentSchema = simpleMasterSchema;
 export const designationSchema = simpleMasterSchema;
 export const employeeTypeSchema = simpleMasterSchema;
 export const categorySchema = simpleMasterSchema;
-export const unitSchema = simpleMasterSchema;
 export const gradeSchema = simpleMasterSchema;
 export const levelSchema = simpleMasterSchema;
 export const leaveMasterSchema = simpleMasterSchema;
@@ -32,6 +31,15 @@ export const subDepartmentSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional().nullable(),
   departmentId: z.number().int().positive(),
+  isActive: z.boolean().default(true),
+});
+
+// Unit doubles as Branch/Site/Plant/Work Location, scoped to a Company.
+export const unitSchema = z.object({
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional().nullable(),
+  companyId: z.number().int().positive(),
   isActive: z.boolean().default(true),
 });
 

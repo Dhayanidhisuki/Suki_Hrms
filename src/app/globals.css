@@ -2,23 +2,38 @@
 
 :root {
   /* accent tokens */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #eef2ff;
+  --accent: #22b573;
+  --accent-hover: #199a5f;
+  --accent-soft: #e6f7ef;
+
+  /* status tokens */
+  --success: #22b573;
+  --success-soft: #e6f7ef;
+  --warning: #f0b429;
+  --warning-soft: #fdf3dc;
+  --danger: #ef5a3c;
+  --danger-soft: #fdeae6;
+  --info: #3b82f6;
+  --info-soft: #e8f0fe;
 
   /* surface tokens */
-  --background: #f8fafc;
+  --background: #f4f6f8;
   --surface: #ffffff;
-  --surface-hover: #f1f5f9;
-  --border: #e2e8f0;
-  --foreground: #0f172a;
-  --foreground-muted: #64748b;
+  --surface-hover: #f5f7f9;
+  --surface-muted: #f1f3f6;
+  --border: #e9edf1;
+  --foreground: #16202c;
+  --foreground-muted: #7c8898;
 
   /* sidebar tokens */
-  --sidebar-bg: #0f172a;
-  --sidebar-fg: #cbd5e1;
+  --sidebar-bg: #ffffff;
+  --sidebar-fg: #5b6675;
   --sidebar-fg-active: #ffffff;
+  --sidebar-icon-bg: #f2f5f8;
   --sidebar-accent: var(--accent);
+
+  /* chart tokens */
+  --chart-track: #eceff3;
 
   /* spinner */
   --spinner-size: 40px;
@@ -26,20 +41,33 @@
 }
 
 [data-theme="dark"] {
-  --accent: #818cf8;
-  --accent-hover: #6366f1;
-  --accent-soft: #1e1b4b;
+  --accent: #2ecc85;
+  --accent-hover: #22b573;
+  --accent-soft: #10291f;
 
-  --background: #0a0a0a;
-  --surface: #1e293b;
-  --surface-hover: #334155;
-  --border: #334155;
-  --foreground: #f1f5f9;
-  --foreground-muted: #94a3b8;
+  --success: #2ecc85;
+  --success-soft: #10291f;
+  --warning: #f5c451;
+  --warning-soft: #2c2413;
+  --danger: #f4735a;
+  --danger-soft: #2e1a15;
+  --info: #60a5fa;
+  --info-soft: #16223a;
 
-  --sidebar-bg: #020617;
-  --sidebar-fg: #94a3b8;
-  --sidebar-fg-active: #f8fafc;
+  --background: #0b0f14;
+  --surface: #151b23;
+  --surface-hover: #1c242e;
+  --surface-muted: #1c242e;
+  --border: #232d38;
+  --foreground: #eef2f6;
+  --foreground-muted: #93a0b0;
+
+  --sidebar-bg: #151b23;
+  --sidebar-fg: #93a0b0;
+  --sidebar-fg-active: #ffffff;
+  --sidebar-icon-bg: #1c242e;
+
+  --chart-track: #232d38;
 }
 
 @theme inline {
@@ -47,6 +75,7 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-hover: var(--surface-hover);
+  --color-surface-muted: var(--surface-muted);
   --color-border: var(--border);
   --color-foreground-muted: var(--foreground-muted);
   --color-accent: var(--accent);
@@ -63,6 +92,28 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* card shell used across the dashboard */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+/* thin scrollbars inside panels */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
 }
 
 /* branded spinner */
