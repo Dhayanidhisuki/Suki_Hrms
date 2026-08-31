@@ -1,7 +1,22 @@
-# Database table inventory — Tools Management inside the existing ERP database
+# Database table inventory — standalone Tools Management database
 
-The Tools app runs **inside the existing SUKI ERP SQL Server database**, not a separate one.
-This document separates what the app **created** from what it **only reads/writes** on the ERP side.
+As of 27 August 2026, the Tools app runs from the separate SQL Server database
+`Suki_Manpro_Tools`. The database retains only application-mapped tables, runtime raw-SQL lookup
+tables and Prisma migration history. It no longer contains unrelated Manpro ERP/HRMS tables.
+
+The standalone database contains exactly **64 user tables**:
+
+- 58 tables mapped in `prisma/schema.prisma`;
+- 5 additional runtime dependencies: `COMPANY_DETAILS`, `DEPT`, `FINANCE_LEDGER_MASTER`,
+  `LOCATION_MASTER` and `UOM_MASTER`;
+- Prisma migration history: `_prisma_migrations`.
+
+A checksum-verified recovery backup was created before the unrelated-table cleanup. The guarded,
+transactional cleanup is recorded in
+`prisma/remove-unrelated-tables-from-standalone.sql`.
+
+This document separates what the app **created** from the legacy ERP tables copied into and now
+owned by the standalone Tools database.
 
 Derived from `prisma/schema.prisma` (58 mapped tables) cross-referenced with every
 `CREATE TABLE` / `ALTER TABLE` statement in `prisma/migrations/`.
@@ -34,10 +49,11 @@ All use a `TOOLS_APP_*`, `TOOLS_PO_FINANCE*`, `TOOLS_UNIT_*` or `TOOLS_ROLE_*` p
 | 16 | `TOOLS_APP_CALIBRATION_NOTIFICATION` | `CalibrationNotification` | `20260811190000_calibration_notifications` |
 | 17 | `TOOLS_APP_INSTRUMENT_MASTER_DATA` | `InstrumentImportedMasterData` | `20260814123000_add_instrument_imported_master_data` |
 
-## 2. New tables with NO migration (5) — see warning below
+## 2. Module RBAC baseline tables (5)
 
-These exist in `schema.prisma` and are live in the database, but **no migration file creates
-them**. They are the "System A" module-matrix RBAC tables.
+These are the "System A" module-matrix RBAC tables. Migration
+`20260817140000_create_module_rbac_baseline` now creates them before the later notification
+permission seed migrations reference them.
 
 | Table | Prisma model | Purpose |
 | --- | --- | --- |
@@ -47,13 +63,8 @@ them**. They are the "System A" module-matrix RBAC tables.
 | `TOOLS_APP_USER_ROLE` | `UserRole` | user → role link |
 | `TOOLS_APP_USER_UNIT_SCOPE` | `UserUnitScope` | per-unit data scoping |
 
-> **Deployment risk.** They were created out-of-band (`prisma db push` or manual SQL), so a
-> clean `prisma migrate deploy` against a fresh database will **fail**: migration
-> `20260817150000_user_notification_email_permission` does
-> `INSERT INTO [dbo].[TOOLS_APP_MODULE]`, and
-> `20260817170000_notification_role_defaults` reads `TOOLS_APP_ROLE` and inserts into
-> `TOOLS_APP_ROLE_PERMISSION_MATRIX` — all against tables no migration ever creates.
-> Fix by adding a baseline migration that creates these five, ordered before `20260817150000`.
+The guarded baseline is additive and safe to re-run against a database where these tables were
+previously created out-of-band.
 
 ## 3. Pre-existing ERP tables (36) — read/written, never created here
 

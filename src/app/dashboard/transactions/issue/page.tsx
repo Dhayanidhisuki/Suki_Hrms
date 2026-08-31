@@ -188,9 +188,12 @@ export default function IssueToolPage() {
   const pathname = usePathname();
   const isMovement = pathname.startsWith("/dashboard/movement/");
   const requestedMovementParam = searchParams.get("movement");
-  const movementDashboardPath = requestedMovementParam === "internal" || requestedMovementParam === "external"
-    ? `/dashboard/movement/history?movement=${requestedMovementParam}`
-    : "/dashboard/movement/history";
+  const fromToolsMaster = searchParams.get("fromMaster") === "1";
+  const movementDashboardPath = fromToolsMaster
+    ? "/dashboard/masters/tools"
+    : requestedMovementParam === "internal" || requestedMovementParam === "external"
+      ? `/dashboard/movement/history?movement=${requestedMovementParam}`
+      : "/dashboard/movement/history";
   const issueBasePath = isMovement ? movementDashboardPath : "/dashboard/transactions/issue";
   // List state
   const [issues, setIssues] = useState<ToolsIssueHeader[]>([]);

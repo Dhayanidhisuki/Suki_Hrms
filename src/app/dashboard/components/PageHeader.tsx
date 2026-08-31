@@ -2,7 +2,6 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 
 export default function PageHeader() {
   return (
@@ -18,11 +17,13 @@ export default function PageHeader() {
       </div>
 
       {/* ── Primary CTA ── */}
-      <Link href="/dashboard/masters/tools?action=add">
-        <Button id="page-add-tool-btn" variant="primary" className="group">
+      <Link
+        id="page-add-tool-btn"
+        href="/dashboard/masters/tools?action=add"
+        className="group inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--primary-hover)] hover:shadow-md"
+      >
           <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
           Add Tool
-        </Button>
       </Link>
     </div>
   );

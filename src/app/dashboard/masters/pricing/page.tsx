@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Columns3, Edit2, X } from "lucide-react";
+import { ChevronDown, Columns3, Edit2, FileSpreadsheet, Upload, X } from "lucide-react";
 import { SimpleMasterShell } from "@/components/SimpleMasterShell";
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { TablePager } from "@/components/TablePager";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/apiClient";
 import { toastError, toastSuccess } from "@/lib/appToast";
 import { useSession } from "@/lib/SessionContext";
+import { downloadExcel } from "@/lib/downloadExcel";
 
 type Row = Record<string, unknown>;
 
@@ -28,7 +29,8 @@ type ColumnDef = {
 const ALL_COLUMNS: ColumnDef[] = [
   { key: "toolOrGaugeNo", label: "Tool No", defaultVisible: true, emphasis: "toolNo", minWidth: "9rem" },
   { key: "supCode", label: "Supplier", defaultVisible: true, emphasis: "mono", minWidth: "7.5rem" },
-  { key: "rate", label: "Live Rate", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8.5rem" },
+  { key: "standardPrice", label: "Standard Price", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8.5rem" },
+  { key: "rate", label: "Purchase / Revision Rate", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "10rem" },
   { key: "proposedRate", label: "Proposed", defaultVisible: true, align: "right", emphasis: "rate", minWidth: "8rem" },
   { key: "revNo", label: "Rev", defaultVisible: true, emphasis: "mono", minWidth: "3.5rem" },
   { key: "revDate", label: "Rev Date", defaultVisible: true, emphasis: "mono", minWidth: "6.5rem" },
@@ -139,6 +141,8 @@ export default function Page() {
   const [proposedRateInput, setProposedRateInput] = useState("");
   const [remarksInput, setRemarksInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const pricingFileRef = useRef<HTMLInputElement | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -158,7 +162,58 @@ export default function Page() {
     setLoading(false);
   }, []);
 
+  const downloadPricingTemplate = async () => {
+    await downloadExcel<Record<string, never>>({
+      filename: "pricing_update_template.xlsx",
+      sheetName: "Price Updates",
+      rows: [],
+      columns: [
+        { key: "INSTRUMENT_NO", label: "Instrument No" },
+        { key: "SUPPLIER_CODE", label: "Supplier Code" },
+        { key: "PROPOSED_STANDARD_PRICE", label: "Proposed Standard Price" },
+        { key: "EFFECTIVE_DATE", label: "Effective Date (YYYY-MM-DD)" },
+        { key: "REASON", label: "Reason" },
+      ],
+    });
+    toastSuccess("Pricing update template downloaded.");
+  };
+
+  const importPricingFile = async (file: File | null) => {
+    if (!file) return;
+    setBulkBusy(true);
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("Workbook has no worksheet.");
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+      const rows = raw.map((row) => ({
+        toolOrGaugeNo: String(row["Instrument No"] ?? "").trim(),
+        supCode: String(row["Supplier Code"] ?? "").trim() || null,
+        proposedRate: Number(row["Proposed Standard Price"]),
+        effectiveDate: String(row["Effective Date (YYYY-MM-DD)"] ?? "").trim() || null,
+        remarks: String(row["Reason"] ?? "").trim() || null,
+      }));
+      if (!rows.length) throw new Error("The pricing workbook has no data rows.");
+      const res = await apiPost<{ submitted: number; rejected: Array<{ row: number; reason: string }> }>(
+        "/api/pricing/import",
+        { rows }
+      );
+      if (res.error) throw new Error(res.error.message);
+      const submitted = res.data?.submitted ?? 0;
+      const rejected = res.data?.rejected.length ?? 0;
+      toastSuccess(`Submitted ${submitted} price update(s) for approval${rejected ? `; ${rejected} row(s) rejected` : ""}.`);
+      await loadData();
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Pricing import failed.");
+    } finally {
+      setBulkBusy(false);
+      if (pricingFileRef.current) pricingFileRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 
@@ -295,6 +350,7 @@ export default function Page() {
   const visibleColumns = ALL_COLUMNS.filter((c) => visibleKeys.has(c.key));
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
   }, [search, groupFilter, supplierFilter, collapsed]);
 
@@ -465,6 +521,17 @@ export default function Page() {
                 </div>
               )}
             </div>
+            {!readOnly && canPropose ? (
+              <>
+                <Button type="button" size="sm" variant="outline" className="h-7 !px-2 !text-[11px]" onClick={() => void downloadPricingTemplate()} disabled={bulkBusy}>
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Template
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-7 !px-2 !text-[11px]" onClick={() => pricingFileRef.current?.click()} disabled={bulkBusy}>
+                  <Upload className="w-3.5 h-3.5" /> {bulkBusy ? "Importing…" : "Import Prices"}
+                </Button>
+                <input ref={pricingFileRef} type="file" accept=".xlsx" className="hidden" onChange={(event) => void importPricingFile(event.target.files?.[0] ?? null)} />
+              </>
+            ) : null}
             {hasActiveFilters && (
               <button
                 type="button"
@@ -600,7 +667,7 @@ export default function Page() {
                         {visibleColumns.map((col) => {
                           const raw = row[col.key];
                           const isToolNo = col.key === "toolOrGaugeNo";
-                          const isRate = col.key === "rate" || col.key === "proposedRate";
+                          const isRate = col.key === "rate" || col.key === "standardPrice" || col.key === "proposedRate";
                           const isDate = col.key === "revDate" || col.key === "approvalDate" || col.key === "creatDt" || col.key === "lstUpdtTs";
                           const isBadge = col.emphasis === "badge";
                           const pending = isPendingStatus(row.approvalStatus);
@@ -653,7 +720,7 @@ export default function Page() {
                                 <StatusBadge status={raw} />
                               ) : empty ? (
                                 <span className="text-[var(--text-subtle)] text-xs">—</span>
-                              ) : col.key === "rate" ? (
+                              ) : col.key === "rate" || col.key === "standardPrice" ? (
                                 <span className="font-mono text-xs tabular-nums text-[var(--text-primary)] font-medium">
                                   {display}
                                 </span>
@@ -724,7 +791,7 @@ export default function Page() {
             </h2>
             <p className="text-xs text-[var(--text-muted)] mb-4">
               {String(editRow.toolOrGaugeNo ?? "—")} · {String(editRow.supCode ?? "—")}
-              {" · "}Live rate {formatRate(editRow.rate)} (unchanged until approved)
+              {" · "}Standard price {formatRate(editRow.standardPrice)} (unchanged until approved)
             </p>
             <div className="space-y-3">
               <div>

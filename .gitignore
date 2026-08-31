@@ -50,3 +50,4 @@ dev.log
 response.html
 scratch/
 *.xlsx
+_to_delete/stale-git-locks/

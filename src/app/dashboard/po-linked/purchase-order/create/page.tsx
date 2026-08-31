@@ -535,10 +535,13 @@ export default function CreatePurchaseOrderPage() {
                   </span>
                 </p>
                 <div className="flex gap-2">
-                  <Link href="/dashboard/po-linked/purchase-order">
-                    <Button type="button" variant="outline" disabled={saving}>
-                      Cancel
-                    </Button>
+                  <Link
+                    href={saving ? "#" : "/dashboard/po-linked/purchase-order"}
+                    aria-disabled={saving}
+                    onClick={(event) => { if (saving) event.preventDefault(); }}
+                    className={`inline-flex items-center justify-center rounded-xl border border-[var(--border-main)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)] ${saving ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    Cancel
                   </Link>
                   <Button type="submit" variant="primary" disabled={saving}>
                     {saving ? "Creating…" : "Create PO"}

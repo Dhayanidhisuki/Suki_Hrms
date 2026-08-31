@@ -29,6 +29,7 @@ function mapPriceRow(r: {
     name: string | null;
     grouping: string | null;
     type: string | null;
+    price: { toString(): string } | null;
   } | null;
 }) {
   const approvalStatus = (r.approvalStatus ?? "").trim() || "APPROVED";
@@ -39,6 +40,7 @@ function mapPriceRow(r: {
     toolRefNo: r.toolRefNo,
     grouping: r.tool?.grouping ?? null,
     type: r.tool?.type ?? null,
+    standardPrice: r.tool?.price != null ? Number(r.tool.price) : null,
     vendorType: "Supplier",
     supCode: r.supCode,
     vendorCode: r.supCode,
@@ -91,6 +93,7 @@ export async function GET() {
               name: true,
               grouping: true,
               type: true,
+              price: true,
             },
           },
         },
@@ -162,6 +165,7 @@ export async function POST(req: NextRequest) {
               name: true,
               grouping: true,
               type: true,
+              price: true,
             },
           },
         },
@@ -170,18 +174,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Price row not found" }, { status: 404 });
       }
 
-      const updated = await prisma.toolsPriceMaster.update({
-        where: { rowId },
+      // A proposal is a new revision. Never mutate the live source row because
+      // that row is part of the permanent purchase/price audit trail.
+      const created = await prisma.toolsPriceMaster.create({
         data: {
+          toolRefNo: existing.toolRefNo,
+          supCode: supCode ?? existing.supCode,
+          revNo: existing.revNo,
+          revDate: now,
+          revStatus: "PROPOSED",
+          rate: null,
           proposedRate,
           approvalStatus: "PENDING",
           submittedBy,
           submittedAt: now,
-          approvedBy: null,
-          approvedAt: null,
-          rejectedReason: null,
           remarks: remarks ?? existing.remarks,
-          // live rate untouched
+          creatUserIdCd: authCheck.session.userId.slice(0, 10),
+          creatDt: now,
         },
         include: {
           tool: {
@@ -190,12 +199,13 @@ export async function POST(req: NextRequest) {
               name: true,
               grouping: true,
               type: true,
+              price: true,
             },
           },
         },
       });
 
-      return NextResponse.json({ ok: true, item: mapPriceRow(updated) });
+      return NextResponse.json({ ok: true, item: mapPriceRow(created) }, { status: 201 });
     }
 
     // New pending row — RATE stays null until approved
@@ -215,6 +225,8 @@ export async function POST(req: NextRequest) {
         approvalStatus: "PENDING",
         submittedBy,
         submittedAt: now,
+        revDate: now,
+        revStatus: "PROPOSED",
         remarks: remarks ?? null,
         creatUserIdCd: authCheck.session.userId.slice(0, 10),
         creatDt: now,
@@ -225,7 +237,8 @@ export async function POST(req: NextRequest) {
             toolOrGaugeNo: true,
             name: true,
             grouping: true,
-            type: true,
+              type: true,
+              price: true,
           },
         },
       },

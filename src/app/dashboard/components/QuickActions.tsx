@@ -15,7 +15,6 @@ interface ActionButtonProps {
   label: string;
   sublabel: string;
   variant: "primary" | "secondary" | "ghost";
-  onClick?: () => void;
 }
 
 function ActionButton({
@@ -24,7 +23,6 @@ function ActionButton({
   label,
   sublabel,
   variant,
-  onClick,
 }: ActionButtonProps) {
   const styles = {
     primary:
@@ -36,9 +34,8 @@ function ActionButton({
   };
 
   return (
-    <button
+    <div
       id={id}
-      onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 group cursor-pointer ${styles[variant]}`}
     >
       {/* Icon container */}
@@ -88,7 +85,7 @@ function ActionButton({
           variant === "primary" ? "text-white/80" : "text-[var(--text-muted)]"
         }`}
       />
-    </button>
+    </div>
   );
 }
 
@@ -107,10 +104,10 @@ export default function QuickActions() {
 
       {/* ── Action buttons ── */}
       <div className="flex flex-col gap-3">
-        <Link href="/dashboard/transactions/issue" className="block w-full">
+        <Link href="/dashboard/transactions/issue?action=add" className="block w-full">
           <ActionButton id="qa-issue-tool-btn" icon={<ArrowUpRight className="w-4.5 h-4.5" />} label="Issue Tool" sublabel="Record a tool issue to employee" variant="primary" />
         </Link>
-        <Link href="/dashboard/transactions/receive" className="block w-full">
+        <Link href="/dashboard/transactions/receive?action=add" className="block w-full">
           <ActionButton id="qa-receive-tool-btn" icon={<ArrowDownLeft className="w-4.5 h-4.5" />} label="Receive Tool" sublabel="Record tool return from employee" variant="secondary" />
         </Link>
         <Link href="/dashboard/calibration/due-list" className="block w-full">

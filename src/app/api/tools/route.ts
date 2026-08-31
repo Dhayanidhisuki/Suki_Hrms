@@ -146,12 +146,13 @@ export async function GET(req: NextRequest) {
   }
   const effectiveUnits = requestedUnit ? [requestedUnit] : permittedUnits;
 
-  const catalog = (searchParams.get("catalog") ?? "relevant").toLowerCase();
+  const catalog = (searchParams.get("catalog") ?? "all").toLowerCase();
   /** When "1", only return tools with qtyIn > 0 (Tool Issue picker). */
   const availableOnly = searchParams.get("availableOnly") === "1";
   /** When "1", only tools with HISTORY_CARD_REQ = Yes (History Card module). */
   const historyCardOnly = searchParams.get("historyCardOnly") === "1";
   const includeCounts = searchParams.get("includeCounts") === "1";
+  const countsOnly = searchParams.get("countsOnly") === "1";
   const sort = (searchParams.get("sort") ?? "newest").toLowerCase();
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const pageSize = Math.min(100, Number(searchParams.get("pageSize") ?? 20));
@@ -230,7 +231,11 @@ export async function GET(req: NextRequest) {
       onlyActive
         ? { activeItem: { in: ["Yes", "Y"] } }
         : {},
-      critical === "Yes" || critical === "No" ? { criticalItem: critical } : {},
+      critical === "Yes"
+        ? { criticalItem: { in: ["Yes", "Y", "YES"] } }
+        : critical === "No"
+          ? { criticalItem: { in: ["No", "N", "NO"] } }
+          : {},
       department ? { deptName: { contains: department } } : {},
       effectiveUnits?.length
         ? { locationName: { in: effectiveUnits.flatMap(unitStorageVariants) } }
@@ -273,37 +278,55 @@ export async function GET(req: NextRequest) {
           ? { grouping: "asc" as const }
           : { creatDt: "desc" as const };
 
+  const loadInstrumentCounts = async () => {
+    const [allCount, ...perStatus] = await Promise.all([
+      prisma.gaugeAndTools.count({ where: baseWhere }),
+      ...INSTRUMENT_STATUS_FILTERS.map((badge) => {
+        const sw = instrumentStatusWhere(badge);
+        return prisma.gaugeAndTools.count({ where: { AND: [...baseWhere.AND, sw ?? {}] } });
+      }),
+    ]);
+    const nextStatusCounts: Record<string, number> = { All: allCount };
+    INSTRUMENT_STATUS_FILTERS.forEach((badge, index) => {
+      nextStatusCounts[badge] = perStatus[index] ?? 0;
+    });
+
+    const validityFilters = {
+      Valid: { importedMasterData: { is: { nextCalibrationDue: { gt: dueSoonEnd } } } },
+      "Due Soon": { importedMasterData: { is: { nextCalibrationDue: { gte: today, lte: dueSoonEnd } } } },
+      Overdue: { importedMasterData: { is: { nextCalibrationDue: { lt: today } } } },
+      "No Due Date": {
+        OR: [
+          { importedMasterData: { is: null } },
+          { importedMasterData: { is: { nextCalibrationDue: null } } },
+        ],
+      },
+    };
+    const validityValues = await Promise.all(
+      Object.values(validityFilters).map((filter) =>
+        prisma.gaugeAndTools.count({ where: { AND: [...baseWhere.AND, filter] } })
+      )
+    );
+    const nextValidityCounts: Record<string, number> = { All: allCount };
+    Object.keys(validityFilters).forEach((label, index) => {
+      nextValidityCounts[label] = validityValues[index] ?? 0;
+    });
+    return { statusCounts: nextStatusCounts, validityCounts: nextValidityCounts };
+  };
+
   try {
+    if (countsOnly) {
+      return NextResponse.json(await loadInstrumentCounts());
+    }
     const [rows, total] = await Promise.all([
       prisma.gaugeAndTools.findMany({
         where,
         skip,
         take: pageSize,
         orderBy,
-        include: {
-          machineMapping: { select: { macCode: true } },
-        },
       }),
       prisma.gaugeAndTools.count({ where }),
     ]);
-
-    // Fetch serial numbers separately to avoid Prisma Engine join panic when mixing refNo and toolOrGaugeNo relations
-    const toolNos = rows.map((r) => r.toolOrGaugeNo).filter((n): n is string => Boolean(n));
-    const serials =
-      toolNos.length > 0
-        ? await prisma.gaugeSerialNo.findMany({
-            where: { toolOrGaugeNo: { in: toolNos } },
-            select: { refNo: true, toolOrGaugeNo: true, status: true, serialNo: true, make: true },
-          })
-        : [];
-
-    const serialsByToolNo = new Map<string, typeof serials>();
-    for (const s of serials) {
-      if (!s.toolOrGaugeNo) continue;
-      const list = serialsByToolNo.get(s.toolOrGaugeNo) ?? [];
-      list.push(s);
-      serialsByToolNo.set(s.toolOrGaugeNo, list);
-    }
 
     type ImportedMasterRow = {
       refNo: number;
@@ -327,43 +350,17 @@ export async function GET(req: NextRequest) {
       : [];
     const importedByRefNo = new Map(importedRows.map((row) => [row.refNo, row]));
 
-    const items = rows.map(({ machineMapping, ...tool }) => {
-      const toolSerials = serialsByToolNo.get(tool.toolOrGaugeNo ?? "") ?? [];
-      return {
-        ...tool,
-        importedMasterData: importedByRefNo.get(tool.refNo) ?? null,
-        serialNumbers: toolSerials,
-        computedStatus: instrumentDisplayStatus(tool.status, tool.locationName),
-        machines: machineMapping
-          .map((m) => m.macCode)
-          .filter((code): code is string => Boolean(code)),
-      };
-    });
-
-  // Enrich each item with nextCalibDate from latest GaugeControlCardTrans
-  const enrichToolNos = items.map((t) => t.toolOrGaugeNo).filter(Boolean) as string[];
-  const nextCalibMap: Map<string, Date | null> = new Map();
-  if (enrichToolNos.length > 0) {
-    try {
-      // Get latest calibration card history per tool
-      const cards = await prisma.gaugeControlCard.findMany({
-        where: { toolOrGaugeNo: { in: enrichToolNos.map((n) => n.slice(0, 15)) } },
-        select: {
-          toolOrGaugeNo: true,
-          history: { orderBy: { cDate: "desc" as const }, take: 1, select: { nextCDate: true } },
-        },
-      });
-      for (const card of cards) {
-        const nextCDate = card.history[0]?.nextCDate ?? null;
-        nextCalibMap.set(card.toolOrGaugeNo, nextCDate ? new Date(nextCDate) : null);
-      }
-    } catch {
-      // non-critical enrichment
-    }
-  }
+    // The registry needs master/calibration summary only. Serial numbers,
+    // machine mappings and full control-card history load from detail endpoints
+    // when the user opens a record.
+    const items = rows.map((tool) => ({
+      ...tool,
+      importedMasterData: importedByRefNo.get(tool.refNo) ?? null,
+      computedStatus: instrumentDisplayStatus(tool.status, tool.locationName),
+    }));
 
   const enriched = items.map((t) => {
-    let nextCalibDate = nextCalibMap.get(t.toolOrGaugeNo?.slice(0, 15) ?? "") ?? null;
+    let nextCalibDate = t.importedMasterData?.nextCalibrationDue ?? null;
 
 
 
@@ -395,42 +392,9 @@ export async function GET(req: NextRequest) {
   let statusCounts: Record<string, number> | undefined;
   let validityCounts: Record<string, number> | undefined;
   if (includeCounts) {
-    const [allCount, ...perStatus] = await Promise.all([
-      prisma.gaugeAndTools.count({ where: baseWhere }),
-      ...INSTRUMENT_STATUS_FILTERS.map((badge) => {
-        const sw = instrumentStatusWhere(badge);
-        return prisma.gaugeAndTools.count({
-          where: { AND: [...baseWhere.AND, sw ?? {}] },
-        });
-      }),
-    ]);
-    statusCounts = { All: allCount };
-    INSTRUMENT_STATUS_FILTERS.forEach((badge, i) => {
-      statusCounts![badge] = perStatus[i] ?? 0;
-    });
-
-    const validityFilters = {
-      Valid: { importedMasterData: { is: { nextCalibrationDue: { gt: dueSoonEnd } } } },
-      "Due Soon": {
-        importedMasterData: { is: { nextCalibrationDue: { gte: today, lte: dueSoonEnd } } },
-      },
-      Overdue: { importedMasterData: { is: { nextCalibrationDue: { lt: today } } } },
-      "No Due Date": {
-        OR: [
-          { importedMasterData: { is: null } },
-          { importedMasterData: { is: { nextCalibrationDue: null } } },
-        ],
-      },
-    };
-    const validityValues = await Promise.all(
-      Object.values(validityFilters).map((filter) =>
-        prisma.gaugeAndTools.count({ where: { AND: [...baseWhere.AND, filter] } })
-      )
-    );
-    validityCounts = { All: allCount };
-    Object.keys(validityFilters).forEach((label, index) => {
-      validityCounts![label] = validityValues[index] ?? 0;
-    });
+    const counts = await loadInstrumentCounts();
+    statusCounts = counts.statusCounts;
+    validityCounts = counts.validityCounts;
   }
 
     return NextResponse.json({

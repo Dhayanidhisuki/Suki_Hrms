@@ -48,22 +48,38 @@ export async function PUT(_req: NextRequest, ctx: Ctx) {
   }
 
   const now = new Date();
-  const updated = await prisma.toolsPriceMaster.update({
-    where: { rowId },
-    data: {
-      rate: existing.proposedRate,
-      proposedRate: null,
-      approvalStatus: "APPROVED",
-      approvalDate: now,
-      approvedBy: authCheck.session.userId.slice(0, 50),
-      approvedAt: now,
-      rejectedReason: null,
-    },
-    include: {
-      tool: {
-        select: { toolOrGaugeNo: true, name: true },
+  const updated = await prisma.$transaction(async (tx) => {
+    const approved = await tx.toolsPriceMaster.update({
+      where: { rowId },
+      data: {
+        rate: existing.proposedRate,
+        proposedRate: null,
+        approvalStatus: "APPROVED",
+        approvalDate: now,
+        approvedBy: authCheck.session.userId.slice(0, 50),
+        approvedAt: now,
+        rejectedReason: null,
+        revStatus: "APPROVED",
       },
-    },
+      include: {
+        tool: {
+          select: { toolOrGaugeNo: true, name: true },
+        },
+      },
+    });
+
+    // GAUGEANDTOOLS.PRICE is the separately controlled standard price.
+    // GRN writes purchase-price history only and never changes this field.
+    if (approved.toolRefNo != null) {
+      await tx.gaugeAndTools.update({
+        where: { refNo: approved.toolRefNo },
+        data: {
+          price: approved.rate,
+          lstUpdtUserIdCd: authCheck.session.userId.slice(0, 10),
+        },
+      });
+    }
+    return approved;
   });
 
   return NextResponse.json({

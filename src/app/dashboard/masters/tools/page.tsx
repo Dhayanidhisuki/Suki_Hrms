@@ -705,15 +705,17 @@ export default function ToolsMasterPage() {
   const [validityFilter, setValidityFilter] = useState("All");
   // Client instrument registry shows all records; no Active filter is exposed.
   const onlyActive = false;
-  const [criticalFilter, setCriticalFilter] = useState("All");
   const [unitFilter, setUnitFilter] = useState("All");
   const [deptFilter, setDeptFilter] = useState("All");
-  const catalogFilter = "relevant" as const;
+  const catalogFilter = "all" as const;
   const [sortBy, setSortBy] = useState<"newest" | "toolno" | "name" | "group">("newest");
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [validityCounts, setValidityCounts] = useState<Record<string, number>>({});
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const toolsRequestId = useRef(0);
+  const countsRequestId = useRef(0);
+  const loadToolCountsRef = useRef<() => void>(() => undefined);
   const pageSize = 50;
   const [viewState, setViewState] = useState<"list" | "create" | "edit" | "view">("list");
   const [selectedTool, setSelectedTool] = useState<GaugeAndTool | null>(null);
@@ -958,42 +960,47 @@ export default function ToolsMasterPage() {
   );
 
   const loadTools = useCallback(async () => {
+    const requestId = ++toolsRequestId.current;
     setLoading(true);
-    const params = new URLSearchParams();
-    if (query.trim()) {
-      params.set("search", query.trim());
-      if (searchField !== "all") params.set("searchField", searchField);
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) {
+        params.set("search", query.trim());
+        if (searchField !== "all") params.set("searchField", searchField);
+      }
+      if (groupFilter !== "All") params.set("grouping", groupFilter);
+      if (typeFilter !== "All") params.set("type", typeFilter);
+      if (nameFilter !== "All") params.set("name", nameFilter);
+      if (validityFilter !== "All") params.set("validity", validityFilter);
+      if (onlyActive) params.set("onlyActive", "1");
+      if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (deptFilter !== "All") params.set("department", deptFilter);
+      params.set("catalog", catalogFilter);
+      params.set("sort", sortBy);
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      const res = await apiGet<{
+        items: GaugeAndTool[];
+        total?: number;
+        statusCounts?: Record<string, number>;
+        validityCounts?: Record<string, number>;
+      }>(`/api/tools?${params}`);
+      if (requestId !== toolsRequestId.current) return;
+      if (res.error) {
+        toastError(res.error.message || "Failed to load instrument records.");
+        return;
+      }
+      if (res.data?.items) setTools(res.data.items);
+      else setTools([]);
+      setTotal(res.data?.total ?? 0);
+      // Rows must win the database connection. KPI counts start only after the
+      // registry response has rendered, through the lightweight counts-only API.
+      setTimeout(() => loadToolCountsRef.current(), 0);
+    } finally {
+      if (requestId === toolsRequestId.current) {
+        setLoading(false);
+      }
     }
-    if (groupFilter !== "All") params.set("grouping", groupFilter);
-    if (typeFilter !== "All") params.set("type", typeFilter);
-    if (nameFilter !== "All") params.set("name", nameFilter);
-    if (validityFilter !== "All") params.set("validity", validityFilter);
-    if (onlyActive) params.set("onlyActive", "1");
-    if (criticalFilter === "Yes" || criticalFilter === "No") params.set("critical", criticalFilter);
-    if (unitFilter !== "All") params.set("unit", unitFilter);
-    if (deptFilter !== "All") params.set("department", deptFilter);
-    params.set("catalog", catalogFilter);
-    params.set("sort", sortBy);
-    params.set("includeCounts", "1");
-    params.set("page", String(page));
-    params.set("pageSize", String(pageSize));
-    const res = await apiGet<{
-      items: GaugeAndTool[];
-      total?: number;
-      statusCounts?: Record<string, number>;
-      validityCounts?: Record<string, number>;
-    }>(`/api/tools?${params}`);
-    if (res.error) {
-      toastError(res.error.message || "Failed to load instrument records.");
-      setLoading(false);
-      return;
-    }
-    if (res.data?.items) setTools(res.data.items);
-    else setTools([]);
-    setTotal(res.data?.total ?? 0);
-    if (res.data?.statusCounts) setStatusCounts(res.data.statusCounts);
-    if (res.data?.validityCounts) setValidityCounts(res.data.validityCounts);
-    setLoading(false);
   }, [
     query,
     searchField,
@@ -1002,7 +1009,6 @@ export default function ToolsMasterPage() {
     nameFilter,
     validityFilter,
     onlyActive,
-    criticalFilter,
     unitFilter,
     deptFilter,
     catalogFilter,
@@ -1010,6 +1016,45 @@ export default function ToolsMasterPage() {
     page,
     pageSize,
   ]);
+
+  const loadToolCounts = useCallback(async () => {
+    const requestId = ++countsRequestId.current;
+    const params = new URLSearchParams();
+    if (query.trim()) {
+      params.set("search", query.trim());
+      if (searchField !== "all") params.set("searchField", searchField);
+    }
+    if (groupFilter !== "All") params.set("grouping", groupFilter);
+    if (typeFilter !== "All") params.set("type", typeFilter);
+    if (nameFilter !== "All") params.set("name", nameFilter);
+    if (onlyActive) params.set("onlyActive", "1");
+    if (unitFilter !== "All") params.set("unit", unitFilter);
+    if (deptFilter !== "All") params.set("department", deptFilter);
+    params.set("catalog", catalogFilter);
+    params.set("countsOnly", "1");
+    const res = await apiGet<{
+      statusCounts?: Record<string, number>;
+      validityCounts?: Record<string, number>;
+    }>(`/api/tools?${params}`);
+    if (requestId !== countsRequestId.current) return;
+    if (res.data?.statusCounts) setStatusCounts(res.data.statusCounts);
+    if (res.data?.validityCounts) setValidityCounts(res.data.validityCounts);
+  }, [
+    query,
+    searchField,
+    groupFilter,
+    typeFilter,
+    nameFilter,
+    onlyActive,
+    unitFilter,
+    deptFilter,
+    catalogFilter,
+  ]);
+  useEffect(() => {
+    loadToolCountsRef.current = () => {
+      void loadToolCounts();
+    };
+  }, [loadToolCounts]);
 
   const [toolNames, setToolNames] = useState<
     Array<{ id: number; name: string; itemGroupId: number | null; itemTypeId: number | null; typeName: string; groupName: string }>
@@ -1046,9 +1091,12 @@ export default function ToolsMasterPage() {
   }, [loadTools]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadLookups();
-  }, [loadLookups]);
+    if (loading) return;
+    const timer = window.setTimeout(() => {
+      void loadLookups();
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [loadLookups, loading]);
 
   const selectedGroupId =
     toolsGroups.find((g) => g.name === grouping)?.rowId ??
@@ -2386,9 +2434,9 @@ export default function ToolsMasterPage() {
       if (nameFilter !== "All") params.set("name", nameFilter);
       if (validityFilter !== "All") params.set("validity", validityFilter);
       if (onlyActive) params.set("onlyActive", "1");
-      if (criticalFilter === "Yes" || criticalFilter === "No") params.set("critical", criticalFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       if (deptFilter !== "All") params.set("department", deptFilter);
-      }
+    }
     return params;
   };
 
@@ -2442,6 +2490,41 @@ export default function ToolsMasterPage() {
   const triggerMasterImport = () => {
     setImportTemplate("master");
     importFileRef.current?.click();
+  };
+
+  const downloadImportTemplate = async () => {
+    setExportBusy("template");
+    try {
+      const columns = [
+        ["EQUIP_NO", "Equip No"],
+        ["DESCRIPTION", "Description"],
+        ["SIZE", "Size"],
+        ["LEAST_COUNT", "Least Count"],
+        ["USED_UNIT", "Used Unit"],
+        ["MAKE", "Make"],
+        ["MFG_S.NO", "MFG S.No"],
+        ["USED_LOCATION", "Used Location"],
+        ["CAL._FREQ._(MTHS)", "Cal. Freq. (mths)"],
+        ["CALIBRATION_DATE", "Calibration Date"],
+        ["NEXT_CALIBRATION_DUE", "Next Calibration Due"],
+        ["VALIDITY_(DAYS)", "Validity (days)"],
+        ["STATUS", "Status"],
+        ["OBSERVED_ERROR", "Observed Error"],
+        ["CALIBRATION_AGENCY", "Calibration Agency"],
+        ["REMARKS", "Remarks"],
+      ] as const;
+      await downloadExcel<Record<string, never>>({
+        filename: "instrument_master_import_template.xlsx",
+        sheetName: "Instrument Master",
+        rows: [],
+        columns: columns.map(([key, label]) => ({ key, label })),
+      });
+      toastSuccess("Import template downloaded.");
+    } catch {
+      toastError("Failed to download the import template.");
+    } finally {
+      setExportBusy(null);
+    }
   };
 
   const downloadRejectedImportRows = () => {
@@ -2835,25 +2918,6 @@ export default function ToolsMasterPage() {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <SelectionFilter
-                      id="tools-search-field"
-                      label="Field"
-                      value={searchField}
-                      anyValue="all"
-                      anyLabel="Any"
-                      maxValueWidth="4.5rem"
-                      onChange={(v) => {
-                        setSearchField(v);
-                        setPage(1);
-                      }}
-                      options={[
-                        { value: "all", label: "Any" },
-                        { value: "toolOrGaugeNo", label: "Identification No." },
-                        { value: "description", label: "Description" },
-                        { value: "name", label: "Name" },
-                        { value: "location", label: "Location" },
-                      ]}
-                    />
-                    <SelectionFilter
                       id="tools-type-filter"
                       label="Instrument Type"
                       value={typeFilter}
@@ -2887,23 +2951,6 @@ export default function ToolsMasterPage() {
                       ]}
                     />
                     <SelectionFilter
-                      id="tools-critical-filter"
-                      label="Critical"
-                      value={criticalFilter}
-                      anyValue="All"
-                      anyLabel="Any"
-                      maxValueWidth="3rem"
-                      onChange={(v) => {
-                        setCriticalFilter(v);
-                        setPage(1);
-                      }}
-                      options={[
-                        { value: "All", label: "Any" },
-                        { value: "Yes", label: "Yes" },
-                        { value: "No", label: "No" },
-                      ]}
-                    />
-                    <SelectionFilter
                       id="tools-sort-filter"
                       label="Sort"
                       value={sortBy}
@@ -2921,18 +2968,32 @@ export default function ToolsMasterPage() {
                       ]}
                     />
                     <RoleGate permission="canEditMaster">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 !rounded-md !px-2 !text-[11px]"
-                        disabled={!!importBusy || !!exportBusy}
-                        onClick={triggerMasterImport}
-                        title="Import Master Data (.xlsx)"
-                      >
-                        <Upload className="w-3 h-3" />
-                        Import
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 !rounded-md !px-2 !text-[11px]"
+                          disabled={!!importBusy || !!exportBusy}
+                          onClick={triggerMasterImport}
+                          title="Import Master Data (.xlsx)"
+                        >
+                          <Upload className="w-3 h-3" />
+                          Import
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 !rounded-md !px-2 !text-[11px]"
+                          disabled={!!importBusy || !!exportBusy}
+                          onClick={downloadImportTemplate}
+                          title="Download the Instrument Master import template"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          {exportBusy === "template" ? "Preparing…" : "Template"}
+                        </Button>
+                      </div>
                     </RoleGate>
                     <div className="flex gap-1">
                       <Button type="button" size="sm" variant="ghost" className="h-7 !rounded-md !px-2 !text-[11px]" disabled={!!exportBusy} onClick={() => runExport("xlsx")}>
@@ -3110,7 +3171,7 @@ export default function ToolsMasterPage() {
                             return;
                           }
                           sessionStorage.setItem("bulkIssueLines", JSON.stringify(lines));
-                          router.push("/dashboard/movement/create?bulk=1");
+                          router.push("/dashboard/movement/create?bulk=1&fromMaster=1");
                         }}
                         title="Create movement for selected instruments"
                       >
@@ -3487,7 +3548,7 @@ export default function ToolsMasterPage() {
                           nextCalibDate: selectedTool.importedMasterData?.nextCalibrationDue ?? selectedTool.nextCalibDate ?? null,
                         }];
                         sessionStorage.setItem("bulkIssueLines", JSON.stringify(lines));
-                        router.push("/dashboard/movement/create?bulk=1");
+                        router.push("/dashboard/movement/create?bulk=1&fromMaster=1");
                       }}
                       variant="outline"
                       size="sm"

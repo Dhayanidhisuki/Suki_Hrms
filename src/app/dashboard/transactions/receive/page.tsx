@@ -168,7 +168,13 @@ export default function ReceiveToolPage() {
   const pathname = usePathname();
   const isMovement = pathname.startsWith("/dashboard/movement/");
   const requestedMovement = searchParams.get("movement");
-  const receiveBasePath = isMovement ? "/dashboard/movement/receive" : "/dashboard/transactions/receive";
+  const movementQuery = requestedMovement === "internal" || requestedMovement === "external"
+    ? `?movement=${requestedMovement}`
+    : "";
+  const receiveBasePath = isMovement
+    ? `/dashboard/movement/receive${movementQuery}`
+    : "/dashboard/transactions/receive";
+  const receiveAddPath = `${receiveBasePath}${receiveBasePath.includes("?") ? "&" : "?"}action=add`;
   const [mode, setMode] = useState<"list" | "receive">("list");
 
   // List (GRN history)
@@ -214,6 +220,7 @@ export default function ReceiveToolPage() {
   const [suppliers, setSuppliers] = useState<Array<{ supCode: string; supName: string }>>([]);
   const [partyFilterCode, setPartyFilterCode] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const receiveDetailsRef = useRef<HTMLDivElement>(null);
 
   const downloadReceiveDc = async (recNo: number) => {
     try {
@@ -341,8 +348,8 @@ export default function ReceiveToolPage() {
     setPickerSubQuery("");
     setPartyQuery("");
     setPickerSearch("");
-    router.replace(`${receiveBasePath}?action=add`, { scroll: false });
-  }, [receiveBasePath, router]);
+    router.replace(receiveAddPath, { scroll: false });
+  }, [receiveAddPath, router]);
 
   const closeReceiveForm = useCallback(() => {
     setMode("list");
@@ -404,13 +411,14 @@ export default function ReceiveToolPage() {
     return items;
   })();
 
-  const toggleSelect = (key: string) => {
+  const toggleSelect = (key: string, dcNo: string) => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    setSelectedOpenDcNo((current) => current || dcNo);
   };
 
   const addToReceiveList = () => {
@@ -449,6 +457,11 @@ export default function ReceiveToolPage() {
     setContName((prev) => prev || openIssues.find((i) => i.dcNo === dc)?.receiveName || "");
     setStaged((prev) => [...prev, ...toAdd]);
     setSelectedKeys(new Set());
+    setErrors((previous) => ({ ...previous, dc: "", lines: "" }));
+    toastSuccess(`${toAdd.length} tool line${toAdd.length === 1 ? "" : "s"} added to the receive list.`);
+    requestAnimationFrame(() => {
+      receiveDetailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const patchStaged = (idx: number, patch: Partial<StagedReceiveLine>) => {
@@ -868,8 +881,9 @@ export default function ReceiveToolPage() {
                     form="receive-create-form"
                     className="form-btn-save"
                     disabled={!staged.length}
+                    title={staged.length ? `Save ${staged.length} receive line${staged.length === 1 ? "" : "s"}` : "Select and add at least one pending movement first"}
                   >
-                    <Save className="w-4 h-4" /> Save Now
+                    <Save className="w-4 h-4" /> Save Now{staged.length ? ` (${staged.length})` : ""}
                   </button>
                 </>
               }
@@ -999,8 +1013,14 @@ export default function ReceiveToolPage() {
                     <Button type="button" variant="outline" onClick={() => void loadOpenIssues()}>
                       Search
                     </Button>
-                    <Button type="button" variant="primary" onClick={addToReceiveList}>
-                      Add To Receive List
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={addToReceiveList}
+                      disabled={selectedKeys.size === 0}
+                      title={selectedKeys.size ? "Add selected tool lines" : "Select one or more rows below first"}
+                    >
+                      {selectedKeys.size ? `Add ${selectedKeys.size} To Receive List` : "Select Rows To Add"}
                     </Button>
                   </div>
 
@@ -1025,12 +1045,27 @@ export default function ReceiveToolPage() {
                                 ? suppliers.find((s) => s.supCode === issue.supCode)?.supName
                                 : null;
                             return (
-                              <tr key={key} className="hover:bg-[var(--bg-hover)]">
+                              <tr
+                                key={key}
+                                role="button"
+                                tabIndex={0}
+                                aria-pressed={selectedKeys.has(key)}
+                                onClick={() => toggleSelect(key, issue.dcNo)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    toggleSelect(key, issue.dcNo);
+                                  }
+                                }}
+                                className={`cursor-pointer transition-colors ${selectedKeys.has(key) ? "bg-[var(--primary-light)]/60" : "hover:bg-[var(--bg-hover)]"}`}
+                              >
                                 <td className="py-2 px-2">
                                   <input
                                     type="checkbox"
                                     checked={selectedKeys.has(key)}
-                                    onChange={() => toggleSelect(key)}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={() => toggleSelect(key, issue.dcNo)}
+                                    aria-label={`Select ${resolveToolNo(line)} from ${issue.dcNo}`}
                                   />
                                 </td>
                                 <td className="py-2 px-2 font-mono text-xs">{issue.dcNo}</td>
@@ -1059,7 +1094,8 @@ export default function ReceiveToolPage() {
                   </div>
                 </FormModalSection>
 
-                <FormModalSection title="Receive details">
+                <div ref={receiveDetailsRef}>
+                <FormModalSection title={`Receive details${staged.length ? ` · ${staged.length} selected` : ""}`}>
                   <div className="form-grid">
                     <div>
                       <label className="form-label">Our DC No</label>
@@ -1227,6 +1263,7 @@ export default function ReceiveToolPage() {
                     </table>
                   </div>
                 </FormModalSection>
+                </div>
               </form>
             </OverlayModal>
           )}

@@ -1,5 +1,4 @@
-/** Client-side Excel download helper (uses `xlsx`). */
-import * as XLSX from "xlsx";
+/** Client-side Excel download helper. `xlsx` is loaded only when requested. */
 
 export type ExcelColumn<T> = {
   key: keyof T | string;
@@ -17,12 +16,13 @@ function cellValue<T extends object>(row: T, col: ExcelColumn<T>): string | numb
   return String(raw);
 }
 
-export function downloadExcel<T extends object>(opts: {
+export async function downloadExcel<T extends object>(opts: {
   filename: string;
   sheetName?: string;
   columns: ExcelColumn<T>[];
   rows: T[];
 }) {
+  const XLSX = await import("xlsx");
   const headers = opts.columns.map((c) => c.label);
   const data = opts.rows.map((row) => opts.columns.map((c) => cellValue(row, c)));
   const aoa = [headers, ...data];

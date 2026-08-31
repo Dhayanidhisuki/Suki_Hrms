@@ -15,7 +15,6 @@
 
 import path from "node:path";
 import type { DueCalibrationTool, NotificationUser } from "@/lib/calibrationDueEmail";
-import { calibrationDigestExportUrl } from "@/lib/calibrationPdfLink";
 import type { EmailAttachment } from "@/lib/email/sendEmail";
 
 // ─── Brand tokens ──────────────────────────────────────────────────────────────
@@ -216,7 +215,6 @@ function emailWrapper(contentHtml: string, previewText = ""): string {
 export function digestTemplate(
   user: NotificationUser,
   items: DueCalibrationTool[],
-  channel: string,
 ): string {
   const overdue = items.filter((i) => i.dueStatus === "OVERDUE");
   const dueToday = items.filter((i) => i.dueStatus === "DUE_TODAY");
@@ -251,31 +249,17 @@ export function digestTemplate(
       </tr>`;
   }).join("");
 
-  // One download for the whole list — replaces the old per-row PDF links.
-  const pdfUrl = calibrationDigestExportUrl(user.id, channel, "pdf");
-  const xlsxUrl = calibrationDigestExportUrl(user.id, channel, "xlsx");
-  const downloadBlock = pdfUrl && xlsxUrl
-    ? `
+  const attachmentBlock = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${BRAND.borderLight};border-radius:8px;margin-bottom:22px;">
       <tr>
         <td class="px" align="center" style="padding:18px 20px;">
-          <p style="margin:0 0 12px;font-family:${BRAND.fontFamily};font-size:13px;color:${BRAND.textSecondary};">
-            Download the full list of <strong style="color:${BRAND.navy};">${items.length} calibration record${items.length !== 1 ? "s" : ""}</strong>
+          <p style="margin:0;font-family:${BRAND.fontFamily};font-size:13px;line-height:21px;color:${BRAND.textSecondary};">
+            &#128206;&nbsp; The complete list of <strong style="color:${BRAND.navy};">${items.length} calibration record${items.length !== 1 ? "s" : ""}</strong>
+            is attached to this email in PDF and Excel formats.
           </p>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;">
-            <tr>
-              <td style="padding-right:10px;">
-                <a href="${escapeHtml(pdfUrl)}" style="display:inline-block;background-color:${BRAND.navyDeep};color:#FFFFFF;text-decoration:none;font-family:${BRAND.fontFamily};font-size:13px;font-weight:700;padding:11px 22px;border-radius:6px;white-space:nowrap;">&#128196;&nbsp; Download PDF</a>
-              </td>
-              <td>
-                <a href="${escapeHtml(xlsxUrl)}" style="display:inline-block;background-color:#FFFFFF;border:1px solid ${BRAND.navy};color:${BRAND.navy};text-decoration:none;font-family:${BRAND.fontFamily};font-size:13px;font-weight:700;padding:10px 22px;border-radius:6px;white-space:nowrap;">&#128202;&nbsp; Download Excel</a>
-              </td>
-            </tr>
-          </table>
         </td>
       </tr>
-    </table>`
-    : "";
+    </table>`;
 
   const content = `
     <!-- Greeting -->
@@ -301,7 +285,7 @@ export function digestTemplate(
       ${tableRows}
     </table>
 
-    ${downloadBlock}
+    ${attachmentBlock}
 
     <!-- Next step -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.navyTint};border-left:5px solid ${BRAND.navy};border-radius:6px;">

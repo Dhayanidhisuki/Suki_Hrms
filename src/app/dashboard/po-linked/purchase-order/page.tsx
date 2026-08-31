@@ -324,16 +324,12 @@ export default function PurchaseOrderPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {canCreate ? (
-                <Link href="/dashboard/po-linked/purchase-order/create">
-                  <Button type="button" variant="primary">
-                    Create PO
-                  </Button>
+                <Link href="/dashboard/po-linked/purchase-order/create" className="inline-flex items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-hover)]">
+                  Create PO
                 </Link>
               ) : null}
-              <Link href="/dashboard/po-linked/receive">
-                <Button type="button" variant={canCreate ? "outline" : "primary"}>
-                  Goods Receipt Note
-                </Button>
+              <Link href="/dashboard/po-linked/receive" className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors ${canCreate ? "border border-[var(--border-main)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]" : "bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"}`}>
+                Goods Receipt Note
               </Link>
             </div>
           </div>
@@ -507,10 +503,8 @@ export default function PurchaseOrderPage() {
                     </table>
                   </div>
                   <div className="flex justify-end">
-                    <Link href={`/dashboard/po-linked/receive?po=${encodeURIComponent(po.poOrderNo)}`}>
-                      <Button type="button" size="sm" variant="primary">
-                        Receive against this PO
-                      </Button>
+                    <Link href={`/dashboard/po-linked/receive?po=${encodeURIComponent(po.poOrderNo)}`} className="inline-flex items-center justify-center rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-hover)]">
+                      Receive against this PO
                     </Link>
                   </div>
                 </div>

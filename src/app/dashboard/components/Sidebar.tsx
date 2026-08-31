@@ -22,6 +22,7 @@ import {
   Building2,
   Handshake,
   FileText,
+  BadgeIndianRupee,
   type LucideIcon,
 } from "lucide-react";
 
@@ -77,6 +78,7 @@ const navSections: NavSection[] = [
       {
         items: [
           { label: "All Instruments & Gauges", href: "/dashboard/masters/tools", icon: Package, moduleKey: "tool_master" },
+          { label: "Pricing Master", href: "/dashboard/masters/pricing", icon: BadgeIndianRupee, moduleKey: "tool_pricing" },
           { label: "Defect & Services", href: "/dashboard/instruments/defects", icon: AlertTriangle, moduleKey: "tool_master" },
           { label: "Supplier", href: "/dashboard/masters/suppliers", icon: Building2, moduleKey: "supplier_master" },
           { label: "Subcontractor", href: "/dashboard/masters/subcontractors", icon: Handshake, moduleKey: "subcontractor_master" },
@@ -91,15 +93,15 @@ const navSections: NavSection[] = [
       {
         label: "Internal Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/history?movement=internal", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
-          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
+          { label: "Create Movement", href: "/dashboard/movement/create?movement=internal&action=add", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=internal&action=add", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
         ],
       },
       {
         label: "External Movement",
         items: [
-          { label: "Create Movement", href: "/dashboard/movement/history?movement=external", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
-          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
+          { label: "Create Movement", href: "/dashboard/movement/create?movement=external&action=add", icon: ArrowUpRight, moduleKey: "tool_issue_receive" },
+          { label: "Receive Movement", href: "/dashboard/movement/receive?movement=external&action=add", icon: ArrowDownLeft, moduleKey: "tool_issue_receive" },
         ],
       },
     ],
@@ -110,7 +112,7 @@ const navSections: NavSection[] = [
     groups: [
       {
         items: [
-          { label: "Issue", href: "/dashboard/masters/tools?calibration=1", icon: ArrowUpRight, moduleKey: "calibration_issue" },
+          { label: "Issue", href: "/dashboard/calibration/issue?action=add", icon: ArrowUpRight, moduleKey: "calibration_issue" },
           { label: "DC History", href: "/dashboard/calibration/issue", icon: History, moduleKey: "calibration_issue" },
           { label: "Receive", href: "/dashboard/calibration/receive", icon: ArrowDownLeft, moduleKey: "calibration_receive" },
           { label: "Result Update", href: "/dashboard/calibration/results-update", icon: ClipboardList, moduleKey: "calibration_results" },
@@ -128,8 +130,8 @@ const navSections: NavSection[] = [
           { label: "History Card", href: "/dashboard/tools-history-card", icon: History, moduleKey: "history_card" },
           { label: "Current Status", href: "/dashboard/tools-history-card/status", icon: Gauge, moduleKey: "history_card" },
           { label: "Current Holder", href: "/dashboard/tools-history-card/holder", icon: Users, moduleKey: "history_card" },
-          { label: "Issue History", href: "/dashboard/movement/history", icon: ArrowUpRight, moduleKey: "history_card" },
-          { label: "Receive History", href: "/dashboard/movement/receive", icon: ArrowDownLeft, moduleKey: "history_card" },
+          { label: "Issue History", href: "/dashboard/tools-history-card/issue", icon: ArrowUpRight, moduleKey: "history_card" },
+          { label: "Receive History", href: "/dashboard/tools-history-card/receive", icon: ArrowDownLeft, moduleKey: "history_card" },
           { label: "Calibration Records", href: "/dashboard/tools-history-card/calibration", icon: CalendarClock, moduleKey: "history_card" },
           { label: "Calibration Results", href: "/dashboard/tools-history-card/calibration-results", icon: ClipboardList, moduleKey: "history_card" },
           { label: "GRN History", href: "/dashboard/tools-history-card/grn", icon: Package, moduleKey: "history_card" },

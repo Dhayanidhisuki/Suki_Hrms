@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   AlertTriangle,
@@ -132,13 +132,17 @@ function dateOnly(dateStr: string | null | undefined): string | null {
 }
 
 function CalibrationIssuePage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const isCartCheckout = searchParams.get("cart") === "1";
+  const isDirectCreate = searchParams.get("action") === "add";
   const preselectTool = (searchParams.get("tool") ?? "").trim();
   const preselectApplied = useRef(false);
   const bulkPreselectApplied = useRef(false);
 
-  const [mode, setMode] = useState<"list" | "create" | "detail">("list");
+  const [mode, setMode] = useState<"list" | "create" | "detail">(
+    isDirectCreate ? "create" : "list"
+  );
   const [tools, setTools] = useState<Tool[]>([]);
   const [history, setHistory] = useState<CalibrationIssueHeader[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,6 +198,15 @@ function CalibrationIssuePage() {
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [staged, setStaged] = useState<StagedCalibLine[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (isCartCheckout || preselectTool) return;
+    const timer = window.setTimeout(() => {
+      if (isDirectCreate && mode === "list") setMode("create");
+      if (!isDirectCreate && mode === "create") setMode("list");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isCartCheckout, isDirectCreate, mode, preselectTool]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -601,6 +614,7 @@ function CalibrationIssuePage() {
 
   const openCreate = () => {
     setMode("create");
+    router.replace("/dashboard/calibration/issue?action=add", { scroll: false });
     setIssueDate(localToday());
     setIssueFor(issueForFilter || "Calibration");
     setReceiveName("");
@@ -610,6 +624,15 @@ function CalibrationIssuePage() {
     setSelectedKeys(new Set());
     setShowSelectedOnly(false);
     setErrors({});
+  };
+
+  const closeCreate = () => {
+    if (isCartCheckout) {
+      router.replace("/dashboard/masters/tools");
+      return;
+    }
+    setMode("list");
+    router.replace("/dashboard/calibration/issue", { scroll: false });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -655,6 +678,7 @@ function CalibrationIssuePage() {
       const dcNo = res.data?.item?.dcNo ?? res.data?.header?.dcNo;
 
       setMode("list");
+      router.replace("/dashboard/calibration/issue", { scroll: false });
       setStaged([]);
       setSelectedKeys(new Set());
       setErrors({});
@@ -1066,7 +1090,7 @@ function CalibrationIssuePage() {
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => isCartCheckout ? window.location.assign("/dashboard/masters/tools") : setMode("list")}
+                    onClick={closeCreate}
                     className="inline-flex items-center gap-1 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-widest"
                   >
                     <ArrowLeft className="w-4 h-4" /> Back
@@ -1443,7 +1467,7 @@ function CalibrationIssuePage() {
                   </div>
 
                   <div className="flex justify-end gap-2 pt-1">
-                    <Button type="button" variant="outline" onClick={() => setMode("list")}>Cancel</Button>
+                    <Button type="button" variant="outline" onClick={closeCreate}>Cancel</Button>
                     <Button type="submit" id="calibration-issue-submit-btn" variant="primary" disabled={submitting || staged.length === 0}>
                       <Plus className="w-4 h-4" />
                       {submitting ? "Issuing…" : "Issue Calibration DC"}

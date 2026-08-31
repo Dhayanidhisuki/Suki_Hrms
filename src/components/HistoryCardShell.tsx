@@ -51,14 +51,14 @@ export const HISTORY_CARD_PRIMARY_NAV: HistoryCardNavItem[] = [
     description: "Who holds issued tools now",
   },
   {
-    href: "/dashboard/movement/history",
+    href: "/dashboard/tools-history-card/issue",
     label: "Issue History",
     short: "Issue",
     icon: ArrowUpRight,
     description: "Tool issue DC history",
   },
   {
-    href: "/dashboard/movement/receive",
+    href: "/dashboard/tools-history-card/receive",
     label: "Receive History",
     short: "Receive",
     icon: ArrowDownLeft,

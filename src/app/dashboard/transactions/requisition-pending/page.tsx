@@ -260,11 +260,9 @@ function DetailDrawer({
                 <span className="font-mono font-semibold">{line.toolOrGaugeNo}</span>{" "}
                 against this requisition.
               </p>
-              <Link href={fulfillUrl}>
-                <Button variant="primary" size="sm" className="w-full justify-center gap-2">
+              <Link href={fulfillUrl} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[var(--primary-hover)]">
                   <ArrowUpRight className="w-3.5 h-3.5" />
                   Go to Tool Issue
-                </Button>
               </Link>
             </div>
           )}
@@ -607,18 +605,13 @@ export default function RequisitionPendingPage() {
                   )}`
                 : "/dashboard/transactions/issue?action=add&requisitionPending=Yes"
             }
+            id="req-pending-issue-for-tools-btn"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border-main)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+            title="ERP: Issue For Tools — opens Tool Issue with Requisition Pending = Yes"
           >
-            <Button
-              id="req-pending-issue-for-tools-btn"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              title="ERP: Issue For Tools — opens Tool Issue with Requisition Pending = Yes"
-            >
               <Package className="w-3.5 h-3.5" />
               Issue For Tools
               {selectedReqNos.size === 1 ? ` (${[...selectedReqNos][0]})` : ""}
-            </Button>
           </Link>
           <Button
             id="req-pending-export-btn"

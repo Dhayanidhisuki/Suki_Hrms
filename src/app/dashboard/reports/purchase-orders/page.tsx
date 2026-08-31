@@ -62,10 +62,8 @@ export default function PurchaseOrderReportPage() {
       title="Purchase Order Report"
       subtitle="COMMON_PURCHASE_ORDER — Tools + ERP purchase orders (tools lines)"
       actions={
-        <Link href="/dashboard/po-linked/purchase-order">
-          <Button type="button" variant="outline">
-            Open PO list
-          </Button>
+        <Link href="/dashboard/po-linked/purchase-order" className="inline-flex items-center justify-center rounded-xl border border-[var(--border-main)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]">
+          Open PO list
         </Link>
       }
     >

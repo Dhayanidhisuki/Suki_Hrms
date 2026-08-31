@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { digestTemplate, testEmailTemplate, emailLogoAttachment } from "@/lib/email/emailTemplates";
+import { buildCalibrationDigestPdf, buildCalibrationDigestXlsx } from "@/lib/calibrationDigestExport";
+import type { EmailAttachment } from "@/lib/email/sendEmail";
 import type { Prisma } from "@prisma/client";
 
 const DAY_MS = 86_400_000;
@@ -155,6 +157,35 @@ function dailyDigestChannel(now: Date) {
   return `D${now.toISOString().slice(2, 10).replaceAll("-", "")}`;
 }
 
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function calibrationDigestAttachments(
+  user: NotificationUser,
+  items: DueCalibrationTool[],
+  generatedAt: Date,
+): EmailAttachment[] {
+  const stamp = generatedAt.toISOString().slice(0, 10);
+  const meta = {
+    recipientName: user.name,
+    roleName: user.roleName,
+    generatedAt,
+  };
+  return [
+    {
+      filename: `Calibration_Due_List_${stamp}.pdf`,
+      content: buildCalibrationDigestPdf(items, meta),
+      contentType: "application/pdf",
+      contentDisposition: "attachment",
+    },
+    {
+      filename: `Calibration_Due_List_${stamp}.xlsx`,
+      content: buildCalibrationDigestXlsx(items, meta),
+      contentType: XLSX_MIME,
+      contentDisposition: "attachment",
+    },
+  ];
+}
+
 async function buildDeliveryPlan(now = new Date()) {
   const setting = await prisma.calibrationNotificationSetting.upsert({
     where: { id: 1 },
@@ -232,12 +263,22 @@ export async function runCalibrationTestEmail(testEmail: string, now = new Date(
         status: "TEST_PENDING",
       } });
   try {
+    const testUser: NotificationUser = {
+      id: 0,
+      name: "Test Recipient",
+      email: testEmail,
+      roleName: "SMTP Test",
+      unitScopes: item.unitCode ? [item.unitCode] : [],
+    };
     const smtp = await sendEmail({
       notificationId: notification.id,
       to: testEmail,
       subject,
       html: testEmailTemplate(item),
-      attachments: [emailLogoAttachment()],
+      attachments: [
+        emailLogoAttachment(),
+        ...calibrationDigestAttachments(testUser, [item], now),
+      ],
     });
     await prisma.calibrationNotification.update({ where: { id: notification.id }, data: { status: "TEST_SENT" } });
     return { ok: true as const, recipient: testEmail, subject, tool: item, smtp };
@@ -304,12 +345,15 @@ export async function runCalibrationDueEmails(now = new Date(), options: { force
         to: delivery.user.email,
         cc: delivery.cc,
         subject,
-        html: digestTemplate(
-          delivery.user,
-          pending.map((entry) => entry.item),
-          dailyDigestChannel(now),
-        ),
-        attachments: [emailLogoAttachment()],
+        html: digestTemplate(delivery.user, pending.map((entry) => entry.item)),
+        attachments: [
+          emailLogoAttachment(),
+          ...calibrationDigestAttachments(
+            delivery.user,
+            pending.map((entry) => entry.item),
+            now,
+          ),
+        ],
       }); // branded HTML + inline CID logo from emailTemplates.ts
       await prisma.calibrationNotification.updateMany({
         where: { id: { in: logs.map((log) => log.id) } },

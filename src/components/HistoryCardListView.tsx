@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   HistoryCardShell,
@@ -11,6 +11,15 @@ import {
 import { TableSkeleton } from "@/app/dashboard/components/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ModuleKpiItem } from "@/app/dashboard/components/ModuleKpiRow";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 export type HistoryColumn = {
   key: string;
@@ -52,11 +61,8 @@ export function HistoryCardListView({
 }: HistoryCardListViewProps) {
   const searchParams = useSearchParams();
   const toolFromUrl = (searchParams.get("tool") ?? "").trim();
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    if (toolFromUrl) setQuery(toolFromUrl);
-  }, [toolFromUrl]);
+  const [editedQuery, setEditedQuery] = useState<string | null>(null);
+  const query = editedQuery ?? toolFromUrl;
 
   const displayRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -67,6 +73,29 @@ export function HistoryCardListView({
     );
   }, [rows, query, searchKeys, columns]);
 
+  const chartData = useMemo(() => {
+    const preferred = columns.find((column) => column.status)?.key;
+    const fallback = columns.find((column) =>
+      ["grouping", "type", "vendorType", "supplier", "holder"].includes(column.key)
+    )?.key;
+    const key = preferred ?? fallback ?? columns[0]?.key;
+    if (!key) return { key: "Records", values: [] as Array<{ name: string; value: number }> };
+
+    const counts = new Map<string, number>();
+    for (const row of displayRows) {
+      const raw = String(row[key] ?? "Not specified").trim() || "Not specified";
+      counts.set(raw, (counts.get(raw) ?? 0) + 1);
+    }
+    const values = [...counts.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+    return {
+      key: columns.find((column) => column.key === key)?.label ?? key,
+      values,
+    };
+  }, [columns, displayRows]);
+
   return (
     <HistoryCardShell
       title={title}
@@ -76,7 +105,7 @@ export function HistoryCardListView({
       toolbar={
         <HistoryCardSearch
           value={query}
-          onChange={setQuery}
+          onChange={setEditedQuery}
           placeholder={searchPlaceholder}
           hint={
             filterHint ||
@@ -87,6 +116,57 @@ export function HistoryCardListView({
         />
       }
     >
+      <HistoryCardPanel
+        title={`${chartData.key} Overview`}
+        subtitle={`Live distribution for the ${displayRows.length.toLocaleString()} visible record${displayRows.length === 1 ? "" : "s"}`}
+        className="mb-5"
+      >
+        {loading ? (
+          <div className="h-56 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+        ) : chartData.values.length > 0 ? (
+          <div className="h-64 w-full" aria-label={`${title} ${chartData.key} chart`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData.values} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid stroke="var(--border-main)" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                  axisLine={{ stroke: "var(--border-main)" }}
+                  tickLine={false}
+                  interval={0}
+                  angle={chartData.values.length > 5 ? -18 : 0}
+                  textAnchor={chartData.values.length > 5 ? "end" : "middle"}
+                  height={chartData.values.length > 5 ? 54 : 32}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  width={36}
+                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: "var(--bg-hover)" }}
+                  contentStyle={{
+                    border: "1px solid var(--border-main)",
+                    borderRadius: 10,
+                    background: "var(--bg-card)",
+                    color: "var(--text-primary)",
+                    fontSize: 12,
+                  }}
+                  formatter={(value) => [Number(value).toLocaleString(), "Records"]}
+                />
+                <Bar dataKey="value" name="Records" fill="var(--primary)" radius={[6, 6, 0, 0]} maxBarSize={64} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex h-40 items-center justify-center text-sm text-[var(--text-muted)]">
+            No chart data available.
+          </div>
+        )}
+      </HistoryCardPanel>
+
       <HistoryCardPanel
         title={title}
         subtitle={`${displayRows.length.toLocaleString()} row${displayRows.length === 1 ? "" : "s"}`}
