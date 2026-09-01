@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 const BulkPricingSchema = z.object({
   rows: z.array(z.object({
@@ -17,11 +18,13 @@ const BulkPricingSchema = z.object({
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const auth = await requireSession(session);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const editOk = await requirePermission(auth.session, "canEditMaster");
-  const poOk = await requirePermission(auth.session, "canRaisePO");
-  if (!editOk.ok && !poOk.ok) return editOk.ok === false ? editOk.response : poOk.response;
+  const editOk = await checkModulePermission(auth.session, "tool_pricing", "EDIT");
+  if (!editOk.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const poOk = await checkModulePermission(auth.session, "tool_pricing", "CREATE");
+  if (!poOk.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!editOk.allowed && !poOk.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const parsed = BulkPricingSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {

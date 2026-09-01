@@ -150,6 +150,47 @@ export async function getModuleViewPermissions(session: SessionData): Promise<Re
   return Object.fromEntries(modules.map((module) => [module.moduleKey, allowedById.get(module.moduleId) ?? false]));
 }
 
+export async function getModuleActionPermissions(session: SessionData): Promise<Record<string, RbacAction[]>> {
+  await ensureRbacSeeded();
+  const modules = await prisma.module.findMany({ select: { moduleKey: true, moduleId: true, applicableActions: true } });
+  const user = await findUserWithRole(session);
+  const isAdmin = isAdminRole(session.roleName) || user?.userRole?.role.isSystemAdmin;
+
+  const result: Record<string, RbacAction[]> = {};
+
+  if (isAdmin) {
+    for (const mod of modules) {
+      result[mod.moduleKey] = mod.applicableActions.split(",").map(a => a.trim() as RbacAction);
+    }
+    return result;
+  }
+
+  if (!user?.userRole) {
+    for (const mod of modules) {
+      result[mod.moduleKey] = [];
+    }
+    return result;
+  }
+
+  const rows = await prisma.rolePermissionMatrix.findMany({
+    where: { roleId: user.userRole.roleId, allowed: true },
+    select: { moduleId: true, action: true },
+  });
+
+  const actionsById = new Map<number, RbacAction[]>();
+  for (const row of rows) {
+    if (!actionsById.has(row.moduleId)) {
+      actionsById.set(row.moduleId, []);
+    }
+    actionsById.get(row.moduleId)!.push(row.action as RbacAction);
+  }
+
+  for (const mod of modules) {
+    result[mod.moduleKey] = actionsById.get(mod.moduleId) ?? [];
+  }
+  return result;
+}
+
 export async function getLegacyPermissionFlags(session: SessionData): Promise<RolePermissionFlags> {
   const record: Partial<Record<PermissionFlagKey, boolean>> = {};
   for (const permission of ALL_PERMISSION_KEYS) {

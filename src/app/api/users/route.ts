@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
 import {
   AppUserCreateSchema,
@@ -53,13 +54,16 @@ function parseUnitScopes(value: unknown): { ok: true; scopes: string[] } | { ok:
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canManageUsers"
+    "settings_users",
+    "VIEW"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const includeInactive =
     req.nextUrl.searchParams.get("includeInactive") === "1" ||
@@ -111,13 +115,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canManageUsers"
+    "settings_users",
+    "CREATE"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = AppUserCreateSchema.safeParse(body);
@@ -207,13 +214,16 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canManageUsers"
+    "settings_users",
+    "EDIT"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = AppUserUpdateSchema.safeParse(body);

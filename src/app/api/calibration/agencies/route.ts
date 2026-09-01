@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 const AgencySchema = z.object({
   id: z.number().int().positive().optional(),
@@ -22,7 +23,7 @@ const AgencySchema = z.object({
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const selectable = req.nextUrl.searchParams.get("selectable") === "1";
   const today = new Date();
@@ -47,8 +48,8 @@ async function mutationAccess() {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check;
-  const permission = await requirePermission(check.session, "canManageCalibration");
-  if (!permission.ok) return permission;
+  const permission = await checkModulePermission(check.session, "authorized_agencies", "VIEW");
+  if (!permission.allowed) return { ok: false, response: NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 }) };
   return { ok: true as const, session: check.session };
 }
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       data: {
         ...data,
         accreditationExpiry: accreditationExpiry ? new Date(accreditationExpiry) : null,
-        createdBy: access.session.userId.slice(0, 50),
+        createdBy: access.session!.userId.slice(0, 50),
       },
     });
     return NextResponse.json({ item }, { status: 201 });
@@ -91,7 +92,7 @@ export async function PUT(req: NextRequest) {
     data: {
       ...data,
       accreditationExpiry: accreditationExpiry ? new Date(accreditationExpiry) : null,
-      updatedBy: access.session.userId.slice(0, 50),
+      updatedBy: access.session!.userId.slice(0, 50),
     },
   });
   return NextResponse.json({ item });

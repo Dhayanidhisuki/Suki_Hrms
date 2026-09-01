@@ -105,7 +105,7 @@ function instrumentDisplayStatus(status: string | null, locationName: string | n
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   // Enforce module permission: tool_master (VIEW)
   const perm = await checkModulePermission(session, "tool_master", "VIEW");
@@ -417,7 +417,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   // Enforce module permission: tool_master (CREATE)
   const rbacPerm = await checkModulePermission(session, "tool_master", "CREATE");

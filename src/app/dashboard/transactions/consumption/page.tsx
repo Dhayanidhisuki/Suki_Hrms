@@ -177,7 +177,7 @@ export default function ConsumptionPage() {
           <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
             {/* LEFT FORM PANEL */}
             <RoleGate
-              permission="canLogConsumption"
+              module="tool_issue_receive" action="EDIT"
               fallback={
                 <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5 text-center py-10">
                   <ShieldAlert className="w-10 h-10 text-[var(--text-muted)] mx-auto mb-3" />
@@ -271,7 +271,7 @@ export default function ConsumptionPage() {
                 <div className="border-t border-[var(--border-main)] pt-3 flex items-center justify-between">
                   <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Supervisor Verified</span>
                   <RoleGate
-                    permission="canApproveSupplier"
+                    module="tool_issue_receive" action="EDIT"
                     fallback={
                       <span className="text-xs text-[var(--text-muted)] font-medium italic">Requires Admin Role</span>
                     }

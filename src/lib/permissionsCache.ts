@@ -20,6 +20,8 @@ const FULL_ACCESS_ROLES = new Set([
   "Administrator",
   "Admin",
   "admin",
+  "Super Admin",
+  "super admin",
 ]);
 
 function emptyFlags(): RolePermissionFlags {

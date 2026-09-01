@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { MaterialRequisitionCreateSchema } from "@/lib/validators";
 
@@ -152,7 +153,16 @@ async function reconcileRequisitionsFromIssueDcs(
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+
+  const permCheck = await checkModulePermission(
+    check.session,
+    "requisition",
+    "VIEW"
+  );
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const { searchParams } = req.nextUrl;
   const search = (searchParams.get("search") ?? "").trim();
@@ -378,11 +388,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  // Closest existing flag until dedicated requisition permission exists
-  const permCheck = await requirePermission(authCheck.session, "canCreateIssue");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(
+    authCheck.session,
+    "requisition",
+    "CREATE"
+  );
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = MaterialRequisitionCreateSchema.safeParse(body);

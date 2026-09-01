@@ -198,7 +198,7 @@ export default function ToolsNameForTypePage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="tools_name_type" action="CREATE">
                 <Button onClick={handleOpenAdd} variant="primary" className="group">
                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                   Add Tools Name
@@ -328,7 +328,7 @@ export default function ToolsNameForTypePage() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="tools_name_type" action="EDIT">
                               <button
                                 onClick={() => handleOpenEdit(item)}
                                 title="Edit"
@@ -540,7 +540,7 @@ export default function ToolsNameForTypePage() {
               >
                 Close
               </button>
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="tools_name_type" action="EDIT">
                 <Button
                   onClick={() => {
                     const item = selectedDetail;

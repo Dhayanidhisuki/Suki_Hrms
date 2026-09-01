@@ -258,7 +258,7 @@ export default function SuppliersPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="supplier_master" action="APPROVE">
                 <Button
                   id="supplier-add-btn"
                   onClick={handleOpenAdd}
@@ -461,7 +461,7 @@ export default function SuppliersPage() {
                           </span>
                         ) : (
                           <RoleGate
-                            permission="canApproveSupplier"
+                            module="supplier_master" action="APPROVE"
                             fallback={
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--color-warning-bg)] text-[var(--color-warning-text)] border border-[var(--border-main)]">
                                 <XCircle className="w-3 h-3" /> Pending
@@ -487,7 +487,7 @@ export default function SuppliersPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <RoleGate permission="canEditMaster">
+                          <RoleGate module="supplier_master" action="APPROVE">
                             <button
                               id={`supplier-edit-btn-${s.id}`}
                               onClick={() => handleOpenEdit(s)}
@@ -717,7 +717,7 @@ export default function SuppliersPage() {
                     Approval Status
                   </label>
                   <RoleGate
-                    permission="canApproveSupplier"
+                    module="supplier_master" action="APPROVE"
                     fallback={
                       <div className="px-3 py-2 text-sm border border-[var(--border-main)] rounded-lg bg-[var(--bg-hover)] text-[var(--text-muted)] font-medium">
                         {isApproved ? "Approved" : "Pending"}
@@ -855,7 +855,7 @@ export default function SuppliersPage() {
               >
                 Close
               </button>
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="supplier_master" action="APPROVE">
                 <Button
                   onClick={() => {
                     const item = selectedDetail;

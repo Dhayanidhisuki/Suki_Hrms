@@ -47,6 +47,7 @@ export default function UsersSettingsPage() {
   const [items, setItems] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<string[]>([...CANONICAL_ROLES]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,13 +58,18 @@ export default function UsersSettingsPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     const qs = showInactive ? "?includeInactive=1" : "";
     const res = await apiGet<{ items: AppUser[]; roles: string[] }>(
       `/api/users${qs}`
     );
     if (res.data?.items) setItems(res.data.items);
     if (res.data?.roles?.length) setRoles(res.data.roles);
-    else if (res.error) toastError(res.error.message);
+    
+    if (res.error) {
+      setFetchError(res.error.message);
+      toastError(res.error.message);
+    }
     setLoading(false);
   }, [showInactive]);
 
@@ -208,7 +214,7 @@ export default function UsersSettingsPage() {
       title="Users & Unit Scope"
       subtitle="TOOLS_APP_USER — application login accounts, role permissions & unit scope"
       actions={
-        <RoleGate permission="canManageUsers">
+        <RoleGate module="settings_users" action="CREATE">
           <Button onClick={handleOpenAdd} variant="primary" className="group">
             <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
             Add User
@@ -217,6 +223,7 @@ export default function UsersSettingsPage() {
       }
     >
       <MasterTableCard
+        error={fetchError}
         toolbar={
           <>
             <MasterSearchInput
@@ -319,7 +326,7 @@ export default function UsersSettingsPage() {
                     </td>
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-1">
-                        <RoleGate permission="canManageUsers">
+                        <RoleGate module="settings_users" action="EDIT">
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(row)}

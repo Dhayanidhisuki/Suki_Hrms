@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -12,13 +13,14 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function PUT(_req: NextRequest, ctx: Ctx) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canApprovePricing"
+    "tool_pricing",
+    "APPROVE"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   const rowId = Number(id);

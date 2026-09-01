@@ -125,7 +125,7 @@ export const SEED_MODULES = [
     moduleLabel: "Requisition",
     moduleGroup: "Purchase",
     applicableActions: "VIEW,CREATE,APPROVE",
-    isBuilt: false, // Not yet built
+    isBuilt: true,
   },
   {
     moduleKey: "reports",

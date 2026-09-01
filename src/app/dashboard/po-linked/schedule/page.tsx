@@ -175,7 +175,7 @@ export default function PoSchedulePage() {
                 Purchase Order expected delivery schedules (TOOLS_PO_DELV_SCHEDULE)
               </p>
             </div>
-            <RoleGate permission="canRaisePO">
+            <RoleGate module="purchase" action="CREATE">
               <Button
                 id="po-schedule-add-btn"
                 onClick={handleOpenAdd}

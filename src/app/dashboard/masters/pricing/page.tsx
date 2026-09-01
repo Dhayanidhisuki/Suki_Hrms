@@ -117,8 +117,8 @@ function cell(v: unknown): string {
 }
 
 export default function Page() {
-  const { can } = useSession();
-  const canPropose = can("canEditMaster") || can("canRaisePO");
+  const { canModuleAction } = useSession();
+  const canPropose = canModuleAction("tool_pricing", "CREATE") || canModuleAction("tool_pricing", "EDIT");
   const [items, setItems] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

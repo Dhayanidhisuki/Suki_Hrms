@@ -229,7 +229,7 @@ export default function ToolMappingPage() {
             <FileSpreadsheet className="w-4 h-4" />
             Excel
           </Button>
-          <RoleGate permission="canEditMaster">
+          <RoleGate module="tool_mapping" action="CREATE">
             <Button type="button" onClick={() => setShowAdd(true)} className="group">
               <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
               Add Mapping
@@ -380,7 +380,7 @@ export default function ToolMappingPage() {
                       {row.creatDt ? String(row.creatDt).split("T")[0] : "—"}
                     </td>
                     <td className="py-2.5 px-3 text-right">
-                      <RoleGate permission="canEditMaster">
+                      <RoleGate module="tool_mapping" action="DELETE">
                         <button
                           type="button"
                           onClick={() => void handleDelete(row.rowId)}

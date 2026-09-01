@@ -63,8 +63,8 @@ const STATUSES: { id: "all" | ApprovalStatus; label: string }[] = [
 ];
 
 export default function ApprovalCentrePage() {
-  const { can } = useSession();
-  const canApprovePricing = can("canApprovePricing");
+  const { canModuleAction } = useSession();
+  const canApprovePricing = canModuleAction("tool_pricing", "APPROVE");
 
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const [counts, setCounts] = useState({

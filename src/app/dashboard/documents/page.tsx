@@ -249,7 +249,7 @@ export default function DocumentsHubPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canManageCalibration">
+              <RoleGate module="documents" action="EDIT">
                 <Button
                   onClick={() => setIsUploadOpen(true)}
                   variant="primary"
@@ -544,7 +544,7 @@ export default function DocumentsHubPage() {
                             <span className="font-mono text-[10px]">
                               {fmtDate(doc.creatDt)}
                             </span>
-                            <RoleGate permission="canManageCalibration">
+                            <RoleGate module="documents" action="DELETE">
                               <button
                                 type="button"
                                 onClick={() => void handleDelete(doc)}
@@ -647,7 +647,7 @@ export default function DocumentsHubPage() {
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
-                              <RoleGate permission="canManageCalibration">
+                              <RoleGate module="documents" action="DELETE">
                                 <button
                                   type="button"
                                   title="Delete"

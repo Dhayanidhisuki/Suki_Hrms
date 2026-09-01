@@ -184,7 +184,7 @@ export default function CalibFrequencyPage() {
       title="Calibration Frequency Master"
       subtitle="CALIBRATION_FREQUENCY_MASTER — define calibration intervals by product tolerance range"
       actions={
-        <RoleGate permission="canEditMaster">
+        <RoleGate module="calibration_frequency" action="CREATE">
           <Button id="calib-freq-add-btn" variant="primary" className="group" onClick={openAdd}>
             <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
             Add Frequency
@@ -300,7 +300,7 @@ export default function CalibFrequencyPage() {
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <RoleGate permission="canEditMaster">
+                        <RoleGate module="calibration_frequency" action="EDIT">
                           <button
                             id={`calib-freq-edit-${row.id}`}
                             title="Edit"
@@ -310,7 +310,7 @@ export default function CalibFrequencyPage() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         </RoleGate>
-                        <RoleGate permission="canDeleteMaster">
+                        <RoleGate module="calibration_frequency" action="DELETE">
                           <button
                             id={`calib-freq-delete-${row.id}`}
                             title="Delete"

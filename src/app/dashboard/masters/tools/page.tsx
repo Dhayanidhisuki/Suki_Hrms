@@ -2809,7 +2809,7 @@ export default function ToolsMasterPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <RoleGate permission="canManageCalibration">
+                  <RoleGate module="tool_master" action="EDIT">
                     <Button type="button" variant="outline" onClick={() => setCalibrationCartOpen(true)}>
                       <ShoppingCart className="w-4 h-4" />
                       Calibration Cart
@@ -2818,7 +2818,7 @@ export default function ToolsMasterPage() {
                       </span>
                     </Button>
                   </RoleGate>
-                  <RoleGate permission="canEditMaster">
+                  <RoleGate module="tool_master" action="CREATE">
                     <Button id="tools-add-btn" onClick={handleOpenAdd} variant="primary" className="group">
                       <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                       Add Instrument
@@ -2967,7 +2967,7 @@ export default function ToolsMasterPage() {
                         { value: "name", label: "Name" },
                       ]}
                     />
-                    <RoleGate permission="canEditMaster">
+                    <RoleGate module="tool_master" action="EDIT">
                       <div className="flex items-center gap-1">
                         <Button
                           type="button"
@@ -3152,7 +3152,7 @@ export default function ToolsMasterPage() {
                     <span className="text-xs font-semibold text-[var(--text-secondary)]">
                       {selectedRefNos.length} selected
                     </span>
-                    <RoleGate permission="canCreateIssue">
+                    <RoleGate module="tool_master" action="CREATE">
                       <Button
                         type="button"
                         size="sm"
@@ -3179,7 +3179,7 @@ export default function ToolsMasterPage() {
                         Move Selected
                       </Button>
                     </RoleGate>
-                    <RoleGate permission="canManageCalibration">
+                    <RoleGate module="tool_master" action="EDIT">
                       <Button
                         type="button"
                         size="sm"
@@ -3367,7 +3367,7 @@ export default function ToolsMasterPage() {
                                     View
                                   </button>
                                   <RowActionMenu>
-                                  <RoleGate permission="canCreateIssue">
+                                  <RoleGate module="tool_master" action="CREATE">
                                     <button
                                       onClick={() => {
                                         let lines = [];
@@ -3400,7 +3400,7 @@ export default function ToolsMasterPage() {
                                       Create movement
                                     </button>
                                   </RoleGate>
-                                  <RoleGate permission="canManageCalibration">
+                                  <RoleGate module="tool_master" action="EDIT">
                                     {t.computedStatus === "Under Calibration" || t.status === "Under Calibration" ? (
                                       <button
                                         disabled
@@ -3436,7 +3436,7 @@ export default function ToolsMasterPage() {
                                       </button>
                                     )}
                                   </RoleGate>
-                                  <RoleGate permission="canEditMaster">
+                                  <RoleGate module="tool_master" action="EDIT">
                                     <button
                                       onClick={() => handleOpenEdit(t)}
                                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
@@ -3537,7 +3537,7 @@ export default function ToolsMasterPage() {
                     </h1>
                   </div>
                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <RoleGate permission="canCreateIssue">
+                  <RoleGate module="tool_master" action="CREATE">
                     <Button
                       onClick={() => {
                         if (!selectedTool?.toolOrGaugeNo) return;
@@ -3557,7 +3557,7 @@ export default function ToolsMasterPage() {
                       <ClipboardList className="w-4 h-4" /> Move
                     </Button>
                   </RoleGate>
-                  <RoleGate permission="canManageCalibration">
+                  <RoleGate module="tool_master" action="EDIT">
                     <Button
                       onClick={() => {
                         if (!selectedTool?.toolOrGaugeNo) return;
@@ -3570,7 +3570,7 @@ export default function ToolsMasterPage() {
                       <ShoppingCart className="w-4 h-4" /> Add to Calibration Cart
                     </Button>
                   </RoleGate>
-                  <RoleGate permission="canEditMaster">
+                  <RoleGate module="tool_master" action="EDIT">
                     <Button
                       onClick={() => {
                         if (selectedTool) handleOpenEdit(selectedTool);
@@ -4108,7 +4108,7 @@ export default function ToolsMasterPage() {
                       <ArrowLeft className="w-3.5 h-3.5" /> Back
                     </button>
                     {viewState === "edit" && selectedTool ? (
-                      <RoleGate permission="canDeleteMaster">
+                      <RoleGate module="tool_master" action="DELETE">
                         <button
                           type="button"
                           className={erpActionBtn}
@@ -5505,7 +5505,7 @@ export default function ToolsMasterPage() {
                           {m.creatDt ? m.creatDt.split("T")[0] : "—"}
                         </p>
                       </div>
-                      <RoleGate permission="canEditMaster">
+                      <RoleGate module="tool_master" action="EDIT">
                         <button
                           type="button"
                           disabled={machineSaving || !m.macCode}
@@ -5521,7 +5521,7 @@ export default function ToolsMasterPage() {
                 </ul>
               )}
 
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="tool_master" action="EDIT">
                 <div className="flex items-center gap-2 pt-1">
                   <input
                     type="text"

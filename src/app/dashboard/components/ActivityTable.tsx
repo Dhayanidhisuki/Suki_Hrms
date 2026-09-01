@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/apiClient";
 import Link from "next/link";
 import { ArrowUpRight, ArrowRight } from "lucide-react";
+import { useSession } from "@/lib/SessionContext";
 
 interface ActivityRecord {
   dcNo: string;
@@ -17,6 +18,7 @@ interface ActivityRecord {
 }
 
 export default function ActivityTable() {
+  const { canModule } = useSession();
   const [items, setItems] = useState<ActivityRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,12 +48,14 @@ export default function ActivityTable() {
               </p>
             </div>
           </div>
-          <Link
-            href="/dashboard/transactions/receive"
-            className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
-          >
-            View All <ArrowRight className="w-3 h-3" />
-          </Link>
+          {canModule("tool_issue_receive") && (
+            <Link
+              href="/dashboard/transactions/receive"
+              className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
+            >
+              View All <ArrowRight className="w-3 h-3" />
+            </Link>
+          )}
         </div>
 
         <div className={`overflow-auto transition-opacity ${loading ? "opacity-50" : "opacity-100"}`}>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ComponentType, type CSSProperties } from "react";
 import Link from "next/link";
+import { useSession } from "@/lib/SessionContext";
 import {
   Cell,
   Pie,
@@ -174,6 +175,7 @@ function InactiveShape(props: PieSectorShapeProps) {
 }
 
 export default function ToolsByGroup() {
+  const { canModule } = useSession();
   const [rawGroups, setRawGroups] = useState<GroupData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -208,13 +210,15 @@ export default function ToolsByGroup() {
             <h2 className="text-[22px] font-bold tracking-tight text-[var(--text-primary)]">
               Tools By Group
             </h2>
-            <Link
-              href="/dashboard/reports/tools"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-[var(--border-main)] bg-[var(--bg-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              Groups
-              <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-            </Link>
+            {canModule("reports") && (
+              <Link
+                href="/dashboard/reports/tools"
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-[var(--border-main)] bg-[var(--bg-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                Groups
+                <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+              </Link>
+            )}
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center py-2">
@@ -420,12 +424,14 @@ export default function ToolsByGroup() {
                 {total.toLocaleString("en-IN")}
               </span>
             </p>
-            <Link
-              href="/dashboard/reports/tools"
-              className="text-[11px] font-semibold text-white/40 hover:text-[var(--primary)] transition-colors"
-            >
-              View all →
-            </Link>
+            {canModule("reports") && (
+              <Link
+                href="/dashboard/reports/tools"
+                className="text-[11px] font-semibold text-white/40 hover:text-[var(--primary)] transition-colors"
+              >
+                View all →
+              </Link>
+            )}
           </div>
         </div>
       </div>

@@ -1,20 +1,25 @@
 "use client";
 
-import { useSession, type PermissionKey } from "@/lib/SessionContext";
+import { useSession } from "@/lib/SessionContext";
 
 interface RoleGateProps {
-  permission: PermissionKey;
+  module: string;
+  action: string;
   children: React.ReactNode;
   fallback?: React.ReactNode;
 }
 
 export default function RoleGate({
-  permission,
+  module,
+  action,
   children,
   fallback = null,
 }: RoleGateProps) {
-  const { can, loading } = useSession();
+  const { canModuleAction, loading } = useSession();
   if (loading) return null;
-  if (!can(permission)) return <>{fallback}</>;
+
+  const isAllowed = canModuleAction(module, action);
+
+  if (!isAllowed) return <>{fallback}</>;
   return <>{children}</>;
 }

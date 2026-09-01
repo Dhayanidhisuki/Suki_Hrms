@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkModulePermission } from "@/lib/rbac";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import {
   IMPORT_MAX_FILE_BYTES,
@@ -425,10 +426,10 @@ function buildMasterPayload(data: MasterImportData, userId: string) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tool_master", "EDIT");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const contentType = req.headers.get("content-type") ?? "";
 

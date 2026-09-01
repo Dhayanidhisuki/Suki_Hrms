@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { z } from "zod";
+import { checkModulePermission } from "@/lib/rbac";
 
 const CreateSchema = z.object({
   toolRefNo: z.number().int().positive().optional(),
@@ -21,7 +22,7 @@ const CreateSchema = z.object({
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = req.nextUrl;
   const search = (searchParams.get("search") ?? "").trim();
@@ -141,10 +142,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tool_mapping", "EDIT");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
   const parsed = CreateSchema.safeParse(body);

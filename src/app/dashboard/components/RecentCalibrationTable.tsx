@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/apiClient";
 import Link from "next/link";
 import { CalendarClock, ArrowRight } from "lucide-react";
+import { useSession } from "@/lib/SessionContext";
 
 interface CalItem {
   refNo: number | null;
@@ -15,6 +16,7 @@ interface CalItem {
 }
 
 export default function RecentCalibrationTable() {
+  const { canModule } = useSession();
   const [items, setItems] = useState<CalItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,12 +46,14 @@ export default function RecentCalibrationTable() {
               </p>
             </div>
           </div>
-          <Link
-            href="/dashboard/calibration/due-list"
-            className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
-          >
-            View All <ArrowRight className="w-3 h-3" />
-          </Link>
+          {canModule("calibration_issue") && (
+            <Link
+              href="/dashboard/calibration/due-list"
+              className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
+            >
+              View All <ArrowRight className="w-3 h-3" />
+            </Link>
+          )}
         </div>
 
         <div className={`overflow-auto transition-opacity ${loading ? "opacity-50" : "opacity-100"}`}>

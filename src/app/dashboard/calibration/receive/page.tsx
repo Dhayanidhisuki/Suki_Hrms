@@ -319,7 +319,7 @@ export default function CalibrationReceivePage() {
             </div>
 
             <RoleGate
-              permission="canManageCalibration"
+              module="calibration_receive" action="EDIT"
               fallback={
                 openIssues.length === 0 ? (
                   <p className="text-sm text-[var(--text-muted)] py-4 text-center">
@@ -673,7 +673,7 @@ export default function CalibrationReceivePage() {
                                     </td>
                                     <td className="py-2.5 px-3">
                                       {line.toolOrGaugeNo && (
-                                        <RoleGate permission="canManageCalibration">
+                                        <RoleGate module="calibration_receive" action="EDIT">
                                           <Button
                                             type="button"
                                             variant="outline"

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 const DefectSchema = z.object({
   toolOrGaugeNo: z.string().trim().min(1).max(25),
@@ -15,7 +16,7 @@ const DefectSchema = z.object({
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const status = (req.nextUrl.searchParams.get("status") ?? "").trim();
   const search = (req.nextUrl.searchParams.get("search") ?? "").trim();
   const items = await prisma.instrumentDefect.findMany({
@@ -37,9 +38,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
-  const permission = await requirePermission(check.session, "canManageCalibration");
-  if (!permission.ok) return permission.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const permission = await checkModulePermission(check.session, "tool_master", "CREATE"); if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  
+  
   const parsed = DefectSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const tool = await prisma.gaugeAndTools.findUnique({ where: { toolOrGaugeNo: parsed.data.toolOrGaugeNo } });

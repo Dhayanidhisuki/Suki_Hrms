@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { loadEsskayPricing } from "@/lib/esskayPricing";
 import { PricingProposeSchema } from "@/lib/validators";
+import { checkModulePermission } from "@/lib/rbac";
 
 function mapPriceRow(r: {
   rowId: number;
@@ -72,7 +73,7 @@ function mapPriceRow(r: {
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const forced = (process.env.PRICING_SOURCE ?? "").trim().toLowerCase();
 
@@ -132,12 +133,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const editOk = await requirePermission(authCheck.session, "canEditMaster");
-  const poOk = await requirePermission(authCheck.session, "canRaisePO");
-  if (!editOk.ok && !poOk.ok) {
-    return editOk.ok === false ? editOk.response : poOk.response;
+  const editOk = await checkModulePermission(authCheck.session, "tool_pricing", "EDIT");
+  if (!editOk.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const poOk = await checkModulePermission(authCheck.session, "tool_pricing", "CREATE");
+  if (!poOk.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!editOk.allowed && !poOk.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

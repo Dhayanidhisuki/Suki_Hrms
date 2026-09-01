@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 import { invalidatePermissionsCache } from "@/lib/permissionsCache";
 import {
   ALL_PERMISSION_KEYS,
@@ -18,13 +19,16 @@ export const runtime = "nodejs";
 export async function GET() {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canManageUsers"
+    "settings_roles",
+    "VIEW"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     if (typeof prisma.rolePermission?.findMany !== "function") {
@@ -101,13 +105,16 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(
+  const permCheck = await checkModulePermission(
     authCheck.session,
-    "canManageUsers"
+    "settings_roles",
+    "EDIT"
   );
-  if (!permCheck.ok) return permCheck.response;
+  if (!permCheck.allowed) {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = RolePermissionsUpdateSchema.safeParse(body);

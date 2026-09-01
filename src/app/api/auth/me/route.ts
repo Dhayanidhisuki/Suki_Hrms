@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE_NAME, verifyAuthToken } from "@/lib/authToken";
-import { getLegacyPermissionFlags, getModuleViewPermissions } from "@/lib/rbac";
+import { getLegacyPermissionFlags, getModuleViewPermissions, getModuleActionPermissions } from "@/lib/rbac";
 import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   const permissions = await getLegacyPermissionFlags(session);
   const modulePermissions = await getModuleViewPermissions(session);
+  const moduleActionPermissions = await getModuleActionPermissions(session);
 
   return NextResponse.json({
     user: {
@@ -37,5 +38,6 @@ export async function GET(req: NextRequest) {
     },
     permissions,
     modulePermissions,
+    moduleActionPermissions,
   });
 }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsTypeSchema } from "@/lib/validators";
+import { checkModulePermission } from "@/lib/rbac";
 
 function dbErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -27,7 +28,7 @@ function dbErrorMessage(error: unknown): string {
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   try {
     const [rawItems, groups, types] = await Promise.all([
@@ -64,10 +65,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tools_name_type", "EDIT");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
   const parsed = ToolsTypeSchema.safeParse({

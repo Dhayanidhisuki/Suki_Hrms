@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { ToolsTypeSchema } from "@/lib/validators";
+import { checkModulePermission } from "@/lib/rbac";
 
 export async function PUT(
   req: NextRequest,
@@ -10,10 +11,10 @@ export async function PUT(
 ) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canEditMaster");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tools_name_type", "EDIT");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const body = await req.json();
@@ -80,10 +81,10 @@ export async function DELETE(
 ) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canDeleteMaster");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tools_name_type", "DELETE");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
 

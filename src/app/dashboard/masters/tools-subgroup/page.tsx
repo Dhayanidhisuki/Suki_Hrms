@@ -214,7 +214,7 @@ export default function ToolsSubgroupPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="tool_subgroup" action="CREATE">
                 <Button onClick={handleOpenAdd} variant="primary" className="group">
                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                   Add Subgroup
@@ -353,7 +353,7 @@ export default function ToolsSubgroupPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="tool_subgroup" action="DELETE">
                               <button onClick={() => handleOpenEdit(sg)} title="Edit" className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer">
                                 <Edit2 className="w-4 h-4" />
                               </button>
@@ -540,7 +540,7 @@ export default function ToolsSubgroupPage() {
               >
                 Close
               </button>
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="tool_subgroup" action="EDIT">
                 <Button
                   onClick={() => {
                     const item = selectedDetail;

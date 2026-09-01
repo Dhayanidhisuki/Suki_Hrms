@@ -14,6 +14,8 @@ export const ADMIN_ROLES: readonly string[] = [
   "Administrator",
   "Admin",
   "admin",
+  "Super Admin",
+  "super admin",
 ];
 
 const ADMIN_ROLE_SET = new Set(ADMIN_ROLES.map((r) => r.toLowerCase()));

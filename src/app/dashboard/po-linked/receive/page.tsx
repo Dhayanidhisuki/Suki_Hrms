@@ -484,7 +484,7 @@ export default function PoReceivePage() {
                 Goods receipt against purchase orders (TOOLS_PO_RECEIVE)
               </p>
             </div>
-            <RoleGate permission="canRaisePO">
+            <RoleGate module="purchase" action="CREATE">
               {!showForm && (
                 <Button
                   id="po-receive-add-btn"

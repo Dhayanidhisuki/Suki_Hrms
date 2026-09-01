@@ -1,0 +1,70 @@
+src/app/api/calibration/agencies/route.ts(59,15): error TS2339: Property 'allowed' does not exist on type '{ ok: false; response: Response; } | NextResponse<{ success: boolean; error: string; }> | RbacPermissionCheckResult | { ok: true; session: SessionData; }'.
+  Property 'allowed' does not exist on type '{ ok: false; response: Response; }'.
+src/app/api/calibration/agencies/route.ts(71,27): error TS2339: Property 'session' does not exist on type '{ ok: false; response: Response; } | NextResponse<{ success: boolean; error: string; }> | RbacPermissionCheckResult | { ok: true; session: SessionData; }'.
+  Property 'session' does not exist on type '{ ok: false; response: Response; }'.
+src/app/api/calibration/agencies/route.ts(85,15): error TS2339: Property 'allowed' does not exist on type '{ ok: false; response: Response; } | NextResponse<{ success: boolean; error: string; }> | RbacPermissionCheckResult | { ok: true; session: SessionData; }'.
+  Property 'allowed' does not exist on type '{ ok: false; response: Response; }'.
+src/app/api/calibration/agencies/route.ts(96,25): error TS2339: Property 'session' does not exist on type '{ ok: false; response: Response; } | NextResponse<{ success: boolean; error: string; }> | RbacPermissionCheckResult | { ok: true; session: SessionData; }'.
+  Property 'session' does not exist on type '{ ok: false; response: Response; }'.
+src/app/api/cron/calibration-notifications/route.ts(33,57): error TS2339: Property 'allowed' does not exist on type '{ ok: true; recipient: string; subject: string; tool: DueCalibrationTool; smtp: { accepted: string[]; rejected: string[]; messageId: string; response: string; }; error?: undefined; } | { ...; }'.
+  Property 'allowed' does not exist on type '{ ok: true; recipient: string; subject: string; tool: DueCalibrationTool; smtp: { accepted: string[]; rejected: string[]; messageId: string; response: string; }; error?: undefined; }'.
+src/app/api/cron/calibration-notifications/route.ts(73,57): error TS2339: Property 'allowed' does not exist on type '{ ok: true; recipient: string; subject: string; tool: DueCalibrationTool; smtp: { accepted: string[]; rejected: string[]; messageId: string; response: string; }; error?: undefined; } | { ...; }'.
+  Property 'allowed' does not exist on type '{ ok: true; recipient: string; subject: string; tool: DueCalibrationTool; smtp: { accepted: string[]; rejected: string[]; messageId: string; response: string; }; error?: undefined; }'.
+src/app/api/instruments/service/route.ts(64,21): error TS2339: Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }> | { ok: true; session: SessionData; }'.
+  Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }>'.
+src/app/api/instruments/service/route.ts(82,23): error TS2339: Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }> | { ok: true; session: SessionData; }'.
+  Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }>'.
+src/app/api/instruments/service/route.ts(84,166): error TS2339: Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }> | { ok: true; session: SessionData; }'.
+  Property 'session' does not exist on type 'NextResponse<{ success: boolean; error: string; }>'.
+src/app/api/notifications/settings/route.ts(83,127): error TS18048: 'auth.session' is possibly 'undefined'.
+src/app/api/notifications/settings/route.ts(83,207): error TS18048: 'auth.session' is possibly 'undefined'.
+src/app/api/notifications/settings/route.ts(93,68): error TS18048: 'auth.session' is possibly 'undefined'.
+src/app/api/notifications/settings/route.ts(96,92): error TS18048: 'auth.session' is possibly 'undefined'.
+src/app/api/tools/import/route.ts(129,17): error TS2339: Property 'allowed' does not exist on type '{ ok: true; data: MasterImportData; } | { ok: false; reason: string; }'.
+  Property 'allowed' does not exist on type '{ ok: true; data: MasterImportData; }'.
+src/app/api/tools/import/route.ts(130,53): error TS2339: Property 'reason' does not exist on type '{ ok: true; data: MasterImportData; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; data: MasterImportData; }'.
+src/app/api/tools/import/route.ts(134,32): error TS2339: Property 'data' does not exist on type '{ ok: true; data: MasterImportData; } | { ok: false; reason: string; }'.
+  Property 'data' does not exist on type '{ ok: false; reason: string; }'.
+src/app/api/tools/import/route.ts(154,20): error TS2339: Property 'data' does not exist on type '{ ok: true; data: MasterImportData; } | { ok: false; reason: string; }'.
+  Property 'data' does not exist on type '{ ok: false; reason: string; }'.
+src/app/api/tools/import/route.ts(186,20): error TS2339: Property 'allowed' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'allowed' does not exist on type '{ ok: true; value: Date | null; }'.
+src/app/api/tools/import/route.ts(187,56): error TS2339: Property 'reason' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; value: Date | null; }'.
+src/app/api/tools/import/route.ts(191,24): error TS2339: Property 'allowed' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'allowed' does not exist on type '{ ok: true; value: Date | null; }'.
+src/app/api/tools/import/route.ts(192,60): error TS2339: Property 'reason' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'reason' does not exist on type '{ ok: true; value: Date | null; }'.
+src/app/api/tools/import/route.ts(197,29): error TS2339: Property 'value' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'value' does not exist on type '{ ok: false; reason: string; }'.
+src/app/api/tools/import/route.ts(198,37): error TS2339: Property 'value' does not exist on type '{ ok: true; value: Date | null; } | { ok: false; reason: string; }'.
+  Property 'value' does not exist on type '{ ok: false; reason: string; }'.
+src/app/api/tools/import/route.ts(535,18): error TS2339: Property 'allowed' does not exist on type '{ ok: false; rejected: RejectedRow[]; } | { rejected: RejectedRow[]; created: number; updated: number; ok: true; }'.
+  Property 'allowed' does not exist on type '{ ok: false; rejected: RejectedRow[]; }'.
+src/app/api/tools/import/route.ts(549,24): error TS2339: Property 'created' does not exist on type '{ ok: false; rejected: RejectedRow[]; } | { rejected: RejectedRow[]; created: number; updated: number; ok: true; }'.
+  Property 'created' does not exist on type '{ ok: false; rejected: RejectedRow[]; }'.
+src/app/api/tools/import/route.ts(550,24): error TS2339: Property 'updated' does not exist on type '{ ok: false; rejected: RejectedRow[]; } | { rejected: RejectedRow[]; created: number; updated: number; ok: true; }'.
+  Property 'updated' does not exist on type '{ ok: false; rejected: RejectedRow[]; }'.
+src/app/api/users/route.ts(140,21): error TS2339: Property 'allowed' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'allowed' does not exist on type '{ ok: true; scopes: string[]; }'.
+src/app/api/users/route.ts(140,77): error TS2339: Property 'error' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'error' does not exist on type '{ ok: true; scopes: string[]; }'.
+src/app/api/users/route.ts(141,35): error TS2339: Property 'scopes' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'scopes' does not exist on type '{ ok: false; error: string; }'.
+src/app/api/users/route.ts(184,9): error TS2322: Type '{ userId: number; unitScope: unknown; }[]' is not assignable to type 'UserUnitScopeCreateManyInput | UserUnitScopeCreateManyInput[]'.
+  Type '{ userId: number; unitScope: unknown; }[]' is not assignable to type 'UserUnitScopeCreateManyInput[]'.
+    Type '{ userId: number; unitScope: unknown; }' is not assignable to type 'UserUnitScopeCreateManyInput'.
+      Types of property 'unitScope' are incompatible.
+        Type 'unknown' is not assignable to type 'string'.
+src/app/api/users/route.ts(239,21): error TS2339: Property 'allowed' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'allowed' does not exist on type '{ ok: true; scopes: string[]; }'.
+src/app/api/users/route.ts(239,77): error TS2339: Property 'error' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'error' does not exist on type '{ ok: true; scopes: string[]; }'.
+src/app/api/users/route.ts(240,35): error TS2339: Property 'scopes' does not exist on type '{ ok: true; scopes: string[]; } | { ok: false; error: string; }'.
+  Property 'scopes' does not exist on type '{ ok: false; error: string; }'.
+src/app/api/users/route.ts(315,13): error TS2322: Type '{ userId: number; unitScope: unknown; }[]' is not assignable to type 'UserUnitScopeCreateManyInput | UserUnitScopeCreateManyInput[]'.
+  Type '{ userId: number; unitScope: unknown; }[]' is not assignable to type 'UserUnitScopeCreateManyInput[]'.
+    Type '{ userId: number; unitScope: unknown; }' is not assignable to type 'UserUnitScopeCreateManyInput'.
+      Types of property 'unitScope' are incompatible.
+        Type 'unknown' is not assignable to type 'string'.

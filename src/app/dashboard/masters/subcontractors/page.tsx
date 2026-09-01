@@ -228,7 +228,7 @@ export default function SubcontractorsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="subcontractor_master" action="CREATE">
                 <Button id="subcontractor-add-btn" onClick={handleOpenAdd} variant="primary" className="group">
                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                   Add Subcontractor
@@ -438,7 +438,7 @@ export default function SubcontractorsPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="subcontractor_master" action="EDIT">
                               <button
                                 type="button"
                                 id={`subcon-edit-btn-${s.id}`}
@@ -644,7 +644,7 @@ export default function SubcontractorsPage() {
               <button type="button" onClick={() => setSelectedDetail(null)} className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)]">
                 Close
               </button>
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="subcontractor_master" action="EDIT">
                 <Button
                   size="sm"
                   variant="primary"

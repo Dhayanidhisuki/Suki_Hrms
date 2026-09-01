@@ -747,7 +747,7 @@ function CalibrationIssuePage() {
                     Issue for Calibration / Preventive MNT · search DCs, download Delivery Challan PDF, attach documents
                   </p>
                 </div>
-                <RoleGate permission="canManageCalibration">
+                <RoleGate module="calibration_issue" action="CREATE">
                   <Button type="button" variant="primary" onClick={openCreate}>
                     <Plus className="w-4 h-4" /> New Issue
                   </Button>
@@ -1078,7 +1078,7 @@ function CalibrationIssuePage() {
             </div>
           ) : (
             <RoleGate
-              permission="canManageCalibration"
+              module="calibration_issue" action="EDIT"
               fallback={
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] p-6 text-center">
                   <ShieldAlert className="w-10 h-10 text-[var(--text-muted)] mx-auto mb-3" />

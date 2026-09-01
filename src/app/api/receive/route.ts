@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { ToolsReceiveCreateSchema } from "@/lib/validators";
 import { normalizeCompanyUnit } from "@/lib/companyUnits";
 import { resolveUnitScope, allowedUnitStorageValues } from "@/lib/unitScope";
+import { checkModulePermission } from "@/lib/rbac";
 
 const OPEN_STATUSES = ["OPEN", "PARTIAL", "Active"];
 
@@ -39,7 +40,7 @@ const toolPreview = {
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const unitScope = await resolveUnitScope(check.session);
 
   const { searchParams } = req.nextUrl;
@@ -340,10 +341,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canReceiveTool");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "tool_issue_receive", "CREATE");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
   const parsed = ToolsReceiveCreateSchema.safeParse(body);

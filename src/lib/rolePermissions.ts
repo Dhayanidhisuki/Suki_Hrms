@@ -119,6 +119,8 @@ export const rolePermissions: Record<string, RolePermissionFlags> = {
   Administrator: FULL_ACCESS,
   Admin: FULL_ACCESS,
   admin: FULL_ACCESS,
+  "Super Admin": FULL_ACCESS,
+  "super admin": FULL_ACCESS,
   "Store Keeper": {
     canApproveSupplier: false,
     canCreateIssue: true,

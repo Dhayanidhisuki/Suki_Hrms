@@ -1132,7 +1132,7 @@ export default function IssueToolPage() {
                 <FileSpreadsheet className="w-4 h-4" />
                 Excel
               </Button>
-              <RoleGate permission="canCreateIssue">
+              <RoleGate module="tool_issue_receive" action="CREATE">
                 {!showCreate && (
                   <Button
                     id="issue-create-btn"
@@ -1350,7 +1350,7 @@ export default function IssueToolPage() {
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
                                 {isOpenIssue(issue.status) && (
-                                  <RoleGate permission="canCreateIssue">
+                                  <RoleGate module="tool_issue_receive" action="CREATE">
                                     <button type="button" title="Edit movement DC" onClick={() => openEditIssue(issue)} className="inline-flex p-1.5 rounded-lg text-[var(--primary)] hover:bg-[var(--primary-light)]">
                                       <Pencil className="w-3.5 h-3.5" />
                                     </button>
@@ -1395,7 +1395,7 @@ export default function IssueToolPage() {
                                 Download DC
                               </Button>
                             )}
-                            <RoleGate permission="canCreateIssue">
+                            <RoleGate module="tool_issue_receive" action="CREATE">
                               {isOpenIssue(issue.status) && (
                                 <>
                                   <Button type="button" size="sm" variant="outline" onClick={() => openEditIssue(issue)}>

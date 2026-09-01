@@ -28,7 +28,7 @@ function isPermissionUpdate(value: unknown): value is PermissionUpdate {
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   // Check permission for settings_roles (VIEW)
   const perm = await checkModulePermission(session, "settings_roles", "VIEW");
@@ -55,7 +55,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   // Check permission for settings_roles (EDIT)
   const perm = await checkModulePermission(session, "settings_roles", "EDIT");

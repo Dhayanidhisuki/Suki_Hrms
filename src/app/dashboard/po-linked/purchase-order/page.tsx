@@ -82,9 +82,9 @@ function supplierLabel(po: PurchaseOrder): string {
 }
 
 export default function PurchaseOrderPage() {
-  const { can } = useSession();
-  const canCreate = can("canCreatePO");
-  const canUpdateFinance = can("canUpdateFinance");
+  const { canModuleAction } = useSession();
+  const canCreate = canModuleAction("purchase", "CREATE");
+  const canUpdateFinance = canModuleAction("purchase", "EDIT");
   const [items, setItems] = useState<PurchaseOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

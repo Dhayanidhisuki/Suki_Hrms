@@ -572,7 +572,7 @@ export default function CalibrationResultsUpdatePage() {
                         </td>
                         <td className="py-3 px-4 align-middle text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <RoleGate permission="canManageCalibration">
+                            <RoleGate module="calibration_results" action="EDIT">
                               <button
                                 type="button"
                                 onClick={() => setUploadRecord(item)}

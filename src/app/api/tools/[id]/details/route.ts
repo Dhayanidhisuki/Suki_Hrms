@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 import { z } from "zod";
+import { checkModulePermission } from "@/lib/rbac";
 
 const ToolsDetailsSchema = z.object({
   noOfCavity: z.number().int().min(0).optional(),
@@ -25,7 +26,7 @@ export async function GET(
 ) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const toolRefNo = parseInt(id, 10);
@@ -55,9 +56,10 @@ export async function PUT(
 ) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
-  const permission = await requirePermission(check.session, "canEditMaster");
-  if (!permission.ok) return permission.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const permission = await checkModulePermission(check.session, "tool_master", "EDIT");
+  if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const toolRefNo = parseInt(id, 10);

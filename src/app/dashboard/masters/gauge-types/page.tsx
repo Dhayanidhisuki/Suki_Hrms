@@ -150,7 +150,7 @@ export default function GaugeTypesPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <RoleGate permission="canEditMaster">
+              <RoleGate module="gauge_type" action="CREATE">
                 <Button onClick={handleOpenAdd} variant="primary" className="group">
                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 duration-200" />
                   Add Gauge Type
@@ -226,7 +226,7 @@ export default function GaugeTypesPage() {
                         <td className="py-3.5 px-3 text-[var(--text-secondary)]">{formatDate(row.creatDt)}</td>
                         <td className="py-3.5 px-3">
                           <div className="flex items-center gap-1">
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="gauge_type" action="DELETE">
                               <button onClick={() => handleOpenEdit(row)} title="Edit" className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors cursor-pointer">
                                 <Edit2 className="w-4 h-4" />
                               </button>

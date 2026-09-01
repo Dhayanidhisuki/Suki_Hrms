@@ -582,7 +582,7 @@ export default function RequisitionPendingPage() {
       subtitle="Raise tool MRs into MATERIAL_REQUISITION_* · fulfil via Issue For Tools"
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <RoleGate permission="canCreateIssue">
+          <RoleGate module="requisition" action="CREATE">
             <Button
               id="req-pending-raise-btn"
               variant="primary"

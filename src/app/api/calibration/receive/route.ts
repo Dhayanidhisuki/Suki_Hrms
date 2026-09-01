@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveErpAuditUserId } from "@/lib/erpActor";
 import { CalibReceiveCreateSchema } from "@/lib/validators";
 import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
+import { checkModulePermission } from "@/lib/rbac";
 
 function isCalibIssueLineOpen(status: string | null | undefined): boolean {
   const s = (status ?? "").trim().toUpperCase();
@@ -35,7 +36,7 @@ function deriveIssueStatus(lines: { status: string | null }[]): "OPEN" | "PARTIA
 export async function GET() {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const unitScope = await resolveUnitScope(session);
 
   try {
@@ -86,10 +87,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canManageCalibration");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "calibration_receive", "CREATE");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const unitScope = await resolveUnitScope(authCheck.session);
 
   const body = await req.json();

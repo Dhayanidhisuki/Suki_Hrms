@@ -544,7 +544,7 @@ export default function ReceiveToolPage() {
                     {isMovement ? "Confirm instruments received into their destination unit" : "GRN history + Items/Asset Receive (TOOLS_ISSUE_RECEIVED)"}
                   </p>
                 </div>
-                <RoleGate permission="canReceiveTool">
+                <RoleGate module="tool_issue_receive" action="CREATE">
                   {mode !== "receive" && (
                     <Button type="button" variant="primary" onClick={openReceiveForm}>
                       <Plus className="w-4 h-4" /> {isMovement ? "Receive Movement" : "Receive"}

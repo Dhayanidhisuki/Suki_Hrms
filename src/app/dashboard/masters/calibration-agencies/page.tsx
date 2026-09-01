@@ -113,7 +113,7 @@ export default function CalibrationAgenciesPage() {
               <h1 className="text-2xl font-bold">Authorized Calibration Agencies</h1>
               <p className="mt-1 text-sm text-[var(--text-muted)]">Only active, authorized and non-expired agencies can receive calibration work.</p>
             </div>
-            <RoleGate permission="canManageCalibration">
+            <RoleGate module="authorized_agencies" action="CREATE">
               <Button type="button" variant="primary" onClick={openAdd}><Plus className="h-4 w-4" /> Add Agency</Button>
             </RoleGate>
           </div>

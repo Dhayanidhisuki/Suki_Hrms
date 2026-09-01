@@ -8,6 +8,7 @@ import {
   FileText,
 } from "lucide-react";
 import Link from "next/link";
+import { useSession } from "@/lib/SessionContext";
 
 interface ActionButtonProps {
   id: string;
@@ -90,6 +91,7 @@ function ActionButton({
 }
 
 export default function QuickActions() {
+  const { canModule, canModuleAction } = useSession();
   return (
     <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-main)] p-5">
       {/* ── Header ── */}
@@ -104,21 +106,31 @@ export default function QuickActions() {
 
       {/* ── Action buttons ── */}
       <div className="flex flex-col gap-3">
-        <Link href="/dashboard/transactions/issue?action=add" className="block w-full">
-          <ActionButton id="qa-issue-tool-btn" icon={<ArrowUpRight className="w-4.5 h-4.5" />} label="Issue Tool" sublabel="Record a tool issue to employee" variant="primary" />
-        </Link>
-        <Link href="/dashboard/transactions/receive?action=add" className="block w-full">
-          <ActionButton id="qa-receive-tool-btn" icon={<ArrowDownLeft className="w-4.5 h-4.5" />} label="Receive Tool" sublabel="Record tool return from employee" variant="secondary" />
-        </Link>
-        <Link href="/dashboard/calibration/due-list" className="block w-full">
-          <ActionButton id="qa-calibration-list-btn" icon={<ClipboardList className="w-4.5 h-4.5" />} label="Calibration Due List" sublabel="View upcoming calibrations" variant="secondary" />
-        </Link>
-        <Link href="/dashboard/documents" className="block w-full">
-          <ActionButton id="qa-documents-btn" icon={<FileText className="w-4.5 h-4.5" />} label="Documents & Photos" sublabel="Upload & view certificates, photos and drawings" variant="secondary" />
-        </Link>
-        <Link href="/dashboard/masters/tools" className="block w-full">
-          <ActionButton id="qa-add-tool-btn" icon={<Plus className="w-4.5 h-4.5" />} label="Add New Tool" sublabel="Register a new tool in GAUGEANDTOOLS" variant="ghost" />
-        </Link>
+        {canModuleAction("tool_issue_receive", "CREATE") && (
+          <Link href="/dashboard/transactions/issue?action=add" className="block w-full">
+            <ActionButton id="qa-issue-tool-btn" icon={<ArrowUpRight className="w-4.5 h-4.5" />} label="Issue Tool" sublabel="Record a tool issue to employee" variant="primary" />
+          </Link>
+        )}
+        {canModuleAction("tool_issue_receive", "CREATE") && (
+          <Link href="/dashboard/transactions/receive?action=add" className="block w-full">
+            <ActionButton id="qa-receive-tool-btn" icon={<ArrowDownLeft className="w-4.5 h-4.5" />} label="Receive Tool" sublabel="Record tool return from employee" variant="secondary" />
+          </Link>
+        )}
+        {canModule("calibration_issue") && (
+          <Link href="/dashboard/calibration/due-list" className="block w-full">
+            <ActionButton id="qa-calibration-list-btn" icon={<ClipboardList className="w-4.5 h-4.5" />} label="Calibration Due List" sublabel="View upcoming calibrations" variant="secondary" />
+          </Link>
+        )}
+        {canModule("documents") && (
+          <Link href="/dashboard/documents" className="block w-full">
+            <ActionButton id="qa-documents-btn" icon={<FileText className="w-4.5 h-4.5" />} label="Documents & Photos" sublabel="Upload & view certificates, photos and drawings" variant="secondary" />
+          </Link>
+        )}
+        {canModuleAction("tool_master", "CREATE") && (
+          <Link href="/dashboard/masters/tools" className="block w-full">
+            <ActionButton id="qa-add-tool-btn" icon={<Plus className="w-4.5 h-4.5" />} label="Add New Tool" sublabel="Register a new tool in GAUGEANDTOOLS" variant="ghost" />
+          </Link>
+        )}
       </div>
 
       {/* ── Footer note ── */}

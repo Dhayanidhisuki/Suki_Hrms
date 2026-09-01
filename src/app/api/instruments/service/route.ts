@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 const ServiceSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -24,15 +25,16 @@ async function access() {
   const session = await getSession();
   const check = await requireSession(session);
   if (!check.ok) return check;
-  const permission = await requirePermission(check.session, "canManageCalibration");
-  if (!permission.ok) return permission;
+  const permission = await checkModulePermission(check.session, "tool_master", "VIEW");
+  if (!permission.allowed) return { ok: false, response: NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 }) };
+  
   return { ok: true as const, session: check.session };
 }
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const defectId = Number(req.nextUrl.searchParams.get("defectId") ?? 0);
   const toolOrGaugeNo = (req.nextUrl.searchParams.get("toolOrGaugeNo") ?? "").trim();
   const items = await prisma.instrumentServiceRecord.findMany({
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
     sentDate: sentDate ? new Date(sentDate) : null,
     expectedReturnDate: expectedReturnDate ? new Date(expectedReturnDate) : null,
     receivedDate: receivedDate ? new Date(receivedDate) : null,
-    createdBy: auth.session.userId.slice(0, 50),
+    createdBy: auth.session!.userId.slice(0, 50),
   } });
   return NextResponse.json({ item }, { status: 201 });
 }
@@ -77,9 +79,9 @@ export async function PUT(req: NextRequest) {
       sentDate: sentDate ? new Date(sentDate) : null,
       expectedReturnDate: expectedReturnDate ? new Date(expectedReturnDate) : null,
       receivedDate: receivedDate ? new Date(receivedDate) : null,
-      updatedBy: auth.session.userId.slice(0, 50),
+      updatedBy: auth.session!.userId.slice(0, 50),
     } });
-    if (updated.defectId) await tx.instrumentDefect.update({ where: { id: updated.defectId }, data: { status: updated.finalStatus || updated.status, updatedBy: auth.session.userId.slice(0, 50) } });
+    if (updated.defectId) await tx.instrumentDefect.update({ where: { id: updated.defectId }, data: { status: updated.finalStatus || updated.status, updatedBy: auth.session!.userId.slice(0, 50) } });
     if (["Returned to Use", "Completed"].includes(updated.finalStatus ?? "")) {
       await tx.gaugeAndTools.update({ where: { refNo: updated.refNo }, data: { status: "Available" } });
       await tx.gaugeSerialNo.updateMany({ where: { OR: [{ toolRefNo: updated.refNo }, { toolOrGaugeNo: updated.toolOrGaugeNo }] }, data: { status: "AVAILABLE FOR USE" } });

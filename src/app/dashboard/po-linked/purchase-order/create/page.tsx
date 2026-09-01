@@ -41,8 +41,8 @@ function newLine(): LineDraft {
 
 export default function CreatePurchaseOrderPage() {
   const router = useRouter();
-  const { can, loading: sessionLoading } = useSession();
-  const allowed = can("canCreatePO");
+  const { canModuleAction, loading: sessionLoading } = useSession();
+  const allowed = canModuleAction("purchase", "CREATE");
 
   const [goodsTypes, setGoodsTypes] = useState<GoodsType[]>([]);
   const [supCode, setSupCode] = useState("");

@@ -40,17 +40,24 @@ export function MasterTableCard({
   toolbar,
   children,
   footer,
+  error,
   className = "",
 }: {
   toolbar: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  error?: string | null;
   className?: string;
 }) {
   return (
     <div
-      className={`bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] shadow-sm relative animate-fade-in ${className}`}
+      className={`bg-[var(--bg-card)] rounded-xl border border-[var(--border-main)] shadow-sm relative animate-fade-in flex flex-col ${className}`}
     >
+      {error && (
+        <div className="px-3 py-2 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-medium border-b border-[var(--border-main)] rounded-t-xl">
+          {error}
+        </div>
+      )}
       <div className="px-3 py-2 border-b border-[var(--border-main)] flex items-center gap-2 flex-wrap sm:flex-nowrap relative z-30 min-w-0">
         {toolbar}
       </div>

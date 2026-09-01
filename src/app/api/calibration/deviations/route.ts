@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
+import { checkModulePermission } from "@/lib/rbac";
 
 const Schema = z.object({
   resultId: z.number().int().positive().optional(), issueLineRowId: z.number().int().positive().optional(),
@@ -14,8 +15,9 @@ const Schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await getSession(); const check = await requireSession(session); if (!check.ok) return check.response;
-  const permission = await requirePermission(check.session, "canManageCalibration"); if (!permission.ok) return permission.response;
+  const session = await getSession(); const check = await requireSession(session); if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const permission = await checkModulePermission(check.session, "calibration_results", "CREATE");
+  if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const parsed = Schema.safeParse(await req.json()); if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const unitScope = await resolveUnitScope(check.session);
   const tool = await prisma.gaugeAndTools.findUnique({

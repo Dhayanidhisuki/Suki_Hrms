@@ -454,7 +454,7 @@ export default function LookupsPage() {
                 Tool types, gauge types, tool groups and subgroups
               </p>
             </div>
-            <RoleGate permission="canEditMaster">
+            <RoleGate module="tool_group" action="EDIT">
               {(tab === "Tools Groups" || tab === "Tools Subgroups") && (
                 <Button
                   id="lookup-add-btn"
@@ -547,7 +547,7 @@ export default function LookupsPage() {
                           <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.grnPrefix}</td>
                           <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{g.indentPrefix}</td>
                           <td className="py-3 px-3">
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="tool_group" action="DELETE">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => handleOpenEditGroup(g)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                                   <Edit2 className="w-3.5 h-3.5" />
@@ -596,7 +596,7 @@ export default function LookupsPage() {
                           <td className="py-3 px-3 font-mono text-xs text-[var(--text-secondary)]">{cf.prodToleranceMax ?? "-"}</td>
                           <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{cf.calibFrequency ?? "-"}</td>
                           <td className="py-3 px-3">
-                            <RoleGate permission="canDeleteMaster">
+                            <RoleGate module="tool_group" action="DELETE">
                               <button onClick={() => handleDeleteCalibFreq(cf.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -640,7 +640,7 @@ export default function LookupsPage() {
                           <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{sg.name}</td>
                           <td className="py-3 px-3 text-[var(--text-secondary)]">{sg.group?.name ?? "-"}</td>
                           <td className="py-3 px-3">
-                            <RoleGate permission="canEditMaster">
+                            <RoleGate module="tool_group" action="DELETE">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => handleOpenEditSubgroup(sg)} className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                                   <Edit2 className="w-3.5 h-3.5" />
@@ -841,7 +841,7 @@ export default function LookupsPage() {
 
   function renderInlineEditor() {
     return (
-      <RoleGate permission="canEditMaster">
+      <RoleGate module="tool_group" action="EDIT">
         <div className="border border-dashed border-[var(--border-main)] rounded-2xl p-4 bg-[var(--bg-subtle)] mt-4">
           {isInlineAdding ? (
             <div className="space-y-3">
@@ -914,7 +914,7 @@ export default function LookupsPage() {
 
   function renderCalibFreqEditor() {
     return (
-      <RoleGate permission="canEditMaster">
+      <RoleGate module="tool_group" action="EDIT">
         <div className="border border-dashed border-[var(--border-main)] rounded-2xl p-4 bg-[var(--bg-subtle)] mt-4">
           {cfAdding ? (
             <div className="space-y-3">
@@ -1012,7 +1012,7 @@ function SimpleTypesTable({
               <td className="py-3 px-3 font-medium text-[var(--text-primary)]">{row.name}</td>
               <td className="py-3 px-3 text-[var(--text-secondary)]">{row.description}</td>
               <td className="py-3 px-3">
-                <RoleGate permission="canEditMaster">
+                <RoleGate module="tool_group" action="DELETE">
                   <button onClick={() => onDelete(row.id)} className="p-1.5 hover:bg-[var(--color-danger-bg)] rounded-lg text-[var(--text-muted)] hover:text-[var(--color-danger-text)] transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

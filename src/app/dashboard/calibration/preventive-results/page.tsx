@@ -234,7 +234,7 @@ export default function PreventiveResultsPage() {
                           <StatusBadge status={row.dueStatus} />
                         </td>
                         <td className="py-2.5 px-3">
-                          <RoleGate permission="canEditMaster">
+                          <RoleGate module="calibration_results" action="EDIT">
                             <Button type="button" variant="primary" size="sm" onClick={() => openComplete(row)}>
                               Complete PM
                             </Button>

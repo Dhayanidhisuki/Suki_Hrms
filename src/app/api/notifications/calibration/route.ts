@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 import { generateCalibrationNotifications, systemRecipientKey } from "@/lib/calibrationNotifications";
 
 function userKey(userDbId: number | null) {
@@ -9,7 +10,7 @@ function userKey(userDbId: number | null) {
 }
 
 export async function GET() {
-  const check = await requireSession(await getSession()); if (!check.ok) return check.response;
+  const check = await requireSession(await getSession()); if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const recipientEmail = userKey(check.session.userDbId);
   if (!recipientEmail) return NextResponse.json({ items: [], unread: 0 });
   await generateCalibrationNotifications(check.session.userDbId!);
@@ -18,14 +19,14 @@ export async function GET() {
 }
 
 export async function POST() {
-  const check = await requireSession(await getSession()); if (!check.ok) return check.response;
-  const permission = await requirePermission(check.session, "canManageCalibration"); if (!permission.ok) return permission.response;
+  const check = await requireSession(await getSession()); if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const permission = await checkModulePermission(check.session, "calibration_issue", "CREATE"); if (!permission.allowed) return NextResponse.json({error:"Forbidden"}, {status:403});
   if (!check.session.userDbId) return NextResponse.json({ error: "Authenticated user is not linked" }, { status: 400 });
   return NextResponse.json(await generateCalibrationNotifications(check.session.userDbId));
 }
 
 export async function PATCH(req: NextRequest) {
-  const check = await requireSession(await getSession()); if (!check.ok) return check.response;
+  const check = await requireSession(await getSession()); if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const body = await req.json().catch(() => ({})) as { id?: number; all?: boolean };
   const recipientEmail = userKey(check.session.userDbId);
   if (!recipientEmail) return NextResponse.json({ error: "Authenticated user is not linked" }, { status: 400 });

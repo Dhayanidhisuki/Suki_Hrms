@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkModulePermission } from "@/lib/rbac";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import { requireSession, requirePermission } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { checkLegacyPermission } from "@/lib/rbac";
 import { resolveUnitScope, unitIsAllowed } from "@/lib/unitScope";
 import { PurchaseOrderCreateSchema } from "@/lib/validators";
@@ -76,7 +77,7 @@ async function lookupApprovedRate(
 export async function GET(req: NextRequest) {
   const session = await getSession();
   const check = await requireSession(session);
-  if (!check.ok) return check.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   const unitScope = await resolveUnitScope(check.session);
 
   const canCreate = await checkLegacyPermission(check.session, "canCreatePO");
@@ -241,10 +242,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   const authCheck = await requireSession(session);
-  if (!authCheck.ok) return authCheck.response;
+  if (!authCheck.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const permCheck = await requirePermission(authCheck.session, "canCreatePO");
-  if (!permCheck.ok) return permCheck.response;
+  const permCheck = await checkModulePermission(authCheck.session, "purchase", "CREATE");
+  if (!permCheck.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = PurchaseOrderCreateSchema.safeParse(body);

@@ -8,7 +8,12 @@ import { NavigationLoader } from "@/components/NavigationLoader";
 import { AppToaster } from "@/components/AppToaster";
 import { parseCookieString, THEME_COOKIE_NAME, MODE_COOKIE_NAME } from "@/lib/theme-cookies";
 
-const poppins = { className: "font-sans", variable: "--font-poppins" };
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "SUKI ERP — Tools Management",
@@ -61,7 +66,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: antiFoucScript }}
         />
       </head>
-      <body className="antialiased">
+      <body className="antialiased font-sans">
         <ThemeProvider initialTheme={theme} initialMode={mode}>
           <SessionProvider>
             <NavigationLoader />

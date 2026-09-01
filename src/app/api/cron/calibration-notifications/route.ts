@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { previewCalibrationDueEmails, runCalibrationDueEmails, runCalibrationTestEmail } from "@/lib/calibrationDueEmail";
 import { getSession } from "@/lib/session";
-import { requirePermission, requireSession } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { checkModulePermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,9 +55,10 @@ export async function GET(request: Request) {
  */
 export async function POST(req: NextRequest) {
   const check = await requireSession(await getSession());
-  if (!check.ok) return check.response;
-  const permission = await requirePermission(check.session, "canManageSettings");
-  if (!permission.ok) return permission.response;
+  if (!check.ok) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const permission = await checkModulePermission(check.session, "settings_roles", "CREATE");
+  if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!permission.allowed) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   try {
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
