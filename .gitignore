@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ERP data extracts — may contain employee PII/credentials, never commit
+scripts/erp-extract/out/

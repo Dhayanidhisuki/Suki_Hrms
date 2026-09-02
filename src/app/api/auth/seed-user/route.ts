@@ -1,11 +1,21 @@
 /**
  * POST /api/auth/seed-user
  *
- * Creates a test admin user for login testing.
- * Email: admin@suki.hrms  Password: admin123
+ * Bootstraps (or repairs) the one login account needed to reach the Admin
+ * UI. Requires POST /api/auth/seed to have been run first — that's what
+ * creates the "system-admin" role this route assigns.
  *
- * Also ensures the "admin" role exists.
- * Safe to call multiple times — uses upsert.
+ * - If admin@suki.hrms doesn't exist yet: creates it with password
+ *   "admin123" and role system-admin.
+ * - If it already exists: repairs roleId/isActive/deletedAt only (so an
+ *   account that ended up pointing at a role with zero permissions — e.g.
+ *   the old test "admin" role, which this app's canonical seed deliberately
+ *   never grants anything to — gets fixed back to system-admin). The
+ *   password is left untouched on repair, so this is safe to re-run after
+ *   you've changed the password via Admin > Users without clobbering it
+ *   back to the default.
+ *
+ * Safe to call multiple times.
  */
 
 import { NextResponse } from 'next/server';
@@ -13,50 +23,37 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
 export async function POST() {
-  // 1. Ensure admin role exists
-  const role = await prisma.role.upsert({
-    where: { code: 'admin' },
-    update: {},
-    create: {
-      code: 'admin',
-      name: 'Administrator',
-      description: 'Full access admin role',
-    },
-  });
+  const role = await prisma.role.findUnique({ where: { code: 'system-admin' } });
+  if (!role) {
+    return NextResponse.json(
+      { error: 'system-admin role not found — call POST /api/auth/seed first, then retry this.' },
+      { status: 400 }
+    );
+  }
 
-  // 2. Hash the default password
-  const passwordHash = await bcrypt.hash('admin123', 10);
+  const existing = await prisma.user.findUnique({ where: { email: 'admin@suki.hrms' } });
 
-  // 3. Upsert the admin user
-  const user = await prisma.user.upsert({
-    where: { email: 'admin@suki.hrms' },
-    // Re-seeding must REPAIR an existing row, otherwise a user created with a
-    // stale hash (or later deactivated) can never sign in again.
-    update: {
-      passwordHash,
-      roleId: role.id,
-      isActive: true,
-      deletedAt: null,
-    },
-    create: {
-      email: 'admin@suki.hrms',
-      passwordHash,
-      roleId: role.id,
-      isActive: true,
-    },
-    select: { id: true, email: true, roleId: true },
-  });
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: { roleId: role.id, isActive: true, deletedAt: null },
+        select: { id: true, email: true, roleId: true },
+      })
+    : await prisma.user.create({
+        data: {
+          email: 'admin@suki.hrms',
+          passwordHash: await bcrypt.hash('admin123', 10),
+          roleId: role.id,
+          isActive: true,
+        },
+        select: { id: true, email: true, roleId: true },
+      });
 
   return NextResponse.json({
-    message: 'Seed user created',
-    user: {
-      id: user.id,
-      email: user.email,
-      roleCode: role.code,
-    },
-    credentials: {
-      email: 'admin@suki.hrms',
-      password: 'admin123',
-    },
+    message: existing
+      ? 'Repaired existing admin user — role reset to system-admin, account reactivated. Password untouched.'
+      : 'Seed user created.',
+    user: { id: user.id, email: user.email, roleCode: role.code },
+    ...(existing ? {} : { credentials: { email: 'admin@suki.hrms', password: 'admin123' } }),
   });
 }

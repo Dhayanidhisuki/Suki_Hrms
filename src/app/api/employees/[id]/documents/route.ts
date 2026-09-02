@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { checkEmployeePermission } from '@/lib/rbac-employee';
 import { documentCreateSchema } from '@/lib/validations/employee';
 import { annotateDocumentExpiry } from '@/lib/document-expiry';
 
@@ -11,6 +12,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const permErr = await checkEmployeePermission(request);
+  if (permErr) return permErr;
   const { id } = await params;
   const employeeId = parseInt(id);
 

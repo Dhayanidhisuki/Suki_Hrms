@@ -4,9 +4,12 @@
  * Uses jose (Edge-compatible) for token verification.
  *
  * Protected route groups:
- * - /api/protected/*  — existing test route (JWT + permission in handler)
- * - /api/masters/*    — master setup API routes (JWT here, permission in handler)
- * - /masters/*        — master setup UI pages (JWT check, redirect to / if no token)
+ * - /api/protected/*     — existing test route (JWT + permission in handler)
+ * - /api/masters/*       — master setup API routes (JWT here, permission in handler)
+ * - /api/org-options     — org master dropdown data (JWT here, permission in handler)
+ * - /api/admin/*         — user/role/permission admin API routes (JWT here, permission in handler)
+ * - /masters/*           — master setup UI pages (JWT check, redirect to / if no token)
+ * - /admin/*             — administration UI pages (JWT check, redirect to / if no token)
  *
  * Permission DB checks happen in route handlers (Node runtime),
  * not in middleware (Edge runtime can't access Prisma).
@@ -23,8 +26,13 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/protected/') ||
     pathname.startsWith('/api/masters/') ||
     pathname.startsWith('/api/employees') ||
-    pathname.startsWith('/api/uploads');
-  const isUiRoute = pathname.startsWith('/masters/') || pathname.startsWith('/employees');
+    pathname.startsWith('/api/uploads') ||
+    pathname.startsWith('/api/org-options') ||
+    pathname.startsWith('/api/admin/');
+  const isUiRoute =
+    pathname.startsWith('/masters/') ||
+    pathname.startsWith('/employees') ||
+    pathname.startsWith('/admin/');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();
@@ -92,5 +100,8 @@ export const config = {
     '/api/uploads',
     '/employees/:path*',
     '/employees',
+    '/api/org-options',
+    '/api/admin/:path*',
+    '/admin/:path*',
   ],
 };

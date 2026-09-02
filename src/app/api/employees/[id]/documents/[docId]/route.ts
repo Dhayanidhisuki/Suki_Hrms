@@ -4,11 +4,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { checkEmployeePermission } from '@/lib/rbac-employee';
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; docId: string }> }
 ) {
+  const permErr = await checkEmployeePermission(request);
+  if (permErr) return permErr;
   const { id, docId } = await params;
   const employeeId = parseInt(id);
   const documentId = parseInt(docId);

@@ -217,7 +217,23 @@ Screens unlocked by this answer: Masters > Levels (with rank), Masters > Reporti
 ## Tier 4 — Propose, then get approval (client will not have an answer)
 
 ### 16. Security & Access Controls
-**Status:** PENDING
+**Status:** DECIDED (31 Aug 2026) — starter role set confirmed, permission matrix and admin UI still to build.
+
+**Context found before proposing:** `Role`/`Permission`/`RolePermission`/`User` already exist in the schema (single `roleId` per user, not multi-role). Two separate, inconsistent seed scripts existed — `src/app/api/auth/seed/route.ts` (masters.* only, `admin`/`viewer` roles) and `scripts/seed-employee-permissions.mjs` (a richer `employee.*` taxonomy: view/create/edit/deactivate/export, with salary and KYC gated separately, including `employee.kyc.reveal` as its own permission) — neither aware of the other's roles. `Administration > User & Access` (Users/Roles/Permissions/Page Permissions) is already planned in `navigation.ts` but not built. Only Employees and Masters have real pages today — the rest of the 14-module BRD sidebar is placeholder routes. The legacy ERP itself only ever had 2 real system users with full module access (`mangal`, `muthu`) — never a many-role system in practice.
+
+**Decision:** small starter set, matched to what's actually built and how many people will really use the system (confirmed 2-5 users, HR/admin staff only — no manager or employee self-service logins for now):
+
+| Role | Scope |
+|---|---|
+| System Admin | Everything, including managing Roles/Users/Permissions itself |
+| HR Admin | Full Employee Master CRUD + Masters, no RBAC management |
+| HR Viewer | Read-only across Employee Master + Masters |
+
+Deliberately split "runs the software" (System Admin) from "runs HR" (HR Admin) even at this small scale, rather than collapsing them, since separating that later means re-auditing every permission grant already made.
+
+**Explicitly deferred, not forgotten:** a Manager role scoped via the live `HOME_MANAGER`/`BUSINESS_MANAGER`/`HR_MANAGER`/`VR_MANAGER` matrix (populated for all 479 employees) is technically ready to build whenever §13 Web & Mobile Access / ESS is decided and managers actually get logins. No schema change needed to add it later — same `Role`/`RolePermission` tables, just a new row plus row-level scoping logic in the API layer.
+
+**Still open, next steps:** consolidate the two existing seed scripts into one source of truth; enumerate a real `Permission` row per module/submodule/page × action for the modules that actually have pages (Employees, Masters) rather than the full eventual BRD tree; build the `Administration > User & Access` screens already reserved in the nav.
 
 ### 17. Existing Data Migration
 **Status:** PENDING
@@ -327,7 +343,7 @@ Answers that conflict with the BRD, the schema, or an earlier answer are recorde
 | 25 Aug | Scope | BRD sidebar omits 7+ screens the ERP actively uses: holiday master, salary components, loans, investment declaration, resignation, candidate pipeline, contract payroll | OPEN — confirm each in or out of scope |
 | 25 Aug | Org Structure | BRD treats company as a single profile under Administration. ERP is multi-company with child units carrying their own GSTIN and state. | OPEN — Company and Unit masters required |
 | 25 Aug | Masters | BRD lists both "TDS Slabs" and "Income Tax Slabs". ERP has neither; only `TDS_TAX_CODE_MASTER` (sections). | OPEN — likely duplicate |
-| 25 Aug | Reporting | Current Prisma schema has one `reportingManagerId`. ERP has four manager roles per employee (HOME, BUSINESS, HR, VR). | OPEN — extend before approvals are built |
+| 25 Aug | Reporting | Current Prisma schema has one `reportingManagerId`. ERP has four manager roles per employee (HOME, BUSINESS, HR, VR). | RESOLVED 31 Aug — live data confirms all 4 manager roles populated for all 479 employees. Extend before approvals are built. |
 
 | 25 Aug | Attendance | Time Office BRD says grace period is "configured company policy". ERP holds `GRACE_MINS` per employee. | OPEN — question T1 |
 | 25 Aug | Scope | Period Freeze and Reopen is a full state machine over attendance, leave, OT, permission and comp-off. Absent from the original BRD and from the ERP schema. | ACCEPTED as new scope — 8-10 days, belongs in the foundation phase |
@@ -339,4 +355,8 @@ Answers that conflict with the BRD, the schema, or an earlier answer are recorde
 | 27 Aug | Employee Master | CTC exists both as a pre-hire concept (`HRMS_NA_SALARY_DETAILS`, keyed on APPLICANT_ID) and as a mostly-empty post-hire Employee tab. | OPEN — recommend CTC is offer-stage only, superseded by Salary post-hire |
 | 27 Aug | Employee Master | Job Profile tab stores an "Official Password" field directly on the employee record. | FLAGGED — recommend excluding from new schema; office credentials should not live in HRMS data |
 
-See `ERP_SCHEMA_ANALYSIS_2026-08-25.md` for the legacy ERP analysis, `TIME_OFFICE_ANALYSIS_2026-08-25.md` for the Time Office analysis, and `EMPLOYEE_MASTER_FIELD_MAP_2026-08-27.md` for the full Employee Details UI field map behind these entries.
+| 31 Aug | Org Structure | "Level" dropdown (L1-L7) on the Employee Master UI has no backing master — `HRMS_DESIG_LEVEL_MASTER` is empty (0 rows), `HRMS_GRADE_MASTER` has only 2 unrelated rows. Real `EMP_LEVEL` data (recovered) holds `CONFIRM`/`-Select-`/blank — an employment-confirmation status, not L1-L7 at all. | RESOLVED 31 Aug — the agreed 5-tier org-rank Level has no legacy data to reconcile against; it's clean new scope. Wherever L1-L7 actually saves to (if anywhere) is still unknown, but it isn't EMP_LEVEL. |
+| 31 Aug | Employee Master | Five classification dropdowns (Category, Sub Category, Type, Grade, Class/Level) — recovered live data shows only Category and Type carry real, if near-constant, signal (468/479 `EMPLOYEE`, 471/479 `PERMANENT`); Grade/Class/Level/Sub-Category are overwhelmingly blank or the literal placeholder string `-Select-` stored as data. | OPEN — recommend against replicating all 5 axes; confirm with client whether the unused ones are intended to grow or should be simplified away |
+| 31 Aug | Data extraction | Section 4 of `03-extract-L0-L1-L2.sql` (`SELECT * FROM EMPLOYEE`) exported the `PASSWORD` column for all 479 employees, unlike Section 2 which explicitly excludes it for the login table. | FIXED — script corrected to an explicit column list omitting PASSWORD; `scripts/erp-extract/out/` added to `.gitignore`; existing extract file should be regenerated before wider use |
+
+See `ERP_SCHEMA_ANALYSIS_2026-08-25.md` for the legacy ERP analysis, `TIME_OFFICE_ANALYSIS_2026-08-25.md` for the Time Office analysis, `EMPLOYEE_MASTER_FIELD_MAP_2026-08-27.md` for the full Employee Details UI field map, and `ERP_DATA_EXTRACT_FINDINGS_2026-08-31.md` for the first real-data extract behind these entries.

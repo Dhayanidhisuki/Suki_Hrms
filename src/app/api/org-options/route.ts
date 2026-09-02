@@ -2,10 +2,13 @@
  * GET /api/org-options?table=Department
  * Returns active records from an Org master table for dropdown population.
  * Only allows specific tables — no arbitrary table access.
+ * Guarded by masters.org.view — same permission as the Masters org pages,
+ * since this exposes the same underlying data.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { hasPermission } from '@/lib/rbac';
 
 const ALLOWED_TABLES = [
   'Department',
@@ -23,6 +26,26 @@ const ALLOWED_TABLES = [
 type TableName = typeof ALLOWED_TABLES[number];
 
 export async function GET(request: NextRequest) {
+  const roleId = request.headers.get('x-role-id');
+  if (!roleId) {
+    return NextResponse.json(
+      { error: 'Unauthorized — authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const allowed = await hasPermission(Number(roleId), {
+    module: 'masters',
+    submodule: 'org',
+    action: 'view',
+  });
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Forbidden — insufficient permissions', required: 'masters.org.view' },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const table = searchParams.get('table') as TableName;
 

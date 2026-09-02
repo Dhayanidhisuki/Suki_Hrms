@@ -547,9 +547,9 @@ export const navigation: NavModule[] = [
       {
         label: "User & Access",
         items: [
-          { label: "Users", href: "/admin/users" },
-          { label: "Roles", href: "/admin/roles" },
-          { label: "Permissions", href: "/admin/permissions" },
+          { label: "Users", href: "/admin/users", ready: true },
+          { label: "Roles", href: "/admin/roles", ready: true },
+          { label: "Permissions", href: "/admin/permissions", ready: true },
           { label: "Page Permissions", href: "/admin/page-permissions" },
         ],
       },

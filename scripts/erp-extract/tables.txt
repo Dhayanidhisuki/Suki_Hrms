@@ -1,35 +1,67 @@
+# Phase 1 — master tables (requested 25 Aug, row counts returned 27 Aug)
+# Row counts came back on 2026-08-27; 13 of these are empty in the live DB.
+# See docs/ERP_ROWCOUNT_ANALYSIS_2026-08-31.md. Only the tables marked
+# [DATA NEEDED] still have rows worth exporting.
+
 # Organization
-DEPT
-CLASS_SUB_DEPT
-COMPANY_DETAILS
-COMPANY_CHILD_UNIT_DETAILS
-STATE_MASTER
+DEPT                              # [DATA NEEDED] 32 rows
+CLASS_SUB_DEPT                    # empty — skip
+COMPANY_DETAILS                   # [DATA NEEDED] 1 row
+COMPANY_CHILD_UNIT_DETAILS        # empty — skip
+STATE_MASTER                      # 32 rows, generic lookup — skip
 
 # Employee classification
-HRMS_DESIG_MASTER
-HRMS_DESIG_LEVEL_MASTER
-HRMS_GRADE_MASTER
-HRMS_EMP_CLASS
-HRMS_EMPLOYEE_TYPE_MASTER
+HRMS_DESIG_MASTER                 # [DATA NEEDED] 100 rows
+HRMS_DESIG_LEVEL_MASTER           # empty — skip
+HRMS_GRADE_MASTER                 # [DATA NEEDED] 2 rows
+HRMS_EMP_CLASS                    # empty — skip
+HRMS_EMPLOYEE_TYPE_MASTER         # [DATA NEEDED] 1 row
 
 # Time and attendance
-HRMS_SHIFT_MASTER
-HRMS_HOLIDAY_MASTER
-HRMS_OVERTIME_SLAB
-HRMS_LEAVE_VALIDATE_MASTER
-HRMS_ATTENDANCE_LOCATION_MASTER
+HRMS_SHIFT_MASTER                 # [DATA NEEDED] 4 rows
+HRMS_HOLIDAY_MASTER               # [DATA NEEDED] 1 row
+HRMS_OVERTIME_SLAB                # empty — OT rates must come from the client
+HRMS_LEAVE_VALIDATE_MASTER        # empty — leave rules must come from the client
+HRMS_ATTENDANCE_LOCATION_MASTER   # empty — skip
 
 # Payroll and statutory
-HRMS_SALARY_COMPONENT
-HRMS_SALARY_LOGIC
-PROF_TAX_SLAP_MASTER
-TAX_SECTION_MASTER
-TDS_TAX_CODE_MASTER
-HRMS_LOAN_MASTER
-HRMS_COM_BANK_MASTER
+HRMS_SALARY_COMPONENT             # [DATA NEEDED — PRIORITY 1] 35 rows
+HRMS_SALARY_LOGIC                 # [DATA NEEDED — PRIORITY 1] 57 rows
+PROF_TAX_SLAP_MASTER              # empty — seed from the PT workbook instead
+TAX_SECTION_MASTER                # empty — skip
+TDS_TAX_CODE_MASTER               # empty — skip
+HRMS_LOAN_MASTER                  # [DATA NEEDED] 3 rows
+HRMS_COM_BANK_MASTER              # empty — bank file format must come from the client
 
 # Workflow and lookups
-MULTI_LEVEL_APPROVAL_MASTER
-HRMS_DROPDOWN_MASTER
-PROFICIENCY_MASTER
-SKILL_NAME_DETAILS
+MULTI_LEVEL_APPROVAL_MASTER       # empty — approval chains must come from the client
+HRMS_DROPDOWN_MASTER              # [DATA NEEDED] 4 rows
+PROFICIENCY_MASTER                # empty — skip
+SKILL_NAME_DETAILS                # requested but NOT returned — ask again
+
+
+# Phase 2 — added 31 Aug after the Payroll / PT / Loan / Increment-Arrear /
+# Bonus-Gratuity BRDs arrived. Row counts not yet known for these.
+
+# Bonus
+HRMS_EMP_BONUS_MASTER
+
+# Loan transactions (the Loan BRD's issue/recovery cycle)
+HRMS_LOAN_APPLY_TABLE
+HRMS_LOAN_ISSUE
+HRMS_LOAN_ISSUE_TRANS
+
+# Salary structure shape
+HRMS_SALARY_DETAIL
+HRMS_SALARY_DETAIL_FOR_LEVEL_DESIG
+
+# Per-employee statutory treatment (blocker B8)
+EMP_PF_CONT_CUSTOMIZE
+
+# One completed payroll month — the highest-value artefact outstanding.
+# Restrict to a single month; these are transaction tables, not masters.
+HRMS_EMP_MON_SALARY_DETAILS
+HRMS_MONTHLY_SALARY_DEDUCTION
+
+# No gratuity configuration table was found in script.sql. Confirm with the
+# client whether gratuity is calculated outside the ERP.

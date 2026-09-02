@@ -28,6 +28,11 @@ export async function hasPermission(
   const count = await prisma.rolePermission.count({
     where: {
       roleId,
+      // A role's grants only apply while the role itself is active and not
+      // soft-deleted — otherwise a deactivated/deleted role's holders would
+      // keep access for up to 24h (until their JWT expires) since roleId is
+      // baked into the token, not re-checked against Role at request time.
+      role: { isActive: true, deletedAt: null },
       permission: {
         isActive: true,
         deletedAt: null,

@@ -3,7 +3,8 @@
  *
  * Maps API path prefixes to permission codes from the spec (employee.view,
  * employee.create, employee.edit, employee.salary.view/edit, employee.kyc.view/edit,
- * employee.activity.view, employee.asset.allocate, employee.deactivate, employee.export).
+ * employee.document.view/edit, employee.activity.view, employee.asset.allocate,
+ * employee.deactivate, employee.export).
  * Call at the top of each route handler, same pattern as checkMasterPermission.
  */
 
@@ -29,6 +30,10 @@ const PATH_RULES: Array<{ test: (pathname: string) => boolean; codes: { view: st
   {
     test: (p) => /^\/api\/employees\/[^/]+\/salary(\/|\?|$)/.test(p),
     codes: { view: 'employee.salary.view', edit: 'employee.salary.edit' },
+  },
+  {
+    test: (p) => /^\/api\/employees\/[^/]+\/documents(\/|\?|$)/.test(p),
+    codes: { view: 'employee.document.view', edit: 'employee.document.edit' },
   },
   {
     test: (p) => p === '/api/employees' || p.startsWith('/api/employees/') || p.startsWith('/api/employees?'),

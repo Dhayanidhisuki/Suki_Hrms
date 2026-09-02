@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import SearchableSelect from './SearchableSelect';
 
 export type FieldType = 'text' | 'number' | 'email' | 'password' | 'date' | 'select' | 'checkbox' | 'textarea';
 
@@ -77,27 +77,13 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           rows={3}
         />
       ) : def.type === 'select' ? (
-        <select
-          value={String(value ?? '')}
-          onChange={(e) => {
-            // <option value> is always a DOM string — look up the matching
-            // option to preserve its original type (e.g. a numeric id),
-            // since a raw string would fail number-typed validation.
-            const match = def.options?.find((opt) => String(opt.value) === e.target.value);
-            onChange(match ? match.value : e.target.value);
-          }}
-          required={def.required}
+        <SearchableSelect
+          value={value as string | number | undefined}
+          options={def.options ?? []}
+          onChange={(v) => onChange(v === '' ? '' : v)}
           disabled={def.disabled}
-          className={inputClass}
-          style={baseStyle}
-        >
-          <option value="">—</option>
-          {def.options?.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          error={Boolean(error)}
+        />
       ) : (
         <input
           type={def.type}
