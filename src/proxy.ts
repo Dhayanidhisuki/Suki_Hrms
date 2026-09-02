@@ -1,113 +1,107 @@
-import { NextRequest, NextResponse } from "next/server";
-import { AUTH_COOKIE_NAME, verifyAuthTokenEdge } from "./lib/authTokenEdge";
-import { isAdminOnlyPath, isAdminRole } from "./lib/adminRoles";
+/**
+ * Next.js Proxy — JWT verification + route protection.
+ *
+ * Uses jose (Edge-compatible) for token verification.
+ *
+ * Protected route groups:
+ * - /api/protected/*     — existing test route (JWT + permission in handler)
+ * - /api/masters/*       — master setup API routes (JWT here, permission in handler)
+ * - /api/org-options     — org master dropdown data (JWT here, permission in handler)
+ * - /api/admin/*         — user/role/permission admin API routes (JWT here, permission in handler)
+ * - /masters/*           — master setup UI pages (JWT check, redirect to / if no token)
+ * - /admin/*             — administration UI pages (JWT check, redirect to / if no token)
+ *
+ * Permission DB checks happen in route handlers (Node runtime),
+ * not in middleware (Edge runtime can't access Prisma).
+ */
 
-function isPublicPath(pathname: string): boolean {
-  if (pathname === "/login") return true;
-  if (pathname === "/auth/session-expired") return true;
-  if (pathname.startsWith("/verify/dc/")) return true;
-  if (pathname.startsWith("/api/auth/")) return true;
-  if (pathname.startsWith("/_next")) return true;
-  if (pathname.startsWith("/static")) return true;
-  if (pathname === "/favicon.ico") return true;
-  // Next metadata file conventions (app/icon.*, app/apple-icon.*)
-  if (pathname === "/icon" || pathname.startsWith("/icon/")) return true;
-  if (pathname === "/apple-icon" || pathname.startsWith("/apple-icon/"))
-    return true;
-  if (/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(pathname)) return true;
-  return false;
-}
+import { NextResponse, type NextRequest } from 'next/server';
+import { verifyTokenJose } from '@/lib/jwt';
 
-function loginRedirectUrl(req: NextRequest): URL {
-  const url = new URL("/login", req.url);
-  const dest = `${req.nextUrl.pathname}${req.nextUrl.search}`;
-  if (dest && dest !== "/" && dest !== "/login") {
-    url.searchParams.set("redirect", dest);
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Check if this is a protected route
+  const isApiRoute =
+    pathname.startsWith('/api/protected/') ||
+    pathname.startsWith('/api/masters/') ||
+    pathname.startsWith('/api/employees') ||
+    pathname.startsWith('/api/uploads') ||
+    pathname.startsWith('/api/org-options') ||
+    pathname.startsWith('/api/admin/');
+  const isUiRoute =
+    pathname.startsWith('/masters/') ||
+    pathname.startsWith('/employees') ||
+    pathname.startsWith('/admin/');
+
+  if (!isApiRoute && !isUiRoute) {
+    return NextResponse.next();
   }
-  return url;
-}
 
-function clearAuthCookie(res: NextResponse, secure: boolean) {
-  res.cookies.set(AUTH_COOKIE_NAME, "", {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
+  // Extract token — API routes prefer the Authorization header (for
+  // non-browser/API clients) but fall back to the session cookie, since
+  // browser fetch() calls from our own pages send it automatically and
+  // don't set an Authorization header. UI routes always use the cookie.
+  let token: string | null = null;
+
+  if (isApiRoute) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else {
+      token = request.cookies.get('hrms-token')?.value ?? null;
+    }
+  } else if (isUiRoute) {
+    token = request.cookies.get('hrms-token')?.value ?? null;
+  }
+
+  if (!token) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { error: 'Missing or invalid Authorization header' },
+        { status: 401 }
+      );
+    }
+    // UI route — redirect to login
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // Verify token (jose — Edge compatible)
+  const payload = await verifyTokenJose(token);
+  if (!payload) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { error: 'Invalid or expired token' },
+        { status: 401 }
+      );
+    }
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // Add user info to request headers for downstream route handlers
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-id', String(payload.userId));
+  requestHeaders.set('x-role-id', String(payload.roleId));
+  requestHeaders.set('x-role-code', payload.roleCode);
+
+  return NextResponse.next({
+    request: { headers: requestHeaders },
   });
 }
 
-function requestIsHttps(req: NextRequest): boolean {
-  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  if (proto) return proto.toLowerCase() === "https";
-  return req.nextUrl.protocol === "https:";
-}
-
-export async function proxy(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-  const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const auth = await verifyAuthTokenEdge(token);
-  const secureCookie = requestIsHttps(req);
-
-  // Logged-in users hitting /login → send them onward
-  if (pathname === "/login" && auth.status === "ok") {
-    const redirectParam = req.nextUrl.searchParams.get("redirect");
-    const dest =
-      redirectParam &&
-      redirectParam.startsWith("/") &&
-      !redirectParam.startsWith("//")
-        ? redirectParam
-        : "/dashboard";
-    return NextResponse.redirect(new URL(dest, req.url));
-  }
-
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
-  }
-
-  if (auth.status === "ok") {
-    // Settings — and the user / role admin APIs behind it — are admin-only.
-    // Every non-admin role is bounced here, at the edge, before the route runs.
-    if (isAdminOnlyPath(pathname) && !isAdminRole(auth.payload.role)) {
-      if (pathname.startsWith("/api/")) {
-        return NextResponse.json(
-          { success: false, error: "Forbidden" },
-          { status: 403 }
-        );
-      }
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // Token present but expired/invalid → session-expired UX
-  if (auth.status === "invalid") {
-    if (pathname.startsWith("/api/")) {
-      const res = NextResponse.json(
-        { success: false, error: "Session expired" },
-        { status: 401 },
-      );
-      clearAuthCookie(res, secureCookie);
-      return res;
-    }
-    const res = NextResponse.redirect(
-      new URL("/auth/session-expired", req.url),
-    );
-    clearAuthCookie(res, secureCookie);
-    return res;
-  }
-
-  // No token
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
-
-  return NextResponse.redirect(loginRedirectUrl(req));
-}
-
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    '/api/protected/:path*',
+    '/api/masters/:path*',
+    '/masters/:path*',
+    '/api/employees/:path*',
+    '/api/employees',
+    '/api/uploads/:path*',
+    '/api/uploads',
+    '/employees/:path*',
+    '/employees',
+    '/api/org-options',
+    '/api/admin/:path*',
+    '/admin/:path*',
+  ],
 };

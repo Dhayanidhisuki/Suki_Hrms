@@ -1,79 +1,35 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
-import { cookies } from "next/headers";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { SessionProvider } from "@/lib/SessionContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
-import { NavigationLoader } from "@/components/NavigationLoader";
-import { AppToaster } from "@/components/AppToaster";
-import { parseCookieString, THEME_COOKIE_NAME, MODE_COOKIE_NAME } from "@/lib/theme-cookies";
+import AppShell from "@/components/layout/AppShell";
 
-const poppins = Poppins({
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-poppins",
-  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "SUKI ERP — Tools Management",
-  description:
-    "Manage your tools, calibration schedules, and issue/receive workflows with SUKI ERP Tools Management module.",
-  keywords: ["ERP", "tools management", "calibration", "SUKI"],
+  title: "Suki HRMS",
+  description: "Human Resource Management System",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.toString();
-  const { theme, mode } = parseCookieString(cookieHeader);
-
-  const antiFoucScript = `(function() {
-    try {
-      var cookies = document.cookie.split(';');
-      var theme = '${theme}';
-      var mode = '${mode}';
-      for (var i = 0; i < cookies.length; i++) {
-        var parts = cookies[i].trim().split('=');
-        if (parts[0] === '${THEME_COOKIE_NAME}' && parts[1]) theme = parts[1];
-        if (parts[0] === '${MODE_COOKIE_NAME}' && parts[1]) mode = parts[1];
-      }
-      var doc = document.documentElement;
-      doc.setAttribute('data-theme', theme);
-      doc.setAttribute('data-mode', mode);
-      if (mode === 'dark') {
-        doc.classList.add('dark');
-      } else {
-        doc.classList.remove('dark');
-      }
-    } catch (e) {}
-  })();`;
-
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${mode === "dark" ? "dark" : ""}`.trim()}
-      data-theme={theme}
-      data-mode={mode}
-      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>
-        {/* Next.js automatically injects icons from metadata and app/icon.svg */}
-        <script
-          dangerouslySetInnerHTML={{ __html: antiFoucScript }}
-        />
-      </head>
-      <body className="antialiased font-sans">
-        <ThemeProvider initialTheme={theme} initialMode={mode}>
-          <SessionProvider>
-            <NavigationLoader />
-            <AppToaster />
-            {children}
-          </SessionProvider>
-        </ThemeProvider>
+      <body className="min-h-full">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -1,3 +1,0 @@
-export type UnitScope = "UNIT1"|"UNIT2"|"UNIT3"|"COMMON";
-export type DueCalibrationTool = { refNo:number; toolOrGaugeNo:string; name:string|null; description:string|null; size:string|null; usedLocation:string|null; unitCode:UnitScope|null; responsibility:string; dueDate:Date; daysRemaining:number; dueStatus:"OVERDUE"|"DUE_TODAY"|"DUE_SOON" };
-export type NotificationUser = { id:number; name:string; email:string; roleName:string; unitScopes:UnitScope[] };

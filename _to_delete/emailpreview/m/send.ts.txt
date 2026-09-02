@@ -1,1 +1,0 @@
-export type EmailAttachment = { filename?:string; path?:string; cid?:string; contentDisposition?:string };

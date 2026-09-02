@@ -40,14 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
-
-# Tool document uploads (TOOLS_APP_DOCUMENT file store)
-/storage/
-
-# Temp / dev logs and scratch
-dev.log
-response.html
-scratch/
-*.xlsx
-_to_delete/stale-git-locks/
+# ERP data extracts — may contain employee PII/credentials, never commit
+scripts/erp-extract/out/

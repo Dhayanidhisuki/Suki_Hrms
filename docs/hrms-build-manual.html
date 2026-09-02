@@ -1,0 +1,1065 @@
+<title>HRMS Build Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+:root{
+  --ground:#F6F8F5;
+  --surface:#FFFFFF;
+  --surface-2:#EEF2ED;
+  --ink:#141D18;
+  --ink-2:#3D4B44;
+  --muted:#697A70;
+  --line:#D8E0D9;
+  --line-2:#C2CDC3;
+  --accent:#1F6F4B;
+  --accent-2:#22B573;
+  --accent-soft:#E4F2EA;
+  --data:#2C6E9B;
+  --data-soft:#E2EDF4;
+  --warn:#9C6B12;
+  --warn-soft:#F6EEDC;
+  --stop:#A8423A;
+  --stop-soft:#F6E5E3;
+  --shadow:0 1px 2px rgba(20,29,24,.05),0 8px 24px -16px rgba(20,29,24,.25);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D1310;
+    --surface:#141C17;
+    --surface-2:#1B2620;
+    --ink:#E7EFE9;
+    --ink-2:#BDCAC1;
+    --muted:#8B9C91;
+    --line:#26332B;
+    --line-2:#34443A;
+    --accent:#4FCB90;
+    --accent-2:#35C98A;
+    --accent-soft:#16281F;
+    --data:#7CB8DC;
+    --data-soft:#152430;
+    --warn:#DCA83F;
+    --warn-soft:#2B2314;
+    --stop:#E08078;
+    --stop-soft:#2E1917;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D1310;
+  --surface:#141C17;
+  --surface-2:#1B2620;
+  --ink:#E7EFE9;
+  --ink-2:#BDCAC1;
+  --muted:#8B9C91;
+  --line:#26332B;
+  --line-2:#34443A;
+  --accent:#4FCB90;
+  --accent-2:#35C98A;
+  --accent-soft:#16281F;
+  --data:#7CB8DC;
+  --data-soft:#152430;
+  --warn:#DCA83F;
+  --warn-soft:#2B2314;
+  --stop:#E08078;
+  --stop-soft:#2E1917;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:Archivo,-apple-system,"Segoe UI",sans-serif;text-wrap:balance;margin:0;line-height:1.18;letter-spacing:-.011em}
+code,kbd,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.shell{display:grid;grid-template-columns:1fr;gap:0}
+@media(min-width:1080px){
+  .shell{grid-template-columns:minmax(0,1fr) 232px;gap:56px;align-items:start}
+}
+
+/* ---------- masthead ---------- */
+.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+.mast-in{max-width:1180px;margin:0 auto;padding:52px 24px 44px}
+.eyebrow{
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--accent);
+  display:flex;align-items:center;gap:10px;margin-bottom:20px;
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--line-2)}
+.mast h1{font-size:clamp(34px,5.4vw,54px);font-weight:700;max-width:19ch}
+.mast .lede{margin:20px 0 0;font-size:clamp(18px,2.2vw,21px);color:var(--ink-2);max-width:62ch}
+.mast .lede em{font-style:normal;color:var(--ink);border-bottom:2px solid var(--accent-soft);padding-bottom:1px}
+.facts{display:flex;flex-wrap:wrap;gap:0;margin-top:34px;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.fact{flex:1 1 150px;padding:14px 18px;background:var(--surface)}
+.fact + .fact{border-left:1px solid var(--line)}
+.fact b{display:block;font-family:Archivo,sans-serif;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent)}
+.fact span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+
+/* ---------- toc ---------- */
+.toc{display:none}
+@media(min-width:1080px){
+  .toc{display:block;position:sticky;top:28px;padding-top:56px}
+  .toc h4{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:14px}
+  .toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;counter-reset:t}
+  .toc a{
+    display:block;padding:5px 0 5px 26px;font-size:13.5px;color:var(--muted);
+    text-decoration:none;border-left:2px solid var(--line);position:relative;transition:color .15s,border-color .15s;
+  }
+  .toc li{counter-increment:t}
+  .toc a::before{
+    content:counter(t,decimal-leading-zero);position:absolute;left:9px;
+    font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--line-2);top:8px;
+  }
+  .toc a:hover,.toc a:focus-visible{color:var(--accent);border-left-color:var(--accent)}
+}
+
+/* ---------- sections ---------- */
+main{padding:0 0 96px}
+section{padding-top:56px;scroll-margin-top:20px}
+.sec-head{display:flex;gap:16px;align-items:baseline;margin-bottom:8px}
+.sec-num{
+  font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:600;color:var(--accent);
+  letter-spacing:.08em;padding-top:6px;flex:none;
+}
+section > h2{font-size:clamp(25px,3.3vw,33px);font-weight:600}
+section > p, .prose > p, .prose > ul, .prose > ol{max-width:68ch}
+p{margin:14px 0}
+a{color:var(--accent)}
+strong{font-weight:600;color:var(--ink)}
+ul,ol{padding-left:22px;margin:14px 0}
+li{margin:7px 0}
+li::marker{color:var(--muted)}
+hr.rule{border:0;border-top:1px solid var(--line);margin:0}
+
+h3{font-size:20px;font-weight:600;margin:36px 0 6px}
+h4{font-size:15.5px;font-weight:600;margin:24px 0 4px}
+
+code{
+  font-size:.87em;background:var(--surface-2);border:1px solid var(--line);
+  padding:.1em .38em;border-radius:3px;color:var(--ink-2);
+}
+
+/* ---------- figure ---------- */
+figure{margin:30px 0;background:var(--surface);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.fig-body{padding:26px 22px 8px;overflow-x:auto}
+figure svg{display:block;max-width:100%;height:auto;margin:0 auto;color:var(--ink-2)}
+figcaption{
+  padding:12px 20px 14px;border-top:1px solid var(--line);background:var(--surface-2);
+  font-size:13.5px;color:var(--muted);
+}
+figcaption b{color:var(--ink-2);font-weight:600}
+
+/* ---------- callout ---------- */
+.note{
+  border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
+  padding:16px 20px;border-radius:3px;margin:24px 0;max-width:68ch;
+}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.stop{border-left-color:var(--stop);background:var(--stop-soft)}
+.note .lbl{
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent);display:block;margin-bottom:5px;
+}
+.note.warn .lbl{color:var(--warn)}
+.note.stop .lbl{color:var(--stop)}
+.note p{margin:0}
+.note p + p{margin-top:10px}
+
+/* ---------- concept cards ---------- */
+.concepts{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin:28px 0}
+@media(min-width:720px){.concepts{grid-template-columns:1fr 1fr}}
+.concept{background:var(--surface);padding:22px}
+.concept .k{
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:7px;
+}
+.concept h4{margin:0 0 6px;font-size:17px}
+.concept p{margin:0;font-size:15px;color:var(--ink-2)}
+.concept .ex{
+  margin-top:12px;padding:10px 12px;background:var(--surface-2);border-radius:3px;
+  font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ink-2);line-height:1.55;
+}
+.concept .ex .no{color:var(--stop)}
+.concept .ex .yes{color:var(--accent)}
+
+/* ---------- stages ---------- */
+.stage{
+  display:grid;grid-template-columns:auto 1fr;gap:0 22px;
+  border-top:1px solid var(--line);padding:26px 0;
+}
+.stage:last-of-type{border-bottom:1px solid var(--line)}
+.stage-n{
+  font-family:Archivo,sans-serif;font-size:14px;font-weight:700;color:var(--accent);
+  background:var(--accent-soft);border-radius:50%;width:38px;height:38px;
+  display:grid;place-items:center;grid-row:span 2;font-variant-numeric:tabular-nums;
+}
+.stage h3{margin:6px 0 0;font-size:19px;grid-column:2}
+.stage-body{grid-column:2;margin-top:8px}
+.stage-body p{margin:0 0 12px;max-width:66ch}
+.stage-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;padding:3px 9px;border-radius:99px;
+  border:1px solid var(--line-2);color:var(--muted);white-space:nowrap;
+}
+.chip.days{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.chip.block{border-color:var(--stop);color:var(--stop);background:var(--stop-soft)}
+.done{margin-top:12px;font-size:14.5px;color:var(--ink-2);border-left:2px solid var(--line-2);padding-left:14px}
+.done b{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:3px}
+
+/* ---------- steps (build one screen) ---------- */
+.steps{counter-reset:s;margin:26px 0;display:flex;flex-direction:column;gap:0}
+.step{
+  counter-increment:s;position:relative;padding:20px 0 20px 52px;border-top:1px solid var(--line);
+}
+.step:last-child{border-bottom:1px solid var(--line)}
+.step::before{
+  content:counter(s);position:absolute;left:0;top:20px;
+  font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;width:26px;height:26px;display:grid;place-items:center;
+}
+.step h4{margin:0 0 6px;font-size:17px;font-family:Archivo,sans-serif}
+.step p{margin:0 0 10px;max-width:64ch}
+pre{
+  margin:12px 0 0;background:var(--surface-2);border:1px solid var(--line);border-radius:3px;
+  padding:14px 16px;overflow-x:auto;font-family:"JetBrains Mono",monospace;font-size:13px;
+  line-height:1.66;color:var(--ink-2);
+}
+pre .c{color:var(--muted)}
+pre .kw{color:var(--accent);font-weight:600}
+pre .s{color:var(--data)}
+
+/* ---------- table ---------- */
+.twrap{overflow-x:auto;margin:24px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+th{
+  text-align:left;padding:11px 16px;background:var(--surface-2);color:var(--ink);
+  font-family:Archivo,sans-serif;font-weight:600;font-size:13px;border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+td .mono{font-size:13px}
+
+/* ---------- do / dont ---------- */
+.dd{display:grid;gap:20px;margin:26px 0}
+@media(min-width:720px){.dd{grid-template-columns:1fr 1fr}}
+.dd-col{border:1px solid var(--line);border-radius:4px;background:var(--surface);overflow:hidden}
+.dd-col h4{
+  margin:0;padding:11px 18px;font-family:"JetBrains Mono",monospace;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--line);
+}
+.dd-col.yes h4{color:var(--accent);background:var(--accent-soft)}
+.dd-col.no h4{color:var(--stop);background:var(--stop-soft)}
+.dd-col ul{margin:0;padding:16px 18px 18px 34px}
+.dd-col li{font-size:15px;color:var(--ink-2)}
+
+footer{border-top:1px solid var(--line);background:var(--surface);padding:30px 0 44px;margin-top:40px}
+footer p{font-size:13.5px;color:var(--muted);margin:0;max-width:none}
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="eyebrow">KUN / Suki HRMS · Engineering Manual</div>
+    <h1>How this system actually works, and how to build it</h1>
+    <p class="lede">Everything a developer joining this project needs before writing a line of code: the pipeline from <em>a worker touching a fingerprint scanner</em> to <em>money landing in a bank file</em>, the six ideas that make the design make sense, and the exact order to build it in.</p>
+    <div class="facts">
+      <div class="fact"><b>14</b><span>modules</span></div>
+      <div class="fact"><b>203</b><span>screens</span></div>
+      <div class="fact"><b>60</b><span>masters</span></div>
+      <div class="fact"><b>8</b><span>build stages</span></div>
+      <div class="fact"><b>21</b><span>screens done</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="shell">
+<main>
+
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>What we are building, in one paragraph</h2></div>
+  <div class="prose">
+    <p>A factory employs people. Those people arrive, work a shift, sometimes take leave, sometimes stay late, occasionally work a Sunday. At the end of every month somebody has to turn all of that into a number — what each person is owed — deduct the right taxes, produce a payslip, send a file to the bank, and file statutory returns with the government.</p>
+    <p>Today that happens in an old ERP and a lot of spreadsheets. We are replacing it. <strong>The HRMS is a machine that turns attendance events into money, correctly and provably.</strong> Everything else in the system — recruitment, documents, training, visitors — hangs off that spine.</p>
+    <p>If you remember one thing: <strong>the output is a payslip, and a payslip has to be right.</strong> Nobody complains about a slightly slow dashboard. Everybody complains when their salary is wrong.</p>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>The spine</h2></div>
+  <div class="prose">
+    <p>Data moves in one direction. Learn this picture and most of the codebase becomes predictable — when you are handed a task, your first question is "where on the spine does this sit?"</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 980 340" role="img" aria-label="Data flows left to right: configuration masters feed the employee record, biometric punches become attendance, side inputs of leave, overtime, comp-off and incentives join at Time Office Final, which passes a freeze gate into payroll, producing payslips, bank files and statutory returns.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#22B573"/>
+          </marker>
+        </defs>
+
+        <!-- lane label -->
+        <text x="10" y="26" font-size="11" font-family="monospace" letter-spacing="1.4" fill="currentColor" opacity=".55">SET UP ONCE</text>
+        <text x="10" y="150" font-size="11" font-family="monospace" letter-spacing="1.4" fill="currentColor" opacity=".55">EVERY DAY</text>
+        <text x="10" y="256" font-size="11" font-family="monospace" letter-spacing="1.4" fill="currentColor" opacity=".55">EVERY MONTH</text>
+
+        <!-- row 1: masters + employee -->
+        <rect x="10" y="38" width="150" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="85" y="60" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Masters</text>
+        <text x="85" y="75" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">shifts, leave, rates, policy</text>
+
+        <line x1="160" y1="61" x2="212" y2="61" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="186" y="52" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">define</text>
+
+        <rect x="214" y="38" width="140" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="284" y="60" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Employee</text>
+        <text x="284" y="75" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">who, where, what pay</text>
+
+        <!-- down to attendance -->
+        <path d="M284 84 L284 118" stroke="currentColor" stroke-width="1.4" fill="none" marker-end="url(#ar)"/>
+
+        <!-- row 2: punch chain -->
+        <rect x="10" y="120" width="118" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="69" y="142" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Punch</text>
+        <text x="69" y="157" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">eSSL device</text>
+
+        <line x1="128" y1="143" x2="180" y2="143" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="154" y="134" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">sync</text>
+
+        <rect x="182" y="120" width="200" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="282" y="142" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Daily attendance</text>
+        <text x="282" y="157" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">hours, late, early, status</text>
+
+        <line x1="382" y1="143" x2="434" y2="143" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"/>
+
+        <rect x="436" y="120" width="176" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="524" y="142" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Monthly totals</text>
+        <text x="524" y="157" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">days, LOP, OT hours</text>
+
+        <!-- side inputs -->
+        <rect x="10" y="192" width="382" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="201" y="210" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Leave · Overtime · Comp-off · Permission · Incentives</text>
+        <text x="201" y="226" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">each approved before it counts</text>
+        <path d="M392 213 L470 213 L470 172" stroke="currentColor" stroke-width="1.2" fill="none" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
+        <line x1="612" y1="143" x2="664" y2="143" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"/>
+
+        <!-- time office final -->
+        <rect x="666" y="112" width="150" height="62" rx="3" fill="#E4F2EA" stroke="#22B573" stroke-width="1.6"/>
+        <text x="741" y="136" text-anchor="middle" font-size="13" fill="#1F6F4B" font-weight="600">Time Office</text>
+        <text x="741" y="151" text-anchor="middle" font-size="13" fill="#1F6F4B" font-weight="600">Final</text>
+        <text x="741" y="166" text-anchor="middle" font-size="10.5" fill="#1F6F4B" opacity=".8">the sign-off</text>
+
+        <path d="M741 174 L741 208" stroke="#22B573" stroke-width="1.6" fill="none" marker-end="url(#arA)"/>
+
+        <!-- payroll -->
+        <rect x="666" y="210" width="150" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="741" y="232" text-anchor="middle" font-size="13" fill="currentColor" font-weight="600">Payroll run</text>
+        <text x="741" y="247" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">earned → net</text>
+
+        <line x1="816" y1="233" x2="864" y2="233" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"/>
+
+        <rect x="866" y="198" width="104" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="918" y="219" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Payslip</text>
+        <text x="918" y="235" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Bank file</text>
+        <text x="918" y="251" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Returns</text>
+
+        <!-- freeze -->
+        <path d="M866 268 L866 300 L200 300" stroke="#A8423A" stroke-width="1.4" fill="none" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <rect x="360" y="286" width="270" height="28" rx="3" fill="#F6E5E3" stroke="#A8423A" stroke-width="1.2"/>
+        <text x="495" y="305" text-anchor="middle" font-size="11.5" fill="#A8423A" font-weight="600">once approved, the month is FROZEN</text>
+      </svg>
+    </div>
+    <figcaption><b>The spine.</b> Configuration flows into people, punches flow into attendance, approved side-inputs join before the Time Office sign-off, and payroll turns the result into money. The red path is the one that surprises people: approving payroll reaches back and locks everything behind it.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">Why this matters on day one</span>
+    <p>Almost every bug in a payroll system is a direction bug — something downstream quietly editing something upstream after the fact. If your change lets a user modify last month's attendance, you have broken payroll, even if every test passes.</p>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Five layers</h2></div>
+  <div class="prose">
+    <p>Every screen in this system belongs to exactly one of five layers. If you can't say which layer your task sits in, you don't understand the task yet.</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 720 328" role="img" aria-label="Five stacked layers: configuration at the base, then people, then events, then calculation, then output at the top. Configuration is read by every layer above it.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <rect x="150" y="14" width="420" height="48" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="170" y="38" font-size="13.5" fill="currentColor" font-weight="600">5 · Output</text>
+        <text x="360" y="38" font-size="11.5" fill="currentColor" opacity=".65">payslips, bank files, reports, statutory forms</text>
+        <text x="360" y="54" font-size="11" fill="currentColor" opacity=".45">read-only, never a source of truth</text>
+
+        <path d="M360 76 L360 62" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+        <rect x="150" y="78" width="420" height="48" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="170" y="102" font-size="13.5" fill="currentColor" font-weight="600">4 · Calculation</text>
+        <text x="360" y="102" font-size="11.5" fill="currentColor" opacity=".65">LOP, OT hours, gross, deductions, net</text>
+        <text x="360" y="118" font-size="11" fill="currentColor" opacity=".45">pure functions — same input, same answer, always</text>
+
+        <path d="M360 140 L360 126" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+        <rect x="150" y="142" width="420" height="48" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="170" y="166" font-size="13.5" fill="currentColor" font-weight="600">3 · Events</text>
+        <text x="360" y="166" font-size="11.5" fill="currentColor" opacity=".65">punches, leave, OT claims, comp-off, permission</text>
+        <text x="360" y="182" font-size="11" fill="currentColor" opacity=".45">things that happened — dated, approved, immutable once closed</text>
+
+        <path d="M360 204 L360 190" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+        <rect x="150" y="206" width="420" height="48" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="170" y="230" font-size="13.5" fill="currentColor" font-weight="600">2 · People</text>
+        <text x="360" y="230" font-size="11.5" fill="currentColor" opacity=".65">employee, job info, salary structure, managers</text>
+        <text x="360" y="246" font-size="11" fill="currentColor" opacity=".45">changes over time — always versioned, never overwritten</text>
+
+        <path d="M360 268 L360 254" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+        <rect x="150" y="270" width="420" height="48" rx="3" fill="#E4F2EA" stroke="#22B573" stroke-width="1.6"/>
+        <text x="170" y="294" font-size="13.5" fill="#1F6F4B" font-weight="600">1 · Configuration</text>
+        <text x="360" y="294" font-size="11.5" fill="#1F6F4B" opacity=".85">the 60 masters — shifts, holidays, rates, policies</text>
+        <text x="360" y="310" font-size="11" fill="#1F6F4B" opacity=".65">no business logic lives above this layer that isn't configured here</text>
+
+        <path d="M140 294 L100 294 L100 38 L140 38" stroke="#22B573" stroke-width="1.3" fill="none" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+        <text x="86" y="170" text-anchor="middle" font-size="10.5" fill="#1F6F4B" transform="rotate(-90 86 170)">every layer reads config</text>
+      </svg>
+    </div>
+    <figcaption><b>The layer stack.</b> Configuration is at the bottom because everything reads it — which is exactly why the masters get built first. A rule that lives in code instead of layer 1 becomes a deployment every time the client changes their mind.</figcaption>
+  </figure>
+</section>
+
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Six ideas you need before you write code</h2></div>
+  <div class="prose">
+    <p>These are the concepts that make otherwise strange-looking design decisions obvious. Read them once now; they will save you a week later.</p>
+  </div>
+
+  <div class="concepts">
+    <div class="concept">
+      <span class="k">Idea 1</span>
+      <h4>Master vs transaction</h4>
+      <p>A <strong>master</strong> is a setting — a shift, a leave type, a PF rate. A <strong>transaction</strong> is something that happened — a punch, a leave request, a payslip. Masters are edited by admins and are few. Transactions are created by events and are millions.</p>
+      <div class="ex">Master → <span class="yes">Shift "General 08:30–17:30"</span><br>Transaction → <span class="yes">Gopal worked General on 18 Aug</span></div>
+    </div>
+
+    <div class="concept">
+      <span class="k">Idea 2</span>
+      <h4>Never overwrite a rate</h4>
+      <p>PF rates, tax slabs and salary structures change. If you overwrite the old value, re-running April's payroll in June produces June's numbers — which is wrong and, for statutory returns, illegal. Add a new row with an effective date instead.</p>
+      <div class="ex"><span class="no">UPDATE pf_rate SET pct = 13</span><br><span class="yes">INSERT pf_rate (pct, effectiveFrom)</span></div>
+    </div>
+
+    <div class="concept">
+      <span class="k">Idea 3</span>
+      <h4>Entitled vs earned</h4>
+      <p>Every pay component exists twice. <strong>Entitled</strong> is what the contract says per month. <strong>Earned</strong> is what attendance actually justifies. A payslip must show both, and only the earned figure gets paid.</p>
+      <div class="ex">entitledBasic = 20,000<br>paidDays 26 of 30<br><span class="yes">earnedBasic = 17,333</span></div>
+    </div>
+
+    <div class="concept">
+      <span class="k">Idea 4</span>
+      <h4>One approval engine</h4>
+      <p>Fifteen things need approval — leave, OT, transfer, salary revision, visitor passes. That is <strong>one</strong> engine with a type column, not fifteen sets of <code>approvedBy</code> columns. The chain is configured per type and per department, never hard-coded.</p>
+      <div class="ex"><span class="no">leave.approvedBy, ot.approvedBy…</span><br><span class="yes">ApprovalRequest(type, refId, step)</span></div>
+    </div>
+
+    <div class="concept">
+      <span class="k">Idea 5</span>
+      <h4>A closed month is closed</h4>
+      <p>Once payroll is approved, attendance, leave, OT, permission and comp-off for that month all lock together. Reopening is a deliberate, audited act by an authorised user — not an edit button.</p>
+      <div class="ex">Open → Processing → Final →<br>Approved → <span class="no">FROZEN</span> → Reopened*</div>
+    </div>
+
+    <div class="concept">
+      <span class="k">Idea 6</span>
+      <h4>Policy, not code</h4>
+      <p>Grace minutes, OT factors, colour thresholds, incentive slabs — the client will change all of these. Every one is a row in a policy master that the engine reads. If changing a number needs a developer, the design is wrong.</p>
+      <div class="ex"><span class="no">if (lateMins &gt; 10)</span><br><span class="yes">if (lateMins &gt; policy.graceMins)</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Flow A — a fingerprint becomes an attendance row</h2></div>
+  <div class="prose">
+    <p>This runs thousands of times a day and is the foundation of everything downstream. A worker touches the scanner; nine steps later there is a row saying they worked 8 hours 43 minutes and were 2 minutes late.</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 300" role="img" aria-label="A punch is matched to an employee, the shift is identified, first valid in and last valid out are chosen, breaks and permissions are adjusted, working duration is computed, then late-in, early-out, overtime eligibility and finally the attendance status.">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- top row -->
+        <rect x="8" y="40" width="118" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="67" y="60" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Raw punch</text>
+        <text x="67" y="75" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">device + time</text>
+        <line x1="126" y1="62" x2="166" y2="62" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+
+        <rect x="168" y="40" width="130" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="233" y="60" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Match employee</text>
+        <text x="233" y="75" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">biometric ID map</text>
+        <line x1="298" y1="62" x2="338" y2="62" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+
+        <rect x="340" y="40" width="126" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="403" y="60" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Identify shift</text>
+        <text x="403" y="75" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">from roster</text>
+        <line x1="466" y1="62" x2="506" y2="62" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+
+        <rect x="508" y="40" width="150" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="583" y="60" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">First IN · Last OUT</text>
+        <text x="583" y="75" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">ignore the rest</text>
+        <line x1="658" y1="62" x2="698" y2="62" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+
+        <rect x="700" y="40" width="150" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="775" y="60" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Break · permission</text>
+        <text x="775" y="75" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">adjust</text>
+
+        <!-- turn down -->
+        <path d="M850 62 L876 62 L876 122 L470 122" stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar3)"/>
+
+        <!-- middle: duration -->
+        <rect x="318" y="128" width="152" height="46" rx="3" fill="#E4F2EA" stroke="#22B573" stroke-width="1.5"/>
+        <text x="394" y="149" text-anchor="middle" font-size="12.5" fill="#1F6F4B" font-weight="600">Working duration</text>
+        <text x="394" y="164" text-anchor="middle" font-size="10.5" fill="#1F6F4B" opacity=".8">OUT − IN − break</text>
+
+        <!-- three derived -->
+        <path d="M340 174 L300 174 L300 206" stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar3)"/>
+        <path d="M394 174 L394 206" stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar3)"/>
+        <path d="M448 174 L490 174 L490 206" stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar3)"/>
+
+        <rect x="196" y="208" width="146" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="269" y="228" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Late in</text>
+        <text x="269" y="243" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">IN − start − grace</text>
+
+        <rect x="352" y="208" width="84" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="394" y="228" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Early out</text>
+        <text x="394" y="243" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">end − OUT</text>
+
+        <rect x="446" y="208" width="150" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="521" y="228" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">OT eligible?</text>
+        <text x="521" y="243" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">policy decides</text>
+
+        <!-- status -->
+        <path d="M269 252 L269 274 L640 274 L640 252" stroke="currentColor" stroke-width="1.3" fill="none"/>
+        <path d="M521 252 L521 274" stroke="currentColor" stroke-width="1.3" fill="none"/>
+        <path d="M394 252 L394 274" stroke="currentColor" stroke-width="1.3" fill="none"/>
+        <rect x="620" y="208" width="140" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="690" y="228" text-anchor="middle" font-size="12" fill="currentColor" font-weight="600">Attendance status</text>
+        <text x="690" y="243" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".6">present / half / absent</text>
+      </svg>
+    </div>
+    <figcaption><b>Punch to row.</b> Only the first IN and last OUT count — a worker who steps out for tea and punches four times still has one working day. Note that <b>late-in</b> and <b>early-out</b> are recorded in minutes but do not themselves reduce pay; that only happens if policy converts them to loss of pay.</figcaption>
+  </figure>
+
+  <div class="note warn">
+    <span class="lbl">Three traps</span>
+    <p><strong>Missing punch.</strong> One punch, not two. Never guess the missing time — mark the day <code>MP</code> and let a human correct it through an audited screen.</p>
+    <p><strong>Night shift.</strong> A shift starting 22:00 Monday ends 06:00 Tuesday. Which day does it belong to? Answer that in the shift policy, once, or you will have two wrong answers in different parts of the app.</p>
+    <p><strong>Re-running sync.</strong> Syncing the same day twice must not create two attendance rows. Deduplicate on employee plus timestamp.</p>
+  </div>
+</section>
+
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Flow B — overtime is a gate, not a subtraction</h2></div>
+  <div class="prose">
+    <p>The most common beginner mistake in this module is writing <code>ot = outTime - shiftEnd</code>. That is wrong, and it will overpay people. Overtime is a series of gates; failing any one of them means zero OT, no matter how long somebody stayed.</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 660 420" role="img" aria-label="Overtime passes six sequential gates: eligibility, shift hours completed, minimum threshold, maximum limit, day type rule, then hours are multiplied by an hourly rate and a factor. Failing any gate yields zero overtime.">
+        <defs>
+          <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#A8423A"/>
+          </marker>
+        </defs>
+
+        <g font-size="12.5" fill="currentColor">
+          <rect x="150" y="8" width="230" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="265" y="32" text-anchor="middle" font-weight="600">Employee OT eligible?</text>
+
+          <rect x="150" y="72" width="230" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="265" y="96" text-anchor="middle" font-weight="600">Full shift hours completed?</text>
+
+          <rect x="150" y="136" width="230" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="265" y="160" text-anchor="middle" font-weight="600">Above minimum threshold?</text>
+
+          <rect x="150" y="200" width="230" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="265" y="224" text-anchor="middle" font-weight="600">Within maximum limit?</text>
+
+          <rect x="150" y="264" width="230" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="265" y="288" text-anchor="middle" font-weight="600">Which day type?</text>
+
+          <rect x="150" y="328" width="230" height="52" rx="3" fill="#E4F2EA" stroke="#22B573" stroke-width="1.6"/>
+          <text x="265" y="350" text-anchor="middle" fill="#1F6F4B" font-weight="600">OT value</text>
+          <text x="265" y="368" text-anchor="middle" font-size="11.5" fill="#1F6F4B" opacity=".85">rate × factor × hours</text>
+        </g>
+
+        <path d="M265 46 L265 70" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+        <path d="M265 110 L265 134" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+        <path d="M265 174 L265 198" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+        <path d="M265 238 L265 262" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+        <path d="M265 302 L265 326" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar4)"/>
+
+        <!-- no path -->
+        <g stroke="#A8423A" stroke-width="1.2" fill="none" stroke-dasharray="4 3">
+          <path d="M150 27 L96 27 L96 400 L246 400" marker-end="url(#arS)"/>
+          <path d="M150 91 L96 91"/>
+          <path d="M150 155 L96 155"/>
+          <path d="M150 219 L96 219"/>
+        </g>
+        <text x="66" y="215" text-anchor="middle" font-size="11" fill="#A8423A" transform="rotate(-90 66 215)">any NO</text>
+        <rect x="248" y="386" width="120" height="28" rx="3" fill="#F6E5E3" stroke="#A8423A" stroke-width="1.2"/>
+        <text x="308" y="405" text-anchor="middle" font-size="12" fill="#A8423A" font-weight="600">OT = 0</text>
+
+        <!-- day type branches -->
+        <g font-size="11" fill="currentColor" opacity=".8">
+          <path d="M380 283 L432 283" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar4)" opacity=".7"/>
+          <text x="440" y="264">weekday → ×1.0</text>
+          <text x="440" y="286">weekly off → ×1.5</text>
+          <text x="440" y="308">holiday → ×2.0</text>
+        </g>
+        <text x="440" y="340" font-size="10.5" fill="currentColor" opacity=".55">factors are configured,</text>
+        <text x="440" y="355" font-size="10.5" fill="currentColor" opacity=".55">not fixed in code</text>
+      </svg>
+    </div>
+    <figcaption><b>The OT gate chain.</b> Five questions before a single rupee is calculated. The multipliers shown are illustrative — the real factors live in the OT Policy master, and the client has not yet confirmed the minimum threshold or the maximum limit.</figcaption>
+  </figure>
+</section>
+
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Flow C — closing the month</h2></div>
+  <div class="prose">
+    <p>This is the flow that makes the system trustworthy. A month moves through eight states, in order, and each transition is a deliberate human act. Nothing skips ahead.</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 220" role="img" aria-label="A payroll month moves through eight states in order: open, attendance processing, time office final, ready for payroll, payroll processing, payroll approved, frozen, and optionally reopened by an authorised user.">
+        <defs>
+          <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#9C6B12"/>
+          </marker>
+        </defs>
+
+        <g font-size="11.5" fill="currentColor">
+          <rect x="8" y="60" width="96" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="56" y="79" text-anchor="middle" font-weight="600">Open</text>
+          <text x="56" y="94" text-anchor="middle" font-size="10" opacity=".6">edits allowed</text>
+
+          <rect x="128" y="60" width="112" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="184" y="79" text-anchor="middle" font-weight="600">Attendance</text>
+          <text x="184" y="93" text-anchor="middle" font-weight="600">processing</text>
+
+          <rect x="264" y="60" width="112" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="320" y="79" text-anchor="middle" font-weight="600">Time Office</text>
+          <text x="320" y="93" text-anchor="middle" font-weight="600">Final</text>
+
+          <rect x="400" y="60" width="106" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="453" y="79" text-anchor="middle" font-weight="600">Ready for</text>
+          <text x="453" y="93" text-anchor="middle" font-weight="600">payroll</text>
+
+          <rect x="530" y="60" width="106" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="583" y="79" text-anchor="middle" font-weight="600">Payroll</text>
+          <text x="583" y="93" text-anchor="middle" font-weight="600">processing</text>
+
+          <rect x="660" y="60" width="106" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="713" y="79" text-anchor="middle" font-weight="600">Payroll</text>
+          <text x="713" y="93" text-anchor="middle" font-weight="600">approved</text>
+
+          <rect x="790" y="54" width="140" height="54" rx="3" fill="#F6E5E3" stroke="#A8423A" stroke-width="1.6"/>
+          <text x="860" y="78" text-anchor="middle" fill="#A8423A" font-weight="600" font-size="13">FROZEN</text>
+          <text x="860" y="95" text-anchor="middle" fill="#A8423A" font-size="10.5" opacity=".85">read + export only</text>
+        </g>
+
+        <g stroke="currentColor" stroke-width="1.3" fill="none">
+          <path d="M104 81 L126 81" marker-end="url(#ar5)"/>
+          <path d="M240 81 L262 81" marker-end="url(#ar5)"/>
+          <path d="M376 81 L398 81" marker-end="url(#ar5)"/>
+          <path d="M506 81 L528 81" marker-end="url(#ar5)"/>
+          <path d="M636 81 L658 81" marker-end="url(#ar5)"/>
+          <path d="M766 81 L788 81" marker-end="url(#ar5)"/>
+        </g>
+
+        <text x="320" y="34" text-anchor="middle" font-size="11" fill="currentColor" opacity=".65">HR signs off attendance, leave, OT, comp-off</text>
+        <path d="M320 40 L320 58" stroke="currentColor" stroke-width="1" opacity=".5"/>
+
+        <!-- reopen -->
+        <path d="M860 108 L860 168 L184 168 L184 104" stroke="#9C6B12" stroke-width="1.3" fill="none" stroke-dasharray="5 4" marker-end="url(#arW)"/>
+        <rect x="392" y="154" width="256" height="28" rx="3" fill="#F6EEDC" stroke="#9C6B12" stroke-width="1.2"/>
+        <text x="520" y="173" text-anchor="middle" font-size="11.5" fill="#9C6B12" font-weight="600">Reopen — authorised, reason logged, audited</text>
+
+        <text x="470" y="206" text-anchor="middle" font-size="11" fill="currentColor" opacity=".55">what freezes together: attendance · leave · OT · permission · comp-off · Time Office Final</text>
+      </svg>
+    </div>
+    <figcaption><b>The month-close state machine.</b> The five things listed at the bottom freeze as one unit — you cannot lock payroll but leave the leave register editable, or the payslip stops matching the records behind it.</figcaption>
+  </figure>
+
+  <div class="note stop">
+    <span class="lbl">Non-negotiable</span>
+    <p>Every write path in Attendance, Leave, Overtime, Permission and Comp-off must check the period status before saving. Build this into the foundation layer, not into each module — retrofitting it means auditing every endpoint you have already written.</p>
+  </div>
+</section>
+
+<section id="s8">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Flow D — the payroll waterfall</h2></div>
+  <div class="prose">
+    <p>Once the month is finalised, payroll runs the same waterfall for every employee. Each step consumes the one above it.</p>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 760 400" role="img" aria-label="Payroll waterfall: entitled components are pro-rated by paid days to give earned components, plus overtime and incentives to give gross, minus statutory and other deductions to give net, then rounded to the paid amount.">
+        <defs>
+          <marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <g font-size="12" fill="currentColor">
+          <rect x="40" y="10" width="240" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="160" y="30" text-anchor="middle" font-weight="600">Entitled components</text>
+          <text x="160" y="45" text-anchor="middle" font-size="10.5" opacity=".6">basic, HRA, DA, allowances</text>
+
+          <rect x="330" y="10" width="240" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 3"/>
+          <text x="450" y="30" text-anchor="middle" font-weight="600">From Time Office</text>
+          <text x="450" y="45" text-anchor="middle" font-size="10.5" opacity=".6">paid days, LOP, OT hrs, comp-off</text>
+
+          <rect x="40" y="94" width="530" height="44" rx="3" fill="#E4F2EA" stroke="#22B573" stroke-width="1.5"/>
+          <text x="305" y="114" text-anchor="middle" fill="#1F6F4B" font-weight="600">Earned components</text>
+          <text x="305" y="129" text-anchor="middle" font-size="10.5" fill="#1F6F4B" opacity=".8">entitled × paid days ÷ working days</text>
+
+          <rect x="40" y="178" width="530" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="305" y="198" text-anchor="middle" font-weight="600">Gross</text>
+          <text x="305" y="213" text-anchor="middle" font-size="10.5" opacity=".6">earned + OT + incentives + arrears</text>
+
+          <rect x="40" y="262" width="530" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="305" y="282" text-anchor="middle" font-weight="600">Net</text>
+          <text x="305" y="297" text-anchor="middle" font-size="10.5" opacity=".6">gross − PF − ESI − PT − TDS − LWF − loans − canteen</text>
+
+          <rect x="40" y="346" width="530" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          <text x="305" y="366" text-anchor="middle" font-weight="600">Rounded net — the amount actually paid</text>
+          <text x="305" y="381" text-anchor="middle" font-size="10.5" opacity=".6">rounding is stored, not just displayed</text>
+        </g>
+
+        <path d="M160 54 L160 92" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar6)"/>
+        <path d="M450 54 L450 92" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar6)"/>
+        <path d="M305 138 L305 176" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar6)"/>
+        <path d="M305 222 L305 260" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar6)"/>
+        <path d="M305 306 L305 344" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar6)"/>
+
+        <g font-size="10.5" fill="currentColor" opacity=".6">
+          <text x="590" y="120">pro-rate</text>
+          <text x="590" y="204">add</text>
+          <text x="590" y="288">subtract</text>
+          <text x="590" y="370">round</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1" opacity=".3">
+          <line x1="576" y1="116" x2="586" y2="116"/>
+          <line x1="576" y1="200" x2="586" y2="200"/>
+          <line x1="576" y1="284" x2="586" y2="284"/>
+          <line x1="576" y1="366" x2="586" y2="366"/>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>Entitled to paid.</b> Both the entitled and earned figures are stored on the payslip — the employee needs to see what they were owed and why they got less. The divisor in the pro-rate step (calendar days, working days, or a fixed 30) is a policy setting we are still waiting on.</figcaption>
+  </figure>
+</section>
+
+<section id="s9">
+  <div class="sec-head"><span class="sec-num">09</span><h2>The build order</h2></div>
+  <div class="prose">
+    <p>Eight stages. The order is set by dependency, not preference — each stage needs the one before it to exist. Day figures assume the whole team, not one person.</p>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">1</div>
+    <h3>Configuration — the 60 masters</h3>
+    <div class="stage-body">
+      <p>Every screen where an admin sets something up: departments, designations, shifts, holidays, leave types, PF and ESI rates, tax slabs, and the thirteen policy masters that drive attendance and overtime.</p>
+      <p>This is first because everything above it reads it, and because it is the only stage not blocked by the missing payroll formulas. It is also the cheapest way to put something real in front of the client.</p>
+      <div class="stage-meta"><span class="chip days">64–67 days</span><span class="chip">60 screens</span><span class="chip">19 already done</span><span class="chip">no blockers</span></div>
+      <div class="done"><b>Done when</b>An admin can configure the entire factory — every shift, every leave type, every rate — without a developer.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">2</div>
+    <h3>Foundation — access, approvals, periods, audit</h3>
+    <div class="stage-body">
+      <p>Page-level permissions across all 203 screens, the generic approval engine, the payroll-period state machine with its freeze check, and the audit log.</p>
+      <p>Unglamorous and invisible, and it must come second. The approval engine is needed by eight later modules; the freeze check has to sit on every write path that will ever exist.</p>
+      <div class="stage-meta"><span class="chip days">38–47 days</span><span class="chip">22 screens</span><span class="chip block">blocks 8 modules</span></div>
+      <div class="done"><b>Done when</b>Any module can raise an approval request and check whether a period is locked, using one shared service.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">3</div>
+    <h3>People — employee record and lifecycle</h3>
+    <div class="stage-body">
+      <p>The employee profile and its thirteen tabs, plus the lifecycle events that change it: confirmation, transfer, promotion, designation change, increment. Then letters, onboarding forms and separation.</p>
+      <p>The critical detail is versioning. A promotion does not edit the job record — it closes the old one and opens a new one with an effective date, so last year's payslip still reconciles.</p>
+      <div class="stage-meta"><span class="chip days">42–53 days</span><span class="chip">37 screens</span><span class="chip">models exist</span></div>
+      <div class="done"><b>Done when</b>You can hire someone, promote them, and still reproduce what they were paid before the promotion.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">4</div>
+    <h3>Time — attendance, leave, overtime, comp-off</h3>
+    <div class="stage-body">
+      <p>Biometric sync, the daily attendance engine, the monthly workbench grid, leave with its accrual and balance ledger, the overtime gate chain, comp-off generation and permission.</p>
+      <p>The hardest stage. Budget extra for the monthly grid — one row per employee, up to 31 day columns, plus summary and salary columns, needs server-side paging and a pre-aggregated monthly table rather than computing from raw punches on every render.</p>
+      <div class="stage-meta"><span class="chip days">76–92 days</span><span class="chip">28 screens</span><span class="chip block">6 rules unconfirmed</span></div>
+      <div class="done"><b>Done when</b>A month of real punches produces a Time Office Final that HR is willing to sign.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">5</div>
+    <h3>Pay — structure, engine, statutory, outputs</h3>
+    <div class="stage-body">
+      <p>Salary components and logic, the payroll waterfall, PF, ESI, professional tax, TDS and labour welfare fund, deductions, loans, income tax declarations, and finally payslips and the bank file.</p>
+      <p>The largest single item and the one carrying the most risk, because the client has not yet supplied the formulas. Build the calculation engine as pure functions with the policy passed in — then the arithmetic is testable and the rules stay configurable.</p>
+      <div class="stage-meta"><span class="chip days">98–125 days</span><span class="chip">44 screens</span><span class="chip block">formulas missing</span></div>
+      <div class="done"><b>Done when</b>One month's payroll reproduces the client's existing payslips to the rupee.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">6</div>
+    <h3>Extended — recruitment, self service, documents</h3>
+    <div class="stage-body">
+      <p>The candidate-to-induction pipeline, contract labour payroll, the incentive suite, employee self service and the document repository.</p>
+      <p>Self service matters more than it looks: it moves data entry from HR to the employee, which is where most of the operational saving comes from.</p>
+      <div class="stage-meta"><span class="chip days">58–71 days</span><span class="chip">42 screens</span><span class="chip">mobile-first</span></div>
+      <div class="done"><b>Done when</b>An employee can apply for leave and download a payslip from their phone.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">7</div>
+    <h3>Output — reports, dashboards, statutory forms</h3>
+    <div class="stage-body">
+      <p>Thirty-six reports, ten dashboard views, the six Tamil Nadu Factories Rules forms, learning and development, visitor management and notifications.</p>
+      <p>Build the report framework once — filters, grouping, export, print — then each report is under a day. Compliance forms come last because they depend on attendance, leave and payroll all being correct.</p>
+      <div class="stage-meta"><span class="chip days">76–92 days</span><span class="chip">69 screens</span><span class="chip">framework first</span></div>
+      <div class="done"><b>Done when</b>Form 25 generated from the system matches the register the factory files today.</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-n">8</div>
+    <h3>Migration and go-live</h3>
+    <div class="stage-body">
+      <p>Extract from the old ERP, transform, load. Employee master, leave balances, payroll history, documents — and if go-live lands mid-year, the year-to-date figures for tax and provident fund.</p>
+      <div class="stage-meta"><span class="chip days">25–35 days</span><span class="chip block">scope unknown</span></div>
+      <div class="done"><b>Done when</b>The first payroll run on real migrated data matches the old system.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <span class="lbl">The shape of the plan</span>
+    <p>The first genuinely usable release is the end of stage 5 — an organisation that can hire, manage, track attendance and pay people. That is roughly six to eight months with four developers. Stages 6 to 8 make it complete.</p>
+  </div>
+</section>
+
+<section id="s10">
+  <div class="sec-head"><span class="sec-num">10</span><h2>How to build one screen</h2></div>
+  <div class="prose">
+    <p>Your first ticket will be a master screen. Here is the whole loop, start to finish, in this codebase. Once you have done it once, the other fifty-nine are the same shape.</p>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <h4>Read what already exists</h4>
+      <p>Open an existing master and copy its shape rather than inventing one. Departments is the simplest complete example, and the shared page component does most of the work.</p>
+      <pre><span class="c">// the two files worth reading first</span>
+src/app/masters/departments/page.tsx
+src/components/SimpleMasterPage.tsx</pre>
+    </div>
+
+    <div class="step">
+      <h4>Add the Prisma model</h4>
+      <p>Follow the house pattern exactly: integer id, unique code, name, optional description, an active flag, soft delete, and timestamps. If the master holds a <em>rate</em> that can change, add effective dating too — that decision cannot be deferred.</p>
+      <pre><span class="kw">model</span> HolidayMaster {
+  id            Int       <span class="s">@id @default(autoincrement())</span>
+  code          String    <span class="s">@unique @db.NVarChar(20)</span>
+  name          String    <span class="s">@db.NVarChar(100)</span>
+  holidayDate   DateTime
+  holidayType   String    <span class="s">@db.NVarChar(30)</span>
+  isActive      Boolean   <span class="s">@default(true)</span>
+  deletedAt     DateTime?
+  createdAt     DateTime  <span class="s">@default(now())</span>
+  updatedAt     DateTime  <span class="s">@updatedAt</span>
+}</pre>
+    </div>
+
+    <div class="step">
+      <h4>Migrate</h4>
+      <p>Never edit the database by hand. The migration file is the record of what changed and is what lets another developer — or the production server — reach the same state.</p>
+      <pre>npx prisma migrate dev --name add_holiday_master
+npx prisma generate</pre>
+    </div>
+
+    <div class="step">
+      <h4>Write the API routes</h4>
+      <p>Two files, five handlers. List and create in one, read, update and delete in the other. Deletes are soft — set <code>deletedAt</code>, never remove the row, because a payslip from March may still point at it.</p>
+      <pre>src/app/api/masters/holidays/route.ts        <span class="c">// GET, POST</span>
+src/app/api/masters/holidays/[id]/route.ts   <span class="c">// GET, PUT, DELETE</span></pre>
+    </div>
+
+    <div class="step">
+      <h4>Build the page</h4>
+      <p>Point the shared component at your columns and fields. Resist adding a custom table — every master that looks slightly different is a maintenance cost for the next three years.</p>
+      <pre>src/app/masters/holidays/page.tsx</pre>
+    </div>
+
+    <div class="step">
+      <h4>Register it in the navigation</h4>
+      <p>The sidebar is data, not markup. Add your screen to the tree and flip <code>ready</code> — the green dot and the progress counter update themselves.</p>
+      <pre><span class="c">// src/components/layout/navigation.ts</span>
+{ label: <span class="s">"Holiday Master"</span>, href: <span class="s">"/masters/holidays"</span>, ready: <span class="kw">true</span> }</pre>
+    </div>
+
+    <div class="step">
+      <h4>Wire the permission</h4>
+      <p>A screen nobody can be granted access to is not finished. Register the node in the permission model and check it in the API route, not only in the UI — hiding a button is not security.</p>
+    </div>
+
+    <div class="step">
+      <h4>Verify before you push</h4>
+      <p>Types, lint, then your own eyes. Click through create, edit, delete and the empty state. Check it in dark mode and at phone width, because half the users are on the shop floor with a phone.</p>
+      <pre>npx tsc --noEmit
+npx eslint src/app/masters/holidays
+npm run dev   <span class="c">// then actually use the screen</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="s11">
+  <div class="sec-head"><span class="sec-num">11</span><h2>House rules</h2></div>
+  <div class="prose">
+    <p>These come from reading the old ERP — 867 tables of hard-won lessons about what not to repeat.</p>
+  </div>
+
+  <div class="dd">
+    <div class="dd-col yes">
+      <h4>Do</h4>
+      <ul>
+        <li>Store one row per employee per date, and let the database do date maths</li>
+        <li>Store pay components as rows, so a new allowance is data and not a deployment</li>
+        <li>Give every rate an effective-from date</li>
+        <li>Keep calculation in pure functions that take policy as an argument</li>
+        <li>Soft delete everything a payslip might reference</li>
+        <li>Record both the entitled and the earned figure</li>
+        <li>Check the period lock on every write</li>
+        <li>Put the reason on rejections and reopens — somebody will ask in eleven months</li>
+      </ul>
+    </div>
+    <div class="dd-col no">
+      <h4>Don't</h4>
+      <ul>
+        <li>Create <code>day1 … day31</code> columns — the old system did, and no date range can be queried</li>
+        <li>Add a column per pay component — the old salary table has 151 of them</li>
+        <li>Store leave balances as fixed columns per leave type</li>
+        <li>Cap anything at three or five with numbered columns (<code>approver1</code>, <code>skill5</code>)</li>
+        <li>Store a month as text next to a year as a number — it cannot be sorted</li>
+        <li>Write a threshold as a literal in an <code>if</code></li>
+        <li>Let the attendance screen calculate salary its own way</li>
+        <li>Hard delete anything</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="s12">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Where the answers live</h2></div>
+  <div class="prose">
+    <p>Before asking, check these. They are in the repository under <code>docs/</code>.</p>
+  </div>
+
+  <div class="twrap">
+    <table>
+      <thead>
+        <tr><th>Document</th><th>Answers</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="mono">REQUIREMENTS_DECISIONS.md</span></td><td>What the client has confirmed, what is still open, and every contradiction found so far</td></tr>
+        <tr><td><span class="mono">TIME_OFFICE_ANALYSIS_2026-08-25.md</span></td><td>The governing spec for attendance, leave, overtime, comp-off, incentives and the freeze mechanism</td></tr>
+        <tr><td><span class="mono">ERP_SCHEMA_ANALYSIS_2026-08-25.md</span></td><td>How the old system works, what to copy, and what to deliberately not copy</td></tr>
+        <tr><td><span class="mono">MASTERS_PLAN_2026-08-25.md</span></td><td>All 60 masters with effort and sequence</td></tr>
+        <tr><td><span class="mono">BUILD_ESTIMATE_2026-08-25.md</span></td><td>The 32 management areas, days, confidence and phasing</td></tr>
+        <tr><td><span class="mono">navigation.ts</span></td><td>Every screen that will ever exist, and which ones are built</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <span class="lbl">Known unknowns — do not invent these</span>
+    <p>Half-day threshold · break deduction rule · night-shift date ownership · weekly-off source · minimum and maximum OT · earned-leave qualifying days · carry-forward limits · performance incentive basis · the payroll divisor · canteen and petrol rates.</p>
+    <p>If your task depends on one of these, stop and ask. A guessed threshold that reaches production becomes somebody's wrong salary, and it will be defended for months because it is already in the code.</p>
+  </div>
+</section>
+
+</main>
+
+<nav class="toc" aria-label="Contents">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#s1">What we're building</a></li>
+    <li><a href="#s2">The spine</a></li>
+    <li><a href="#s3">Five layers</a></li>
+    <li><a href="#s4">Six ideas</a></li>
+    <li><a href="#s5">Punch to attendance</a></li>
+    <li><a href="#s6">Overtime gates</a></li>
+    <li><a href="#s7">Closing the month</a></li>
+    <li><a href="#s8">Payroll waterfall</a></li>
+    <li><a href="#s9">Build order</a></li>
+    <li><a href="#s10">Build one screen</a></li>
+    <li><a href="#s11">House rules</a></li>
+    <li><a href="#s12">Where answers live</a></li>
+  </ol>
+</nav>
+</div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>KUN / Suki HRMS engineering manual · compiled 25 August 2026 from the BRD, the Time Office specification and the legacy ERP schema · figures are indicative and move as the client answers the open questions</p>
+  </div>
+</footer>

@@ -1,26 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  AUTH_COOKIE_NAME,
-  authCookieOptions,
-  requestIsHttps,
-} from "@/lib/authToken";
+/**
+ * POST /api/auth/logout
+ * Clears the "hrms-token" cookie.
+ */
 
-export const runtime = "nodejs";
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  try {
-    const res = NextResponse.json({ success: true });
-    // Expire the JWT cookie immediately
-    res.cookies.set(AUTH_COOKIE_NAME, "", {
-      ...authCookieOptions(0, { secure: requestIsHttps(req) }),
-      maxAge: 0,
-    });
-    return res;
-  } catch (err) {
-    console.error("Logout error:", err);
-    return NextResponse.json(
-      { success: false, error: "Logout failed" },
-      { status: 500 }
-    );
-  }
+export async function POST() {
+  const response = NextResponse.json({ message: 'Logged out' });
+  response.cookies.set('hrms-token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+  return response;
 }

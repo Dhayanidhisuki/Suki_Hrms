@@ -1,3 +1,34 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Suki HRMS — Prisma Schema
+// Datasource: MS SQL Server (production)
+// Branch: feature/prisma-base + feature/employee-master-models
+//
+// SCOPE: Base master/definition tables + soft-delete. No transactional logic.
+// Do NOT add Attendance, Payroll, Performance, Training, Recruitment, Reports,
+// Compliance, Leave/Loan/Asset logic, or ESS models here.
+//
+// OPEN QUESTIONS STATUS:
+//   Q1. Grade & Level separate              → APPROVED
+//   Q2. ESI/PF two tables                   → APPROVED
+//   Q3. Site/Branch discriminator           → PENDING CLIENT CONFIRMATION (Site model commented out, will NOT migrate)
+//   Q4. isActive + deletedAt                → APPROVED
+//   Q5. Slab overlap prevention             → APPROVED: Option D (SQL Server trigger + app-layer validation)
+//   Q6. SubDepartment → Department FK       → APPROVED
+//   Q7. Int autoincrement                   → APPROVED
+//   Q8. ShiftPlan override shape            → APPROVED (spec override fields before Phase 2)
+//   Q9. OTPlan shape                        → APPROVED
+//   Q10. DropdownMaster isActive             → ALREADY PRESENT (was a summary-table omission, not a schema gap)
+//   Q11. Leave/Loan/Asset minimal fields    → APPROVED
+//
+// Q5 IMPLEMENTATION (Option D — approved):
+//   DB-level overlap prevention via SQL Server AFTER INSERT/UPDATE triggers
+//   on all 4 slab/rate tables (TDSSlab, ProfessionalTaxSlab, EsiRate, PfRate).
+//   Trigger checks no overlapping (effectiveFrom, effectiveTo) ranges exist
+//   for the same `code`, rolls back on conflict. App-layer validation in
+//   service code provides clean error messages before hitting the DB.
+//   Trigger SQL is in: prisma/triggers/slab_overlap_triggers.sql
+// ─────────────────────────────────────────────────────────────────────────────
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,1257 +38,1128 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// ERP READ-ONLY TABLES (existing in ERPDb_ESSKAY — never written to)
-// ═══════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. ORGANISATIONAL MASTER TABLES (soft-delete: isActive + deletedAt)
+// ─────────────────────────────────────────────────────────────────────────────
 
-model ErpUser {
-  userId      String  @id @map("USER_ID") @db.NVarChar(10)
-  empCd       Int?    @map("EMP_CD")
-  pass        String  @map("PASS") @db.NVarChar(50)
-  roleName    String? @map("ROLE_NAME") @db.NVarChar(15)
-  addRoleName String? @map("ADD_ROLE_NAME") @db.NVarChar(100)
-  status      String? @map("STATUS") @db.NVarChar(15)
+model Department {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  @@map("ERP_USER")
+  subDepartments SubDepartment[]
+  jobInfos       JobInfo[]
+
+  @@map("Department")
 }
 
-model Employee {
-  empCd     Int     @id @map("EMP_CD")
-  title     String? @map("TITLE") @db.NVarChar(15)
-  firstName String  @map("FIRST_NAME") @db.NVarChar(50)
-  lastName  String? @map("LAST_NAME") @db.NVarChar(50)
-  deptNo    Int     @map("DEPT_NO")
-  status    String? @map("STATUS") @db.NVarChar(15)
-
-  @@map("EMPLOYEE")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// MASTER TABLES
-// ═══════════════════════════════════════════════════════════════════
-
-model Supplier {
-  supCode          String    @id @map("SUP_CODE") @db.NVarChar(10)
-  supName          String?   @map("SUP_NAME") @db.NVarChar(200)
-  add1             String?   @map("ADD1") @db.VarChar(200)
-  city             String?   @map("CITY") @db.VarChar(80)
-  state            String?   @map("STATE") @db.NVarChar(50)
-  gstin            String?   @map("GSTIN") @db.NVarChar(25)
-  phone1           String?   @map("PHONE1") @db.NVarChar(30)
-  emailId          String?   @map("EMAIL_ID") @db.NVarChar(50)
-  bankName         String?   @map("BANK_NAME") @db.NVarChar(50)
-  accountNumber    String?   @map("ACCOUNT_NUMBER") @db.NVarChar(30)
-  ifscCode         String?   @map("IFSC_CODE") @db.NVarChar(30)
-  approvedSupplier String?   @map("APPROVED_SUPPLIER") @db.NVarChar(5)
-  status           String?   @map("STATUS") @db.NVarChar(15)
-  creatUserIdCd    String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt          DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd  String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  poReceives           ToolsPoReceive[]
-  commonPurchaseOrders CommonPurchaseOrder[]
-
-  @@map("SUPPLIER")
-}
-
-model Subcontractor {
-  subConId              String    @id @map("SUB_CON_ID") @db.NVarChar(10)
-  subName               String?   @map("SUB_NAME") @db.NVarChar(150)
-  natureOfWork          String?   @map("NATURE_OF_WORK") @db.NVarChar(50)
-  isStoreVendor         String?   @map("IS_STORE_VENDOR") @db.NVarChar(3)
-  isInhouse             String?   @map("IS_INHOUSE") @db.NVarChar(3)
-  isIssueDc             String?   @map("IS_ISSUE_DC") @db.NVarChar(3)
-  add1                  String?   @map("ADD1") @db.NVarChar(75)
-  add2                  String?   @map("ADD2") @db.NVarChar(100)
-  gstin                 String?   @map("GSTIN") @db.NVarChar(25)
-  approvedSubcontractor String?   @map("APPROVED_SUBCONTRACTOR") @db.NVarChar(5)
-  status                String?   @map("STATUS") @db.NVarChar(15)
-  creatUserIdCd         String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt               DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd       String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  @@map("SUBCONTRACTOR")
-}
-
-model ToolsType {
-  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
-  typeOfTools   String?   @map("TYPE_OF_TOOLS") @db.NVarChar(100)
-  itemGroupId   Int?      @map("ITEM_GROUP_ID")
-  itemTypeId    Int?      @map("ITEM_TYPE_ID")
-  isAutoGenCd   String?   @map("IS_AUTO_GEN_CD") @db.NVarChar(3)
-  prefixItemNo  String?   @map("PREFIX_ITEM_NO") @db.NVarChar(15)
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  @@map("TOOLS_TYPE")
-}
-
-model GaugeType {
-  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
-  typeOfGauge   String    @map("TYPE_OF_GAUGE") @db.NVarChar(25)
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.Date
-
-  @@map("GAUGE_TYPE")
-}
-
-model OtherToolsType {
-  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
-  otherType       String?   @map("OTHER_TYPE") @db.NVarChar(35)
-  serialNoGenReq  String?   @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
-  issueType       String?   @map("ISSUE_TYPE") @db.NVarChar(25)
-  poPrefix        String?   @map("PO_PREFIX") @db.NVarChar(20)
-  indentPrefix    String?   @map("INDENT_PREFIX") @db.NVarChar(12)
-  grnPrefix       String?   @map("GRN_PREFIX") @db.NVarChar(12)
-  prefixToolsNo   String?   @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
-  itemNoPrefixMod String?   @map("ITEM__NO_PREFIX_MOD") @db.NVarChar(5)
-  prefixGateEntry String?   @map("PREFIX_GATE_ENTRY") @db.NVarChar(12)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-
-  subgroups QmsOtherToolsType[]
-
-  @@map("OTHER_TOOLS_TYPE")
-}
-
-model QmsOtherToolsType {
-  // ROW_ID is NOT identity in the ERP DB — creates must supply it explicitly.
-  rowId               Int       @id @map("ROW_ID")
-  qmsOtherTypeOfTools String?   @map("QMS_OTHER_TYPE_OF_TOOLS") @db.NVarChar(50)
-  refGroupId          Int?      @map("REF_GROUP_ID")
-  prefixToolsNo       String?   @map("PREFIX_TOOLS_NO") @db.NVarChar(12)
-  isAutoGenCd         String?   @map("IS_AUTO_GEN_CD") @db.NVarChar(5)
-  prefixBased         String?   @map("PREFIX_BASED") @db.NVarChar(10)
-  assetCategory       String?   @map("ASSET_CATEGORY") @db.NVarChar(15)
-  creatUserIdCd       String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt             DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd     String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs           DateTime? @map("LST_UPDT_TS") @db.DateTime
-
-  group OtherToolsType? @relation(fields: [refGroupId], references: [rowId])
-
-  @@map("QMS_OTHER_TOOLS_TYPE")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TOOLS MANAGE MASTER — Core registry (BRD: GAUGEANDTOOLS)
-// ═══════════════════════════════════════════════════════════════════
-
-model GaugeAndTools {
-  refNo                     Int       @id @map("REF_NO")
-  grouping                  String    @map("GROUPING") @db.NVarChar(25)
-  type                      String?   @map("TYPE") @db.NVarChar(50)
-  name                      String?   @map("NAME") @db.NVarChar(100)
-  description               String?   @map("DES") @db.NVarChar(500)
-  toolOrGaugeNo             String?   @unique @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  size                      String?   @map("SIZE") @db.NVarChar(25)
-  make                      String?   @map("MAKE") @db.NVarChar(100)
-  shape                     String?   @map("SHAPE") @db.NVarChar(15)
-  range                     String?   @map("RANGE") @db.NVarChar(30)
-  totQty                    Decimal?  @map("TOT_QTY") @db.Decimal(10, 3)
-  qtyIn                     Decimal?  @map("QTY_IN") @db.Decimal(10, 3)
-  qtyOut                    Decimal?  @map("QTY_OUT") @db.Decimal(10, 3)
-  qtyNew                    Decimal?  @map("QTY_NEW") @db.Decimal(10, 3)
-  qtyInUse                  Decimal?  @map("QTY_IN_USE") @db.Decimal(10, 3)
-  status                    String?   @map("STATUS") @db.NVarChar(25)
-  location                  String?   @map("LOCATION") @db.NVarChar(50)
-  locationName              String?   @map("LOCATION_NAME") @db.NVarChar(100)
-  locationOutputName        String?   @map("LOCATION_OUTPUT_NAME") @db.NVarChar(100)
-  area                      String?   @map("AREA") @db.NVarChar(100)
-  rack                      String?   @map("RACK") @db.NVarChar(100)
-  deptName                  String?   @map("DEPT_NAME") @db.NVarChar(25)
-  issueType                 String?   @map("ISSUE_TYPE") @db.NVarChar(25)
-  oldItemNo                 String?   @map("OLD_ITEM_NO") @db.NVarChar(20)
-  price                     Decimal?  @map("PRICE") @db.Decimal(10, 3)
-  minOrderLevel             Decimal?  @map("MIN_ORDER_LEVEL") @db.Decimal(12, 3)
-  hsnCode                   String?   @map("HSN_CODE") @db.NVarChar(25)
-  drawingNo                 String?   @map("DRAWING_NO") @db.NVarChar(30)
-  revNoDt                   String?   @map("REV_NO_DT") @db.NVarChar(30)
-  detailedSpec              String?   @map("DETAILED_SPEC")
-  packingLength             String?   @map("PACKING_LENGTH") @db.VarChar(20)
-  packingWidth              String?   @map("PACKING_WIDTH") @db.VarChar(20)
-  packingHeight             String?   @map("PACKING_HEIGHT") @db.VarChar(20)
-  packingDimensions         String?   @map("PACKING_DIMENSIONS") @db.NVarChar(50)
-  stiffness                 String?   @map("STIFFNESS") @db.NVarChar(20)
-  selfLife                  Int?      @map("SELF_LIFE")
-  activeItem                String?   @map("ACTIVE_ITEM") @db.NVarChar(10)
-  criticalItem              String?   @map("CRITICAL_ITEM") @db.NVarChar(10)
-  poReq                     String?   @map("PO_REQ") @db.NVarChar(10)
-  stockReq                  String?   @map("STOCK_REQ") @db.NVarChar(5)
-  stockItem                 String?   @map("STOCK_ITEM") @db.NVarChar(1)
-  isAsset                   String?   @map("IS_ASSET") @db.NVarChar(20)
-  saleableItem              String?   @map("SALEABLE_ITEM") @db.NVarChar(3)
-  nocReq                    String?   @map("NOC_REQ") @db.NVarChar(10)
-  machineSoftware           String?   @map("MACHINE_SOFTWARE") @db.NVarChar(5)
-  ineligibleForItc          String?   @map("INELIGIBLE_FOR_ITC") @db.NVarChar(3)
-  isCustGiven               String?   @map("IS_CUST_GIVEN") @db.NVarChar(3)
-  historyCardReq            String?   @map("HISTORY_CARD_REQ") @db.NVarChar(10)
-  calibrationFrqMonths      Int?      @map("CALIBRATION_FRQ_MONTHS")
-  caliPlannedWho            String?   @map("CALI_PLANNED_WHO") @db.NVarChar(15)
-  calibrationResponsibility String?   @map("CALIBRATION_RESPONSIBILITY") @db.NVarChar(15)
-  serialNoGenReq            String?   @map("SERIAL_NO_GEN_REQ") @db.NVarChar(5)
-  preventiveMethod          String?   @map("PREVENTIVE_METHOD") @db.NVarChar(25)
-  preventiveFrqMonths       Int?      @map("PREVENTIVE_FRQ_MONTHS")
-  /**
-   * ERP "Preventive MNT Done At" (int counter / done flag on master)
-   */
-  preventiveFrqOthers       Int?      @map("PREVENTIVE_FRQ_OTHERS")
-  /**
-   * ERP "Ref Details"
-   */
-  refDetails                String?   @map("REF_DETAILS") @db.NVarChar(50)
-  /**
-   * ERP "Addil. Remarks"
-   */
-  remarks                   String?   @map("REMARKS") @db.NVarChar(50)
-  gSpecUpperMin             Decimal?  @map("G_SPEC_UPPER_MIN") @db.Decimal(12, 3)
-  gSpecUpperMax             Decimal?  @map("G_SPEC_UPPER_MAX") @db.Decimal(12, 3)
-  wLimitLowerMax            Decimal?  @map("W_LIMIT_LOWER_MAX") @db.Decimal(12, 3)
-  wLimitUpperMin            Decimal?  @map("W_LIMIT_UPPER_MIN") @db.Decimal(12, 3)
-  wLimitUpperMax            Decimal?  @map("W_LIMIT_UPPER_MAX") @db.Decimal(12, 3)
-  prodSpecLowerMax          Decimal?  @map("PROD_SPEC_LOWER_MAX") @db.Decimal(12, 3)
-  prodSpecUpperMin          Decimal?  @map("PROD_SPEC_UPPER_MIN") @db.Decimal(12, 3)
-  prodSpecUpperMax          Decimal?  @map("PROD_SPEC_UPPER_MAX") @db.Decimal(12, 3)
-  uom                       String?   @map("UOM") @db.NVarChar(10)
-  returnable                String?   @map("RETURNABLE") @db.NVarChar(3)
-  leastCount                String?   @map("LEAST_COUNT") @db.NVarChar(50)
-  companyId                 String?   @map("COMPANY_ID") @db.NVarChar(10)
-  creatUserIdCd             String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt                   DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd           String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  serialNumbers       GaugeSerialNo[]
-  specifications      ToolsSpecification[]
-  priceMaster         ToolsPriceMaster[]
-  details             ToolsDetails[]
-  toolsMapping        ToolsMapping[]
-  machineMapping      ToolsMachineTrans[]
-  calibControlCard    GaugeControlCard[]
-  issueLines          ToolsTransIssue[]
-  issueLinesByRef     ToolsTransIssue[]                 @relation("IssueLineToolByRef")
-  receivedTransLines  ToolsIssueReceivedTrans[]
-  calibIssueLines     ToolsTransIssueForCalibration[]
-  calibReceiveLines   ToolsTransReceiveForCalibration[]
-  consumptionLines    ToolsConsumptionTransIssue[]
-  poReceiveTrans      ToolsPoReceiveTrans[]
-  commonPurchaseItems CommonPurchaseItem[]
-  unitStock           ToolsUnitStock[]
-  defects             InstrumentDefect[]
-  serviceRecords      InstrumentServiceRecord[]
-  importedMasterData  InstrumentImportedMasterData?
-
-  @@map("GAUGEANDTOOLS")
-}
-
-/// Exact client workbook fields that have no safe column in the legacy ERP master.
-model InstrumentImportedMasterData {
-  refNo              Int       @id @map("REF_NO")
-  calibrationDate    DateTime? @map("CALIBRATION_DATE") @db.DateTime
-  nextCalibrationDue DateTime? @map("NEXT_CALIBRATION_DUE") @db.DateTime
-  observedError      String?   @map("OBSERVED_ERROR") @db.NVarChar(200)
-  calibrationAgency  String?   @map("CALIBRATION_AGENCY") @db.NVarChar(100)
-  updatedAt          DateTime  @updatedAt @map("UPDATED_AT") @db.DateTime
-
-  tool GaugeAndTools @relation(fields: [refNo], references: [refNo], onDelete: Cascade)
-
-  @@map("TOOLS_APP_INSTRUMENT_MASTER_DATA")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TOOLS UNIT MASTER (app-owned — valid unit names, e.g. Unit 1 / Unit 2 / Unit 3)
-// Seeded via migration; managed via a settings page in future.
-// ═══════════════════════════════════════════════════════════════════
-
-model ToolsUnitMaster {
-  id            Int      @id @default(autoincrement()) @map("ID")
-  /// Display name exactly as it appears in the client's sheet, e.g. "Unit 1"
-  unitName      String   @unique @map("UNIT_NAME") @db.NVarChar(100)
-  isActive      Boolean  @default(true) @map("IS_ACTIVE")
-  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime @map("CREAT_DT") @db.DateTime
-
-  unitStockRows ToolsUnitStock[]
-
-  @@map("TOOLS_UNIT_MASTER")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TOOLS UNIT STOCK (app-owned — per-unit stock + calibration snapshot)
-// One row per (GaugeAndTools, Used Unit) pair, populated via import.
-// ═══════════════════════════════════════════════════════════════════
-
-model ToolsUnitStock {
-  id       Int    @id @default(autoincrement()) @map("ID")
-  /// FK → GaugeAndTools.refNo
-  refNo    Int    @map("REF_NO")
-  /// Matches TOOLS_UNIT_MASTER.UNIT_NAME — the "Used Unit" value from the import sheet
-  unitCode String @map("UNIT_CODE") @db.NVarChar(100)
-
-  // ── Per-unit Make (Q2 Option B) ──────────────────────────────────
-  make        String? @map("MAKE") @db.NVarChar(50)
-  /// Manufacturer serial number from the client calibration register.
-  mfgSerialNo String? @map("MFG_SERIAL_NO") @db.NVarChar(100)
-
-  // ── Quantity fields — nullable; populated manually post-import ───
-  qtyTotal Decimal? @map("QTY_TOTAL") @db.Decimal(10, 3)
-  qtyIn    Decimal? @map("QTY_IN") @db.Decimal(10, 3)
-  qtyOut   Decimal? @map("QTY_OUT") @db.Decimal(10, 3)
-  qtyNew   Decimal? @map("QTY_NEW") @db.Decimal(10, 3)
-  qtyInUse Decimal? @map("QTY_IN_USE") @db.Decimal(10, 3)
-
-  // ── Calibration snapshot (historical bulk-load via import) ───────
-  /// Last calibration date from the import sheet
-  calibDate     DateTime? @map("CALIB_DATE") @db.DateTime
-  /// Next calibration due date from the import sheet
-  nextCalibDate DateTime? @map("NEXT_CALIB_DATE") @db.DateTime
-  /// Observed measurement error string (free text)
-  observedError String?   @map("OBSERVED_ERROR") @db.NVarChar(200)
-  /// Calibration agency / lab name
-  calibAgency   String?   @map("CALIB_AGENCY") @db.NVarChar(100)
-
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-
-  tool       GaugeAndTools   @relation(fields: [refNo], references: [refNo])
-  unitMaster ToolsUnitMaster @relation(fields: [unitCode], references: [unitName])
-
-  @@unique([refNo, unitCode], map: "TOOLS_UNIT_STOCK_ref_unit_uid")
-  @@index([unitCode])
-  @@map("TOOLS_UNIT_STOCK")
-}
-
-model GaugeSerialNo {
-  refNo         Int       @id @map("REF_NO")
-  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  toolRefNo     Int?      @map("TOOL_REF_NO")
-  serialNo      Int?      @map("SERIAL_NO")
-  status        String?   @map("STATUS") @db.NVarChar(30)
-  make          String?   @map("MAKE") @db.NVarChar(50)
-  purchaseDt    DateTime? @map("C_DATE") @db.DateTime
-  nextPreDate   DateTime? @map("NXT_PRE_DATE") @db.DateTime
-  nextPreDone   Int?      @map("NXT_PRE_DONE")
-  currentStatus Int?      @map("CURRENT_STATUS")
-  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-
-  @@map("GAUGE_SERIAL_NO")
-}
-
-model ToolsDetails {
-  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
-  toolRefNo       Int?      @map("TOOL_REF_NO")
-  noOfCavity      Int?      @map("NO_OF_CAVITY")
-  runningCavity   Int?      @map("RUNNING_CAVITY")
-  toolLife        Int?      @map("TOOL_LIFE")
-  balanceToolLife Int?      @map("BALANCE_TOOL_LIFE")
-  hardness        String?   @map("HARDNESS") @db.NVarChar(50)
-  shrinkage       String?   @map("SHRINKAGE") @db.NVarChar(50)
-  drawingNo       String?   @map("DRAWING_NO") @db.NVarChar(25)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_DETAILS")
-}
-
-model ToolsSpecification {
-  rowId            Int       @id @map("ROW_ID")
-  toolRefNo        Int?      @map("TOOL_REF_NO")
-  sequence         Int?      @map("SEQUENCE")
-  parameter        String?   @map("PARAMETER") @db.NVarChar(50)
-  specification    String?   @map("SPECIFICATION") @db.NVarChar(100)
-  minRange         String?   @map("MIN_RANGE") @db.NVarChar(15)
-  maxRange         String?   @map("MAX_RANGE") @db.NVarChar(15)
-  specType         String?   @map("SPEC_TYPE") @db.NVarChar(20)
-  wLimitLowerMin   Decimal?  @map("W_LIMIT_LOWER_MIN") @db.Decimal(12, 3)
-  wLimitLowerMax   Decimal?  @map("W_LIMIT_LOWER_MAX") @db.Decimal(12, 3)
-  wLimitUpperMin   Decimal?  @map("W_LIMIT_UPPER_MIN") @db.Decimal(12, 3)
-  wLimitUpperMax   Decimal?  @map("W_LIMIT_UPPER_MAX") @db.Decimal(12, 3)
-  prodSpecLowerMin Decimal?  @map("PROD_SPEC_LOWER_MIN") @db.Decimal(12, 3)
-  prodSpecLowerMax Decimal?  @map("PROD_SPEC_LOWER_MAX") @db.Decimal(12, 3)
-  creatDt          DateTime? @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_SPECIFICATION")
-}
-
-model ToolsPriceMaster {
-  rowId          Int       @id @default(autoincrement()) @map("ROW_ID")
-  supCode        String?   @map("SUP_CODE") @db.NVarChar(10)
-  toolRefNo      Int?      @map("TOOL_REF_NO")
-  revNo          String?   @map("REV_NO") @db.NVarChar(10)
-  revDate        DateTime? @map("REV_DATE") @db.DateTime
-  revStatus      String?   @map("REV_STATUS") @db.NVarChar(30)
-  /// PENDING | APPROVED | REJECTED (ERP may still hold legacy Yes/No values)
-  approvalStatus String?   @map("APPROVAL_STATUS") @db.NVarChar(30)
-  approvalDate   DateTime? @map("APPROVAL_DATE") @db.DateTime
-  /// Live rate — what GRN / Issue / Tool Master read. Not overwritten until approve.
-  rate           Decimal?  @map("RATE") @db.Decimal(12, 4)
-  /// Proposed rate awaiting approval (Phase 1 workflow)
-  proposedRate   Decimal?  @map("PROPOSED_RATE") @db.Decimal(12, 4)
-  submittedBy    String?   @map("SUBMITTED_BY") @db.NVarChar(50)
-  submittedAt    DateTime? @map("SUBMITTED_AT") @db.DateTime
-  approvedBy     String?   @map("APPROVED_BY") @db.NVarChar(50)
-  approvedAt     DateTime? @map("APPROVED_AT") @db.DateTime
-  rejectedReason String?   @map("REJECTED_REASON") @db.NVarChar(500)
-  remarks        String?   @map("REMARKS") @db.NVarChar(200)
-  creatUserIdCd  String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt        DateTime  @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_PRICE_MASTER")
-}
-
-model ToolsMapping {
-  rowId     Int      @id @default(autoincrement()) @map("ROW_ID")
-  supCode   String?  @map("SUP_CODE") @db.NVarChar(50)
-  toolRefNo Int?     @map("TOOL_REF_NO")
-  creatDt   DateTime @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_MAPPING")
-}
-
-model ToolsMachineTrans {
-  rowId     Int       @id @default(autoincrement()) @map("ROW_ID")
-  toolRefNo Int?      @map("TOOL_REF_NO")
-  macCode   String?   @map("MAC_CODE") @db.NVarChar(25)
-  creatDt   DateTime? @map("CREAT_DT") @db.DateTime
-
-  tool GaugeAndTools? @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_MACHINE_TRANS")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// ISSUE / RECEIVE / CONSUMPTION TRANSACTIONS
-// ═══════════════════════════════════════════════════════════════════
-
-model GaugeToolsIssue {
-  dcNo            String    @id @map("DC_NO") @db.NVarChar(12)
-  issueDate       DateTime? @map("ISSUE_DATE") @db.DateTime
-  dueDate         DateTime? @map("DUE_DATE") @db.DateTime
-  itemType        String?   @map("ITEM_TYPE") @db.NVarChar(100)
-  receiveName     String?   @map("RECEIVE_NAME") @db.NVarChar(50)
-  subCode         String?   @map("SUB_CODE") @db.NVarChar(10)
-  supCode         String?   @map("SUP_CODE") @db.NVarChar(10)
-  empId           Int       @map("EMP_ID")
-  status          String?   @map("STATUS") @db.NVarChar(15)
-  issueOption     String?   @map("ISSUE_OPTION") @db.NVarChar(30)
-  custCode        String?   @map("CUST_CODE") @db.NVarChar(12)
-  issuePurpose    String?   @map("ISSUE_PURPOSE") @db.NVarChar(100)
-  transportName   String?   @map("TRANSPORT_NAME") @db.NVarChar(50)
-  vehicleNo       String?   @map("VEHICLE_NO") @db.NVarChar(25)
-  dcRefNo         String?   @map("REF_NO") @db.NVarChar(20)
-  returnable      String?   @map("RETURNABLE") @db.NVarChar(5)
-  receiveNameTwo  String?   @map("RECEIVE_NAME_TWO") @db.NVarChar(50)
-  lobType         String?   @map("LOB_TYPE") @db.NVarChar(50)
-  fromUnit        String?   @map("FROM_UNIT") @db.NVarChar(15)
-  poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(15)
-  comments        String?   @map("COMMENTS") @db.NVarChar(100)
-  matType         String?   @map("MAT_TYPE") @db.NVarChar(20)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  receivedHeaders ToolsIssueReceived[]
-  lines           ToolsTransIssue[]
-
-  @@map("GAUGE_TOOLS_ISSUE")
-}
-
-model ToolsTransIssue {
-  // ERP ROW_ID is NOT identity — writers must supply max(ROW_ID)+1
-  rowId         Int       @id @map("ROW_ID")
-  dcNo          String    @map("DC_NO") @db.NVarChar(12)
-  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  issueQty      Decimal?  @map("ISSUE_QTY") @db.Decimal(10, 3)
-  partNo        String    @map("PART_NO") @db.NVarChar(50)
-  type          String?   @map("TYPE") @db.NVarChar(50)
-  serialNo      Int?      @map("SERIAL_NO")
-  name          String?   @map("NAME") @db.NVarChar(50)
-  description   String?   @map("DESCRIPTION") @db.NVarChar(500)
-  processName   String?   @map("NAME_OF_THE_PROCESS") @db.NVarChar(100)
-  machine       String?   @map("MACHINE") @db.NVarChar(50)
-  remarks       String?   @map("REMARKS") @db.NVarChar(100)
-  uom           String?   @map("UOM") @db.NVarChar(10)
-  issueType     String?   @map("ISSUE_TYPE") @db.NVarChar(25)
-  groupName     String?   @map("GROUP_NAME") @db.NVarChar(50)
-  issueToItemNo String?   @map("ISSUE_TO_ITEM_NO") @db.NVarChar(15)
-  issueEmpName  String?   @map("ISSUE_EMP_NAME") @db.NVarChar(50)
-  returnable    String?   @map("RETURNABLE") @db.NVarChar(5)
-  price         Decimal?  @map("PRICE") @db.Decimal(18, 4)
-  amount        Decimal?  @map("AMOUNT") @db.Decimal(18, 4)
-  toolRefNo     Int?      @map("TOOL_REF_NO")
-  status        String?   @map("STATUS") @db.NVarChar(10)
-  dueDate       DateTime? @map("DUE_DATE") @db.DateTime
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  header    GaugeToolsIssue @relation(fields: [dcNo], references: [dcNo])
-  tool      GaugeAndTools?  @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-  toolByRef GaugeAndTools?  @relation("IssueLineToolByRef", fields: [toolRefNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
-
-  @@map("TOOLS_TRANS_ISSUE")
-}
-
-model ToolsIssueReceived {
-  // ERP REC_NO is NOT identity — writers must supply max(REC_NO)+1
-  recNo           Int       @id @map("REC_NO")
-  dcNo            String    @map("DC_NO") @db.NVarChar(12)
-  receiveDate     DateTime? @map("RECEIVE_DATE") @db.DateTime
-  partyDcNo       String?   @map("PARTY_DC_NO") @db.NVarChar(15)
-  subCode         String    @map("SUB_CODE") @db.NVarChar(10)
-  contName        String?   @map("CONT_NAME") @db.NVarChar(80)
-  status          String?   @map("STATUS") @db.NVarChar(15)
-  geNo            String?   @map("GE_NO") @db.NVarChar(20)
-  geDate          DateTime? @map("GE_DATE") @db.DateTime
-  vendorType      String?   @map("VENDOR_TYPE") @db.NVarChar(50)
-  invoiceNo       String?   @map("INVOICE_NO") @db.NVarChar(25)
-  poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(15)
-  location        String?   @map("LOCATION") @db.NVarChar(50)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  issueHeader GaugeToolsIssue           @relation(fields: [dcNo], references: [dcNo])
-  lines       ToolsIssueReceivedTrans[]
-
-  @@map("TOOLS_ISSUE_RECEIVED")
-}
-
-model ToolsIssueReceivedTrans {
-  // ERP ROW_ID is NOT identity — writers must supply max(ROW_ID)+1
-  rowId         Int       @id @map("ROW_ID")
-  recNo         Int       @map("REC_NO")
-  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  serialNo      Int?      @map("SERIAL_NO")
-  quantity      Decimal?  @map("QUANTITY") @db.Decimal(10, 3)
-  status        String?   @map("STATUS") @db.NVarChar(30)
-  comments      String?   @map("COMMENTS") @db.NVarChar(30)
-  toolRefNo     Int?      @map("TOOL_REF_NO")
-  toolIssRefNo  Int?      @map("TOOL_ISS_REF_NO")
-  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  header ToolsIssueReceived @relation(fields: [recNo], references: [recNo])
-  tool   GaugeAndTools?     @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-
-  @@map("TOOLS_ISSUE_RECEIVED_TRANS")
-}
-
-model ToolsConsumptionTransIssue {
-  rowId          Int      @id @default(autoincrement()) @map("ROW_ID")
-  workSheetRefNo Int?     @map("WORK_SHEET_REF_NO")
-  toolOrGaugeNo  String?  @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  issueRefNo     Int?     @map("ISSUE_REF_NO")
-  qty            Decimal? @map("QTY") @db.Decimal(12, 2)
-  verified       String?  @map("VERIFIED") @db.NVarChar(5)
-  creatUserIdCd  String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt        DateTime @map("CREAT_DT") @db.Date
-
-  tool GaugeAndTools? @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-
-  @@map("TOOLS_CONSUMPTION_TRANS_ISSUE")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// PURCHASE ORDER LINKED MODULES
-// ═══════════════════════════════════════════════════════════════════
-
-/// ERP purchase approval trail — read-only aggregate source (no Tools-owned table).
-model PurchaseApproval {
-  refNo           Int       @id @map("REF_NO")
-  poOrderNo       String?   @map("PO_ORDER_NO") @db.NVarChar(20)
-  poAmendNo       Int?      @map("PO_AMEND_NO")
-  poSchNo         Int?      @map("PO_SCH_NO")
-  subPoOrderNo    String?   @map("SUB_PO_ORDER_NO") @db.NVarChar(15)
-  prevStatusCd    Int       @map("PREV_STATUS_CD")
-  curStatusCd     Int       @map("CUR_STATUS_CD")
-  comments        String?   @map("COMMENTS") @db.NVarChar(200)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-
-  @@map("PURCHASE_APPROVAL")
-}
-
-/// Shared ERP Purchasing header — Tools can create (Phase 2); same table ERP uses.
-model CommonPurchaseOrder {
-  poOrderNo     String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
-  poDate        DateTime? @map("PO_DATE") @db.DateTime
-  validTill     DateTime? @map("VALID_TILL") @db.DateTime
-  orderStatusCd Int?      @map("ORDER_STATUS_CD")
-  supCode       String?   @map("SUP_CODE") @db.NVarChar(10)
-  quotNo        String?   @map("QUOT_NO") @db.NVarChar(25)
-  remarks       String?   @map("REMARKS") @db.NVarChar(300)
-  contactName   String?   @map("CONTACT_NAME") @db.NVarChar(50)
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-  poGoodsType   String?   @map("PO_GOODS_TYPE") @db.NVarChar(50)
-  poCat         String?   @map("PO_CAT") @db.NVarChar(50)
-  purchaseType  String?   @map("PURCHASE_TYPE") @db.NVarChar(20)
-  currency      String?   @map("CURRENCY") @db.NVarChar(15)
-  lobType       String?   @map("LOB_TYPE") @db.NVarChar(50)
-  vendorType    String?   @map("VENDOR_TYPE") @db.NVarChar(15)
-  purchaseValue Decimal?  @map("PURCHASE_VALUE") @db.Decimal(14, 4)
-  subTotValue   Decimal?  @map("SUB_TOT_VALUE") @db.Decimal(14, 4)
-  department    String?   @map("DEPARTMENT") @db.NVarChar(50)
-  approverCd    String?   @map("APPROVER_CD") @db.NVarChar(100)
-
-  supplier Supplier?            @relation(fields: [supCode], references: [supCode], onUpdate: NoAction, onDelete: NoAction)
-  lines    CommonPurchaseItem[]
-
-  @@map("COMMON_PURCHASE_ORDER")
-}
-
-/// Shared ERP Purchasing lines — ROW_ID is NOT identity; allocate explicitly on create.
-model CommonPurchaseItem {
-  rowId         Int       @id @map("ROW_ID")
-  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(16)
-  itemCode      String?   @map("ITEM_CODE") @db.NVarChar(25)
-  price         Decimal?  @map("PRICE") @db.Decimal(18, 3)
-  qty           Decimal?  @map("QTY") @db.Decimal(18, 3)
-  uom           String?   @map("UOM") @db.NVarChar(10)
-  comments      String?   @map("COMMENTS") @db.NVarChar(Max)
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-  itemType      String?   @map("ITEM_TYPE") @db.NVarChar(50)
-  itemName      String?   @map("ITEM_NAME") @db.NVarChar(Max)
-  hsnCode       String?   @map("HSN_CODE") @db.NVarChar(20)
-  remarks       String?   @map("REMARKS") @db.NVarChar(50)
-  itemDesc      String?   @map("item_desc") @db.NVarChar(Max)
-  toolRefNo     Int?      @map("TOOL_REF_NO")
-
-  order CommonPurchaseOrder? @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: NoAction)
-  tool  GaugeAndTools?       @relation(fields: [toolRefNo], references: [refNo], onUpdate: NoAction, onDelete: NoAction)
-
-  @@map("COMMON_PURCHASE_ITEM")
-}
-
-/// Tools-owned PO payment tracking (Phase 3). Not an ERP table — no FK to COMMON_PURCHASE_*.
-model ToolsPoFinance {
-  poOrderNo       String    @id @map("PO_ORDER_NO") @db.NVarChar(16)
-  paymentStatus   String    @default("UNPAID") @map("PAYMENT_STATUS") @db.NVarChar(20)
-  paymentDate     DateTime? @map("PAYMENT_DATE") @db.DateTime
-  remarks         String?   @map("REMARKS") @db.NVarChar(200)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime  @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-
-  lines ToolsPoFinanceLine[]
-
-  @@map("TOOLS_PO_FINANCE")
-}
-
-/// Per-line EXP_LEDGER_CODE (ERP naming) + optional Tools budget ref.
-model ToolsPoFinanceLine {
-  id            Int      @id @default(autoincrement()) @map("ID")
-  poOrderNo     String   @map("PO_ORDER_NO") @db.NVarChar(16)
-  poItemRowId   Int      @map("PO_ITEM_ROW_ID")
-  expLedgerCode String?  @map("EXP_LEDGER_CODE") @db.NVarChar(25)
-  budgetCode    String?  @map("BUDGET_CODE") @db.NVarChar(50)
-  creatUserIdCd String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime @map("CREAT_DT") @db.DateTime
-
-  header ToolsPoFinance @relation(fields: [poOrderNo], references: [poOrderNo], onUpdate: NoAction, onDelete: Cascade)
-
-  @@unique([poItemRowId], map: "TOOLS_PO_FINANCE_LINE_item_uid")
-  @@index([poOrderNo])
-  @@map("TOOLS_PO_FINANCE_LINE")
-}
-
-model ToolsPoReceive {
-  /// GIR_NO is NOT IDENTITY in SQL Server — allocate MAX(GIR_NO)+1 on create.
-  girNo         Int       @id @map("GIR_NO")
-  girNoNew      String?   @map("GIR_NO_NEW") @db.NVarChar(20)
-  girDate       DateTime? @map("GIR_DATE") @db.DateTime
-  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(16)
-  supCode       String?   @map("SUP_CODE") @db.NVarChar(10)
-  girStatus     String?   @map("GIR_STATUS") @db.NVarChar(10)
-  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  supplier Supplier?             @relation(fields: [supCode], references: [supCode])
-  lines    ToolsPoReceiveTrans[]
-
-  @@map("TOOLS_PO_RECEIVE")
-}
-
-model ToolsPoReceiveTrans {
-  /// ROW_ID is NOT IDENTITY — allocate explicitly on create.
-  rowId     Int       @id @map("ROW_ID")
-  girNo     Int?      @map("GIR_NO")
-  itemCode  String?   @map("ITEM_CODE") @db.NVarChar(25)
-  itemType  String?   @map("ITEM_TYPE") @db.NVarChar(50)
-  qtyOrder  Decimal?  @map("QTY_ORDER") @db.Decimal(10, 2)
-  invQty    Decimal?  @map("INV_QTY") @db.Decimal(10, 2)
-  recQty    Decimal?  @map("REC_QTY") @db.Decimal(10, 2)
-  price     Decimal?  @map("PRICE") @db.Decimal(10, 2)
-  toolRefNo Int?      @map("TOOL_REF_NO")
-  creatDt   DateTime? @map("CREAT_DT") @db.DateTime
-
-  grn  ToolsPoReceive? @relation(fields: [girNo], references: [girNo])
-  tool GaugeAndTools?  @relation(fields: [toolRefNo], references: [refNo])
-
-  @@map("TOOLS_PO_RECEIVE_TRANS")
-}
-
-model ToolsPoSchMaster {
-  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
-  schDate       DateTime? @map("SCH_DATE") @db.DateTime
-  poOrderNo     String?   @map("PO_ORDER_NO") @db.NVarChar(50)
-  status        String?   @map("STATUS") @db.NVarChar(20)
-  remarks       String?   @map("REMARKS") @db.NVarChar(300)
-  creatDt       DateTime  @map("CREAT_DT") @db.DateTime
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-
-  lines ToolsPoSchTrans[]
-
-  @@map("TOOLS_PO_SCH_MASTER")
-}
-
-model ToolsPoSchTrans {
-  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
-  refNo         Int       @map("REF_NO")
-  poTransNo     Int       @map("PO_TRANS_NO")
-  qty           Decimal?  @map("QTY") @db.Decimal(12, 2)
-  schStatus     String?   @map("SCH_STATUS") @db.NVarChar(20)
-  comments      String?   @map("COMMENTS") @db.NVarChar(300)
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  schedule ToolsPoSchMaster @relation(fields: [refNo], references: [rowId])
-
-  @@map("TOOLS_PO_SCH_TRANS")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// CALIBRATION WORKFLOW
-// ═══════════════════════════════════════════════════════════════════
-
-model ToolsIssueForCalibration {
-  dcNo            Int       @id @default(autoincrement()) @map("DC_NO")
-  issueDate       DateTime? @map("ISSUE_DATE") @db.DateTime
-  receiveName     String?   @map("RECEIVE_NAME") @db.NVarChar(25)
-  subCode         String?   @map("SUB_CODE") @db.NVarChar(10)
-  issueFor        String?   @map("ISSUE_FOR") @db.NVarChar(25)
-  startDtTime     DateTime? @map("START_DT_TIME") @db.DateTime
-  toolsPoNo       String?   @map("TOOLS_PO_NO") @db.NVarChar(20)
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  inHouseLines   ToolsTransIssueForCalibration[]
-  receiveHeaders ToolsReceiveForCalibration[]
-
-  @@map("TOOLS_ISSUE_FOR_CALIBRATION")
-}
-
-model ToolsTransIssueForCalibration {
-  // ROW_ID is NOT identity in the ERP DB — creates must supply it explicitly.
-  rowId               Int       @id @map("ROW_ID")
-  dcNo                Int?      @map("DC_NO")
-  toolOrGaugeNo       String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  grouping            String?   @map("GROUPING") @db.NVarChar(25)
-  issueQty            Int?      @map("ISSUE_QTY")
-  serialNo            Int?      @map("SERIAL_NO")
-  dueDate             DateTime? @map("DUE_DATE") @db.DateTime
-  calibDueDate        DateTime? @map("CALIB_DUE_DATE") @db.DateTime
-  status              String?   @map("STATUS") @db.NVarChar(30)
-  calibrationStatus   String?   @map("CALIBRATION_STATUS") @db.NVarChar(10)
-  nxtCalibDate        DateTime? @map("NXT_CALIB_DATE") @db.DateTime
-  resultStatus        String?   @map("RESULT_STATUS") @db.NVarChar(30)
-  calibResultComments String?   @map("CALIB_RESULT_COMMENTS") @db.NVarChar(50)
-  calibratedBy        String?   @map("CALIBRATED_BY") @db.NVarChar(25)
-  calibratedDate      DateTime? @map("CALIBRATED_DATE") @db.DateTime
-  toolRefNo           Int?      @map("TOOL_REF_NO")
-  remarks             String?   @map("REMARKS") @db.NVarChar(50)
-  creatUserIdCd       String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt             DateTime? @map("CREAT_DT") @db.DateTime
-
-  calibIssue ToolsIssueForCalibration? @relation(fields: [dcNo], references: [dcNo])
-  tool       GaugeAndTools?            @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-
-  @@map("TOOLS_TRANS_ISSUE_FOR_CALIBRATION")
-}
-
-model ToolsReceiveForCalibration {
-  recNo           Int       @id @default(autoincrement()) @map("REC_NO")
-  dcNo            Int       @map("DC_NO")
-  receiveDate     DateTime? @map("RECEIVE_DATE") @db.DateTime
-  partyDcNo       String?   @map("PARTY_DC_NO") @db.NVarChar(20)
-  vendorCd        String?   @map("VENDOR_CD") @db.NVarChar(20)
-  receiverName    String?   @map("RECEIVER_NAME") @db.NVarChar(30)
-  status          String?   @map("STATUS") @db.NVarChar(10)
-  creatUserIdCd   String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  calibIssue ToolsIssueForCalibration          @relation(fields: [dcNo], references: [dcNo])
-  lines      ToolsTransReceiveForCalibration[]
-
-  @@map("TOOLS_RECEIVE_FOR_CALIBRATION")
-}
-
-model ToolsTransReceiveForCalibration {
-  // ROW_ID is IDENTITY in SQL Server — do not supply on create.
-  rowId         Int       @id @default(autoincrement()) @map("ROW_ID")
-  recNo         Int       @map("REC_NO")
-  dcNo          Int       @map("DC_NO")
-  toolOrGaugeNo String?   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  description   String?   @map("DESCRIPTION") @db.NVarChar(50)
-  serialNo      Int?      @map("SERIAL_NO")
-  qty           Decimal?  @map("QTY") @db.Decimal(10, 3)
-  price         Decimal?  @map("PRICE") @db.Decimal(10, 3)
-  creatDt       DateTime? @map("CREAT_DT") @db.DateTime
-
-  header ToolsReceiveForCalibration @relation(fields: [recNo], references: [recNo])
-  tool   GaugeAndTools?             @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-
-  @@map("TOOLS_TRANS_RECEIVE_FOR_CALIBRATION")
-}
-
-model GaugeControlCard {
-  rowId         Int       @id @map("ROW_ID")
-  toolOrGaugeNo String    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(15)
-  type          String?   @map("TYPE") @db.NVarChar(25)
-  status        String?   @map("STATUS") @db.NVarChar(15)
-  frequency     String?   @map("FREQUENCY") @db.NVarChar(15)
-  creatUserIdCd String?   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt       DateTime? @map("CREAT_DT") @db.Date
-
-  tool    GaugeAndTools?          @relation(fields: [toolOrGaugeNo], references: [toolOrGaugeNo])
-  history GaugeControlCardTrans[]
-
-  @@unique([toolOrGaugeNo])
-  @@map("GAUGE_CONTROL_CARD")
-}
-
-model GaugeControlCardTrans {
-  // ERP ROW_ID is NOT identity; every writer must allocate max(ROW_ID)+1.
-  rowId         Int       @id @map("ROW_ID")
-  refNo         Int       @map("REF_NO")
-  cDate         DateTime? @map("C_DATE") @db.Date
-  nextCDate     DateTime? @map("NEXT_C_DATE") @db.Date
-  remarks       String?   @map("REMARKS") @db.NVarChar(25)
-  creatDt       DateTime  @map("CREAT_DT") @db.Date
-  creatUserIdCd String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-
-  controlCard GaugeControlCard @relation(fields: [refNo], references: [rowId])
-
-  @@map("GAUGE_CONTROL_CARD_TRANS")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// CALIBRATION FREQUENCY MASTER (app-only table, not in ERP)
-// ═══════════════════════════════════════════════════════════════════
-
-model CalibrationFrequencyMaster {
-  rowId            Int      @id @default(autoincrement()) @map("ROW_ID")
-  prodToleranceMin String?  @map("PROD_TOLERANCE_MIN") @db.NVarChar(50)
-  prodToleranceMax Decimal? @map("PROD_TOLERANCE_MAX")
-  calibFrequency   Int?     @map("CALIB_FREQUENCY")
-  creatUserIdCd    String   @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  creatDt          DateTime @default(now()) @map("CREAT_DT")
-  lstUpdtUserIdCd  String?  @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-
-  @@map("CALIBRATION_FREQUENCY_MASTER")
-}
-
-// Full-fidelity result data owned by this app. Legacy ERP lifecycle tables have
-// short remark columns, so certificates and observation rows live here.
-model CalibrationResultDetail {
-  id                Int                            @id @default(autoincrement()) @map("ID")
-  issueLineRowId    Int                            @unique @map("ISSUE_LINE_ROW_ID")
-  toolOrGaugeNo     String                         @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  dcNo              Int?                           @map("DC_NO")
-  serialNo          Int?                           @map("SERIAL_NO")
-  resultStatus      String                         @map("RESULT_STATUS") @db.NVarChar(30)
-  certificateNo     String?                        @map("CERTIFICATE_NO") @db.NVarChar(100)
-  referenceStandard String?                        @map("REFERENCE_STANDARD") @db.NVarChar(200)
-  errorNoticed      String?                        @map("ERROR_NOTICED") @db.NVarChar(500)
-  comments          String?                        @map("COMMENTS") @db.NVarChar(1000)
-  calibratedBy      String?                        @map("CALIBRATED_BY") @db.NVarChar(100)
-  calibratedDate    DateTime                       @map("CALIBRATED_DATE") @db.DateTime
-  nextCalibDate     DateTime                       @map("NEXT_CALIB_DATE") @db.DateTime
-  location          String?                        @map("LOCATION") @db.NVarChar(100)
-  createdBy         String                         @map("CREATED_BY") @db.NVarChar(10)
-  createdAt         DateTime                       @default(now()) @map("CREATED_AT") @db.DateTime
-  updatedBy         String?                        @map("UPDATED_BY") @db.NVarChar(10)
-  updatedAt         DateTime                       @updatedAt @map("UPDATED_AT") @db.DateTime
-  observations      CalibrationResultObservation[]
-  deviations        CalibrationDeviation[]
-
-  @@index([toolOrGaugeNo, calibratedDate])
-  @@index([dcNo])
-  @@map("TOOLS_APP_CALIBRATION_RESULT")
-}
-
-model CalibrationResultObservation {
-  id            Int                     @id @default(autoincrement()) @map("ID")
-  resultId      Int                     @map("RESULT_ID")
-  lineNo        Int                     @map("LINE_NO")
-  parameter     String                  @map("PARAMETER") @db.NVarChar(100)
-  specification String?                 @map("SPECIFICATION") @db.NVarChar(200)
-  observedMin   String?                 @map("OBSERVED_MIN") @db.NVarChar(50)
-  observedMax   String?                 @map("OBSERVED_MAX") @db.NVarChar(50)
-  gaugeStatus   String?                 @map("GAUGE_STATUS") @db.NVarChar(30)
-  remarks       String?                 @map("REMARKS") @db.NVarChar(500)
-  createdAt     DateTime                @default(now()) @map("CREATED_AT") @db.DateTime
-  result        CalibrationResultDetail @relation(fields: [resultId], references: [id], onDelete: Cascade)
-
-  @@unique([resultId, lineNo])
-  @@map("TOOLS_APP_CALIBRATION_RESULT_OBS")
-}
-
-model InstrumentDefect {
-  id             Int                       @id @default(autoincrement()) @map("ID")
-  refNo          Int                       @map("REF_NO")
-  toolOrGaugeNo  String                    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  unitCode       String?                   @map("UNIT_CODE") @db.NVarChar(100)
-  reportedDate   DateTime                  @map("REPORTED_DATE") @db.DateTime
-  defectDetails  String                    @map("DEFECT_DETAILS") @db.NVarChar(1000)
-  errorDeviation String?                   @map("ERROR_DEVIATION") @db.NVarChar(500)
-  status         String                    @default("Defect Reported") @map("STATUS") @db.NVarChar(40)
-  disposition    String?                   @map("DISPOSITION") @db.NVarChar(100)
-  reportedBy     String                    @map("REPORTED_BY") @db.NVarChar(50)
-  createdAt      DateTime                  @default(now()) @map("CREATED_AT") @db.DateTime
-  updatedBy      String?                   @map("UPDATED_BY") @db.NVarChar(50)
-  updatedAt      DateTime                  @updatedAt @map("UPDATED_AT") @db.DateTime
-  tool           GaugeAndTools             @relation(fields: [refNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
-  serviceRecords InstrumentServiceRecord[]
-
-  @@index([refNo, reportedDate])
-  @@index([status])
-  @@map("TOOLS_APP_INSTRUMENT_DEFECT")
-}
-
-model InstrumentServiceRecord {
-  id                 Int               @id @default(autoincrement()) @map("ID")
-  defectId           Int?              @map("DEFECT_ID")
-  refNo              Int               @map("REF_NO")
-  toolOrGaugeNo      String            @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  serviceAgency      String?           @map("SERVICE_AGENCY") @db.NVarChar(100)
-  serviceDcNo        String?           @map("SERVICE_DC_NO") @db.NVarChar(30)
-  sentDate           DateTime?         @map("SENT_DATE") @db.DateTime
-  expectedReturnDate DateTime?         @map("EXPECTED_RETURN_DATE") @db.DateTime
-  receivedDate       DateTime?         @map("RECEIVED_DATE") @db.DateTime
-  repairDetails      String?           @map("REPAIR_DETAILS") @db.NVarChar(1000)
-  cost               Decimal?          @map("COST") @db.Decimal(18, 2)
-  verificationResult String?           @map("VERIFICATION_RESULT") @db.NVarChar(500)
-  status             String            @map("STATUS") @db.NVarChar(40)
-  finalStatus        String?           @map("FINAL_STATUS") @db.NVarChar(40)
-  createdBy          String            @map("CREATED_BY") @db.NVarChar(50)
-  createdAt          DateTime          @default(now()) @map("CREATED_AT") @db.DateTime
-  updatedBy          String?           @map("UPDATED_BY") @db.NVarChar(50)
-  updatedAt          DateTime          @updatedAt @map("UPDATED_AT") @db.DateTime
-  defect             InstrumentDefect? @relation(fields: [defectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  tool               GaugeAndTools     @relation(fields: [refNo], references: [refNo], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([refNo, sentDate])
-  @@index([defectId])
-  @@index([status])
-  @@map("TOOLS_APP_INSTRUMENT_SERVICE")
-}
-
-model CalibrationDeviation {
-  id               Int                      @id @default(autoincrement()) @map("ID")
-  resultId         Int?                     @map("RESULT_ID")
-  issueLineRowId   Int?                     @map("ISSUE_LINE_ROW_ID")
-  toolOrGaugeNo    String                   @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  parameter        String                   @map("PARAMETER") @db.NVarChar(100)
-  expectedValue    String?                  @map("EXPECTED_VALUE") @db.NVarChar(100)
-  observedValue    String?                  @map("OBSERVED_VALUE") @db.NVarChar(100)
-  deviation        String                   @map("DEVIATION") @db.NVarChar(200)
-  permissibleLimit String?                  @map("PERMISSIBLE_LIMIT") @db.NVarChar(100)
-  resultStatus     String                   @map("RESULT_STATUS") @db.NVarChar(20)
-  correctiveAction String?                  @map("CORRECTIVE_ACTION") @db.NVarChar(1000)
-  recordedBy       String                   @map("RECORDED_BY") @db.NVarChar(50)
-  recordedAt       DateTime                 @default(now()) @map("RECORDED_AT") @db.DateTime
-  result           CalibrationResultDetail? @relation(fields: [resultId], references: [id])
-
-  @@index([toolOrGaugeNo, recordedAt])
-  @@index([resultId])
-  @@map("TOOLS_APP_CALIBRATION_DEVIATION")
-}
-
-// Authorized external calibration laboratories. Additive app-owned master;
-// legacy calibration issue headers continue storing the selected code/name.
-model AuthorizedCalibrationAgency {
-  id                  Int       @id @default(autoincrement()) @map("ID")
-  agencyCode          String    @unique @map("AGENCY_CODE") @db.NVarChar(10)
-  agencyName          String    @map("AGENCY_NAME") @db.NVarChar(100)
-  address             String?   @map("ADDRESS") @db.NVarChar(500)
-  contactPerson       String?   @map("CONTACT_PERSON") @db.NVarChar(100)
-  phone               String?   @map("PHONE") @db.NVarChar(30)
-  email               String?   @map("EMAIL") @db.NVarChar(150)
-  accreditationNo     String?   @map("ACCREDITATION_NO") @db.NVarChar(100)
-  accreditationExpiry DateTime? @map("ACCREDITATION_EXPIRY") @db.DateTime
-  capabilities        String?   @map("CAPABILITIES") @db.NVarChar(1000)
-  isAuthorized        Boolean   @default(true) @map("IS_AUTHORIZED")
-  isActive            Boolean   @default(true) @map("IS_ACTIVE")
-  createdBy           String    @map("CREATED_BY") @db.NVarChar(50)
-  createdAt           DateTime  @default(now()) @map("CREATED_AT") @db.DateTime
-  updatedBy           String?   @map("UPDATED_BY") @db.NVarChar(50)
-  updatedAt           DateTime  @updatedAt @map("UPDATED_AT") @db.DateTime
-
-  @@index([isActive, isAuthorized])
-  @@map("TOOLS_APP_CALIBRATION_AGENCY")
-}
-
-// App-owned calibration reminder configuration and delivery outbox.
-model CalibrationNotificationSetting {
-  id            Int      @id @default(1) @map("ID")
-  alertDays     Int      @default(15) @map("ALERT_DAYS")
-  emailEnabled  Boolean  @default(true) @map("EMAIL_ENABLED")
-  systemEnabled Boolean  @default(true) @map("SYSTEM_ENABLED")
-  updatedBy     String?  @map("UPDATED_BY") @db.NVarChar(50)
-  updatedAt     DateTime @updatedAt @map("UPDATED_AT") @db.DateTime
-
-  @@map("TOOLS_APP_NOTIFICATION_SETTING")
-}
-
-model CalibrationNotificationRecipient {
-  id        Int      @id @default(autoincrement()) @map("ID")
-  name      String   @map("NAME") @db.NVarChar(100)
-  email     String   @unique @map("EMAIL") @db.NVarChar(150)
-  unitCode  String?  @map("UNIT_CODE") @db.NVarChar(100)
-  responsibility String? @map("RESPONSIBILITY") @db.NVarChar(15)
-  isActive  Boolean  @default(true) @map("IS_ACTIVE")
-  createdBy String   @map("CREATED_BY") @db.NVarChar(50)
-  createdAt DateTime @default(now()) @map("CREATED_AT") @db.DateTime
-  updatedBy String?  @map("UPDATED_BY") @db.NVarChar(50)
-  updatedAt DateTime @updatedAt @map("UPDATED_AT") @db.DateTime
-
-  @@index([isActive, responsibility])
-  @@map("TOOLS_APP_NOTIFICATION_RECIPIENT")
-}
-
-model CalibrationNotification {
-  id             Int       @id @default(autoincrement()) @map("ID")
-  toolOrGaugeNo  String    @map("TOOL_OR_GAUGE_NO") @db.NVarChar(25)
-  unitCode       String?   @map("UNIT_CODE") @db.NVarChar(100)
-  dueDate        DateTime  @map("DUE_DATE") @db.DateTime
-  reminderDate   DateTime  @default(now()) @map("REMINDER_DATE") @db.DateTime
-  channel        String    @map("CHANNEL") @db.NVarChar(10)
-  recipientEmail String    @default("") @map("RECIPIENT_EMAIL") @db.NVarChar(150)
-  responsibility String?   @map("RESPONSIBILITY") @db.NVarChar(15)
-  ccAddress      String?   @map("CC_ADDRESS") @db.NVarChar(1000)
-  bccAddress     String?   @map("BCC_ADDRESS") @db.NVarChar(1000)
-  subject        String    @map("SUBJECT") @db.NVarChar(200)
-  message        String    @map("MESSAGE") @db.NVarChar(1000)
-  status         String    @default("PENDING") @map("STATUS") @db.NVarChar(20)
-  sentAt         DateTime? @map("SENT_AT") @db.DateTime
-  readAt         DateTime? @map("READ_AT") @db.DateTime
-  errorMessage   String?   @map("ERROR_MESSAGE") @db.NVarChar(500)
-  createdAt      DateTime  @default(now()) @map("CREATED_AT") @db.DateTime
-
-  @@unique([toolOrGaugeNo, unitCode, dueDate, channel, recipientEmail], map: "TOOLS_APP_NOTIFICATION_DEDUPE")
-  @@index([channel, status, createdAt])
-  @@map("TOOLS_APP_CALIBRATION_NOTIFICATION")
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// APP AUTH (net-new, isolated — not an ERP table; no FKs to ERP)
-// ═══════════════════════════════════════════════════════════════════
-
-model User {
+model SubDepartment {
   id           Int       @id @default(autoincrement())
-  username     String    @unique @db.NVarChar(50)
-  passwordHash String    @db.NVarChar(255)
+  departmentId Int
+  code         String    @unique @db.NVarChar(20)
   name         String    @db.NVarChar(100)
-  email        String?   @db.NVarChar(150)
-  /// Matches rolePermissions keys / TOOLS_ROLE_PERMISSION.role
-  role         String    @default("Viewer") @db.NVarChar(50)
-  /// Optional ERP USER_ID for traceability — not used for auth; no FK
-  erpUserCode  String?   @db.NVarChar(10)
+  description  String?   @db.NVarChar(500)
   isActive     Boolean   @default(true)
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  userRole   UserRole?
-  unitScopes UserUnitScope[]
+  department Department @relation(fields: [departmentId], references: [id])
+  jobInfos   JobInfo[]  @relation("SubDepartmentJobInfos")
 
-  @@map("TOOLS_APP_USER")
+  @@index([departmentId])
+  @@map("SubDepartment")
 }
 
-/// App-owned role → permission matrix (editable via Settings). Seeded from rolePermissions.ts.
-model RolePermission {
-  id            Int      @id @default(autoincrement())
-  role          String   @db.NVarChar(50)
-  permissionKey String   @map("permission_key") @db.NVarChar(50)
-  allowed       Boolean  @default(false)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+model Designation {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  @@unique([role, permissionKey], map: "TOOLS_ROLE_PERMISSION_role_perm_key")
-  @@index([role])
-  @@map("TOOLS_ROLE_PERMISSION")
+  jobInfos JobInfo[]
+
+  @@map("Designation")
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// APP DOCUMENTS (net-new — file bytes on disk; metadata only in DB)
-// ═══════════════════════════════════════════════════════════════════
+model EmployeeType {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-model ToolDocument {
+  jobInfos JobInfo[]
+
+  @@map("EmployeeType")
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  jobInfos JobInfo[]
+
+  @@map("Category")
+}
+
+// Q3: PENDING CLIENT CONFIRMATION — Site model commented out, will NOT migrate.
+//     If "Site" needs factory-license-number / legal-entity / registration
+//     fields that a generic "Branch" does not, this must be split into two
+//     models before migration. Uncomment or split once client confirms.
+// model Site {
+//   id         Int       @id @default(autoincrement())
+//   code       String    @unique @db.NVarChar(20)
+//   name       String    @db.NVarChar(100)
+//   branchType String    @db.NVarChar(20) // "site" | "branch"
+//   address    String?   @db.NVarChar(500)
+//   city       String?   @db.NVarChar(100)
+//   state      String?   @db.NVarChar(100)
+//   isActive   Boolean   @default(true)
+//   deletedAt  DateTime?
+//   createdAt  DateTime  @default(now())
+//   updatedAt  DateTime  @updatedAt
+//
+//   @@map("Site")
+// }
+
+// Q3 RESOLVED: full Company master added (multi-company future-proofing).
+// Unit is reused as Branch/Site/Plant/Work Location, scoped to a Company.
+model Company {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  units     Unit[]
+  employees Employee[]
+
+  @@map("Company")
+}
+
+// Unit doubles as Branch/Site/Plant/Work Location — scoped to a Company.
+model Unit {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  jobInfos JobInfo[]
+
+  @@index([companyId])
+  @@map("Unit")
+}
+
+// Q1: Drafted as separate table from Level.
+model Grade {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  jobInfos JobInfo[]
+
+  @@map("Grade")
+}
+
+// Q1: Drafted as separate table from Grade.
+model Level {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  jobInfos JobInfo[]
+
+  @@map("Level")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. STATUTORY SLAB / RATE TABLES (versioned: effectiveFrom / effectiveTo)
+//    effectiveTo IS NULL → currently active version.
+//    Overlap prevention: SQL Server AFTER INSERT/UPDATE triggers (Option D).
+//    See prisma/triggers/slab_overlap_triggers.sql
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TDSSlab {
   id            Int       @id @default(autoincrement())
-  toolOrGaugeNo String    @db.NVarChar(25)
-  toolRefNo     Int?
-  /// CALIB_CERTIFICATE | CALIB_REPORT | TOOL_MANUAL | DRAWING | DC_ATTACHMENT | OTHER
-  docType       String    @default("OTHER") @db.NVarChar(40)
-  originalName  String    @db.NVarChar(255)
-  storedName    String    @db.NVarChar(255)
-  mimeType      String    @db.NVarChar(120)
-  sizeBytes     Int
-  calibRowId    Int?
-  dcNo          String?   @db.NVarChar(20)
-  remarks       String?   @db.NVarChar(200)
-  creatUserIdCd String    @db.NVarChar(50)
-  creatDt       DateTime  @default(now())
+  code          String    @db.NVarChar(20)
+  minSalary     Decimal   @db.Decimal(18, 2)
+  maxSalary     Decimal?  @db.Decimal(18, 2) // NULL = no upper limit
+  ratePercent   Decimal   @db.Decimal(5, 2) // e.g. 5.00, 10.00, 20.00
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // NULL = currently active
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([effectiveFrom, effectiveTo])
+  @@index([code])
+  @@map("TDSSlab")
+}
+
+model ProfessionalTaxSlab {
+  id            Int       @id @default(autoincrement())
+  code          String    @db.NVarChar(20)
+  minSalary     Decimal   @db.Decimal(18, 2)
+  maxSalary     Decimal?  @db.Decimal(18, 2) // NULL = no upper limit
+  monthlyAmount Decimal   @db.Decimal(18, 2) // fixed monthly PT amount
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // NULL = currently active
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([effectiveFrom, effectiveTo])
+  @@index([code])
+  @@map("ProfessionalTaxSlab")
+}
+
+// Q2: Drafted as two separate tables (EsiRate, PfRate).
+model EsiRate {
+  id                       Int       @id @default(autoincrement())
+  code                     String    @db.NVarChar(20)
+  employeeContributionRate Decimal   @db.Decimal(5, 2) // e.g. 0.75
+  employerContributionRate Decimal   @db.Decimal(5, 2) // e.g. 3.25
+  wageCeilingMonthly       Decimal   @db.Decimal(18, 2) // max monthly wage for ESI applicability
+  effectiveFrom            DateTime
+  effectiveTo              DateTime? // NULL = currently active
+  isActive                 Boolean   @default(true)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([effectiveFrom, effectiveTo])
+  @@index([code])
+  @@map("EsiRate")
+}
+
+// Q2: Drafted as two separate tables (EsiRate, PfRate).
+model PfRate {
+  id                       Int       @id @default(autoincrement())
+  code                     String    @db.NVarChar(20)
+  employeeContributionRate Decimal   @db.Decimal(5, 2) // e.g. 12.00
+  employerContributionRate Decimal   @db.Decimal(5, 2) // e.g. 12.00 (or 3.67 + 8.33 EPS)
+  pensionContributionRate  Decimal?  @db.Decimal(5, 2) // EPS share, e.g. 8.33
+  wageCeilingMonthly       Decimal   @db.Decimal(18, 2) // max monthly wage for PF applicability
+  effectiveFrom            DateTime
+  effectiveTo              DateTime? // NULL = currently active
+  isActive                 Boolean   @default(true)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([effectiveFrom, effectiveTo])
+  @@index([code])
+  @@map("PfRate")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. SHIFT & OVERTIME DEFINITION TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ShiftMaster {
+  id           Int       @id @default(autoincrement())
+  code         String    @unique @db.NVarChar(20)
+  name         String    @db.NVarChar(100)
+  startTime    String    @db.NVarChar(8) // "09:00" (HH:mm)
+  endTime      String    @db.NVarChar(8) // "18:00" (HH:mm)
+  graceMinutes Int       @default(0)
+  description  String?   @db.NVarChar(500)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  shiftPlans ShiftPlan[]
+  jobInfos   JobInfo[]
+
+  @@map("ShiftMaster")
+}
+
+// Q8: APPROVED shape — named plan + FK to ShiftMaster + optional overrides.
+//     TODO BEFORE PHASE 2 (Attendance): spec out exactly which fields an
+//     override can touch (startTime, endTime, graceMinutes, breakDuration?).
+//     Attendance must not guess at override semantics it wasn't designed against.
+model ShiftPlan {
+  id            Int       @id @default(autoincrement())
+  shiftMasterId Int
+  code          String    @unique @db.NVarChar(20)
+  name          String    @db.NVarChar(100)
+  startTime     String?   @db.NVarChar(8) // override ShiftMaster if set
+  endTime       String?   @db.NVarChar(8) // override ShiftMaster if set
+  description   String?   @db.NVarChar(500)
+  isActive      Boolean   @default(true)
   deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  @@index([toolOrGaugeNo])
-  @@index([calibRowId])
-  @@map("TOOLS_APP_DOCUMENT")
+  shiftMaster ShiftMaster @relation(fields: [shiftMasterId], references: [id])
+  jobInfos    JobInfo[]   @relation("ShiftPlanJobInfos")
+
+  @@index([shiftMasterId])
+  @@map("ShiftPlan")
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// TOOL REQUISITION (ERP — MATERIAL_REQUISITION_*; read-first for Pending)
-// Lines with TOOL_GAUGE_NO are tools-capable. Table may be unused today.
-// ═══════════════════════════════════════════════════════════════════
+// Q9: Drafted as OT rate definition. Confirm shape.
+model OTPlan {
+  id                     Int       @id @default(autoincrement())
+  code                   String    @unique @db.NVarChar(20)
+  name                   String    @db.NVarChar(100)
+  otRateMultiplier       Decimal   @db.Decimal(5, 2) // e.g. 1.50, 2.00
+  applicableAfterMinutes Int       @default(0) // OT kicks in after N minutes
+  maxOtHoursPerDay       Int? // NULL = no cap
+  description            String?   @db.NVarChar(500)
+  isActive               Boolean   @default(true)
+  deletedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-model MaterialRequisitionMaster {
-  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
-  reqNo           String?   @map("REQ_NO") @db.NVarChar(40)
-  deptId          Int?      @map("DEPT_ID")
-  empCd           Int?      @map("EMP_CD")
-  reqDate         DateTime? @map("DATE") @db.DateTime
-  status          String?   @map("STATUS") @db.NVarChar(20)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  matType         String?   @map("MAT_TYPE") @db.NVarChar(20)
-  fromWhere       String?   @map("FROM_WHERE") @db.NVarChar(30)
-  cardNo          String?   @map("CARD_NO") @db.NVarChar(15)
-  issueQty        Decimal?  @map("ISSUE_QTY") @db.Decimal(10, 2)
-  isAuto          String?   @map("IS_AUTO") @db.NVarChar(3)
-  macCd           String?   @map("MAC_CD") @db.NVarChar(25)
-  revNo           String?   @map("REV_NO") @db.NVarChar(10)
-  revDate         DateTime? @map("REV_DATE") @db.Date
-
-  @@index([reqNo])
-  @@index([status])
-  @@map("MATERIAL_REQUISITION_MASTER")
+  @@map("OTPlan")
 }
 
-model MaterialRequisitionTrans {
-  rowId           Int       @id @default(autoincrement()) @map("ROW_ID")
-  refRowId        Int?      @map("REF_ROW_ID")
-  reqNo           String?   @map("REQ_NO") @db.NVarChar(40)
-  mcNo            String?   @map("MC_NO") @db.NVarChar(30)
-  descrip         String?   @map("DESCRIP") @db.NVarChar(500)
-  shift           String?   @map("SHIFT") @db.NVarChar(50)
-  reqQty          Decimal?  @map("REQ_QTY") @db.Decimal(10, 2)
-  uom             String?   @map("UOM") @db.NVarChar(20)
-  remarks         String?   @map("REMARKS") @db.NVarChar(500)
-  creatDt         DateTime? @map("CREAT_DT") @db.DateTime
-  lstUpdtUserIdCd String?   @map("LST_UPDT_USER_ID_CD") @db.NVarChar(10)
-  lstUpdtTs       DateTime? @map("LST_UPDT_TS") @db.DateTime
-  creatUserIdCd   String    @map("CREAT_USER_ID_CD") @db.NVarChar(10)
-  toolOrGaugeNo   String?   @map("TOOL_GAUGE_NO") @db.NVarChar(30)
-  issueQty        Decimal?  @map("ISSUE_QTY") @db.Decimal(12, 2)
-  status          String?   @map("STATUS") @db.NVarChar(20)
-  storeId         Int?      @map("STORE_ID")
-  matType         String?   @map("MAT_TYPE") @db.NVarChar(20)
-  machine         String?   @map("MACHINE") @db.NVarChar(20)
-  cardNo          String?   @map("CARD_NO") @db.NVarChar(15)
-  consQty         Decimal?  @map("CONS_QTY") @db.Decimal(10, 2)
-  prodCd          String?   @map("PROD_CD") @db.NVarChar(15)
-  operCd          Int?      @map("OPER_CD")
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. GENERIC DROPDOWN MASTER
+// ─────────────────────────────────────────────────────────────────────────────
 
-  @@index([reqNo])
-  @@index([toolOrGaugeNo])
-  @@index([status])
-  @@map("MATERIAL_REQUISITION_TRANS")
+// Q10: Drafted with category grouping + label/value + sortOrder.
+model DropdownMaster {
+  id        Int       @id @default(autoincrement())
+  category  String    @db.NVarChar(50) // grouping key, e.g. "gender", "blood_group"
+  label     String    @db.NVarChar(100) // display text
+  value     String    @db.NVarChar(100) // stored value
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([category, value])
+  @@index([category])
+  @@map("DropdownMaster")
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// ROLES & PERMISSIONS MATRIX (Module-Level, Unit-Scoped)
-// Net-new tables; no ALTER/DROP on existing tables.
-// ═══════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. LEAVE / LOAN / ASSET — DEFINITION TABLES (no logic)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Q11: Drafted with minimal definition fields. Confirm if flags needed.
+model LeaveMaster {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("LeaveMaster")
+}
+
+model LoanType {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("LoanType")
+}
+
+model AssetMaster {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  assetAllocations EmployeeAssetAllocation[]
+
+  @@map("AssetMaster")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. AUTH + RBAC SKELETON
+//    (feature/auth-rbac branch — included here so schema is complete)
+// ─────────────────────────────────────────────────────────────────────────────
 
 model Role {
-  roleId        Int      @id @default(autoincrement()) @map("ROLE_ID")
-  roleName      String   @unique @map("ROLE_NAME") @db.NVarChar(50)
-  isSystemAdmin Boolean  @default(false) @map("IS_SYSTEM_ADMIN")
-  createdAt     DateTime @default(now()) @map("CREATED_AT")
-  updatedAt     DateTime @updatedAt @map("UPDATED_AT")
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  userRoles       UserRole[]
-  rolePermissions RolePermissionMatrix[]
+  rolePermissions RolePermission[]
+  users           User[]
 
-  @@map("TOOLS_APP_ROLE")
+  @@map("Role")
 }
 
-model Module {
-  moduleId          Int      @id @default(autoincrement()) @map("MODULE_ID")
-  moduleKey         String   @unique @map("MODULE_KEY") @db.NVarChar(50)
-  moduleLabel       String   @map("MODULE_LABEL") @db.NVarChar(100)
-  moduleGroup       String   @map("MODULE_GROUP") @db.NVarChar(50)
-  applicableActions String   @map("APPLICABLE_ACTIONS") @db.NVarChar(255)
-  isBuilt           Boolean  @default(true) @map("IS_BUILT")
-  createdAt         DateTime @default(now()) @map("CREATED_AT")
-  updatedAt         DateTime @updatedAt @map("UPDATED_AT")
+model Permission {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(50) // e.g. "employee.view", "payroll.run"
+  module      String    @db.NVarChar(50) // top-level module, e.g. "employee"
+  submodule   String?   @db.NVarChar(50) // sub-module, e.g. "profile"
+  page        String?   @db.NVarChar(50) // page-level, e.g. "list"
+  action      String    @db.NVarChar(20) // "view" | "create" | "edit" | "delete" | "export"
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  rolePermissions RolePermissionMatrix[]
+  rolePermissions RolePermission[]
 
-  @@map("TOOLS_APP_MODULE")
+  @@index([module, submodule, page])
+  @@map("Permission")
 }
 
-model RolePermissionMatrix {
-  roleId   Int     @map("ROLE_ID")
-  moduleId Int     @map("MODULE_ID")
-  action   String  @map("ACTION") @db.NVarChar(30)
-  allowed  Boolean @default(false) @map("ALLOWED")
+model RolePermission {
+  id           Int      @id @default(autoincrement())
+  roleId       Int
+  permissionId Int
+  createdAt    DateTime @default(now())
 
-  role   Role   @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
-  module Module @relation(fields: [moduleId], references: [moduleId], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
 
-  @@id([roleId, moduleId, action])
-  @@map("TOOLS_APP_ROLE_PERMISSION_MATRIX")
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("RolePermission")
 }
 
-model UserRole {
-  userId Int @id @map("USER_ID")
-  roleId Int @map("ROLE_ID")
+// ─────────────────────────────────────────────────────────────────────────────
+// 6b. USERS (feature/auth-login)
+//    Login credentials + role assignment. FK to Role.
+//    Soft-delete pattern (isActive + deletedAt) — same as all other tables.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique @db.NVarChar(100)
+  passwordHash String    @db.NVarChar(255)
+  roleId       Int
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  @@map("TOOLS_APP_USER_ROLE")
+  role     Role      @relation(fields: [roleId], references: [id])
+  employee Employee?
+
+  @@index([roleId])
+  @@map("User")
 }
 
-model UserUnitScope {
-  userId    Int    @map("USER_ID")
-  unitScope String @map("UNIT_SCOPE") @db.NVarChar(20)
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. EMPLOYEE MASTER (feature/employee-master-models)
+//
+//    Employee is the core record. Related data is split into sub-tables
+//    (PersonalDetails, JobInfo, SalaryStructure, Dependents, Experience,
+//    Education, Documents, ExitInterview) — each FKs back to Employee.
+//
+//    JobInfo FKs into the already-merged Org structure tables:
+//      Department, SubDepartment, Designation, EmployeeType, Category,
+//      Grade, Level, Unit, ShiftMaster, ShiftPlan
+//
+//    Asset allocation is a read-only reference via EmployeeAssetAllocation
+//    join table → AssetMaster. No asset data duplicated on Employee.
+//
+//    OPEN QUESTIONS (Employee Master):
+//      E1. Employee code format — auto-generated or manual? Pattern?
+//          DRAFTED: manual entry, NVarChar(20), unique.
+//      E2. Should Employee have a status enum (active/on-leave/terminated/resigned)?
+//          DRAFTED: Yes — status String with NVarChar(20) for flexibility.
+//          Future: constrain via DropdownMaster or enum.
+//      E3. Multiple JobInfo records (history) or single current record?
+//          DRAFTED: Multiple — JobInfo has effectiveFrom/effectiveTo for
+//          job history tracking. Only one record with effectiveTo = NULL
+//          at a time (current job info).
+//      E4. SalaryStructure — single current CTC or versioned history?
+//          DRAFTED: Versioned — effectiveFrom/effectiveTo, same pattern
+//          as slab tables. Only one active record at a time.
+//      E5. Documents — one row per document type or a generic documents table?
+//          DRAFTED: One row per document type with typed fields for
+//          Aadhaar/PAN/Passport/DL + expiry tracking. Generic document
+//          uploads via separate Document table for other files.
+//      E6. KPI/JD attachment — separate table or fields on Employee?
+//          DRAFTED: Separate EmployeeDocument table with docType =
+//          "kpi" | "jd" | "other". Placeholder only — no UI beyond stub.
+//      E7. ExitInterview — on Employee or separate?
+//          DRAFTED: Separate model, 1:1 with Employee, created on exit.
+//      E8. Reporting manager — self-referential FK on Employee?
+//          DRAFTED: Yes — reportingManagerId Int? self-FK on Employee.
+//      E9. Bank details — on Employee or separate table?
+//          DRAFTED: Separate EmployeeBankDetail (1:1) — multiple bank
+//          accounts may be needed in future.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+// E1: Manual code entry for now. Auto-generation pattern TBD.
+// Q3/emp-code RESOLVED: employeeCode is unique per Company, not globally.
+model Employee {
+  id                 Int     @id @default(autoincrement())
+  companyId          Int
+  userId             Int?    @unique // optional linked login account (Job Profile tab)
+  employeeCode       String  @db.NVarChar(20)
+  oldEmployeeCode    String? @db.NVarChar(20)
+  title              String? @db.NVarChar(10) // Mr/Mrs/Ms/Dr — via DropdownMaster
+  firstName          String  @db.NVarChar(100)
+  middleName         String? @db.NVarChar(100)
+  lastName           String  @db.NVarChar(100)
+  profilePhotoPath   String? @db.NVarChar(500)
+  signaturePath      String? @db.NVarChar(500)
+  // E2: Status as flexible string — constrain via DropdownMaster later
+  status             String  @default("active") @db.NVarChar(20) // active | on-leave | terminated | resigned
+  guestEmployee      Boolean @default(false)
+  inductionStatus    String? @db.NVarChar(30)
+  // E8: Self-referential FK for reporting manager
+  reportingManagerId Int?
 
-  @@id([userId, unitScope])
-  @@map("TOOLS_APP_USER_UNIT_SCOPE")
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  // Self-referential relation for reporting manager
+  // NoAction required to break cyclic cascade through child tables
+  reportingManager Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  directReports    Employee[] @relation("EmployeeToManager")
+
+  // 1:1 relations
+  personalDetails PersonalDetails?
+  contactDetails  EmployeeContactDetails?
+  bankDetail      EmployeeBankDetail?
+  passport        EmployeePassport?
+  kyc             EmployeeKyc?
+  exitInterview   ExitInterview?
+
+  // 1:N relations (versioned tables are 1:N, not 1:1)
+  jobInfos          JobInfo[]
+  salaryStructures  SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
+  salaryRevisions   EmployeeSalaryRevision[]
+  ctcRecords        EmployeeCtc[]
+  dependents        EmployeeDependent[]
+  experiences       EmployeeExperience[]
+  educations        EmployeeEducation[]
+  documents         EmployeeDocument[]
+  assetAllocations  EmployeeAssetAllocation[]
+  emergencyContacts EmployeeEmergencyContact[]
+  skills            EmployeeSkill[]
+  activities        EmployeeActivity[]
+
+  @@unique([companyId, employeeCode])
+  @@index([reportingManagerId])
+  @@index([status])
+  @@map("Employee")
+}
+
+// Personal details — 1:1 with Employee
+// Address + emergency-contact fields moved to EmployeeContactDetails /
+// EmployeeEmergencyContact (spec: Contact Details is a separate tab).
+model PersonalDetails {
+  id                           Int       @id @default(autoincrement())
+  employeeId                   Int       @unique
+  dateOfBirth                  DateTime?
+  gender                       String?   @db.NVarChar(20) // via DropdownMaster
+  bloodGroup                   String?   @db.NVarChar(10) // via DropdownMaster
+  maritalStatus                String?   @db.NVarChar(20) // via DropdownMaster
+  marriageDate                 DateTime?
+  numberOfChildren             Int?
+  nationality                  String?   @db.NVarChar(50)
+  religion                     String?   @db.NVarChar(50)
+  category                     String?   @db.NVarChar(50) // via DropdownMaster (general category)
+  physicallyChallenged         Boolean   @default(false)
+  physicallyChallengedCategory String?   @db.NVarChar(50)
+  internationalWorker          Boolean   @default(false)
+  heightCm                     Decimal?  @db.Decimal(5, 2)
+  weightKg                     Decimal?  @db.Decimal(5, 2)
+  shirtSize                    String?   @db.NVarChar(10)
+  pantSize                     String?   @db.NVarChar(10)
+  shoeSize                     String?   @db.NVarChar(10)
+  issuedMobileNumber           String?   @db.NVarChar(20)
+  mobileDeductionApplicable    Boolean   @default(false)
+  canteenAllowanceApplicable   Boolean   @default(false)
+  loanInstalmentMonth          String?   @db.NVarChar(20)
+  // Personal email only — phone/mobile live on EmployeeContactDetails
+  personalEmail                String?   @db.NVarChar(100)
+  ndaDocument                  Boolean   @default(false)
+  fitnessCertificate           Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("PersonalDetails")
+}
+
+// Contact Details — 1:1 with Employee. Structured permanent/present address.
+model EmployeeContactDetails {
+  id                    Int     @id @default(autoincrement())
+  employeeId            Int     @unique
+  // Permanent address
+  permanentAddressLine1 String? @db.NVarChar(200)
+  permanentAddressLine2 String? @db.NVarChar(200)
+  permanentCity         String? @db.NVarChar(100)
+  permanentState        String? @db.NVarChar(100)
+  permanentPincode      String? @db.NVarChar(10)
+  permanentMobile       String? @db.NVarChar(20)
+  // Present address
+  sameAsPermanent       Boolean @default(false)
+  presentAddressLine1   String? @db.NVarChar(200)
+  presentAddressLine2   String? @db.NVarChar(200)
+  presentCity           String? @db.NVarChar(100)
+  presentState          String? @db.NVarChar(100)
+  presentPincode        String? @db.NVarChar(10)
+  presentMobile         String? @db.NVarChar(20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeeContactDetails")
+}
+
+// Emergency contacts — 1:N with Employee. Only one may be isPrimary (app-layer enforced).
+model EmployeeEmergencyContact {
+  id             Int     @id @default(autoincrement())
+  employeeId     Int
+  contactName    String  @db.NVarChar(100)
+  relationship   String  @db.NVarChar(50)
+  address        String? @db.NVarChar(500)
+  homePhone      String? @db.NVarChar(20)
+  mobile         String? @db.NVarChar(20)
+  alternatePhone String? @db.NVarChar(20)
+  email          String? @db.NVarChar(100)
+  isPrimary      Boolean @default(false)
+  remarks        String? @db.NVarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeEmergencyContact")
+}
+
+// E3: JobInfo is versioned — effectiveFrom/effectiveTo for job history.
+//     Only one record with effectiveTo = NULL = current job info.
+//     FKs into existing Org structure tables — no redefinition.
+model JobInfo {
+  id                               Int       @id @default(autoincrement())
+  employeeId                       Int
+  // FKs into merged Org tables
+  departmentId                     Int
+  subDepartmentId                  Int?
+  designationId                    Int
+  employeeTypeId                   Int
+  categoryId                       Int?
+  gradeId                          Int?
+  levelId                          Int?
+  unitId                           Int?
+  shiftMasterId                    Int?
+  shiftPlanId                      Int?
+  // Job details
+  jobTitle                         String?   @db.NVarChar(100)
+  subCategory                      String?   @db.NVarChar(50)
+  productionLine                   String?   @db.NVarChar(100)
+  additionalRole                   String?   @db.NVarChar(100)
+  teamGroup                        String?   @db.NVarChar(100)
+  joinDate                         DateTime
+  confirmationDate                 DateTime?
+  // probationEndDate is server-computed (joinDate + probationPeriodMonths),
+  // never accepted directly from the client — see calculateProbationEndDate.
+  probationPeriodMonths            Int?
+  probationEndDate                 DateTime?
+  // Shift / attendance config
+  shiftRequired                    Boolean   @default(false)
+  dailySheetRequired               Boolean   @default(false)
+  // Documents/config flags
+  petrolAllowance                  Boolean   @default(false)
+  // Payroll configuration
+  wageType                         String?   @db.NVarChar(20) // monthly | daily | hourly
+  paymentMode                      String?   @db.NVarChar(20) // bank | cash | cheque
+  // Official access
+  officialEmail                    String?   @db.NVarChar(100)
+  // Statutory applicability
+  esiApplicable                    Boolean   @default(false)
+  professionalTaxApplicable        Boolean   @default(false)
+  bonusApplicable                  Boolean   @default(false)
+  ltaEligible                      Boolean   @default(false)
+  pfRestrictionAmount              Decimal?  @db.Decimal(18, 2)
+  // Attendance and overtime
+  overtimeAllowed                  Boolean   @default(false)
+  overtimeFactor                   Decimal?  @db.Decimal(5, 2)
+  overtimeRatePerHour              Decimal?  @db.Decimal(18, 2)
+  lossOfMinutesDeductionApplicable Boolean   @default(false)
+  allowedLossOfMinutes             Int?
+  numberOfLeavesAllowed            Decimal?  @db.Decimal(5, 2)
+  permissionRequestAllowed         Boolean   @default(false)
+  permissionHours                  Decimal?  @db.Decimal(5, 2)
+  // Company resources
+  companyContact1                  String?   @db.NVarChar(20)
+  companyContact2                  String?   @db.NVarChar(20)
+  ipAddress1                       String?   @db.NVarChar(50)
+  ipAddress2                       String?   @db.NVarChar(50)
+  // Versioning
+  effectiveFrom                    DateTime
+  effectiveTo                      DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee      Employee       @relation(fields: [employeeId], references: [id])
+  department    Department     @relation(fields: [departmentId], references: [id])
+  subDepartment SubDepartment? @relation("SubDepartmentJobInfos", fields: [subDepartmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation   Designation    @relation(fields: [designationId], references: [id])
+  employeeType  EmployeeType   @relation(fields: [employeeTypeId], references: [id])
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  grade         Grade?         @relation(fields: [gradeId], references: [id])
+  level         Level?         @relation(fields: [levelId], references: [id])
+  unit          Unit?          @relation(fields: [unitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shiftMaster   ShiftMaster?   @relation(fields: [shiftMasterId], references: [id])
+  shiftPlan     ShiftPlan?     @relation("ShiftPlanJobInfos", fields: [shiftPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("JobInfo")
+}
+
+// E4: SalaryStructure is versioned — effectiveFrom/effectiveTo.
+//     Only one active record at a time. CTC breakdown fields.
+model SalaryStructure {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
+  // CTC breakdown
+  basic               Decimal   @db.Decimal(18, 2)
+  hra                 Decimal   @db.Decimal(18, 2)
+  conveyanceAllowance Decimal   @default(0) @db.Decimal(18, 2)
+  medicalAllowance    Decimal   @default(0) @db.Decimal(18, 2)
+  specialAllowance    Decimal   @default(0) @db.Decimal(18, 2)
+  otherAllowance      Decimal   @default(0) @db.Decimal(18, 2)
+  // Statutory
+  pfApplicable        Boolean   @default(true)
+  esiApplicable       Boolean   @default(false)
+  // Totals
+  monthlyCtc          Decimal   @db.Decimal(18, 2)
+  annualCtc           Decimal   @db.Decimal(18, 2)
+  // Versioning
+  effectiveFrom       DateTime
+  effectiveTo         DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("SalaryStructure")
+}
+
+// E9: Separate bank detail table — 1:1 for now, may extend to multiple.
+model EmployeeBankDetail {
+  id            Int     @id @default(autoincrement())
+  employeeId    Int     @unique
+  bankName      String? @db.NVarChar(100)
+  branchName    String? @db.NVarChar(100)
+  accountNumber String? @db.NVarChar(30)
+  ifscCode      String? @db.NVarChar(20)
+  accountType   String? @db.NVarChar(20) // savings | current | salary
+  isPrimary     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeeBankDetail")
+}
+
+// Dependents — 1:N with Employee
+model EmployeeDependent {
+  id           Int       @id @default(autoincrement())
+  employeeId   Int
+  name         String    @db.NVarChar(100)
+  relationship String    @db.NVarChar(50) // spouse | son | daughter | father | mother | other
+  dateOfBirth  DateTime?
+  isDependent  Boolean   @default(true) // for insurance/tax purposes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeDependent")
+}
+
+// Previous work experience — 1:N with Employee
+model EmployeeExperience {
+  id               Int       @id @default(autoincrement())
+  employeeId       Int
+  companyName      String    @db.NVarChar(100)
+  designation      String    @db.NVarChar(100)
+  fromDate         DateTime
+  toDate           DateTime? // NULL = current job
+  reasonForLeaving String?   @db.NVarChar(500)
+  lastDrawnSalary  Decimal?  @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeExperience")
+}
+
+// Education qualifications — 1:N with Employee
+model EmployeeEducation {
+  id            Int      @id @default(autoincrement())
+  employeeId    Int
+  qualification String   @db.NVarChar(100) // e.g. "B.Tech", "MCA"
+  institution   String?  @db.NVarChar(200)
+  university    String?  @db.NVarChar(200)
+  yearOfPassing Int?
+  percentage    Decimal? @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeEducation")
+}
+
+// E5: Documents with expiry tracking for Aadhaar/PAN/Passport/DL.
+//     Also handles KPI/JD attachments via docType field (E6).
+//     File upload is a placeholder stub — no actual file storage in this branch.
+model EmployeeDocument {
+  id         Int       @id @default(autoincrement())
+  employeeId Int
+  docType    String    @db.NVarChar(30)
+  // "aadhaar" | "pan" | "passport" | "driving_license" | "kpi" | "jd" | "other"
+  docNumber  String?   @db.NVarChar(50) // e.g. Aadhaar number, PAN number
+  fileName   String?   @db.NVarChar(200) // placeholder — actual file path/URL later
+  filePath   String?   @db.NVarChar(500) // placeholder — actual file storage later
+  // Expiry tracking
+  issuedDate DateTime?
+  expiryDate DateTime? // NULL = no expiry
+  isVerified Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([docType])
+  @@index([expiryDate])
+  @@map("EmployeeDocument")
+}
+
+// Asset allocation — join table between Employee and AssetMaster.
+// Single-source-of-truth: no asset data duplicated on Employee.
+// Read-only reference — actual asset management logic is a future phase.
+model EmployeeAssetAllocation {
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int
+  assetMasterId      Int
+  serialNumber       String?   @db.NVarChar(50)
+  model              String?   @db.NVarChar(100)
+  assetValue         Decimal?  @db.Decimal(12, 2)
+  allocatedDate      DateTime  @default(now())
+  expectedReturnDate DateTime?
+  returnedDate       DateTime? // NULL = currently allocated
+  notes              String?   @db.NVarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  assetMaster AssetMaster @relation(fields: [assetMasterId], references: [id])
+
+  @@index([employeeId])
+  @@index([assetMasterId])
+  @@map("EmployeeAssetAllocation")
+}
+
+// E7: Exit interview — 1:1 with Employee, created on exit.
+model ExitInterview {
+  id             Int       @id @default(autoincrement())
+  employeeId     Int       @unique
+  exitDate       DateTime
+  exitReason     String?   @db.NVarChar(500)
+  exitType       String    @db.NVarChar(20) // resignation | termination | retirement
+  interviewNotes String?   @db.NVarChar(2000)
+  interviewDate  DateTime?
+  interviewedBy  String?   @db.NVarChar(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("ExitInterview")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. PASSPORT — 1:1 with Employee
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeePassport {
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int       @unique
+  passportNumber     String?   @db.NVarChar(30)
+  placeOfIssue       String?   @db.NVarChar(100)
+  countryOfIssue     String?   @db.NVarChar(50)
+  issueDate          DateTime?
+  expiryDate         DateTime?
+  filePath           String?   @db.NVarChar(500)
+  verificationStatus String?   @db.NVarChar(20) // pending | verified | rejected
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeePassport")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. KYC & STATUTORY — 1:1 with Employee. Single source of truth (spec §6.14).
+//    panNumberEnc / aadhaarNumberEnc are ciphertext (src/lib/crypto.ts,
+//    AES-256-GCM). Bank account fields remain owned by EmployeeBankDetail —
+//    both are edited under the same employee.kyc.* permission gate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeKyc {
+  id                   Int       @id @default(autoincrement())
+  employeeId           Int       @unique
+  pfNumber             String?   @db.NVarChar(30)
+  uanNumber            String?   @db.NVarChar(20)
+  esiNumber            String?   @db.NVarChar(20)
+  panNumberEnc         String?   @db.NVarChar(255)
+  aadhaarNumberEnc     String?   @db.NVarChar(255)
+  drivingLicenceNumber String?   @db.NVarChar(30)
+  drivingLicenceExpiry DateTime?
+  electionCardNumber   String?   @db.NVarChar(30)
+  rationCardNumber     String?   @db.NVarChar(30)
+  verificationStatus   String?   @db.NVarChar(20) // pending | verified | rejected
+  verifiedByUserId     Int?
+  verifiedDate         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("EmployeeKyc")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. SKILL MATRIX — 1:N with Employee
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeSkill {
+  id                Int       @id @default(autoincrement())
+  employeeId        Int
+  skillCategory     String?   @db.NVarChar(100)
+  skillName         String    @db.NVarChar(100) // skill / machine / operation
+  proficiencyLevel  String?   @db.NVarChar(30) // via workflow proficiency reference
+  levelPercentage   Decimal?  @db.Decimal(5, 2)
+  certified         Boolean   @default(false)
+  certificateNumber String?   @db.NVarChar(50)
+  certifiedDate     DateTime?
+  expiryDate        DateTime?
+  evaluatedBy       String?   @db.NVarChar(100)
+  remarks           String?   @db.NVarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("EmployeeSkill")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. EMPLOYEE ACTIVITY — 1:N with Employee. Read-only audit timeline.
+//     Written via src/lib/activity-log.ts inside each mutating endpoint's
+//     transaction. Never store passwords or full sensitive KYC/bank values.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeActivity {
+  id                Int      @id @default(autoincrement())
+  employeeId        Int
+  activityType      String   @db.NVarChar(50) // e.g. "created" | "job_info_updated" | "status_changed"
+  activityAt        DateTime @default(now())
+  performedByUserId Int?
+  module            String   @db.NVarChar(50) // e.g. "basic" | "personal" | "contact" | "job_profile"
+  oldValue          String?  @db.NVarChar(2000)
+  newValue          String?  @db.NVarChar(2000)
+  remarks           String?  @db.NVarChar(500)
+  source            String?  @db.NVarChar(30) // "web" | "api" | "seed"
+  relatedRecordId   Int?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([activityAt])
+  @@map("EmployeeActivity")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. DYNAMIC SALARY COMPONENTS (replaces hardcoded SalaryStructure columns)
+//     Only one EmployeeSalaryRevision per employee may have effectiveTo = NULL
+//     — enforced via SQL Server trigger, same Option D pattern as the slab
+//     tables (see prisma/triggers/tr_EmployeeSalaryRevision_no_overlap.sql).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SalaryComponent {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique @db.NVarChar(30)
+  name      String    @db.NVarChar(100)
+  type      String    @db.NVarChar(30) // earning | deduction | employer_contribution
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  employeeComponents EmployeeSalaryComponent[]
+
+  @@map("SalaryComponent")
+}
+
+model EmployeeSalaryRevision {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
+  financialYear       String?   @db.NVarChar(10) // e.g. "2026-27"
+  grossSalary         Decimal   @db.Decimal(18, 2)
+  netSalary           Decimal?  @db.Decimal(18, 2)
+  lastUpdatedByUserId Int?
+  effectiveFrom       DateTime
+  effectiveTo         DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee   Employee                  @relation(fields: [employeeId], references: [id])
+  components EmployeeSalaryComponent[]
+
+  @@index([employeeId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("EmployeeSalaryRevision")
+}
+
+model EmployeeSalaryComponent {
+  id                Int     @id @default(autoincrement())
+  salaryRevisionId  Int
+  salaryComponentId Int
+  amount            Decimal @db.Decimal(18, 2)
+
+  salaryRevision  EmployeeSalaryRevision @relation(fields: [salaryRevisionId], references: [id])
+  salaryComponent SalaryComponent        @relation(fields: [salaryComponentId], references: [id])
+
+  @@unique([salaryRevisionId, salaryComponentId])
+  @@map("EmployeeSalaryComponent")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. CTC — versioned like salary revision, same overlap-prevention approach.
+//     Manually configured values only — no CTC/PF/ESI/gratuity formulas
+//     invented here (spec §6.6 explicitly forbids inventing formulas).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmployeeCtc {
+  id                   Int       @id @default(autoincrement())
+  employeeId           Int
+  basic                Decimal   @db.Decimal(18, 2)
+  specialAllowance     Decimal   @default(0) @db.Decimal(18, 2)
+  hra                  Decimal   @default(0) @db.Decimal(18, 2)
+  conveyanceAllowance  Decimal   @default(0) @db.Decimal(18, 2)
+  washAllowance        Decimal   @default(0) @db.Decimal(18, 2)
+  canteen              Decimal   @default(0) @db.Decimal(18, 2)
+  dislocationAllowance Decimal   @default(0) @db.Decimal(18, 2)
+  otherAllowance       Decimal   @default(0) @db.Decimal(18, 2)
+  shiftAllowance       Decimal   @default(0) @db.Decimal(18, 2)
+  attendanceBonus      Decimal   @default(0) @db.Decimal(18, 2)
+  employeePf           Decimal   @default(0) @db.Decimal(18, 2)
+  employeeEsi          Decimal   @default(0) @db.Decimal(18, 2)
+  bonus                Decimal   @default(0) @db.Decimal(18, 2)
+  lta                  Decimal   @default(0) @db.Decimal(18, 2)
+  medicalClaim         Decimal   @default(0) @db.Decimal(18, 2)
+  gratuity             Decimal   @default(0) @db.Decimal(18, 2)
+  employerPf           Decimal   @default(0) @db.Decimal(18, 2)
+  employerEsi          Decimal   @default(0) @db.Decimal(18, 2)
+  otherBenefits        Decimal   @default(0) @db.Decimal(18, 2)
+  nonMonetaryBenefits  Decimal   @default(0) @db.Decimal(18, 2)
+  monthlyCtc           Decimal   @db.Decimal(18, 2)
+  annualCtc            Decimal   @db.Decimal(18, 2)
+  effectiveFrom        DateTime
+  effectiveTo          DateTime? // NULL = current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("EmployeeCtc")
 }
