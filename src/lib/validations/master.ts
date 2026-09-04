@@ -122,6 +122,48 @@ export const pfRateSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Company-scoped since migration 000013 (companyId comes from the session,
+// not the body — same convention as salaryComponentSchema below). 8.33% is
+// a hard floor on both rate fields, not just documented — a company can set
+// its base/min rate at or above the statutory minimum, never below it.
+export const bonusRateSchema = z
+  .object({
+    code: z.string().min(1).max(20),
+    calculationType: z.enum(['BASIC_PROJECTION', 'ACTUAL_NET_PAY']),
+    ratePercent: z.coerce.number().min(8.33).max(100),
+    minRatePercent: z.coerce.number().min(8.33).max(100),
+    maxRatePercent: z.coerce.number().min(8.33).max(100),
+    wageEligibilityCeiling: z.coerce.number().nonnegative(),
+    calculationWageCeiling: z.coerce.number().nonnegative(),
+    minWorkingDays: z.coerce.number().int().nonnegative().default(30),
+    effectiveFrom: z.coerce.date(),
+    effectiveTo: z.coerce.date().optional().nullable(),
+    isActive: z.boolean().default(true),
+  })
+  .refine((data) => data.minRatePercent <= data.maxRatePercent, {
+    message: 'minRatePercent cannot exceed maxRatePercent',
+    path: ['minRatePercent'],
+  })
+  .refine((data) => data.ratePercent >= data.minRatePercent && data.ratePercent <= data.maxRatePercent, {
+    message: 'ratePercent must be between minRatePercent and maxRatePercent',
+    path: ['ratePercent'],
+  });
+
+// Company-scoped (companyId comes from the session, not the body). The
+// numerator/denominator pair stays configurable rather than hard-coding
+// "15/26" — BRD's own explicit requirement (Gratuity BRD §9).
+export const gratuityPolicySchema = z.object({
+  code: z.string().min(1).max(20),
+  policyName: z.string().min(1).max(100),
+  multiplierNumerator: z.coerce.number().positive().default(15),
+  multiplierDenominator: z.coerce.number().positive().default(26),
+  minEligibleServiceYears: z.coerce.number().nonnegative().default(5),
+  maxGratuityCeiling: z.coerce.number().nonnegative(),
+  effectiveFrom: z.coerce.date(),
+  effectiveTo: z.coerce.date().optional().nullable(),
+  isActive: z.boolean().default(true),
+});
+
 // ─── Pattern F: DropdownMaster ───────────────────────────────────────────────
 
 export const dropdownMasterSchema = z.object({
@@ -129,6 +171,17 @@ export const dropdownMasterSchema = z.object({
   label: z.string().min(1).max(100),
   value: z.string().min(1).max(100),
   sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
+// Company-scoped since migration 000012 — companyId comes from the session
+// (getCompanyId()), never the request body, same convention as every other
+// company-scoped write this session.
+export const salaryComponentSchema = z.object({
+  code: z.string().min(1).max(30),
+  name: z.string().min(1).max(100),
+  type: z.enum(['earning', 'deduction', 'employer_contribution']),
+  includeInGratuity: z.boolean().default(false),
   isActive: z.boolean().default(true),
 });
 

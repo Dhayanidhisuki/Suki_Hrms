@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkEmployeePermission, checkSpecificPermission } from '@/lib/rbac-employee';
+import { getCompanyId } from '@/lib/companyScope';
 import { employeeCreateSchema } from '@/lib/validations/employee';
 import { summarizeExpiry } from '@/lib/document-expiry';
 import { logActivity } from '@/lib/activity-log';
@@ -14,6 +15,12 @@ import { calculateProbationEndDate } from '@/lib/employee-form-fields';
 export async function GET(request: NextRequest) {
   const permErr = await checkEmployeePermission(request);
   if (permErr) return permErr;
+  // Scoped here since new callers (Time Office pickers) depend on it not
+  // leaking other companies' employees — the rest of this module's routes
+  // still trust client-supplied companyId (pre-existing gap, flagged
+  // separately, out of scope to fix in full right now).
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
 
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') ?? '1');
@@ -37,6 +44,7 @@ export async function GET(request: NextRequest) {
       : undefined;
 
   const where = {
+    companyId: scope.companyId,
     deletedAt: null,
     ...(status ? { status } : {}),
     ...(jobInfoFilter ? { jobInfos: jobInfoFilter } : {}),

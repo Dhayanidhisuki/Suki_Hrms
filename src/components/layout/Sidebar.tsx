@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Icon from "./NavIcons";
 import { navigation, allNavLeaves, type NavModule } from "./navigation";
 
@@ -13,6 +13,11 @@ interface SidebarProps {
   onToggleCollapse: () => void;
 }
 
+interface CurrentUser {
+  isSuperAdmin: boolean;
+  hasAdminAccess: boolean;
+}
+
 const readyCount = allNavLeaves.filter((leaf) => leaf.ready).length;
 const totalCount = allNavLeaves.length;
 
@@ -20,6 +25,39 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
   const pathname = usePathname();
   const [openModule, setOpenModule] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [me, setMe] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Superadmin isn't tied to any company — it has no role, no permissions,
+  // and every company-scoped screen (Masters, Employees, Payroll, ...) would
+  // just 401 for it server-side. So superadmin sees ONLY its own section,
+  // nothing else. Everyone else sees every section except "Superadmin", plus
+  // "Administration" only if they hold any admin.* permission. This is still
+  // a coarse, section-level check — full per-leaf permission filtering isn't
+  // done here (routes still 403 server-side if a page's own action isn't
+  // granted).
+  const visibleNavigation = useMemo(() => {
+    if (me?.isSuperAdmin) {
+      return navigation.filter((mod) => mod.label === "Superadmin");
+    }
+    return navigation.filter((mod) => {
+      if (mod.label === "Superadmin") return false;
+      if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
+      return true;
+    });
+  }, [me]);
 
   const isLeafActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
@@ -30,13 +68,19 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       : pathname === mod.href || pathname.startsWith(`${mod.href}/`);
 
   // The module holding the current route opens by default until the user picks another.
-  const activeModule = navigation.find(isModuleActive)?.label ?? null;
+  const activeModule = visibleNavigation.find(isModuleActive)?.label ?? null;
   const expandedModule = openModule ?? activeModule;
+
+  const visibleModuleLabels = useMemo(
+    () => new Set(visibleNavigation.map((mod) => mod.label)),
+    [visibleNavigation]
+  );
 
   const searchResults = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return [];
     return allNavLeaves
+      .filter((leaf) => visibleModuleLabels.has(leaf.module))
       .filter(
         (leaf) =>
           leaf.label.toLowerCase().includes(term) ||
@@ -272,7 +316,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
               ))}
             </div>
           ) : (
-            <div className="space-y-1">{navigation.map(renderModule)}</div>
+            <div className="space-y-1">{visibleNavigation.map(renderModule)}</div>
           )}
         </nav>
 

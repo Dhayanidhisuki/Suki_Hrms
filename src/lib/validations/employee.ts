@@ -321,6 +321,17 @@ export const salaryRevisionSchema = z.object({
     .default([]),
 });
 
+// ─── Separation / Exit — the prerequisite Gratuity Phase 1 needed ───────────
+
+export const exitInterviewSchema = z.object({
+  exitDate: z.coerce.date(),
+  exitType: z.enum(['resignation', 'termination', 'retirement']),
+  exitReason: z.string().max(500).optional().nullable(),
+  interviewNotes: z.string().max(2000).optional().nullable(),
+  interviewDate: z.coerce.date().optional().nullable(),
+  interviewedBy: z.string().max(100).optional().nullable(),
+});
+
 // ─── Employee core ───────────────────────────────────────────────────────────
 // Create captures the 4 Phase-1 tabs in one shared shape (basicDetailsSchema
 // is required — it's the minimum to create a valid Employee + current

@@ -1,12 +1,15 @@
 /**
- * GET  /api/masters/companies   — list companies (paginated, soft-delete filtered)
- * POST /api/masters/companies   — create company
+ * GET /api/masters/companies   — read-only list of companies, for populating
+ *                                 dropdowns on other masters that have a
+ *                                 companyId FK (e.g. Unit). Company itself is
+ *                                 no longer created/edited here — that's
+ *                                 superadmin-only, see
+ *                                 /api/superadmin/companies.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
-import { companySchema } from '@/lib/validations/company';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -42,31 +45,4 @@ export async function GET(request: NextRequest) {
     data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
-}
-
-export async function POST(request: NextRequest) {
-  const permErr = await checkMasterPermission(request);
-  if (permErr) return permErr;
-  const body = await request.json();
-  const parsed = companySchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Validation failed', details: parsed.error.flatten() },
-      { status: 400 }
-    );
-  }
-
-  const existing = await prisma.company.findUnique({
-    where: { code: parsed.data.code },
-  });
-  if (existing && existing.deletedAt === null) {
-    return NextResponse.json(
-      { error: 'Code already exists' },
-      { status: 409 }
-    );
-  }
-
-  const record = await prisma.company.create({ data: parsed.data });
-  return NextResponse.json(record, { status: 201 });
 }

@@ -8,17 +8,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/rbac-admin';
+import { getCompanyId } from '@/lib/companyScope';
 import { userCreateSchema } from '@/lib/validations/user';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
 
   const where = {
+    companyId: scope.companyId,
     deletedAt: null,
     ...(search ? { email: { contains: search } } : {}),
   };
@@ -52,6 +56,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const body = await request.json();
   const parsed = userCreateSchema.safeParse(body);
 
@@ -67,8 +73,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email already exists' }, { status: 409 });
   }
 
+  // companyId scoped so a company-admin can't assign a user to another
+  // company's role by guessing its id.
   const role = await prisma.role.findFirst({
-    where: { id: parsed.data.roleId, isActive: true, deletedAt: null },
+    where: { id: parsed.data.roleId, companyId: scope.companyId, isActive: true, deletedAt: null },
   });
   if (!role) {
     return NextResponse.json({ error: 'Invalid role — it may be inactive or deleted' }, { status: 400 });
@@ -80,6 +88,7 @@ export async function POST(request: NextRequest) {
     data: {
       email: parsed.data.email,
       passwordHash,
+      companyId: scope.companyId,
       roleId: parsed.data.roleId,
       isActive: parsed.data.isActive,
     },

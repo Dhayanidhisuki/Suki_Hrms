@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { verifyTokenNode } from "@/lib/jwt";
 import StatCard from "@/components/dashboard/StatCard";
 import AttendanceChart from "@/components/dashboard/AttendanceChart";
 import LeaveApplications from "@/components/dashboard/LeaveApplications";
@@ -13,6 +14,17 @@ export default async function Home() {
 
   if (!token) {
     redirect("/login");
+  }
+
+  // This dashboard is company-scoped (mock employee/attendance/leave data,
+  // pending real queries) — meaningless for superadmin, which isn't tied to
+  // any company. Send it straight to its own module instead.
+  const payload = verifyTokenNode(token.value);
+  if (!payload) {
+    redirect("/login");
+  }
+  if (payload.isSuperAdmin) {
+    redirect("/superadmin/companies");
   }
 
   return (

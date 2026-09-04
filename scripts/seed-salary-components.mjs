@@ -1,9 +1,16 @@
 /**
- * Seeds SalaryComponent rows from D:\CRM\kun hrms\payroll.rpt (35 components).
- * Idempotent (upsert by unique code). The Salary Details tab UI that uses
- * these is built in Phase 2 — this just makes the master data available.
+ * Seeds SalaryComponent rows from D:\CRM\kun hrms\payroll.rpt (35 components)
+ * into one company's catalog. Idempotent (upsert by unique [companyId, code]
+ * — migration 000012 made SalaryComponent company-scoped).
  *
- *   node scripts/seed-salary-components.mjs
+ * This list mirrors src/lib/defaultSalaryComponents.ts (the source of truth
+ * new companies get seeded from automatically via bootstrap-admin) — kept
+ * as a separate plain-JS copy here rather than importing that .ts file
+ * because this script runs under plain Node (no TS loader configured), not
+ * through Next.js's toolchain. Keep the two in sync by hand if either
+ * changes.
+ *
+ *   node scripts/seed-salary-components.mjs [companyId]   (default: 1)
  */
 
 import { readFileSync } from "node:fs";
@@ -17,6 +24,8 @@ for (const line of readFileSync(new URL("../.env", import.meta.url), "utf8").spl
 
 const { PrismaClient } = await import("@prisma/client");
 const prisma = new PrismaClient();
+
+const companyId = Number(process.argv[2] ?? 1);
 
 // [code, name, type] — from payroll.rpt COMPONENT / DEFAULT_LABLE.
 // type is inferred from the component's role in the payroll.rpt LOGIC_TYPE
@@ -60,15 +69,17 @@ const COMPONENTS = [
   ["OTHER_DED2", "Other Deduction2", "deduction"],
 ];
 
+const SYSTEM_DEFINED = new Set(["BASIC", "PF", "ESI"]);
+
 try {
   for (const [code, name, type] of COMPONENTS) {
     await prisma.salaryComponent.upsert({
-      where: { code },
+      where: { companyId_code: { companyId, code } },
       update: { name, type },
-      create: { code, name, type },
+      create: { companyId, code, name, type, isSystemDefined: SYSTEM_DEFINED.has(code) },
     });
   }
-  console.log(`Salary components upserted: ${COMPONENTS.length}`);
+  console.log(`Salary components upserted for company ${companyId}: ${COMPONENTS.length}`);
   console.log("\nDone.");
 } finally {
   await prisma.$disconnect();

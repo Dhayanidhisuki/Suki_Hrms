@@ -7,17 +7,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/rbac-admin';
+import { getCompanyId } from '@/lib/companyScope';
 import { roleSchema } from '@/lib/validations/role';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
 
   const where = {
+    companyId: scope.companyId,
     deletedAt: null,
     ...(search
       ? {
@@ -49,6 +53,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const body = await request.json();
   const parsed = roleSchema.safeParse(body);
 
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
   }
 
   const existing = await prisma.role.findUnique({
-    where: { code: parsed.data.code },
+    where: { companyId_code: { companyId: scope.companyId, code: parsed.data.code } },
   });
   if (existing && existing.deletedAt === null) {
     return NextResponse.json(
@@ -69,6 +75,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const record = await prisma.role.create({ data: parsed.data });
+  const record = await prisma.role.create({ data: { ...parsed.data, companyId: scope.companyId } });
   return NextResponse.json(record, { status: 201 });
 }

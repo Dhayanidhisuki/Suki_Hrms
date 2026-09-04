@@ -58,3 +58,24 @@ export async function hasPermission(
 
   return count > 0;
 }
+
+/**
+ * Coarse check: does this role hold ANY active permission in a given
+ * top-level module (e.g. "admin")? Used for nav-section visibility, where we
+ * only need to know "should this section show at all", not a specific
+ * submodule/action.
+ */
+export async function hasAnyPermissionInModule(
+  roleId: number,
+  module: string
+): Promise<boolean> {
+  const count = await prisma.rolePermission.count({
+    where: {
+      roleId,
+      role: { isActive: true, deletedAt: null },
+      permission: { isActive: true, deletedAt: null, module },
+    },
+  });
+
+  return count > 0;
+}

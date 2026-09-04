@@ -62,7 +62,11 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
     setEditingId(row.id);
     const vals: Record<string, string | number | boolean | undefined> = {};
     for (const f of fields) {
-      vals[f.name] = row[f.name] !== undefined && row[f.name] !== null ? (row[f.name] as string | number | boolean) : (f.defaultValue ?? '');
+      let v = row[f.name] !== undefined && row[f.name] !== null ? (row[f.name] as string | number | boolean) : (f.defaultValue ?? '');
+      // <input type="date"> only accepts a bare YYYY-MM-DD — the API returns
+      // a full ISO datetime, which the browser silently rejects (renders blank).
+      if (f.type === 'date' && typeof v === 'string' && v) v = v.slice(0, 10);
+      vals[f.name] = v;
     }
     setInitialValues(vals);
     setModalOpen(true);

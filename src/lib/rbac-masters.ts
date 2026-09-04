@@ -15,7 +15,7 @@ type MasterGroup = 'org' | 'statutory' | 'shift' | 'dropdown' | 'definition';
  * Map API path prefix → master group.
  */
 const PATH_TO_GROUP: Record<string, MasterGroup> = {
-  '/api/masters/companies': 'org',
+  '/api/masters/companies': 'org', // read-only list here (dropdown source) — write ops moved to /api/superadmin/companies
   '/api/masters/departments': 'org',
   '/api/masters/sub-departments': 'org',
   '/api/masters/designations': 'org',
@@ -29,6 +29,8 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/esi-rates': 'statutory',
   '/api/masters/pf-rates': 'statutory',
   '/api/masters/salary-components': 'statutory',
+  '/api/masters/bonus-rates': 'statutory',
+  '/api/masters/gratuity-policies': 'statutory',
   '/api/masters/shift-masters': 'shift',
   '/api/masters/shift-plans': 'shift',
   '/api/masters/ot-plans': 'shift',

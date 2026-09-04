@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/rbac-admin';
+import { getCompanyId } from '@/lib/companyScope';
 import { rolePermissionsSchema } from '@/lib/validations/role';
 
 export async function GET(
@@ -17,10 +18,15 @@ export async function GET(
 ) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { id } = await params;
   const roleId = parseInt(id);
 
-  const role = await prisma.role.findFirst({ where: { id: roleId, deletedAt: null }, select: { id: true } });
+  const role = await prisma.role.findFirst({
+    where: { id: roleId, companyId: scope.companyId, deletedAt: null },
+    select: { id: true },
+  });
   if (!role) {
     return NextResponse.json({ error: 'Role not found' }, { status: 404 });
   }
@@ -39,10 +45,15 @@ export async function PUT(
 ) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { id } = await params;
   const roleId = parseInt(id);
 
-  const role = await prisma.role.findFirst({ where: { id: roleId, deletedAt: null }, select: { id: true } });
+  const role = await prisma.role.findFirst({
+    where: { id: roleId, companyId: scope.companyId, deletedAt: null },
+    select: { id: true },
+  });
   if (!role) {
     return NextResponse.json({ error: 'Role not found' }, { status: 404 });
   }

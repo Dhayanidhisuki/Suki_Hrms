@@ -16,10 +16,15 @@ const secret = new TextEncoder().encode(
 
 const expiresIn = '24h';
 
+// A superadmin token carries isSuperAdmin: true and omits roleId/roleCode/
+// companyId (not tied to any company, no RBAC role). A company-scoped user's
+// token carries isSuperAdmin: false plus roleId/roleCode/companyId.
 export interface TokenPayload extends JWTPayload {
   userId: number;
-  roleId: number;
-  roleCode: string;
+  isSuperAdmin: boolean;
+  roleId?: number;
+  roleCode?: string;
+  companyId?: number;
 }
 
 /** Sign a JWT using jose (Edge-compatible). Use in middleware/server components. */

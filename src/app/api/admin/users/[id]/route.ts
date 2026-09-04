@@ -10,18 +10,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/rbac-admin';
+import { getCompanyId } from '@/lib/companyScope';
 import { userUpdateSchema } from '@/lib/validations/user';
 
 /**
- * True if `userId` is currently the only active system-admin — used to
- * block the last org-wide admin from being deactivated, deleted, or moved
- * off the role, which would leave nobody able to reach the Admin UI at all.
+ * True if `userId` is currently the only active company-admin IN THIS
+ * COMPANY — used to block the last admin of a company from being
+ * deactivated, deleted, or moved off the role, which would leave nobody
+ * able to reach that company's Admin UI at all.
  */
-async function isLastActiveSystemAdmin(userId: number, currentRoleId: number): Promise<boolean> {
-  const systemAdminRole = await prisma.role.findUnique({ where: { code: 'system-admin' } });
-  if (!systemAdminRole || currentRoleId !== systemAdminRole.id) return false;
+async function isLastActiveCompanyAdmin(
+  companyId: number,
+  userId: number,
+  currentRoleId: number
+): Promise<boolean> {
+  const companyAdminRole = await prisma.role.findUnique({
+    where: { companyId_code: { companyId, code: 'company-admin' } },
+  });
+  if (!companyAdminRole || currentRoleId !== companyAdminRole.id) return false;
   const otherActiveAdmins = await prisma.user.count({
-    where: { roleId: systemAdminRole.id, isActive: true, deletedAt: null, NOT: { id: userId } },
+    where: { roleId: companyAdminRole.id, isActive: true, deletedAt: null, NOT: { id: userId } },
   });
   return otherActiveAdmins === 0;
 }
@@ -43,9 +51,11 @@ export async function GET(
 ) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { id } = await params;
   const record = await prisma.user.findFirst({
-    where: { id: parseInt(id), deletedAt: null },
+    where: { id: parseInt(id), companyId: scope.companyId, deletedAt: null },
     select: userSelect,
   });
 
@@ -62,6 +72,8 @@ export async function PUT(
 ) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { id } = await params;
   const targetId = parseInt(id);
   const body = await request.json();
@@ -84,17 +96,19 @@ export async function PUT(
     );
   }
 
-  const targetUser = await prisma.user.findFirst({ where: { id: targetId, deletedAt: null } });
+  const targetUser = await prisma.user.findFirst({
+    where: { id: targetId, companyId: scope.companyId, deletedAt: null },
+  });
   if (!targetUser) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // Last-admin guard: block deactivating, or moving off system-admin, the
-  // only remaining active system-admin — otherwise nobody can undo it.
-  const losingSystemAdmin = parsed.data.isActive === false || parsed.data.roleId !== targetUser.roleId;
-  if (losingSystemAdmin && (await isLastActiveSystemAdmin(targetId, targetUser.roleId))) {
+  // Last-admin guard: block deactivating, or moving off company-admin, the
+  // only remaining active company-admin — otherwise nobody can undo it.
+  const losingCompanyAdmin = parsed.data.isActive === false || parsed.data.roleId !== targetUser.roleId;
+  if (losingCompanyAdmin && (await isLastActiveCompanyAdmin(scope.companyId, targetId, targetUser.roleId!))) {
     return NextResponse.json(
-      { error: 'This is the last active system-admin. Promote another user to system-admin before changing this one.' },
+      { error: 'This is the last active company-admin. Promote another user to company-admin before changing this one.' },
       { status: 400 }
     );
   }
@@ -107,7 +121,7 @@ export async function PUT(
   }
 
   const role = await prisma.role.findFirst({
-    where: { id: parsed.data.roleId, isActive: true, deletedAt: null },
+    where: { id: parsed.data.roleId, companyId: scope.companyId, isActive: true, deletedAt: null },
   });
   if (!role) {
     return NextResponse.json({ error: 'Invalid role — it may be inactive or deleted' }, { status: 400 });
@@ -143,6 +157,8 @@ export async function DELETE(
 ) {
   const permErr = await checkAdminPermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
   const { id } = await params;
   const targetId = parseInt(id);
 
@@ -154,13 +170,15 @@ export async function DELETE(
     );
   }
 
-  const targetUser = await prisma.user.findFirst({ where: { id: targetId, deletedAt: null } });
+  const targetUser = await prisma.user.findFirst({
+    where: { id: targetId, companyId: scope.companyId, deletedAt: null },
+  });
   if (!targetUser) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (await isLastActiveSystemAdmin(targetId, targetUser.roleId)) {
+  if (await isLastActiveCompanyAdmin(scope.companyId, targetId, targetUser.roleId!)) {
     return NextResponse.json(
-      { error: 'Cannot delete the last active system-admin. Promote another user to system-admin first.' },
+      { error: 'Cannot delete the last active company-admin. Promote another user to company-admin first.' },
       { status: 400 }
     );
   }

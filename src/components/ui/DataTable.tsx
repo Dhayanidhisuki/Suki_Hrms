@@ -28,6 +28,8 @@ interface DataTableProps<T> {
   onPageChange?: (page: number) => void;
   onEdit?: (row: T) => void;
   onDelete?: (row: T) => void;
+  /** Extra per-row action(s) rendered before Edit/Delete in the Actions cell. */
+  renderRowActions?: (row: T) => ReactNode;
   rowKey?: (row: T) => string | number;
   emptyMessage?: string;
 }
@@ -43,6 +45,7 @@ export default function DataTable<T extends { id: number }>({
   onPageChange,
   onEdit,
   onDelete,
+  renderRowActions,
   emptyMessage = 'No records found.',
 }: DataTableProps<T>) {
   return (
@@ -79,7 +82,7 @@ export default function DataTable<T extends { id: number }>({
                   {col.label}
                 </th>
               ))}
-              {(onEdit || onDelete) && (
+              {(onEdit || onDelete || renderRowActions) && (
                 <th className="px-4 py-3 text-right font-medium" style={{ color: 'var(--foreground-muted)' }}>
                   Actions
                 </th>
@@ -121,8 +124,11 @@ export default function DataTable<T extends { id: number }>({
                       {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
                     </td>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {(onEdit || onDelete || renderRowActions) && (
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {renderRowActions && (
+                        <span className="mr-3 inline-flex items-center">{renderRowActions(row)}</span>
+                      )}
                       {onEdit && (
                         <button
                           onClick={() => onEdit(row)}

@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         role: { select: { id: true, code: true } },
+        company: { select: { isActive: true, deletedAt: true } },
       },
     });
 
@@ -56,19 +57,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
+    // Company-active gate: checked only after the password has already
+    // matched, so an attacker probing emails can't use this message to learn
+    // which companies exist/are deactivated — only someone who already knows
+    // the correct password sees it.
+    if (!user.isSuperAdmin && (!user.company || !user.company.isActive || user.company.deletedAt)) {
+      console.warn(`[login] company deactivated for ${email}`);
+      return NextResponse.json(
+        { error: 'This company account has been deactivated. Contact your platform administrator.' },
+        { status: 403 }
+      );
+    }
+
+    if (!user.isSuperAdmin && !user.role) {
+      // Data-integrity guard: every non-superadmin user must have a role.
+      console.error(`[login] user ${user.id} has no role and is not superadmin`);
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    }
+
     // Issue JWT (jsonwebtoken — Node runtime)
-    const token = signTokenNode({
-      userId: user.id,
-      roleId: user.role.id,
-      roleCode: user.role.code,
-    });
+    const token = signTokenNode(
+      user.isSuperAdmin
+        ? { userId: user.id, isSuperAdmin: true }
+        : {
+            userId: user.id,
+            isSuperAdmin: false,
+            roleId: user.role!.id,
+            roleCode: user.role!.code,
+            companyId: user.companyId!,
+          }
+    );
 
     // Create response with user info
     const response = NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
-        roleCode: user.role.code,
+        isSuperAdmin: user.isSuperAdmin,
+        roleCode: user.role?.code ?? null,
       },
     });
 

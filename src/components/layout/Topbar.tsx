@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import Icon from "./NavIcons";
 import ThemeToggle from "./ThemeToggle";
 
@@ -8,8 +9,49 @@ interface TopbarProps {
   onMenuClick: () => void;
 }
 
+interface CurrentUser {
+  email: string | null;
+  isSuperAdmin: boolean;
+  roleCode: string | null;
+  companyName: string | null;
+}
+
+const roleLabel = (me: CurrentUser | null): string => {
+  if (!me) return "";
+  if (me.isSuperAdmin) return "Superadmin";
+  if (!me.roleCode) return "";
+  return me.roleCode.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const initials = (email: string | null): string => {
+  if (!email) return "??";
+  const local = email.split("@")[0];
+  return local.slice(0, 2).toUpperCase();
+};
+
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
+  const [me, setMe] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setMe({
+            email: data.email,
+            isSuperAdmin: data.isSuperAdmin,
+            roleCode: data.roleCode,
+            companyName: data.companyName,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const segments = pathname.split("/").filter(Boolean);
   const title =
     pathname === "/"
@@ -78,27 +120,31 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white"
               style={{ background: "var(--accent)" }}
             >
-              JC
+              {initials(me?.email ?? null)}
             </span>
             <span className="hidden leading-tight md:block">
-              <span className="block text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
-                James Carter
+              <span className="block max-w-[240px] truncate text-[13px] font-semibold" style={{ color: "var(--foreground)" }} title={me?.email ?? undefined}>
+                {me?.email ?? "…"}
               </span>
               <span className="block text-[11px]" style={{ color: "var(--foreground-muted)" }}>
-                Super Admin
+                {roleLabel(me)}
+                {me && !me.isSuperAdmin && me.companyName ? ` · ${me.companyName}` : ""}
               </span>
             </span>
             <Icon name="chevron" size={13} style={{ color: "var(--foreground-muted)", transform: "rotate(90deg)" }} />
           </div>
 
-          <form action="/api/auth/logout" method="POST" className="hidden lg:block">
-            <button
-              className="rounded-full border px-3 py-2 text-xs font-medium transition hover:opacity-70"
-              style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
-            >
-              Sign out
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            className="hidden rounded-full border px-3 py-2 text-xs font-medium transition hover:opacity-70 lg:block"
+            style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+          >
+            Sign out
+          </button>
         </div>
       </div>
     </header>

@@ -1,8 +1,12 @@
 /**
  * GET /api/admin/permissions   — list the full permission catalog, sorted by
- *                                 module/submodule/action. Read-only — the
- *                                 catalog is defined by the seed script
- *                                 (POST /api/auth/seed), not editable via API.
+ *                                 module/submodule/action. Read-only, and
+ *                                 shared across all companies (only the
+ *                                 grants — which role has which permission —
+ *                                 are company-scoped). The catalog itself is
+ *                                 upserted by
+ *                                 POST /api/superadmin/companies/[id]/bootstrap-admin,
+ *                                 not editable via this API.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

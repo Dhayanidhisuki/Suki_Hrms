@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import { checkEmployeePermission } from '@/lib/rbac-employee';
 import { salaryRevisionSchema } from '@/lib/validations/employee';
 import { logActivity } from '@/lib/activity-log';
+import { applySalaryRevision } from '@/lib/salaryRevisioning';
 
 export async function GET(
   request: NextRequest,
@@ -42,7 +43,7 @@ export async function POST(
   const employeeId = parseInt(id);
   const performedByUserId = Number(request.headers.get('x-user-id')) || null;
 
-  const employee = await prisma.employee.findFirst({ where: { id: employeeId, deletedAt: null }, select: { id: true } });
+  const employee = await prisma.employee.findFirst({ where: { id: employeeId, deletedAt: null }, select: { id: true, companyId: true } });
   if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
 
   const parsed = salaryRevisionSchema.safeParse(await request.json());
@@ -51,27 +52,25 @@ export async function POST(
   }
   const { components, ...revisionFields } = parsed.data;
 
-  const current = await prisma.employeeSalaryRevision.findFirst({ where: { employeeId, effectiveTo: null } });
-  if (current && revisionFields.effectiveFrom <= current.effectiveFrom) {
-    return NextResponse.json(
-      { error: 'A new revision must be effective after the current revision\'s effective date.' },
-      { status: 409 }
-    );
+  if (components.length > 0) {
+    const validCount = await prisma.salaryComponent.count({
+      where: { id: { in: components.map((c) => c.salaryComponentId) }, companyId: employee.companyId },
+    });
+    if (validCount !== new Set(components.map((c) => c.salaryComponentId)).size) {
+      return NextResponse.json({ error: 'One or more salary components do not belong to this employee\'s company.' }, { status: 400 });
+    }
   }
 
   try {
     const created = await prisma.$transaction(async (tx) => {
-      if (current) {
-        await tx.employeeSalaryRevision.update({ where: { id: current.id }, data: { effectiveTo: revisionFields.effectiveFrom } });
-      }
-      const revision = await tx.employeeSalaryRevision.create({
-        data: {
-          employeeId,
-          ...revisionFields,
-          lastUpdatedByUserId: performedByUserId,
-          components: { create: components.map((c) => ({ salaryComponentId: c.salaryComponentId, amount: c.amount })) },
-        },
-        include: { components: { include: { salaryComponent: { select: { name: true, code: true, type: true } } } } },
+      const revision = await applySalaryRevision(tx, {
+        employeeId,
+        financialYear: revisionFields.financialYear,
+        grossSalary: revisionFields.grossSalary,
+        netSalary: revisionFields.netSalary,
+        effectiveFrom: revisionFields.effectiveFrom,
+        components,
+        performedByUserId,
       });
       await logActivity(tx, {
         employeeId,
@@ -89,6 +88,9 @@ export async function POST(
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('Overlap detected')) {
       return NextResponse.json({ error: 'This effective date overlaps an existing salary revision.' }, { status: 409 });
+    }
+    if (message.includes('must be effective after')) {
+      return NextResponse.json({ error: message }, { status: 409 });
     }
     throw err;
   }

@@ -72,6 +72,7 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           placeholder={def.placeholder}
           required={def.required}
           disabled={def.disabled}
+          autoComplete="off"
           className={inputClass}
           style={baseStyle}
           rows={3}
@@ -100,6 +101,7 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           placeholder={def.placeholder}
           required={def.required}
           disabled={def.disabled}
+          autoComplete="off"
           min={def.min}
           max={def.max}
           maxLength={def.maxLength}

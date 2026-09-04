@@ -42,3 +42,6 @@ next-env.d.ts
 
 # ERP data extracts — may contain employee PII/credentials, never commit
 scripts/erp-extract/out/
+
+# stray editor temp files (FUSE-mounted filesystem artifacts from a deleted-while-open file)
+.fuse_hidden*

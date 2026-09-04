@@ -34,6 +34,18 @@ export type NavModule = {
 
 export const navigation: NavModule[] = [
   {
+    label: "Superadmin",
+    icon: "settings",
+    href: "/superadmin",
+    groups: [
+      {
+        label: "Tenants",
+        items: [{ label: "Companies", href: "/superadmin/companies", ready: true }],
+      },
+    ],
+  },
+
+  {
     label: "Dashboard",
     icon: "home",
     href: "/",
@@ -72,7 +84,6 @@ export const navigation: NavModule[] = [
       {
         label: "Organization",
         items: [
-          { label: "Companies", href: "/masters/companies", ready: true },
           { label: "Departments", href: "/masters/departments", ready: true },
           { label: "Sub Departments", href: "/masters/sub-departments", ready: true },
           { label: "Branches / Sites", short: "Branches", href: "/masters/branches" },
@@ -106,6 +117,9 @@ export const navigation: NavModule[] = [
           { label: "TDS Slabs", href: "/masters/tds-slabs", ready: true },
           { label: "Professional Tax Slabs", short: "PT Slabs", href: "/masters/professional-tax-slabs", ready: true },
           { label: "Income Tax Slabs", href: "/masters/income-tax-slabs" },
+          { label: "Salary Components", href: "/masters/salary-components", ready: true },
+          { label: "Bonus Rates", href: "/masters/bonus-rates", ready: true },
+          { label: "Gratuity Policies", href: "/masters/gratuity-policies", ready: true },
         ],
       },
       {
@@ -190,7 +204,7 @@ export const navigation: NavModule[] = [
       {
         label: "Separation",
         items: [
-          { label: "Exit Form", href: "/employees/separation/exit-form" },
+          { label: "Exit Form", href: "/employees/separation/exit-form", ready: true },
           { label: "Exit Interview Details", short: "Exit Interview", href: "/employees/separation/exit-interview" },
           { label: "No Due Form", href: "/employees/separation/no-due-form" },
           { label: "Relieving Letter", href: "/employees/separation/relieving-letter" },
@@ -207,8 +221,8 @@ export const navigation: NavModule[] = [
       {
         label: "Attendance",
         items: [
-          { label: "Daily Attendance", href: "/workforce/attendance/daily" },
-          { label: "Monthly Attendance", href: "/workforce/attendance/monthly" },
+          { label: "Daily Attendance", href: "/workforce/attendance/daily", ready: true },
+          { label: "Monthly Attendance", href: "/workforce/attendance/monthly", ready: true },
           { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric" },
           { label: "Time Office Final", href: "/workforce/attendance/time-office-final" },
         ],
@@ -216,9 +230,9 @@ export const navigation: NavModule[] = [
       {
         label: "Leave",
         items: [
-          { label: "Leave Entry", href: "/workforce/leave/entry" },
-          { label: "Leave Approval", href: "/workforce/leave/approval" },
-          { label: "Leave History", href: "/workforce/leave/history" },
+          { label: "Leave Entry", href: "/workforce/leave/entry", ready: true },
+          { label: "Leave Approval", href: "/workforce/leave/approval", ready: true },
+          { label: "Leave History", href: "/workforce/leave/history", ready: true },
         ],
       },
       {
@@ -255,11 +269,11 @@ export const navigation: NavModule[] = [
       {
         label: "Processing",
         items: [
-          { label: "Salary Processing", href: "/payroll/processing/salary" },
-          { label: "Salary Revision", href: "/payroll/processing/revision" },
-          { label: "Arrears", href: "/payroll/processing/arrears" },
-          { label: "Bonus", href: "/payroll/processing/bonus" },
-          { label: "Gratuity", href: "/payroll/processing/gratuity" },
+          { label: "Salary Processing", href: "/payroll/processing/salary", ready: true },
+          { label: "Salary Revision", href: "/payroll/processing/revision", ready: true },
+          { label: "Arrears", href: "/payroll/processing/arrears", ready: true },
+          { label: "Bonus", href: "/payroll/processing/bonus", ready: true },
+          { label: "Gratuity", href: "/payroll/processing/gratuity", ready: true },
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
           { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final" },
@@ -291,7 +305,7 @@ export const navigation: NavModule[] = [
       {
         label: "Outputs",
         items: [
-          { label: "Payslip (Individual)", short: "Payslip", href: "/payroll/outputs/payslip" },
+          { label: "Payslip (Individual)", short: "Payslip", href: "/payroll/outputs/payslip", ready: true },
           { label: "Payslip (Bulk)", short: "Bulk Payslip", href: "/payroll/outputs/payslip-bulk" },
           { label: "Payroll Summary", href: "/payroll/outputs/summary" },
           { label: "Bank Transfer File", short: "Bank Transfer", href: "/payroll/outputs/bank-transfer" },
@@ -506,7 +520,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "PF Report", short: "PF", href: "/reports/statutory/pf" },
           { label: "ESI Report", short: "ESI", href: "/reports/statutory/esi" },
-          { label: "Professional Tax Report", short: "Professional Tax", href: "/reports/statutory/professional-tax" },
+          { label: "Professional Tax Report", short: "Professional Tax", href: "/reports/statutory/professional-tax", ready: true },
           { label: "Labour Welfare Fund Report", short: "LWF", href: "/reports/statutory/lwf" },
           { label: "ESI Return Report", short: "ESI Return", href: "/reports/statutory/esi-return" },
         ],
