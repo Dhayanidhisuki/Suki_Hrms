@@ -4,6 +4,26 @@
 
 import { z } from 'zod';
 
+/**
+ * Parses "YYYY-MM-DDTHH:mm" as literal UTC wall-clock digits (the app-wide
+ * "neutral wall-clock" convention documented in the Daily Attendance page —
+ * inTime/outTime mean "9:15am at the workplace", not a real UTC instant).
+ * Deliberately NOT z.coerce.date(): plain `new Date("...")` on a string with
+ * no timezone suffix parses as the SERVER's local timezone, so on a non-UTC
+ * host (this one runs in IST) "09:15" silently becomes 03:45 UTC. Every
+ * other write path (biometric sync) already avoids this via explicit
+ * Date.UTC() construction — this brings manual entry in line for mispunch.
+ */
+const wallClockDateTime = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Expected YYYY-MM-DDTHH:mm')
+  .transform((s) => {
+    const [datePart, timePart] = s.split('T');
+    const [y, m, d] = datePart.split('-').map(Number);
+    const [hh, mm] = timePart.split(':').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0));
+  });
+
 const ATTENDANCE_STATUSES = [
   'Present',
   'Absent',
@@ -47,6 +67,21 @@ export const leaveApplicationSchema = z.object({
 });
 
 export const leaveRejectSchema = z.object({
+  rejectionReason: z.string().min(1).max(500),
+});
+
+export const mispunchRequestSchema = z
+  .object({
+    date: z.coerce.date(),
+    requestedInTime: wallClockDateTime.nullable().optional(),
+    requestedOutTime: wallClockDateTime.nullable().optional(),
+    reason: z.string().min(1).max(500),
+  })
+  .refine((v) => v.requestedInTime || v.requestedOutTime, {
+    message: 'At least one of requestedInTime or requestedOutTime is required',
+  });
+
+export const mispunchRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
 

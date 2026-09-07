@@ -88,6 +88,8 @@ const WORKFORCE_PERMISSIONS: PermDef[] = [
   { code: 'workforce.leave.view', module: 'workforce', submodule: 'leave', page: null, action: 'view', description: 'View leave applications and balances' },
   { code: 'workforce.leave.edit', module: 'workforce', submodule: 'leave', page: null, action: 'edit', description: 'Apply for leave on behalf of an employee' },
   { code: 'workforce.leave.approve', module: 'workforce', submodule: 'leave', page: null, action: 'approve', description: 'Approve/reject/cancel leave applications' },
+  { code: 'workforce.mispunch.view', module: 'workforce', submodule: 'mispunch', page: null, action: 'view', description: 'View mispunch correction requests' },
+  { code: 'workforce.mispunch.approve', module: 'workforce', submodule: 'mispunch', page: null, action: 'approve', description: 'Give final HR approval/rejection on a mispunch correction request (after Reporting Manager review)' },
 ];
 
 const PAYROLL_PERMISSIONS: PermDef[] = [
@@ -136,6 +138,7 @@ const HR_VIEWER_CODES = [
   'workforce.attendance.view',
   'workforce.biometric.view',
   'workforce.leave.view',
+  'workforce.mispunch.view',
 ];
 
 interface RoleDef {

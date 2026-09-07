@@ -40,6 +40,30 @@ interface ImportRow {
   outTimeRaw: string | null;
 }
 
+interface SyncRun {
+  id: number;
+  trigger: string;
+  rangeStart: string;
+  rangeEnd: string;
+  status: string;
+  rowsFetched: number;
+  daysCreated: number;
+  daysUpdated: number;
+  daysUnchanged: number;
+  skippedFrozen: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+interface SyncStatus {
+  configured: boolean;
+  apiUrl: string | null;
+  scheduler: { intervalHours: number; running: boolean; lastStartedAt: string | null; lastFinishedAt: string | null; nextRunAt: string | null } | null;
+  runs: SyncRun[];
+  unmatched: { userid: string; username: string; days: number }[];
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -366,6 +390,55 @@ export default function BiometricAttendancePage() {
 
   const reopenFields: FieldDef[] = [{ name: 'reason', label: 'Reopen Reason', type: 'textarea', required: true }];
 
+  // ── Device sync (automatic every N hours + manual catch-up) ──────────────
+  const [sync, setSync] = useState<SyncStatus | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncRange, setSyncRange] = useState(() => {
+    const end = todayIso();
+    const start = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+    return { start, end };
+  });
+
+  const loadSync = useCallback(async () => {
+    try {
+      const res = await fetch('/api/biometric/sync');
+      if (!res.ok) return;
+      setSync((await res.json()) as SyncStatus);
+    } catch {
+      /* status card is best-effort */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSync();
+  }, [loadSync]);
+
+  const runSyncNow = async () => {
+    setSyncBusy(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/api/biometric/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: syncRange.start, endDate: syncRange.end }),
+      });
+      const json = await res.json();
+      if (!res.ok && !json.runId) throw new Error(json.error ?? 'Sync failed');
+      setSyncMsg(
+        json.status === 'success'
+          ? `Synced: ${json.rowsFetched} device rows → ${json.daysCreated} new, ${json.daysUpdated} updated, ${json.daysUnchanged} unchanged, ${json.skippedFrozen} frozen-skipped, ${json.unmatched.length} unmatched IDs.`
+          : `Sync failed: ${json.error}`
+      );
+      await loadSync();
+      fetchViewer();
+    } catch (err) {
+      setSyncMsg(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -406,6 +479,125 @@ export default function BiometricAttendancePage() {
           {error}
         </div>
       )}
+
+      {/* Device sync — the automated path: the server pulls from the biometric controller every N hours; this card shows status and lets HR run a catch-up now */}
+      <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+              Device Sync
+            </h2>
+            <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              {sync === null
+                ? 'Loading status…'
+                : !sync.configured
+                  ? 'Device API is not configured on the server.'
+                  : sync.scheduler
+                    ? `Automatic every ${sync.scheduler.intervalHours} h from ${sync.apiUrl}. ` +
+                      (sync.scheduler.running
+                        ? 'A run is in progress.'
+                        : sync.scheduler.nextRunAt
+                          ? `Next run ${new Date(sync.scheduler.nextRunAt).toLocaleString()}.`
+                          : '')
+                    : `Device API ${sync.apiUrl} configured; scheduler starts with the server.`}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={syncRange.start}
+              onChange={(e) => setSyncRange((r) => ({ ...r, start: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              to
+            </span>
+            <input
+              type="date"
+              value={syncRange.end}
+              onChange={(e) => setSyncRange((r) => ({ ...r, end: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+            <button
+              onClick={runSyncNow}
+              disabled={syncBusy || sync?.configured === false}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              {syncBusy ? 'Syncing…' : 'Sync now'}
+            </button>
+          </div>
+        </div>
+
+        {syncMsg && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: syncMsg.startsWith('Sync failed') ? '#fef2f2' : '#f0fdf4', color: syncMsg.startsWith('Sync failed') ? '#dc2626' : '#166534', border: `1px solid ${syncMsg.startsWith('Sync failed') ? '#fecaca' : '#bbf7d0'}` }}>
+            {syncMsg}
+          </div>
+        )}
+
+        {sync && sync.runs.length > 0 && (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
+                    {['When', 'Trigger', 'Range', 'Result', 'Rows', 'New', 'Upd', 'Same', 'Frozen'].map((h) => (
+                      <th key={h} className="whitespace-nowrap px-2 py-1.5 text-left font-medium">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sync.runs.map((r) => (
+                    <tr key={r.id} style={{ borderTop: '1px solid var(--border)', color: 'var(--foreground)' }} title={r.error ?? undefined}>
+                      <td className="whitespace-nowrap px-2 py-1.5">{new Date(r.startedAt).toLocaleString()}</td>
+                      <td className="px-2 py-1.5">{r.trigger}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        {r.rangeStart.slice(0, 10)} → {r.rangeEnd.slice(0, 10)}
+                      </td>
+                      <td className="px-2 py-1.5" style={{ color: r.status === 'success' ? '#166534' : r.status === 'failed' ? '#b91c1c' : undefined }}>
+                        {r.status}
+                        {r.error ? ' ⚠' : ''}
+                      </td>
+                      <td className="px-2 py-1.5 tabular-nums">{r.rowsFetched}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{r.daysCreated}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{r.daysUpdated}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{r.daysUnchanged}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{r.skippedFrozen}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>
+                Unmatched device IDs (latest run)
+              </div>
+              {sync.unmatched.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+                  Every device user matched an employee.
+                </p>
+              ) : (
+                <>
+                  <p className="mb-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                    Enter the device ID as the employee&apos;s Employee Code to map them; the next sync picks it up.
+                  </p>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {sync.unmatched.map((u) => (
+                      <li key={u.userid} className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }} title={`${u.days} day(s) in range`}>
+                        <span className="font-mono">{u.userid}</span> {u.username}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <DataTable columns={columns} data={rows.map((r) => ({ ...r }))} loading={loading} emptyMessage="No biometric data imported for this date." />
 

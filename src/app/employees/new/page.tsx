@@ -66,6 +66,10 @@ export default function NewEmployeePage() {
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
 
+  const [deviceUserId, setDeviceUserId] = useState('');
+  const [biometricLookupLoading, setBiometricLookupLoading] = useState(false);
+  const [biometricLookupError, setBiometricLookupError] = useState<string | null>(null);
+
   const [companies, setCompanies] = useState<OptionList>([]);
   const [departments, setDepartments] = useState<OptionList>([]);
   const [subDepartments, setSubDepartments] = useState<OptionList>([]);
@@ -143,6 +147,30 @@ export default function NewEmployeePage() {
   // Probation Period change — a no-op for every other field on this tab.
   const handleChange = (name: string, value: string | number | boolean) => {
     setValues((v) => applyEmployeeFieldChange(v, name, value));
+  };
+
+  const importFromBiometric = async () => {
+    const userid = deviceUserId.trim();
+    if (!userid) return;
+    setBiometricLookupLoading(true);
+    setBiometricLookupError(null);
+    try {
+      const res = await fetch(`/api/biometric/lookup-user?userid=${encodeURIComponent(userid)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Lookup failed');
+
+      const [firstName, ...rest] = String(data.username ?? '').trim().split(/\s+/);
+      setValues((v) => ({
+        ...v,
+        oldEmployeeCode: data.userid,
+        ...(firstName ? { firstName } : {}),
+        ...(rest.length > 0 ? { lastName: rest.join(' ') } : {}),
+      }));
+    } catch (err) {
+      setBiometricLookupError(err instanceof Error ? err.message : 'Lookup failed');
+    } finally {
+      setBiometricLookupLoading(false);
+    }
   };
 
   const missingRequired = (fields: FieldDef[]) =>
@@ -261,6 +289,37 @@ export default function NewEmployeePage() {
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
           {currentStep.label}
         </h2>
+        {currentStep.key === 'basic' && (
+          <div className="rounded-lg border p-3 flex flex-wrap items-end gap-2" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                Import from Biometric (Device ID)
+              </label>
+              <input
+                type="text"
+                value={deviceUserId}
+                onChange={(e) => setDeviceUserId(e.target.value)}
+                placeholder="e.g. 105"
+                className="rounded-lg border px-3 py-2 text-sm"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={importFromBiometric}
+              disabled={!deviceUserId.trim() || biometricLookupLoading}
+              className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80 disabled:opacity-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            >
+              {biometricLookupLoading ? 'Looking up...' : 'Fetch name from device'}
+            </button>
+            {biometricLookupError && (
+              <span className="text-xs" style={{ color: 'var(--danger)' }}>
+                {biometricLookupError}
+              </span>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {currentFields.map((f) => (
             <Field key={f.name} def={f} value={values[f.name]} onChange={(v) => handleChange(f.name, v)} />

@@ -613,6 +613,7 @@ model Employee {
   monthlyAttendance          MonthlyAttendanceSummary[]
   leaveApplications          LeaveApplication[]
   leaveBalances              LeaveBalance[]
+  mispunchCorrections        MispunchCorrection[]
   payrollLines               PayrollLine[]
   salaryRevisionRequests     SalaryRevisionRequest[]
   salaryArrears              SalaryArrear[]
@@ -1411,6 +1412,32 @@ model MonthlyAttendanceSummary {
 // cutoff-date wage period, not a calendar month, so day1 needs a real anchor
 // date supplied at import time. See src/lib/biometricConversion.ts for how
 // this flows into DailyAttendance/MonthlyAttendanceSummary.
+// One run of the device-API sync (src/lib/biometricSync.ts) — scheduled
+// every N hours from src/instrumentation.ts or triggered manually from the
+// Biometric page. Keeps the outcome and the device user IDs that matched no
+// employee, so HR can map them via Employee Code (oldEmployeeCode).
+model BiometricSyncRun {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  trigger           String    @db.NVarChar(20) // scheduled | manual
+  rangeStart        DateTime  @db.Date
+  rangeEnd          DateTime  @db.Date
+  status            String    @default("running") @db.NVarChar(20) // running | success | failed
+  rowsFetched       Int       @default(0)
+  daysCreated       Int       @default(0)
+  daysUpdated       Int       @default(0)
+  daysUnchanged     Int       @default(0)
+  skippedFrozen     Int       @default(0)
+  unmatchedUserIds  String?   @db.NVarChar(Max) // JSON: [{ userid, username, days }]
+  error             String?   @db.NVarChar(2000)
+  triggeredByUserId Int?
+  startedAt         DateTime  @default(now())
+  finishedAt        DateTime?
+
+  @@index([companyId, startedAt])
+  @@map("BiometricSyncRun")
+}
+
 model BiometricAttendanceImport {
   id          Int    @id @default(autoincrement())
   companyId   Int
@@ -1578,6 +1605,43 @@ model LeaveApplication {
   @@index([leaveMasterId])
   @@index([status])
   @@map("LeaveApplication")
+}
+
+// Employee-submitted request to correct a day's punch (missing/wrong
+// in/out), reviewed in two stages before DailyAttendance is touched at all
+// — Reporting Manager first, then HR — per client BRD: "employee applies,
+// Reporting Manager and HR review/approve." Mirrors LeaveApplication's
+// pending/approved/rejected shape, but needs two actor/timestamp pairs
+// since it's a two-stage approval, not LeaveApplication's single stage.
+model MispunchCorrection {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  date       DateTime @db.Date
+
+  requestedInTime  DateTime?
+  requestedOutTime DateTime?
+  reason           String    @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status String @default("pending_manager") @db.NVarChar(20)
+
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+
+  hrActionByUserId  Int?
+  hrActionAt        DateTime?
+  hrRejectionReason String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("MispunchCorrection")
 }
 
 // Per-employee, per-leave-type, per-year balance ledger.

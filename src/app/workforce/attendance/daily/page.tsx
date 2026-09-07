@@ -68,6 +68,13 @@ function formatWallClockTime(iso: string | null): string {
 
 export default function DailyAttendancePage() {
   const [date, setDate] = useState(todayIso());
+
+  // ?date=YYYY-MM-DD deep-links a specific day (the Attendance Overview page
+  // links here per row). Read once on mount, client-side only.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('date');
+    if (q && /^\d{4}-\d{2}-\d{2}$/.test(q)) setDate(q);
+  }, []);
   const [records, setRecords] = useState<AttendanceRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [loading, setLoading] = useState(true);

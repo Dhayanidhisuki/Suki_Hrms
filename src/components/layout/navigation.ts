@@ -223,6 +223,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Daily Attendance", href: "/workforce/attendance/daily", ready: true },
           { label: "Monthly Attendance", href: "/workforce/attendance/monthly", ready: true },
+          { label: "Attendance Overview", short: "Overview", href: "/workforce/attendance/overview", ready: true },
           { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric", ready: true },
           { label: "Time Office Final", href: "/workforce/attendance/time-office-final" },
         ],
@@ -405,6 +406,7 @@ export const navigation: NavModule[] = [
         label: "Workforce",
         items: [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
+          { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
           { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime" },
           { label: "Comp-Off Approval", short: "Comp-Off", href: "/approvals/workforce/comp-off" },
           { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission" },
@@ -437,7 +439,7 @@ export const navigation: NavModule[] = [
           { label: "Attendance", href: "/ess/attendance" },
           { label: "Leave Management", short: "Leave", href: "/ess/leave" },
           { label: "Permission Requests", short: "Permission", href: "/ess/permission" },
-          { label: "Mis-Punch Requests", short: "Mis-Punch", href: "/ess/mis-punch" },
+          { label: "Mis-Punch Requests", short: "Mis-Punch", href: "/ess/mis-punch", ready: true },
         ],
       },
       {

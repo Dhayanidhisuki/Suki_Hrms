@@ -175,6 +175,13 @@ export default function EmployeeListPage() {
             Export CSV
           </a>
           <Link
+            href="/employees/bulk-upload"
+            className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
+            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+          >
+            Bulk Upload
+          </Link>
+          <Link
             href="/employees/new"
             className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
             style={{ backgroundColor: 'var(--accent)' }}

@@ -11,6 +11,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { FormModal, type FieldDef } from '@/components/ui';
 
 interface DayRecord {
@@ -309,7 +310,13 @@ export default function MonthlyAttendancePage() {
                 return (
                   <tr key={emp.employeeId} style={{ borderTop: '1px solid var(--border)' }}>
                     <td className="sticky left-0 z-10 whitespace-nowrap px-3 py-1.5" style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}>
-                      {emp.employeeCode} — {emp.name}
+                      <Link
+                        href={`/workforce/attendance/overview?employeeId=${emp.employeeId}&year=${year}&month=${month}`}
+                        title="Open day-by-day overview"
+                        className="hover:underline"
+                      >
+                        {emp.employeeCode} — {emp.name}
+                      </Link>
                     </td>
                     {dayList.map((d) => {
                       const iso = isoDate(year, month, d);

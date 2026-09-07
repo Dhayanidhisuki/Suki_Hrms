@@ -221,7 +221,7 @@ function combineDateAndTime(date: Date, time: { hour: number; minute: number }):
   return d;
 }
 
-function deriveStatusAndMinutes(
+export function deriveStatusAndMinutes(
   hours: number | null,
   inTime: Date | null,
   outTime: Date | null,
@@ -363,7 +363,7 @@ export async function convertImportToDailyAttendance(
  * from its current DailyAttendance rows — same aggregation the manual
  * Finalize action uses, but never touches `status` (only Finalize/Freeze do).
  */
-async function refreshMonthlySummary(employeeId: number, year: number, month: number) {
+export async function refreshMonthlySummary(employeeId: number, year: number, month: number) {
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 1));
 
