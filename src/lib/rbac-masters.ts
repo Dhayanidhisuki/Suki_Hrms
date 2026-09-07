@@ -32,7 +32,7 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/bonus-rates': 'statutory',
   '/api/masters/gratuity-policies': 'statutory',
   '/api/masters/shift-masters': 'shift',
-  '/api/masters/shift-plans': 'shift',
+  '/api/masters/shift-rotation-plans': 'shift',
   '/api/masters/ot-plans': 'shift',
   '/api/masters/dropdown-master': 'dropdown',
   '/api/masters/leave-masters': 'definition',

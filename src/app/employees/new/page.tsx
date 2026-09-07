@@ -53,7 +53,7 @@ const WIZARD_STEPS: { key: string; label: string; fieldNames: string[] }[] = [
   {
     key: 'terms',
     label: 'Employment Terms',
-    fieldNames: ['status', 'joinDate', 'probationPeriodMonths', 'probationEndDate', 'confirmationDate', 'shiftMasterId', 'shiftPlanId'],
+    fieldNames: ['status', 'joinDate', 'probationPeriodMonths', 'probationEndDate', 'confirmationDate', 'shiftAssignmentType', 'shiftMasterId', 'shiftRotationPlanId'],
   },
 ];
 
@@ -76,7 +76,7 @@ export default function NewEmployeePage() {
   const [levels, setLevels] = useState<OptionList>([]);
   const [units, setUnits] = useState<OptionList>([]);
   const [shiftMasters, setShiftMasters] = useState<OptionList>([]);
-  const [shiftPlans, setShiftPlans] = useState<OptionList>([]);
+  const [shiftRotationPlans, setShiftRotationPlans] = useState<OptionList>([]);
   const [reportingManagers, setReportingManagers] = useState<EmployeeRef[]>([]);
 
   useEffect(() => {
@@ -91,9 +91,9 @@ export default function NewEmployeePage() {
       fetchAllMaster('levels'),
       fetchAllMaster('units'),
       fetchAllMaster('shift-masters'),
-      fetchAllMaster('shift-plans'),
+      fetchAllMaster('shift-rotation-plans'),
       fetchEmployeeRefs(),
-    ]).then(([co, dept, subDept, desig, empType, cat, grade, level, unit, shiftM, shiftP, mgrs]) => {
+    ]).then(([co, dept, subDept, desig, empType, cat, grade, level, unit, shiftM, shiftR, mgrs]) => {
       setCompanies(co);
       setDepartments(dept);
       setSubDepartments(subDept);
@@ -104,7 +104,7 @@ export default function NewEmployeePage() {
       setLevels(level);
       setUnits(unit);
       setShiftMasters(shiftM);
-      setShiftPlans(shiftP);
+      setShiftRotationPlans(shiftR);
       setReportingManagers(mgrs);
 
       // Default to the only company when there's exactly one (common case).
@@ -118,10 +118,10 @@ export default function NewEmployeePage() {
     () =>
       buildBasicFields({
         companies, units, departments, subDepartments, designations,
-        employeeTypes, categories, grades, levels, shiftMasters, shiftPlans,
+        employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
         reportingManagers,
       }),
-    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftPlans, reportingManagers]
+    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans, reportingManagers]
   );
 
   const fieldsByStep: FieldDef[][] = useMemo(

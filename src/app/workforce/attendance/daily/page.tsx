@@ -48,6 +48,24 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * inTime/outTime are stored via setUTCHours as a neutral wall-clock value
+ * ("09:10" means 9:10am at the workplace, not a true UTC instant) — every
+ * write path (biometric conversion, manual correction) uses this same
+ * convention. Must read back with getUTCHours/getUTCMinutes, never
+ * toLocaleTimeString/getHours, which would re-project through the viewer's
+ * browser timezone and show the wrong clock time entirely.
+ */
+function formatWallClockTime(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const hour = d.getUTCHours();
+  const minute = d.getUTCMinutes();
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
 export default function DailyAttendancePage() {
   const [date, setDate] = useState(todayIso());
   const [records, setRecords] = useState<AttendanceRow[]>([]);
@@ -156,8 +174,8 @@ export default function DailyAttendancePage() {
   const columns: Column<AttendanceRow>[] = [
     { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'status', label: 'Status' },
-    { key: 'inTime', label: 'In', render: (r) => (r.inTime ? new Date(r.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—') },
-    { key: 'outTime', label: 'Out', render: (r) => (r.outTime ? new Date(r.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—') },
+    { key: 'inTime', label: 'In', render: (r) => formatWallClockTime(r.inTime) },
+    { key: 'outTime', label: 'Out', render: (r) => formatWallClockTime(r.outTime) },
     { key: 'workingMinutes', label: 'Working (min)' },
     { key: 'lateMinutes', label: 'Late (min)' },
     { key: 'otMinutesCalculated', label: 'OT (min)' },

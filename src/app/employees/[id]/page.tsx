@@ -628,7 +628,7 @@ export default function EmployeeProfilePage() {
   const [levels, setLevels] = useState<OptionList>([]);
   const [units, setUnits] = useState<OptionList>([]);
   const [shiftMasters, setShiftMasters] = useState<OptionList>([]);
-  const [shiftPlans, setShiftPlans] = useState<OptionList>([]);
+  const [shiftRotationPlans, setShiftRotationPlans] = useState<OptionList>([]);
   const [reportingManagers, setReportingManagers] = useState<EmployeeRef[]>([]);
   const [assetMasters, setAssetMasters] = useState<OptionList>([]);
 
@@ -671,11 +671,11 @@ export default function EmployeeProfilePage() {
       fetchAllMaster('levels'),
       fetchAllMaster('units'),
       fetchAllMaster('shift-masters'),
-      fetchAllMaster('shift-plans'),
+      fetchAllMaster('shift-rotation-plans'),
       fetchEmployeeRefs(Number(employeeId)),
       fetchAllMaster('asset-masters'),
     ]).then(
-      ([co, dept, subDept, desig, empType, cat, grade, level, unit, shiftM, shiftP, mgrs, assetM]) => {
+      ([co, dept, subDept, desig, empType, cat, grade, level, unit, shiftM, shiftR, mgrs, assetM]) => {
         setCompanies(co);
         setDepartments(dept);
         setSubDepartments(subDept);
@@ -686,7 +686,7 @@ export default function EmployeeProfilePage() {
         setLevels(level);
         setUnits(unit);
         setShiftMasters(shiftM);
-        setShiftPlans(shiftP);
+        setShiftRotationPlans(shiftR);
         setReportingManagers(mgrs);
         setAssetMasters(assetM);
       }
@@ -697,10 +697,10 @@ export default function EmployeeProfilePage() {
     () =>
       buildBasicFields({
         companies, units, departments, subDepartments, designations,
-        employeeTypes, categories, grades, levels, shiftMasters, shiftPlans,
+        employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
         reportingManagers,
       }),
-    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftPlans, reportingManagers]
+    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans, reportingManagers]
   );
 
   const personalFields: FieldDef[] = useMemo(() => buildPersonalFields(), []);

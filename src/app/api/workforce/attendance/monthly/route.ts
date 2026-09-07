@@ -66,13 +66,34 @@ export async function GET(request: NextRequest) {
     orderBy: { employeeCode: 'asc' },
   });
 
-  const data = employees.map((e) => ({
-    employeeId: e.id,
-    employeeCode: e.employeeCode,
-    name: `${e.firstName} ${e.lastName}`.trim(),
-    days: e.dailyAttendances,
-    summary: e.monthlyAttendance[0] ?? null,
-  }));
+  // Resolve reopenedByUserId -> a display name so the UI can show "Reopened
+  // by <name>" without a second round-trip; the summary already carries
+  // reopenedByUserId/reopenReason/reopenedAt, just never a human-readable name.
+  const reopenerIds = Array.from(
+    new Set(employees.map((e) => e.monthlyAttendance[0]?.reopenedByUserId).filter((id): id is number => !!id))
+  );
+  const reopeners = reopenerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: reopenerIds } },
+        select: { id: true, email: true, employee: { select: { firstName: true, lastName: true } } },
+      })
+    : [];
+  const reopenerNames = new Map(
+    reopeners.map((u) => [u.id, u.employee ? `${u.employee.firstName} ${u.employee.lastName}`.trim() : u.email])
+  );
+
+  const data = employees.map((e) => {
+    const summary = e.monthlyAttendance[0] ?? null;
+    return {
+      employeeId: e.id,
+      employeeCode: e.employeeCode,
+      name: `${e.firstName} ${e.lastName}`.trim(),
+      days: e.dailyAttendances,
+      summary: summary
+        ? { ...summary, reopenedByName: summary.reopenedByUserId ? reopenerNames.get(summary.reopenedByUserId) ?? null : null }
+        : null,
+    };
+  });
 
   return NextResponse.json({ data, year, month });
 }

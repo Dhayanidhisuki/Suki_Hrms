@@ -20,9 +20,14 @@ export const employeeTypeSchema = simpleMasterSchema;
 export const categorySchema = simpleMasterSchema;
 export const gradeSchema = simpleMasterSchema;
 export const levelSchema = simpleMasterSchema;
-export const leaveMasterSchema = simpleMasterSchema;
 export const loanTypeSchema = simpleMasterSchema;
 export const assetMasterSchema = simpleMasterSchema;
+
+// LeaveMaster adds defaultAnnualDays (how many days of this leave type an
+// employee gets per year) on top of the simple-master shape.
+export const leaveMasterSchema = simpleMasterSchema.extend({
+  defaultAnnualDays: z.coerce.number().min(0).max(365).default(0),
+});
 
 // ─── Pattern B: SubDepartment (code + name + description + departmentId FK) ──
 
@@ -67,16 +72,18 @@ export const otPlanSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-// ─── Pattern D: ShiftPlan (code + name + FK + optional overrides) ────────────
 
-export const shiftPlanSchema = z.object({
+// ─── Pattern F: ShiftRotationPlan (code + name + anchor date + ordered shift cycle) ─
+
+export const shiftRotationPlanSchema = z.object({
   code: z.string().min(1).max(20),
   name: z.string().min(1).max(100),
-  shiftMasterId: z.number().int().positive(),
-  startTime: z.string().max(8).optional().nullable(),
-  endTime: z.string().max(8).optional().nullable(),
+  anchorDate: z.coerce.date(),
   description: z.string().max(500).optional().nullable(),
   isActive: z.boolean().default(true),
+  // Ordered list of ShiftMaster ids — index 0 applies the week of
+  // anchorDate, index 1 the week after, etc., wrapping back to 0.
+  shiftMasterIds: z.array(z.number().int().positive()).min(2).max(12),
 });
 
 // ─── Pattern E: Slab/rate tables (versioned, overlap validation) ─────────────

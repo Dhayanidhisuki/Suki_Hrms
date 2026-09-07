@@ -32,7 +32,12 @@ interface EmployeeMonth {
   employeeCode: string;
   name: string;
   days: DayRecord[];
-  summary: { status: 'OPEN' | 'FINALIZED' | 'FROZEN' } | null;
+  summary: {
+    status: 'OPEN' | 'FINALIZED' | 'FROZEN';
+    reopenedAt: string | null;
+    reopenedByName: string | null;
+    reopenReason: string | null;
+  } | null;
 }
 
 interface GridResponse {
@@ -74,9 +79,23 @@ function cellLabel(day: DayRecord | undefined): string {
   return `${h}:${String(m).padStart(2, '0')}`;
 }
 
+// inTime/outTime are stored via setUTCHours as a neutral wall-clock value
+// ("09:10" means 9:10am at the workplace) by every write path — must read
+// back with getUTCHours/getUTCMinutes, never toLocaleTimeString, which
+// would re-project through the viewer's browser timezone.
+function formatWallClockTime(iso: string | null): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  const hour = d.getUTCHours();
+  const minute = d.getUTCMinutes();
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
 function cellTooltip(day: DayRecord | undefined, dateLabel: string): string {
   if (!day) return dateLabel;
-  const fmt = (t: string | null) => (t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--');
+  const fmt = formatWallClockTime;
   return [
     dateLabel,
     `Status: ${day.status}`,
@@ -128,6 +147,10 @@ export default function MonthlyAttendancePage() {
   // first row's status as representative, defaulting to OPEN before any
   // finalize has run.
   const monthStatus = data[0]?.summary?.status ?? 'OPEN';
+  // Reopen is a whole-month action (same as Finalize/Freeze), so every
+  // employee's summary carries the same reopen info — take the first
+  // non-null one as representative, same convention as monthStatus above.
+  const reopenInfo = data.find((e) => e.summary?.reopenedAt)?.summary ?? null;
 
   const runAction = async (url: string, body: Record<string, unknown>, successMsg: string) => {
     setBusy(true);
@@ -214,6 +237,13 @@ export default function MonthlyAttendancePage() {
           )}
         </div>
       </div>
+
+      {reopenInfo?.reopenedAt && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
+          Reopened by <strong>{reopenInfo.reopenedByName ?? 'Unknown'}</strong> on {new Date(reopenInfo.reopenedAt).toLocaleString()}
+          {reopenInfo.reopenReason ? <> — {reopenInfo.reopenReason}</> : null}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>

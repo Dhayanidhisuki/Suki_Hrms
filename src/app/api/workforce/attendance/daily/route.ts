@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
 
 export async function GET(request: NextRequest) {
@@ -74,11 +75,20 @@ export async function POST(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
   const { employeeId, date, ...rest } = parsed.data;
 
-  const record = await prisma.dailyAttendance.upsert({
+  // Snapshots the superseded values into DailyAttendanceHistory when this
+  // corrects an existing day, so a correction never loses what was there
+  // before (and neither does a later biometric import overwriting this).
+  const { outcome } = await upsertDailyAttendanceWithHistory(
+    prisma,
+    employeeId,
+    date,
+    rest,
+    { userId: userId || null, changedBySource: 'manual' }
+  );
+
+  const record = await prisma.dailyAttendance.findUnique({
     where: { employeeId_date: { employeeId, date } },
-    update: { ...rest, updatedByUserId: userId },
-    create: { employeeId, date, ...rest, createdByUserId: userId },
   });
 
-  return NextResponse.json(record, { status: 201 });
+  return NextResponse.json({ ...record, outcome }, { status: 201 });
 }

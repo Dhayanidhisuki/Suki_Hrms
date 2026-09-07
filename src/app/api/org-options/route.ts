@@ -20,7 +20,6 @@ const ALLOWED_TABLES = [
   'Grade',
   'Level',
   'ShiftMaster',
-  'ShiftPlan',
 ] as const;
 
 type TableName = typeof ALLOWED_TABLES[number];
@@ -88,9 +87,6 @@ export async function GET(request: NextRequest) {
       break;
     case 'ShiftMaster':
       data = await prisma.shiftMaster.findMany({ where, select, orderBy: { name: 'asc' } });
-      break;
-    case 'ShiftPlan':
-      data = await prisma.shiftPlan.findMany({ where, select, orderBy: { name: 'asc' } });
       break;
   }
 

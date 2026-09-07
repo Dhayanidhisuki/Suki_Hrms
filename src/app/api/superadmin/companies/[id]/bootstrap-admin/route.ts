@@ -83,6 +83,8 @@ const EMPLOYEE_PERMISSIONS: PermDef[] = [
 const WORKFORCE_PERMISSIONS: PermDef[] = [
   { code: 'workforce.attendance.view', module: 'workforce', submodule: 'attendance', page: null, action: 'view', description: 'View daily/monthly attendance' },
   { code: 'workforce.attendance.edit', module: 'workforce', submodule: 'attendance', page: null, action: 'edit', description: 'Mark/correct attendance, finalize/freeze/reopen a month' },
+  { code: 'workforce.biometric.view', module: 'workforce', submodule: 'biometric', page: null, action: 'view', description: 'View imported biometric attendance data' },
+  { code: 'workforce.biometric.edit', module: 'workforce', submodule: 'biometric', page: null, action: 'edit', description: 'Import biometric attendance data (API push or bulk paste), reopen a frozen period' },
   { code: 'workforce.leave.view', module: 'workforce', submodule: 'leave', page: null, action: 'view', description: 'View leave applications and balances' },
   { code: 'workforce.leave.edit', module: 'workforce', submodule: 'leave', page: null, action: 'edit', description: 'Apply for leave on behalf of an employee' },
   { code: 'workforce.leave.approve', module: 'workforce', submodule: 'leave', page: null, action: 'approve', description: 'Approve/reject/cancel leave applications' },
@@ -132,6 +134,7 @@ const HR_VIEWER_CODES = [
   'employee.activity.view',
   'employee.separation.view',
   'workforce.attendance.view',
+  'workforce.biometric.view',
   'workforce.leave.view',
 ];
 

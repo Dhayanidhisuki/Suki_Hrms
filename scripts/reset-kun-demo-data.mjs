@@ -65,6 +65,7 @@ try {
       await tx.bonusRecord.deleteMany({ where: { employeeId: { in: employeeIds } } });
       await tx.leaveApplication.deleteMany({ where: { employeeId: { in: employeeIds } } });
       await tx.leaveBalance.deleteMany({ where: { employeeId: { in: employeeIds } } });
+      await tx.dailyAttendanceHistory.deleteMany({ where: { employeeId: { in: employeeIds } } });
       await tx.dailyAttendance.deleteMany({ where: { employeeId: { in: employeeIds } } });
       await tx.monthlyAttendanceSummary.deleteMany({ where: { employeeId: { in: employeeIds } } });
       await tx.employeeActivity.deleteMany({ where: { employeeId: { in: employeeIds } } });

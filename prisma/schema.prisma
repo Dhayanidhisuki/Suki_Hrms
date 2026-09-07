@@ -159,18 +159,19 @@ model Company {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  units                  Unit[]
-  employees              Employee[]
-  roles                  Role[]
-  users                  User[]
-  payrollRuns            PayrollRun[]
-  salaryRevisionRequests SalaryRevisionRequest[]
-  salaryArrears          SalaryArrear[]
-  bonusRecords           BonusRecord[]
-  salaryComponents       SalaryComponent[]
-  bonusRates             BonusRate[]
-  gratuityPolicies       GratuityPolicy[]
-  gratuityRecords        GratuityRecord[]
+  units                      Unit[]
+  employees                  Employee[]
+  roles                      Role[]
+  users                      User[]
+  payrollRuns                PayrollRun[]
+  salaryRevisionRequests     SalaryRevisionRequest[]
+  salaryArrears              SalaryArrear[]
+  bonusRecords               BonusRecord[]
+  salaryComponents           SalaryComponent[]
+  bonusRates                 BonusRate[]
+  gratuityPolicies           GratuityPolicy[]
+  gratuityRecords            GratuityRecord[]
+  biometricAttendanceImports BiometricAttendanceImport[]
 
   @@map("Company")
 }
@@ -321,36 +322,11 @@ model ShiftMaster {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  shiftPlans       ShiftPlan[]
-  jobInfos         JobInfo[]
-  dailyAttendances DailyAttendance[]
+  jobInfos           JobInfo[]
+  dailyAttendances   DailyAttendance[]
+  shiftRotationSlots ShiftRotationSlot[]
 
   @@map("ShiftMaster")
-}
-
-// Q8: APPROVED shape — named plan + FK to ShiftMaster + optional overrides.
-//     TODO BEFORE PHASE 2 (Attendance): spec out exactly which fields an
-//     override can touch (startTime, endTime, graceMinutes, breakDuration?).
-//     Attendance must not guess at override semantics it wasn't designed against.
-model ShiftPlan {
-  id            Int       @id @default(autoincrement())
-  shiftMasterId Int
-  code          String    @unique @db.NVarChar(20)
-  name          String    @db.NVarChar(100)
-  startTime     String?   @db.NVarChar(8) // override ShiftMaster if set
-  endTime       String?   @db.NVarChar(8) // override ShiftMaster if set
-  description   String?   @db.NVarChar(500)
-  isActive      Boolean   @default(true)
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  shiftMaster      ShiftMaster       @relation(fields: [shiftMasterId], references: [id])
-  jobInfos         JobInfo[]         @relation("ShiftPlanJobInfos")
-  dailyAttendances DailyAttendance[]
-
-  @@index([shiftMasterId])
-  @@map("ShiftPlan")
 }
 
 // Q9: Drafted as OT rate definition. Confirm shape.
@@ -401,6 +377,11 @@ model LeaveMaster {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // How many days of this leave type an employee gets per year by default —
+  // used to seed LeaveBalance.openingBalance/accrued when a new year's
+  // balance is created for an employee. Decimal to allow half-day
+  // entitlements (e.g. 12.5), same precision as LeaveBalance's own fields.
+  defaultAnnualDays Decimal   @default(0) @db.Decimal(5, 2)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -539,7 +520,7 @@ model User {
 //
 //    JobInfo FKs into the already-merged Org structure tables:
 //      Department, SubDepartment, Designation, EmployeeType, Category,
-//      Grade, Level, Unit, ShiftMaster, ShiftPlan
+//      Grade, Level, Unit, ShiftMaster, ShiftRotationPlan
 //
 //    Asset allocation is a read-only reference via EmployeeAssetAllocation
 //    join table → AssetMaster. No asset data duplicated on Employee.
@@ -616,27 +597,29 @@ model Employee {
   exitInterview   ExitInterview?
 
   // 1:N relations (versioned tables are 1:N, not 1:1)
-  jobInfos               JobInfo[]
-  salaryStructures       SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
-  salaryRevisions        EmployeeSalaryRevision[]
-  ctcRecords             EmployeeCtc[]
-  dependents             EmployeeDependent[]
-  experiences            EmployeeExperience[]
-  educations             EmployeeEducation[]
-  documents              EmployeeDocument[]
-  assetAllocations       EmployeeAssetAllocation[]
-  emergencyContacts      EmployeeEmergencyContact[]
-  skills                 EmployeeSkill[]
-  activities             EmployeeActivity[]
-  dailyAttendances       DailyAttendance[]
-  monthlyAttendance      MonthlyAttendanceSummary[]
-  leaveApplications      LeaveApplication[]
-  leaveBalances          LeaveBalance[]
-  payrollLines           PayrollLine[]
-  salaryRevisionRequests SalaryRevisionRequest[]
-  salaryArrears          SalaryArrear[]
-  bonusRecords           BonusRecord[]
-  gratuityRecords        GratuityRecord[]
+  jobInfos                   JobInfo[]
+  salaryStructures           SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
+  salaryRevisions            EmployeeSalaryRevision[]
+  ctcRecords                 EmployeeCtc[]
+  dependents                 EmployeeDependent[]
+  experiences                EmployeeExperience[]
+  educations                 EmployeeEducation[]
+  documents                  EmployeeDocument[]
+  assetAllocations           EmployeeAssetAllocation[]
+  emergencyContacts          EmployeeEmergencyContact[]
+  skills                     EmployeeSkill[]
+  activities                 EmployeeActivity[]
+  dailyAttendances           DailyAttendance[]
+  monthlyAttendance          MonthlyAttendanceSummary[]
+  leaveApplications          LeaveApplication[]
+  leaveBalances              LeaveBalance[]
+  payrollLines               PayrollLine[]
+  salaryRevisionRequests     SalaryRevisionRequest[]
+  salaryArrears              SalaryArrear[]
+  bonusRecords               BonusRecord[]
+  gratuityRecords            GratuityRecord[]
+  biometricAttendanceImports BiometricAttendanceImport[]
+  dailyAttendanceHistory     DailyAttendanceHistory[]
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
@@ -751,7 +734,13 @@ model JobInfo {
   levelId                          Int?
   unitId                           Int?
   shiftMasterId                    Int?
-  shiftPlanId                      Int?
+  // GENERAL | ROTATIONAL — governs which of the two below applies. GENERAL
+  // uses shiftMasterId above (a fixed shift, unchanged week to week).
+  // ROTATIONAL uses shiftRotationPlanId instead — the actual shift for a
+  // given date is computed from that plan (see resolveShiftAndOtRule in
+  // src/lib/biometricConversion.ts), not stored per-day.
+  shiftAssignmentType              String?   @default("GENERAL") @db.NVarChar(20)
+  shiftRotationPlanId              Int?
   // Job details
   jobTitle                         String?   @db.NVarChar(100)
   subCategory                      String?   @db.NVarChar(50)
@@ -810,14 +799,53 @@ model JobInfo {
   grade         Grade?         @relation(fields: [gradeId], references: [id])
   level         Level?         @relation(fields: [levelId], references: [id])
   unit          Unit?          @relation(fields: [unitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  shiftMaster   ShiftMaster?   @relation(fields: [shiftMasterId], references: [id])
-  shiftPlan     ShiftPlan?     @relation("ShiftPlanJobInfos", fields: [shiftPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shiftMaster       ShiftMaster?       @relation(fields: [shiftMasterId], references: [id])
+  shiftRotationPlan ShiftRotationPlan? @relation(fields: [shiftRotationPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
   @@index([departmentId])
   @@index([designationId])
   @@index([effectiveFrom, effectiveTo])
+  @@index([shiftRotationPlanId])
   @@map("JobInfo")
+}
+
+// A weekly shift-rotation policy: an ordered cycle of shifts (e.g. Shift 1 ->
+// Shift 2 -> Shift 3 -> back to Shift 1), anchored to a real calendar date so
+// "which shift applies on date X" is deterministic — see resolveShiftAndOtRule
+// in src/lib/biometricConversion.ts. anchorDate is the start of week 0 (the
+// first slot in the cycle); the applicable slot for any date is
+// floor(weeksSinceAnchor) mod slot count.
+model ShiftRotationPlan {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  anchorDate  DateTime  @db.Date
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  slots    ShiftRotationSlot[]
+  jobInfos JobInfo[]
+
+  @@map("ShiftRotationPlan")
+}
+
+// One position in a ShiftRotationPlan's weekly cycle — sequenceOrder 0, 1, 2...
+model ShiftRotationSlot {
+  id                  Int @id @default(autoincrement())
+  shiftRotationPlanId Int
+  sequenceOrder       Int // 0-based position in the weekly cycle
+  shiftMasterId       Int
+
+  shiftRotationPlan ShiftRotationPlan @relation(fields: [shiftRotationPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shiftMaster       ShiftMaster       @relation(fields: [shiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([shiftRotationPlanId, sequenceOrder])
+  @@index([shiftMasterId])
+  @@map("ShiftRotationSlot")
 }
 
 // E4: SalaryStructure is versioned — effectiveFrom/effectiveTo.
@@ -1255,7 +1283,6 @@ model DailyAttendance {
   // Snapshot of the shift that applied this day — not a live FK the shift
   // master can retroactively change out from under a finalized day.
   shiftMasterId Int?
-  shiftPlanId   Int?
 
   // Present | Absent | HalfDay | WeeklyOff | Holiday | Leave | Permission |
   // OnDuty | MissingPunch | LOP — free string, same convention as
@@ -1286,7 +1313,6 @@ model DailyAttendance {
 
   employee    Employee     @relation(fields: [employeeId], references: [id])
   shiftMaster ShiftMaster? @relation(fields: [shiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  shiftPlan   ShiftPlan?   @relation(fields: [shiftPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([employeeId, date])
   @@index([employeeId])
@@ -1296,6 +1322,48 @@ model DailyAttendance {
 
 // The "Time Office Final" rollup + freeze gate for one employee/month —
 // computed from DailyAttendance + LeaveApplication, not entered directly.
+// Change history for DailyAttendance. One row per overwrite, holding the
+// values as they were BEFORE that change — so a biometric re-import (or a
+// manual correction) never destroys what was there. The live
+// DailyAttendance row is always the current value; walking its history
+// rows newest-first replays how it got there.
+//
+// Written only when a value actually changes (an identical re-import
+// writes nothing), by both write paths: the manual Daily Attendance route
+// and the biometric conversion — see recordDailyAttendanceChange in
+// src/lib/attendanceHistory.ts. Deliberately has no FK to
+// DailyAttendance: history outlives the row it describes, and is keyed by
+// the same natural [employeeId, date] pair.
+model DailyAttendanceHistory {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  date       DateTime @db.Date
+
+  // Snapshot of the superseded values.
+  status              String    @db.NVarChar(20)
+  inTime              DateTime?
+  outTime             DateTime?
+  workingMinutes      Int       @default(0)
+  lateMinutes         Int       @default(0)
+  earlyOutMinutes     Int       @default(0)
+  otMinutesCalculated Int       @default(0)
+  otMinutesApproved   Int?
+  otApprovalStatus    String?   @db.NVarChar(20)
+  source              String    @db.NVarChar(20)
+  remarks             String?   @db.NVarChar(500)
+
+  // What replaced them.
+  changedByUserId Int?
+  changedBySource String   @db.NVarChar(20) // manual | biometric
+  changedAt       DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId, date])
+  @@index([changedAt])
+  @@map("DailyAttendanceHistory")
+}
+
 model MonthlyAttendanceSummary {
   id         Int @id @default(autoincrement())
   employeeId Int
@@ -1329,6 +1397,158 @@ model MonthlyAttendanceSummary {
   @@unique([employeeId, year, month])
   @@index([employeeId])
   @@map("MonthlyAttendanceSummary")
+}
+
+// Biometric/legacy attendance landing table — Phase 1. One row per
+// (company, EMP_ID, year, wage period), merging the three legacy tables the
+// client actually exports from (HRMS_EMP_MON_ATT_DETAILS for day1..day31
+// hours, HRMS_EMP_DAILY_ATT_DETAILS_INTIME / _OUTTIME for day1InTime../
+// day1OutTime.. — real per-day punch times, raw HH.MM encoding from the
+// source, parsed to a real time only in src/lib/biometricConversion.ts, not
+// here). FROM_WHERE distinguishes MANUAL vs BIOMETRIC rows sharing this one
+// table, per the client's explicit requirement. periodStartDate is the one
+// field with no source equivalent — ATT_FOR_MONTH ("Feb-Mar") is a
+// cutoff-date wage period, not a calendar month, so day1 needs a real anchor
+// date supplied at import time. See src/lib/biometricConversion.ts for how
+// this flows into DailyAttendance/MonthlyAttendanceSummary.
+model BiometricAttendanceImport {
+  id          Int    @id @default(autoincrement())
+  companyId   Int
+  empIdRaw    String @db.NVarChar(20) // source EMP_ID, kept as string — not assumed numeric
+  year        Int
+  attForMonth String @db.NVarChar(30) // e.g. "Feb-Mar"
+
+  periodStartDate DateTime @db.Date // anchors day1 — no source equivalent, required at import
+
+  refNo           Int?
+  total           Decimal   @default(0) @db.Decimal(10, 2)
+  totalLom        Decimal   @default(0) @db.Decimal(10, 2)
+  totalOtHrs      Decimal   @default(0) @db.Decimal(10, 2)
+  fromWhere       String    @default("MANUAL") @db.NVarChar(20) // MANUAL | BIOMETRIC
+  attEndMonth     DateTime?
+  creatUserIdCd   String?   @db.NVarChar(50)
+  creatDt         DateTime?
+  lstUpdtUserIdCd String?   @db.NVarChar(50)
+  lstUpdtTs       DateTime?
+
+  // Hours worked that day, from HRMS_EMP_MON_ATT_DETAILS.DAY1..DAY31
+  day1  Decimal? @db.Decimal(6, 2)
+  day2  Decimal? @db.Decimal(6, 2)
+  day3  Decimal? @db.Decimal(6, 2)
+  day4  Decimal? @db.Decimal(6, 2)
+  day5  Decimal? @db.Decimal(6, 2)
+  day6  Decimal? @db.Decimal(6, 2)
+  day7  Decimal? @db.Decimal(6, 2)
+  day8  Decimal? @db.Decimal(6, 2)
+  day9  Decimal? @db.Decimal(6, 2)
+  day10 Decimal? @db.Decimal(6, 2)
+  day11 Decimal? @db.Decimal(6, 2)
+  day12 Decimal? @db.Decimal(6, 2)
+  day13 Decimal? @db.Decimal(6, 2)
+  day14 Decimal? @db.Decimal(6, 2)
+  day15 Decimal? @db.Decimal(6, 2)
+  day16 Decimal? @db.Decimal(6, 2)
+  day17 Decimal? @db.Decimal(6, 2)
+  day18 Decimal? @db.Decimal(6, 2)
+  day19 Decimal? @db.Decimal(6, 2)
+  day20 Decimal? @db.Decimal(6, 2)
+  day21 Decimal? @db.Decimal(6, 2)
+  day22 Decimal? @db.Decimal(6, 2)
+  day23 Decimal? @db.Decimal(6, 2)
+  day24 Decimal? @db.Decimal(6, 2)
+  day25 Decimal? @db.Decimal(6, 2)
+  day26 Decimal? @db.Decimal(6, 2)
+  day27 Decimal? @db.Decimal(6, 2)
+  day28 Decimal? @db.Decimal(6, 2)
+  day29 Decimal? @db.Decimal(6, 2)
+  day30 Decimal? @db.Decimal(6, 2)
+  day31 Decimal? @db.Decimal(6, 2)
+
+  // Raw HH.MM check-in value that day, from HRMS_EMP_DAILY_ATT_DETAILS_INTIME
+  day1InTime  Decimal? @db.Decimal(6, 2)
+  day2InTime  Decimal? @db.Decimal(6, 2)
+  day3InTime  Decimal? @db.Decimal(6, 2)
+  day4InTime  Decimal? @db.Decimal(6, 2)
+  day5InTime  Decimal? @db.Decimal(6, 2)
+  day6InTime  Decimal? @db.Decimal(6, 2)
+  day7InTime  Decimal? @db.Decimal(6, 2)
+  day8InTime  Decimal? @db.Decimal(6, 2)
+  day9InTime  Decimal? @db.Decimal(6, 2)
+  day10InTime Decimal? @db.Decimal(6, 2)
+  day11InTime Decimal? @db.Decimal(6, 2)
+  day12InTime Decimal? @db.Decimal(6, 2)
+  day13InTime Decimal? @db.Decimal(6, 2)
+  day14InTime Decimal? @db.Decimal(6, 2)
+  day15InTime Decimal? @db.Decimal(6, 2)
+  day16InTime Decimal? @db.Decimal(6, 2)
+  day17InTime Decimal? @db.Decimal(6, 2)
+  day18InTime Decimal? @db.Decimal(6, 2)
+  day19InTime Decimal? @db.Decimal(6, 2)
+  day20InTime Decimal? @db.Decimal(6, 2)
+  day21InTime Decimal? @db.Decimal(6, 2)
+  day22InTime Decimal? @db.Decimal(6, 2)
+  day23InTime Decimal? @db.Decimal(6, 2)
+  day24InTime Decimal? @db.Decimal(6, 2)
+  day25InTime Decimal? @db.Decimal(6, 2)
+  day26InTime Decimal? @db.Decimal(6, 2)
+  day27InTime Decimal? @db.Decimal(6, 2)
+  day28InTime Decimal? @db.Decimal(6, 2)
+  day29InTime Decimal? @db.Decimal(6, 2)
+  day30InTime Decimal? @db.Decimal(6, 2)
+  day31InTime Decimal? @db.Decimal(6, 2)
+
+  // Raw HH.MM check-out value that day, from HRMS_EMP_DAILY_ATT_DETAILS_OUTTIME
+  day1OutTime  Decimal? @db.Decimal(6, 2)
+  day2OutTime  Decimal? @db.Decimal(6, 2)
+  day3OutTime  Decimal? @db.Decimal(6, 2)
+  day4OutTime  Decimal? @db.Decimal(6, 2)
+  day5OutTime  Decimal? @db.Decimal(6, 2)
+  day6OutTime  Decimal? @db.Decimal(6, 2)
+  day7OutTime  Decimal? @db.Decimal(6, 2)
+  day8OutTime  Decimal? @db.Decimal(6, 2)
+  day9OutTime  Decimal? @db.Decimal(6, 2)
+  day10OutTime Decimal? @db.Decimal(6, 2)
+  day11OutTime Decimal? @db.Decimal(6, 2)
+  day12OutTime Decimal? @db.Decimal(6, 2)
+  day13OutTime Decimal? @db.Decimal(6, 2)
+  day14OutTime Decimal? @db.Decimal(6, 2)
+  day15OutTime Decimal? @db.Decimal(6, 2)
+  day16OutTime Decimal? @db.Decimal(6, 2)
+  day17OutTime Decimal? @db.Decimal(6, 2)
+  day18OutTime Decimal? @db.Decimal(6, 2)
+  day19OutTime Decimal? @db.Decimal(6, 2)
+  day20OutTime Decimal? @db.Decimal(6, 2)
+  day21OutTime Decimal? @db.Decimal(6, 2)
+  day22OutTime Decimal? @db.Decimal(6, 2)
+  day23OutTime Decimal? @db.Decimal(6, 2)
+  day24OutTime Decimal? @db.Decimal(6, 2)
+  day25OutTime Decimal? @db.Decimal(6, 2)
+  day26OutTime Decimal? @db.Decimal(6, 2)
+  day27OutTime Decimal? @db.Decimal(6, 2)
+  day28OutTime Decimal? @db.Decimal(6, 2)
+  day29OutTime Decimal? @db.Decimal(6, 2)
+  day30OutTime Decimal? @db.Decimal(6, 2)
+  day31OutTime Decimal? @db.Decimal(6, 2)
+
+  // Resolved via Employee.oldEmployeeCode at ingestion; null = unmatched,
+  // surfaced in the Biometric module, never silently dropped.
+  matchedEmployeeId Int?
+  // Set once this row's days have been pushed into DailyAttendance.
+  processedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchedEmployee Employee? @relation(fields: [matchedEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // Re-importing the same period (from any of the 3 sources, at any time)
+  // upserts the same row, merging in whichever of hours/in-time/out-time
+  // that import provided.
+  @@unique([companyId, empIdRaw, year, attForMonth])
+  @@index([companyId])
+  @@index([matchedEmployeeId])
+  @@map("BiometricAttendanceImport")
 }
 
 model LeaveApplication {

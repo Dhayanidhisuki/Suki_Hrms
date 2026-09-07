@@ -9,6 +9,7 @@
  * - /api/org-options     — org master dropdown data (JWT here, permission in handler)
  * - /api/admin/*         — user/role/permission admin API routes (JWT here, permission in handler)
  * - /api/workforce/*     — attendance/leave API routes (JWT here, permission + company-scope in handler)
+ * - /api/biometric/*     — biometric attendance import API routes (JWT here, permission + company-scope in handler)
  * - /api/payroll/*       — payroll run API routes (JWT here, permission + company-scope in handler)
  * - /api/reports/*       — reporting API routes (JWT here, permission + company-scope in handler)
  * - /api/bonus/*         — bonus management API routes (JWT here, permission + company-scope in handler)
@@ -39,6 +40,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/admin/') ||
     pathname.startsWith('/api/superadmin/') ||
     pathname.startsWith('/api/workforce/') ||
+    pathname.startsWith('/api/biometric/') ||
     pathname.startsWith('/api/payroll/') ||
     pathname.startsWith('/api/reports/') ||
     pathname.startsWith('/api/bonus/') ||
@@ -128,6 +130,7 @@ export const config = {
     '/superadmin/:path*',
     '/api/workforce/:path*',
     '/workforce/:path*',
+    '/api/biometric/:path*',
     '/api/payroll/:path*',
     '/payroll/:path*',
     '/api/reports/:path*',

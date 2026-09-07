@@ -63,7 +63,8 @@ export async function GET(
     probationEndDate: currentJob?.probationEndDate ?? null,
     confirmationDate: currentJob?.confirmationDate ?? null,
     shiftMasterId: currentJob?.shiftMasterId ?? null,
-    shiftPlanId: currentJob?.shiftPlanId ?? null,
+    shiftAssignmentType: currentJob?.shiftAssignmentType ?? 'GENERAL',
+    shiftRotationPlanId: currentJob?.shiftRotationPlanId ?? null,
   });
 }
 
@@ -165,7 +166,8 @@ export async function PUT(
         // confirmationDate is intentionally NOT set here — only the
         // Confirmation approval workflow may set it.
         shiftMasterId: data.shiftMasterId,
-        shiftPlanId: data.shiftPlanId,
+        shiftAssignmentType: data.shiftAssignmentType,
+        shiftRotationPlanId: data.shiftAssignmentType === 'ROTATIONAL' ? data.shiftRotationPlanId : null,
       };
 
       const currentJob = existingEmployee.jobInfos[0];

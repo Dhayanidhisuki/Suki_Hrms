@@ -105,7 +105,7 @@ export const navigation: NavModule[] = [
         label: "Workforce",
         items: [
           { label: "Shift Master", href: "/masters/shift-masters", ready: true },
-          { label: "Shift Plans", href: "/masters/shift-plans", ready: true },
+          { label: "Shift Rotation Plans", href: "/masters/shift-rotation-plans", ready: true },
           { label: "OT Plans", href: "/masters/ot-plans", ready: true },
           { label: "Leave Master", href: "/masters/leave-masters", ready: true },
         ],
@@ -223,7 +223,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Daily Attendance", href: "/workforce/attendance/daily", ready: true },
           { label: "Monthly Attendance", href: "/workforce/attendance/monthly", ready: true },
-          { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric" },
+          { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric", ready: true },
           { label: "Time Office Final", href: "/workforce/attendance/time-office-final" },
         ],
       },

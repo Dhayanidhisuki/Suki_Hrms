@@ -1,7 +1,12 @@
+/**
+ * GET  /api/masters/shift-rotation-plans — list, each with its ordered shift cycle
+ * POST /api/masters/shift-rotation-plans — create a plan + its slots in one transaction
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
-import { shiftPlanSchema } from '@/lib/validations/master';
+import { shiftRotationPlanSchema } from '@/lib/validations/master';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -17,14 +22,14 @@ export async function GET(request: NextRequest) {
   };
 
   const [data, total] = await Promise.all([
-    prisma.shiftPlan.findMany({
+    prisma.shiftRotationPlan.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: { shiftMaster: { select: { id: true, name: true, code: true } } },
+      include: { slots: { orderBy: { sequenceOrder: 'asc' }, include: { shiftMaster: { select: { id: true, code: true, name: true, startTime: true, endTime: true } } } } },
     }),
-    prisma.shiftPlan.count({ where }),
+    prisma.shiftRotationPlan.count({ where }),
   ]);
 
   return NextResponse.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
@@ -34,15 +39,23 @@ export async function POST(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
   const body = await request.json();
-  const parsed = shiftPlanSchema.safeParse(body);
+  const parsed = shiftRotationPlanSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.shiftPlan.findUnique({ where: { code: parsed.data.code } });
+  const existing = await prisma.shiftRotationPlan.findUnique({ where: { code: parsed.data.code } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.shiftPlan.create({
-    data: parsed.data,
-    include: { shiftMaster: { select: { id: true, name: true, code: true } } },
+  const { shiftMasterIds, ...planData } = parsed.data;
+  const record = await prisma.$transaction(async (tx) => {
+    const plan = await tx.shiftRotationPlan.create({ data: planData });
+    await tx.shiftRotationSlot.createMany({
+      data: shiftMasterIds.map((shiftMasterId, sequenceOrder) => ({ shiftRotationPlanId: plan.id, sequenceOrder, shiftMasterId })),
+    });
+    return tx.shiftRotationPlan.findUniqueOrThrow({
+      where: { id: plan.id },
+      include: { slots: { orderBy: { sequenceOrder: 'asc' }, include: { shiftMaster: { select: { id: true, code: true, name: true, startTime: true, endTime: true } } } } },
+    });
   });
+
   return NextResponse.json(record, { status: 201 });
 }

@@ -94,7 +94,10 @@ export const basicDetailsSchema = z.object({
   // (see calculateProbationEndDate) — also never accepted directly.
   probationPeriodMonths: z.number().int().min(0).max(60).optional().nullable(),
   shiftMasterId: z.number().int().positive().optional().nullable(),
-  shiftPlanId: z.number().int().positive().optional().nullable(),
+  // GENERAL = fixed shiftMasterId every day; ROTATIONAL = the shift cycles
+  // weekly per shiftRotationPlanId (see resolveEmployeeShiftConfig).
+  shiftAssignmentType: z.enum(['GENERAL', 'ROTATIONAL']).default('GENERAL'),
+  shiftRotationPlanId: z.number().int().positive().optional().nullable(),
 });
 
 // ─── Job Profile (payroll config, official access, statutory, OT, resources) ─

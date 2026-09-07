@@ -67,7 +67,7 @@ export interface BasicFieldOptions {
   grades: OptionList;
   levels: OptionList;
   shiftMasters: OptionList;
-  shiftPlans: OptionList;
+  shiftRotationPlans: OptionList;
   reportingManagers: EmployeeRef[];
 }
 
@@ -151,8 +151,25 @@ export function buildBasicFields(opts: BasicFieldOptions): FieldDef[] {
       disabled: true,
       helpText: 'Set automatically when confirmation is approved — see Employees > Lifecycle > Confirmation',
     },
-    { name: 'shiftMasterId', label: 'Shift', type: 'select', options: toOptions(opts.shiftMasters) },
-    { name: 'shiftPlanId', label: 'Shift Plan', type: 'select', options: toOptions(opts.shiftPlans) },
+    {
+      name: 'shiftAssignmentType',
+      label: 'Shift Assignment',
+      type: 'select',
+      defaultValue: 'GENERAL',
+      options: [
+        { label: 'General Shift (fixed)', value: 'GENERAL' },
+        { label: 'Rotational Shift (cycles weekly)', value: 'ROTATIONAL' },
+      ],
+      helpText: 'General uses the Shift below every day. Rotational cycles through a Shift Rotation Plan’s weekly sequence instead.',
+    },
+    { name: 'shiftMasterId', label: 'Shift', type: 'select', options: toOptions(opts.shiftMasters), helpText: 'Used when Shift Assignment is General.' },
+    {
+      name: 'shiftRotationPlanId',
+      label: 'Shift Rotation Plan',
+      type: 'select',
+      options: toOptions(opts.shiftRotationPlans),
+      helpText: 'Used when Shift Assignment is Rotational.',
+    },
   ];
 }
 

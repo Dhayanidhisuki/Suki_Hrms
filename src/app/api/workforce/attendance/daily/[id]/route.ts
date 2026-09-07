@@ -57,7 +57,6 @@ export async function PUT(
     where: { id: attendanceId },
     data: {
       shiftMasterId: parsed.data.shiftMasterId,
-      shiftPlanId: parsed.data.shiftPlanId,
       status: parsed.data.status,
       inTime: parsed.data.inTime,
       outTime: parsed.data.outTime,
