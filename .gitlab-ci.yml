@@ -1,0 +1,412 @@
+# suki-hrms -- build pipeline (egress-sandboxed)
+#
+# This is the estate-standard pipeline shape used by all deployed applications
+# on 58-vm / 202-vm / 210-vm, specialised for this project. Written 2026-09-07
+# when suki_hrms was containerised onto 202-vm.
+#
+# HOW THIS WORKS, IN ONE PARAGRAPH
+# --------------------------------
+#   * Jobs run on the `ci-sandbox` Docker-executor runner on 202-vm: a
+#     throwaway container, no docker socket, no host mounts, no privileges.
+#   * All egress goes through a domain-allowlisting proxy. github.com and
+#     pastebin.com are not reachable from a build. This app needs Debian
+#     (apt), npm, binaries.prisma.sh (`prisma generate` fetches query engines)
+#     and fonts.googleapis.com/fonts.gstatic.com (next/font downloads webfonts
+#     at BUILD time). All of those are already allowlisted.
+#   * The build does not build into the host Docker engine. It is handed to
+#     this project's own buildkit daemon and the result is pushed to the
+#     registry.
+#   * NOTHING HERE DEPLOYS. A host agent (stack-deploy-agent@suki-hrms.timer)
+#     watches the registry and deploys when :latest moves. CI cannot touch the
+#     running stack at all -- see ops-runbooks ci-cd/deploy-visibility.md.
+#
+# WHY IT IS SHAPED THIS WAY: a CI job used to run as a member of the `docker`
+# group directly on the deployment VM -- root-equivalent, with unrestricted
+# internet. Anyone who could land a commit could exfiltrate the source tree or
+# take the VM and every application sharing it. That was the top finding of the
+# 2026-09-03 audit (P0 #4). See ops-runbooks ci-cd/ci-build-sandbox.md.
+#
+# WHERE THE FAMILIAR JOBS WENT
+#   deploy   -> stack-deploy-agent@suki-hrms on 202-vm (systemd timer).
+#   verify   -> `deploy:verify` below WATCHES that agent; the agent itself
+#               health-checks and auto-rolls-back on failure.
+#   cleanup  -> the agent prunes old images after each deploy.
+#   db-task  -> each database/seed operation is its own manual job in the `ops`
+#               stage. They do not RUN anything here; see the OPS section.
+#   rollback -> manual `rollback` job, same mechanism.
+#
+# To run a database task WITHOUT shipping code, start a pipeline with
+# OPS_ONLY=1: you get the manual ops jobs and nothing else.
+
+.deploy_rules: &deploy_rules
+  - if: $CI_PIPELINE_SOURCE == "web"
+  - if: $CI_PIPELINE_SOURCE == "api"
+  - if: $CI_PIPELINE_SOURCE == "trigger"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+
+stages:
+  - build
+  - scan
+  - deploy
+  - ops
+
+variables:
+  OPS_ONLY:
+    value: "0"
+    options: ["0", "1"]
+    description: >-
+      1 = ops-only pipeline (database/seed/rollback jobs only; nothing is
+      built, published or deployed). 0 = normal build pipeline.
+  REGISTRY: registry.sukierp.com
+  # Registry paths are lowercase; the GitLab namespace (RoshiniV) is not.
+  IMAGE_BASE: registry.sukierp.com/roshiniv/suki_hrms
+  # Each project gets its OWN buildkit daemon. A shared one made pushes attempt
+  # cross-repository blob mounts from a sibling project and get refused with
+  # insufficient_scope, and shared build cache between projects is shared
+  # source. 172.32.0.7 is this project's daemon on 202-vm.
+  BUILDKIT_HOST: tcp://172.32.0.7:1234
+  GIT_DEPTH: "20"
+  GIT_SUBMODULE_STRATEGY: "none"
+
+default:
+  # THE SINGLE MOST IMPORTANT LINE IN THIS FILE. Only jobs tagged `ci-sandbox`
+  # land on the sandboxed runner. An untagged job would fall back to a shell
+  # executor -- failing OPEN, not closed.
+  tags:
+    - ci-sandbox
+  retry: 0
+
+# ---------------------------------------------------------------------------
+# BUILD -- one image, pushed to the registry, tagged with the commit SHA.
+# :latest is published ONLY from the default branch on a deliberately-triggered
+# pipeline, because :latest is what the deploy agent watches. Two guards: a
+# merge request cannot publish it, and neither can a "Run pipeline" against a
+# feature branch.
+# ---------------------------------------------------------------------------
+build:
+  stage: build
+  rules:
+    - if: $OPS_ONLY == "1"
+      when: never
+    - *deploy_rules
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  image:
+    name: moby/buildkit:v0.16.0
+    entrypoint: [""]
+  script:
+    - set -eu
+    # Fail loudly if the sandbox is not actually fencing egress, rather than
+    # quietly building in an unprotected environment.
+    - |
+      if env -u https_proxy -u HTTPS_PROXY -u http_proxy -u HTTP_PROXY \
+           wget -q -T 8 -O /dev/null https://registry.npmjs.org/ 2>/dev/null; then
+        echo "FAIL: direct egress works -- the sandbox is not in effect"; exit 1
+      fi
+      echo "ok: egress fenced"
+    - mkdir -p ~/.docker
+    - |
+      AUTH=$(printf '%s:%s' gitlab-ci-token "$CI_JOB_TOKEN" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$AUTH" > ~/.docker/config.json
+    - |
+      if [ "$CI_PIPELINE_SOURCE" != "merge_request_event" ] \
+         && [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        TAGS="$IMAGE_BASE/app:$CI_COMMIT_SHORT_SHA,$IMAGE_BASE/app:latest"
+        echo "publishing SHA and :latest -- the deploy agent will pick this up"
+      else
+        TAGS="$IMAGE_BASE/app:$CI_COMMIT_SHORT_SHA"
+        echo "not default branch (or an MR): publishing SHA tag only, NOT :latest"
+      fi
+      echo "TAGS=$TAGS" > build.env
+    - . ./build.env
+    # HTTP_PROXY/HTTPS_PROXY/NO_PROXY are predefined build args: BuildKit
+    # exposes them to every RUN without an explicit ARG, which is how apt-get,
+    # npm ci, `prisma generate` and next/font reach the allowlisted mirrors.
+    - |
+      buildctl --addr "$BUILDKIT_HOST" build \
+        --frontend dockerfile.v0 --local context=. --local dockerfile=. \
+        --opt build-arg:HTTP_PROXY="$HTTP_PROXY" \
+        --opt build-arg:HTTPS_PROXY="$HTTPS_PROXY" \
+        --opt build-arg:NO_PROXY="$NO_PROXY" \
+        --output "type=image,\"name=$TAGS\",push=true" \
+        --metadata-file /tmp/md-app.json
+    - |
+      # Record what was actually pushed, so the deploy stage can prove that the
+      # image now serving traffic is the one THIS pipeline produced -- rather
+      # than assuming a push means a deployment.
+      DIGESTS=""
+      for m in /tmp/md-*.json; do
+        # buildctl writes this pretty-printed, so key and value are separated
+        # by ": " and may sit on separate lines. Flatten first rather than
+        # trying to match the whitespace.
+        d=$(tr -d ' \n' < "$m" | sed -n 's/.*"containerimage.digest":"\([^"]*\)".*/\1/p')
+        [ -n "$d" ] || { echo "FAIL: no digest recorded in $m"; exit 1; }
+        DIGESTS="$DIGESTS $d"
+      done
+      DIGESTS=$(echo $DIGESTS)
+      echo "PUSHED_DIGESTS=$DIGESTS" >> build.env
+      echo "pushed digests: $DIGESTS"
+  artifacts:
+    reports:
+      dotenv: build.env
+
+# ---------------------------------------------------------------------------
+# SCANS -- run AS the scanner image inside the sandbox: no docker socket, no
+# host access.
+#
+# Each carries an explicit merge_request_event rule. Without one GitLab does
+# not CREATE the job on an MR pipeline at all, so the pipeline would report
+# success having silently skipped every scan.
+#
+# All three are allow_failure: true -- they report, they do not block a
+# release. Both trivy jobs also publish a JSON report as an artifact, so a
+# finding can be read rather than guessed at (a count-only gitleaks job left
+# suki_planner red for five weeks over a false positive).
+# ---------------------------------------------------------------------------
+.scan_rules: &scan_rules
+  - if: $OPS_ONLY == "1"
+    when: never
+  - if: $CI_PIPELINE_SOURCE == "web"
+  - if: $CI_PIPELINE_SOURCE == "api"
+  - if: $CI_PIPELINE_SOURCE == "trigger"
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+trivy:image:
+  stage: scan
+  allow_failure: true
+  rules: *scan_rules
+  needs: [build]
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  variables:
+    TRIVY_USERNAME: gitlab-ci-token
+    TRIVY_PASSWORD: $CI_JOB_TOKEN
+  script:
+    - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed --timeout 15m
+      --format json --output trivy-image.json
+      "$IMAGE_BASE/app:$CI_COMMIT_SHORT_SHA"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [trivy-image.json]
+
+trivy:fs:
+  stage: scan
+  allow_failure: true
+  rules: *scan_rules
+  needs: []
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+      --scanners vuln,secret,misconfig
+      --format json --output trivy-fs.json "$CI_PROJECT_DIR"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [trivy-fs.json]
+
+gitleaks:
+  stage: scan
+  allow_failure: true
+  rules: *scan_rules
+  needs: []
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  script:
+    # --redact keeps secret VALUES out of the report; rule, file and line are
+    # what you act on. Without the report artifact this job tells you only that
+    # something was found, which is not actionable.
+    - gitleaks detect --source "$CI_PROJECT_DIR" --no-git --redact
+      --report-format json --report-path gitleaks.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [gitleaks.json]
+
+# ---------------------------------------------------------------------------
+# DEPLOY -- visibility, not action.
+#
+# Nothing in this file deploys. A host agent does that on its own timer, and
+# that stays true: CI must not be able to touch a running stack. But it means a
+# pipeline could go green having only PUSHED an image, so nobody could tell
+# from GitLab whether the deployment happened -- and a host-side failure (a
+# registry login quietly failing, which has actually happened on all three VMs)
+# would be invisible here.
+#
+# So this job watches. It asks the broker which image digests are really
+# serving traffic and waits until those are the digests this pipeline pushed
+# AND the app answers healthy.
+#
+# A red deploy:verify means: the code you merged is NOT what is serving
+# traffic. It is a real failure, not allow_failure.
+#
+# It sends only its CI_JOB_TOKEN, exactly like the ops jobs. The comparison is
+# done HERE, so the broker still accepts no input from CI, and `deploy-status`
+# is a read-only builtin on the host -- it cannot change anything.
+# ---------------------------------------------------------------------------
+"deploy:verify":
+  stage: deploy
+  needs: [build]
+  rules:
+    - if: $OPS_ONLY == "1"
+      when: never
+    # Only a default-branch build publishes :latest, and only :latest is ever
+    # deployed. Anywhere else there is deliberately nothing to wait for.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "api"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "trigger"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"
+  timeout: 30m
+  image:
+    name: curlimages/curl:latest
+    entrypoint: [""]
+  variables:
+    DEPLOY_WAIT_SECONDS: "900"
+    HEALTH_EXPECT: "200"
+  script:
+    - |
+      set -eu
+      [ -n "${PUSHED_DIGESTS:-}" ] || { echo "FAIL: the build reported no digest"; exit 1; }
+      echo "waiting for the host to roll out this build"
+      echo "  expecting: $PUSHED_DIGESTS"
+      deadline=$(( $(date +%s) + DEPLOY_WAIT_SECONDS ))
+      n=0
+      while :; do
+        n=$((n+1))
+        code=$(curl -s -o /tmp/st -w '%{http_code}' --max-time 60 \
+                 -X POST -H "JOB-TOKEN: $CI_JOB_TOKEN" \
+                 http://172.32.0.1:8099/run || echo 000)
+        if [ "$code" != "200" ]; then
+          echo "broker returned HTTP $code"; cat /tmp/st 2>/dev/null || true; exit 1
+        fi
+        missing=""
+        for d in $PUSHED_DIGESTS; do
+          grep -q "$d" /tmp/st || missing="$missing $d"
+        done
+        hc=$(sed -n 's/^health_code=//p' /tmp/st)
+        if [ -z "$missing" ] && [ "$hc" = "$HEALTH_EXPECT" ]; then
+          echo "--- DEPLOYED: every image from this build is running, and the app is healthy."
+          cat /tmp/st
+          exit 0
+        fi
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+          echo "--- TIMED OUT after ${DEPLOY_WAIT_SECONDS}s."
+          echo "    not yet running:${missing:- (none)}"
+          echo "    health_code=$hc (wanted $HEALTH_EXPECT)"
+          echo ""
+          echo "The build pushed fine -- the HOST has not taken it. On 202-vm:"
+          echo "    sudo journalctl -u stack-deploy-agent@suki-hrms -n 50"
+          echo "A 'registry login failed' there means the deploy token needs attention."
+          echo ""
+          cat /tmp/st
+          exit 1
+        fi
+        echo "attempt $n: not yet (missing:${missing:- none}, health=$hc) -- waiting 15s"
+        sleep 15
+      done
+
+# ---------------------------------------------------------------------------
+# OPS -- database, seed and rollback jobs, in the pipeline where developers
+# expect them, but without CI holding any host access.
+#
+# HOW THIS IS SAFE. These jobs send exactly one thing: their own CI_JOB_TOKEN.
+# A broker on 202-vm asks GitLab who that token belongs to, and maps the JOB'S
+# NAME to a fixed command from a table that lives ON THE HOST
+# (/etc/stack-ops/suki-hrms.tasks), not in this repo. Nothing written in this
+# file is ever executed on the VM.
+#
+# So editing this file cannot grant new powers. Renaming a job to something the
+# broker does not know simply gets a 403; changing a job's `script` is
+# irrelevant, because the script is not what runs. The broker also refuses any
+# token from a job that is not currently running, from another project, or on a
+# ref outside ALLOWED_REFS. Every request is logged with the GitLab username
+# that clicked it:  journalctl -u stack-ops-broker
+#
+# Direct host equivalents remain: `sudo stack-ops suki-hrms <cmd>` on 202-vm.
+# ---------------------------------------------------------------------------
+.ops_rules: &ops_rules
+  # Only ever on a deliberate ops-only pipeline. Leaving these as manual
+  # buttons on every build pipeline puts a destructive job one careless click
+  # away. Set OPS_ONLY=1 on Run pipeline to get them.
+  - if: $OPS_ONLY != "1"
+    when: never
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+    when: never
+  - if: $CI_PIPELINE_SOURCE == "web"
+    when: manual
+  - if: $CI_PIPELINE_SOURCE == "api"
+    when: manual
+  - if: $CI_PIPELINE_SOURCE == "trigger"
+    when: manual
+
+.ops_request: &ops_request
+  stage: ops
+  needs: []
+  allow_failure: false
+  rules: *ops_rules
+  image:
+    name: curlimages/curl:latest
+    entrypoint: [""]
+  script:
+    - |
+      echo "requesting action '$CI_JOB_NAME' from the ops broker"
+      code=$(curl -s -o /tmp/out -w '%{http_code}' --max-time 1900 \
+               -X POST -H "JOB-TOKEN: $CI_JOB_TOKEN" \
+               http://172.32.0.1:8099/run)
+      cat /tmp/out
+      echo "--- broker returned HTTP $code"
+      [ "$code" = "200" ] || exit 1
+
+# --- everyday, read-only
+#     NOTE: prisma:status exits 1 when migrations are PENDING. A red job here
+#     may simply be reporting outstanding work, not malfunctioning.
+"status": { <<: *ops_request }
+"prisma:status": { <<: *ops_request }
+"prisma:generate": { <<: *ops_request }
+
+# --- schema. The workflow is: edit prisma/schema.prisma, run
+#     `npx prisma migrate dev --name <change>` LOCALLY, commit the generated
+#     folder under prisma/migrations/, then run this against production.
+"prisma:migrate-deploy": { <<: *ops_request }
+
+# --- seeds and grants. All idempotent upserts (see each script's header).
+"seed:company-and-org": { <<: *ops_request }
+"seed:salary-components": { <<: *ops_request }
+"seed:arrear-components": { <<: *ops_request }
+"seed:bonus-component": { <<: *ops_request }
+"seed:employee-permissions": { <<: *ops_request }
+"seed:gratuity-permissions": { <<: *ops_request }
+"grant:mispunch-permissions": { <<: *ops_request }
+
+# --- recovery
+#     Rollback retags :previous to :latest and redeploys. It reverts CODE, not
+#     the DATABASE -- and it refuses to start if the live schema has moved
+#     ahead of the image being rolled back to (pre-flight runs
+#     `prisma migrate status` in the :previous image against the live DB).
+"rollback": { <<: *ops_request }
+
+# --- DESTRUCTIVE. Each is its own explicitly-named job so none is reachable by
+#     picking the wrong entry in a dropdown. Clicking one IS the confirmation
+#     -- there is no TTY to prompt on -- so treat them accordingly.
+#
+#     admin:reset       recreates admin@suki.hrms with a WEAK DEFAULT PASSWORD
+#                       (admin123, hardcoded in scripts/reset-admin.mjs).
+#                       Change the password immediately after using it.
+#     shift:assign-default-general
+#                       overwrites the shift assignment of every employee whose
+#                       current JobInfo has no usable shift.
+#
+#     Deliberately NOT exposed here at all, because they hard-delete employee
+#     rows and were written as one-off scripts against a specific dataset:
+#       scripts/reset-kun-demo-data.mjs
+#       scripts/delete-duplicate-employees.mjs
+#       scripts/delete-mismatched-biometric-employees.mjs
+#       scripts/cleanup-gratuity-test-data.mjs
+#       scripts/apply-migration.mjs
+#     Run those by hand on the VM, with a database backup taken first.
+"admin:reset": { <<: *ops_request }
+"shift:assign-default-general": { <<: *ops_request }
