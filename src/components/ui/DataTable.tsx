@@ -32,6 +32,20 @@ interface DataTableProps<T> {
   renderRowActions?: (row: T) => ReactNode;
   rowKey?: (row: T) => string | number;
   emptyMessage?: string;
+  /** 'simple' (default, unchanged) = Prev / Page X of Y / Next. 'numbered' = « ‹ 1 2 3 … › » page-number bar. Opt-in per page. */
+  paginationVariant?: 'simple' | 'numbered';
+}
+
+/** Page numbers to render for the 'numbered' pagination variant, with `null` standing in for an ellipsis gap. Always shows first, last, current, and one neighbor on each side. */
+function buildPageList(current: number, total: number): (number | null)[] {
+  const pages = new Set([1, total, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result: (number | null)[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push(null);
+    result.push(sorted[i]);
+  }
+  return result;
 }
 
 export default function DataTable<T extends { id: number }>({
@@ -47,6 +61,7 @@ export default function DataTable<T extends { id: number }>({
   onDelete,
   renderRowActions,
   emptyMessage = 'No records found.',
+  paginationVariant = 'simple',
 }: DataTableProps<T>) {
   return (
     <div className="space-y-3">
@@ -156,7 +171,7 @@ export default function DataTable<T extends { id: number }>({
       </div>
 
       {/* Pagination */}
-      {pagination && pagination.totalPages > 1 && (
+      {pagination && pagination.totalPages > 1 && paginationVariant === 'simple' && (
         <div className="flex items-center justify-between">
           <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
             {pagination.total} record{pagination.total !== 1 ? 's' : ''}
@@ -181,6 +196,67 @@ export default function DataTable<T extends { id: number }>({
             >
               Next
             </button>
+          </div>
+        </div>
+      )}
+
+      {pagination && pagination.totalPages > 1 && paginationVariant === 'numbered' && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            {pagination.total} record{pagination.total !== 1 ? 's' : ''}
+          </span>
+          <div className="flex items-center gap-1">
+            {[
+              { label: '«', page: 1, aria: 'First page' },
+              { label: '‹', page: pagination.page - 1, aria: 'Previous page' },
+            ].map((b) => (
+              <button
+                key={b.aria}
+                onClick={() => onPageChange?.(b.page)}
+                disabled={pagination.page <= 1}
+                aria-label={b.aria}
+                className="rounded border px-2 py-1 text-xs disabled:opacity-40"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                {b.label}
+              </button>
+            ))}
+            {buildPageList(pagination.page, pagination.totalPages).map((p, i) =>
+              p === null ? (
+                <span key={`gap-${i}`} className="px-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange?.(p)}
+                  aria-current={p === pagination.page ? 'page' : undefined}
+                  className="rounded px-2.5 py-1 text-xs font-medium"
+                  style={
+                    p === pagination.page
+                      ? { backgroundColor: 'var(--accent)', color: 'white' }
+                      : { border: '1px solid var(--border)', color: 'var(--foreground)' }
+                  }
+                >
+                  {p}
+                </button>
+              )
+            )}
+            {[
+              { label: '›', page: pagination.page + 1, aria: 'Next page' },
+              { label: '»', page: pagination.totalPages, aria: 'Last page' },
+            ].map((b) => (
+              <button
+                key={b.aria}
+                onClick={() => onPageChange?.(b.page)}
+                disabled={pagination.page >= pagination.totalPages}
+                aria-label={b.aria}
+                className="rounded border px-2 py-1 text-xs disabled:opacity-40"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                {b.label}
+              </button>
+            ))}
           </div>
         </div>
       )}

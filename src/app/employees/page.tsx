@@ -45,6 +45,24 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function ViewIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
   active: { bg: 'var(--success-soft)', fg: 'var(--success)' },
   'on-leave': { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
@@ -212,7 +230,29 @@ export default function EmployeeListPage() {
           setPage(1);
         }}
         onPageChange={setPage}
-        onEdit={(row) => router.push(`/employees/${row.id}`)}
+        paginationVariant="numbered"
+        renderRowActions={(row) => (
+          <span className="inline-flex items-center gap-1">
+            <button
+              onClick={() => router.push(`/employees/${row.id}`)}
+              title="Edit"
+              aria-label="Edit"
+              className="rounded p-1.5 transition hover:opacity-70"
+              style={{ color: 'var(--foreground-muted)' }}
+            >
+              <EditIcon />
+            </button>
+            <button
+              onClick={() => router.push(`/employees/${row.id}`)}
+              title="View"
+              aria-label="View"
+              className="rounded p-1.5 transition hover:opacity-70"
+              style={{ color: 'var(--foreground-muted)' }}
+            >
+              <ViewIcon />
+            </button>
+          </span>
+        )}
         emptyMessage='No employees found. Click "Add Employee" to create one.'
       />
     </div>
