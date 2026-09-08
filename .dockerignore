@@ -1,0 +1,61 @@
+# Build context hygiene. node_modules and .next are excluded so the image is
+# built from source rather than inheriting a developer's local state -- this
+# also avoids copying in native binaries built for a different platform.
+node_modules
+.next
+out
+build
+coverage
+
+# Secrets: .env is injected at runtime via compose env_file (and bind-mounted
+# for the maintenance scripts, which read it themselves). Never baked in.
+.env
+.env.*
+!.env.example
+
+# Employee uploads are host state, not build input. Copying them in would bake
+# PII into every image layer in the registry.
+uploads
+
+.git
+.gitignore
+.github
+.gitlab-ci.yml
+
+Dockerfile
+.dockerignore
+docker-compose*.yml
+compose*.yaml
+
+# Tests and tooling the runtime image has no use for.
+# eslint.config.mjs is deliberately NOT excluded: `next build` looks for it and
+# a missing config turns into a build-time error rather than a skipped lint.
+tests
+vitest.config.mts
+**/*.test.ts
+**/*.test.tsx
+
+# ERP extracts -- may contain employee PII pulled out of the legacy database.
+scripts/erp-extract/out
+
+# Editor / OS noise
+.claude
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# Docs and binary artefacts that bloat the context
+docs
+AGENTS.md
+CLAUDE.md
+DECISIONS_PENDING_REVIEW.md
+*.docx
+*.xlsx
+*.pdf
