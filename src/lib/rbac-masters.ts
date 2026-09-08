@@ -29,6 +29,7 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/esi-rates': 'statutory',
   '/api/masters/pf-rates': 'statutory',
   '/api/masters/salary-components': 'statutory',
+  '/api/masters/benefit-rates': 'statutory',
   '/api/masters/bonus-rates': 'statutory',
   '/api/masters/gratuity-policies': 'statutory',
   '/api/masters/shift-masters': 'shift',

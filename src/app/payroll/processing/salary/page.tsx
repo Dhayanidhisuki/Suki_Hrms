@@ -200,6 +200,25 @@ export default function PayrollSalaryPage() {
               Calculate
             </button>
           )}
+          {run && (run.status === 'DRAFT' || run.status === 'CALCULATED') && (
+            <button
+              disabled={busy}
+              onClick={() => runAction(`/api/payroll/runs/${run.id}/apply-benefit-rates`, 'POST')}
+              className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            >
+              Apply Canteen/Petrol
+            </button>
+          )}
+          {run && (run.status === 'DRAFT' || run.status === 'CALCULATED') && (
+            <Link
+              href={`/payroll/processing/salary/bulk-adhoc?runId=${run.id}`}
+              className="rounded-lg border px-3 py-2 text-sm font-medium"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            >
+              Bulk Upload Benefits
+            </Link>
+          )}
           {run && run.status === 'CALCULATED' && (
             <button
               disabled={busy}

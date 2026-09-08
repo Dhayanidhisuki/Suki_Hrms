@@ -68,6 +68,19 @@ const RAW: [string, string, DefaultSalaryComponent['type']][] = [
   ['ARREAR_PF', 'PF Arrear', 'deduction'],
   ['ARREAR_ESI', 'ESI Arrear', 'deduction'],
   ['BONUS', 'Bonus', 'earning'],
+
+  // Employee Benefits & Allowances (client BRD): CANTEEN_DED is deliberately
+  // separate from the existing CANTEEN earning row — the BRD's "Canteen
+  // Deduction" is money taken FROM salary for canteen use, not an
+  // allowance paid out. PETROL_ALLOW/DOUBLE_MACHINE/EXTRA_WORK/
+  // REFERRAL_BONUS have no existing row to reuse. Applied via
+  // BenefitRateByEmployeeType + the payroll ad-hoc-line mechanism, not a
+  // recurring EmployeeSalaryComponent.
+  ['CANTEEN_DED', 'Canteen Deduction', 'deduction'],
+  ['PETROL_ALLOW', 'Petrol Allowance', 'earning'],
+  ['DOUBLE_MACHINE', 'Double Machine Allowance', 'earning'],
+  ['EXTRA_WORK', 'Extra Work Allowance', 'earning'],
+  ['REFERRAL_BONUS', 'Referral Bonus', 'earning'],
 ];
 
 export const DEFAULT_SALARY_COMPONENTS: DefaultSalaryComponent[] = RAW.map(([code, name, type]) => ({

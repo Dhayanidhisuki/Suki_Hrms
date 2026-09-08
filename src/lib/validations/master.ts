@@ -72,6 +72,16 @@ export const holidayMasterSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Per-Employee-Type monthly rate for a benefit salary component (Canteen
+// Deduction / Petrol Allowance) — see BenefitRateByEmployeeType in schema.prisma.
+export const benefitRateSchema = z.object({
+  companyId: z.number().int().positive(),
+  salaryComponentId: z.number().int().positive(),
+  employeeTypeId: z.number().int().positive(),
+  amount: z.coerce.number().min(0),
+  isActive: z.boolean().default(true),
+});
+
 // ─── Pattern C: ShiftMaster (code + name + times + grace) ────────────────────
 
 export const shiftMasterSchema = z.object({

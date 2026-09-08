@@ -27,3 +27,12 @@ export async function isReportingManagerOf(managerEmployeeId: number, employeeId
   });
   return employee?.reportingManagerId === managerEmployeeId;
 }
+
+/** Every active employee currently reporting to `managerEmployeeId` — e.g. for a PMS Incentive entry form's employee picker. */
+export async function listDirectReports(managerEmployeeId: number) {
+  return prisma.employee.findMany({
+    where: { reportingManagerId: managerEmployeeId, deletedAt: null, isActive: true },
+    select: { id: true, employeeCode: true, firstName: true, lastName: true },
+    orderBy: { firstName: 'asc' },
+  });
+}

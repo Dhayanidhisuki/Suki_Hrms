@@ -109,6 +109,8 @@ const PAYROLL_PERMISSIONS: PermDef[] = [
   { code: 'payroll.gratuity.view', module: 'payroll', submodule: 'gratuity', page: null, action: 'view', description: 'View gratuity records' },
   { code: 'payroll.gratuity.edit', module: 'payroll', submodule: 'gratuity', page: null, action: 'edit', description: 'Calculate/recalculate a gratuity record for a separated employee' },
   { code: 'payroll.gratuity.approve', module: 'payroll', submodule: 'gratuity', page: null, action: 'approve', description: 'Approve/reject/hold/mark-paid a gratuity record' },
+  { code: 'payroll.pms.view', module: 'payroll', submodule: 'pms', page: null, action: 'view', description: 'View PMS incentive submissions' },
+  { code: 'payroll.pms.approve', module: 'payroll', submodule: 'pms', page: null, action: 'approve', description: 'Approve/reject a PMS incentive submission before payroll' },
 ];
 
 const ADMIN_PERMISSIONS: PermDef[] = [
@@ -135,6 +137,7 @@ const HR_VIEWER_CODES = [
   'payroll.revision.view',
   'payroll.bonus.view',
   'payroll.gratuity.view',
+  'payroll.pms.view',
   'employee.kyc.view',
   'employee.document.view',
   'employee.activity.view',

@@ -119,6 +119,7 @@ export const navigation: NavModule[] = [
           { label: "Professional Tax Slabs", short: "PT Slabs", href: "/masters/professional-tax-slabs", ready: true },
           { label: "Income Tax Slabs", href: "/masters/income-tax-slabs" },
           { label: "Salary Components", href: "/masters/salary-components", ready: true },
+          { label: "Benefit Rates", href: "/masters/benefit-rates", ready: true },
           { label: "Bonus Rates", href: "/masters/bonus-rates", ready: true },
           { label: "Gratuity Policies", href: "/masters/gratuity-policies", ready: true },
         ],
@@ -254,10 +255,14 @@ export const navigation: NavModule[] = [
       {
         label: "Benefits",
         items: [
-          { label: "Canteen Token", href: "/workforce/benefits/canteen-token" },
-          { label: "Petrol Allowance", href: "/workforce/benefits/petrol-allowance" },
-          { label: "Performance Incentive", href: "/workforce/benefits/performance-incentive" },
-          { label: "Double Machine & Other Incentive", short: "Other Incentives", href: "/workforce/benefits/other-incentive" },
+          // Canteen Token/Petrol Allowance are configured once as Benefit
+          // Rates (Masters) then applied per payroll run via Salary
+          // Processing's "Apply Canteen/Petrol" action, not a standalone
+          // page — both nav entries point at the rate master.
+          { label: "Canteen Token", href: "/masters/benefit-rates", ready: true },
+          { label: "Petrol Allowance", href: "/masters/benefit-rates", ready: true },
+          { label: "Performance Incentive", href: "/payroll/processing/pms-incentive", ready: true },
+          { label: "Double Machine & Other Incentive", short: "Other Incentives", href: "/payroll/processing/salary", ready: true },
         ],
       },
     ],

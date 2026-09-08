@@ -98,6 +98,17 @@ export const permissionRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
 
+export const pmsIncentiveCreateSchema = z.object({
+  employeeId: z.number().int().positive(),
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  managerPercent: z.coerce.number().min(0).max(50),
+});
+
+export const pmsRejectSchema = z.object({
+  rejectionReason: z.string().min(1).max(500),
+});
+
 export const reopenMonthSchema = z.object({
   reason: z.string().min(1).max(500),
 });
