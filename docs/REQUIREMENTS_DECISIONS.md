@@ -108,19 +108,23 @@ Screens unlocked by this answer: Masters > Levels (with rank), Masters > Reporti
 **Status:** PARTIAL — substantially answered 25 Aug 2026 by the Time Office BRD. Decisions A1-A28 and F1-F6 recorded in `TIME_OFFICE_ANALYSIS_2026-08-25.md`. Outstanding: T1, T12, T13, T14, T16, T17 (grace ownership, half-day threshold, break rule, night-shift date, weekly off source, holiday master) plus the missing Page 300 reference screenshot.
 
 **Decisions:**
-- _(none yet)_
+- S1. **Shift master is admin-defined, not seeded.** (5 Sep 2026) Admin creates shift templates dynamically on the Shift Masters page; each employee is assigned a template. No fixed KUN shift list exists today — the legacy employee master has SHIFT / SHIFT DURATION / OT TYPE blank for all 439 rows. Whatever templates admin creates are the source of truth. Maps to existing `ShiftMaster` (template) + `ShiftPlan` (named plan with optional start/end override) + `JobInfo.shiftMasterId/shiftPlanId`.
+- S2. **Biometric auto-detects the shift.** (5 Sep 2026) The shift for a day is derived from the in-punch matched against the shift templates, not from the employee's assigned plan. The assigned plan is only the default / tie-break. Detected shift is snapshotted on `DailyAttendance.shiftMasterId/shiftPlanId` (columns already exist). Templates therefore need a detection window (earliest / latest in-punch that still counts as that shift) and a crosses-midnight flag — schema addition on `ShiftMaster`.
+- S3. **Biometric integration format is JSON.** (5 Sep 2026) Punch data arrives as JSON (device export / API), not CSV or DB pull. `DailyAttendance.source = "biometric"` for synced rows. Sample payload still to be supplied.
+- S4. **Work beyond the detected shift is overtime, not a second shift.** (5 Sep 2026) An employee never has two shifts in one day; hours past the shift end are OT (pairing = first in-punch to last out-punch, OT minutes computed against the detected template, then routed to OT approval). Consistent with feedback sheet: OT rate = fixed basic / 26 / 8 × 2.
 
 **Open:**
-- Biometric device make/model and integration method (push / pull / file)
+- Biometric device make/model and a one-day sample JSON payload (field names, punch direction, device id, timestamp format / timezone)
+- Detection-window widths per template and the ambiguity rule when a punch fits two windows (proposal: assigned plan wins, else nearest start, else flag for time office)
+- Minimum gap between punches to ignore door double-taps
 - Late-in and early-out treatment
 - Permission hours: monthly free allowance and conversion rule
 - Half-day / full-day absence thresholds
-- Night shift and shift-crossing-midnight handling
-- Weekly off and holiday calendar source
+- Weekly off and holiday calendar source (folder gives monthly holiday counts only, no dates)
 - Attendance cut-off date vs pay date
 - Lock rule: can attendance be edited after payroll processing?
 
-**Build impact:** no attendance models exist.
+**Build impact:** `ShiftMaster` needs detection-window and crosses-midnight fields; a biometric JSON ingest endpoint + shift-detection service writing `DailyAttendance` (source = biometric); OT minutes from detected shift feed the existing `otMinutesCalculated` / OT approval columns. Attendance models exist (migration already applied); no new tables required for S1–S4.
 
 ---
 
