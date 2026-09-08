@@ -1,0 +1,104 @@
+/**
+ * POST /api/workforce/attendance/ot/[id]/approve
+ *
+ * [id] is the DailyAttendance row's own id — OT isn't a separate request
+ * table, it's tracked directly on the day (see schema.prisma's
+ * DailyAttendance.otApprovalStatus comment). Same two-stage dispatch as
+ * Mispunch's approve route: which check applies depends on the row's
+ * current otApprovalStatus.
+ *
+ *   - pending_manager: caller must be this employee's own Reporting
+ *     Manager (hierarchy check). Advances to pending_hr.
+ *   - pending_hr: caller must hold workforce.ot.approve. Body may include
+ *     { settlementType: 'OT' | 'COMP_OFF', approvedMinutes?: number }.
+ *     COMP_OFF is only allowed when the day is a Sunday (BRD: "Always
+ *     Sunday is weekly off... work means consider as Comp-off & OT") —
+ *     any other day is always settled as OT regardless of what's sent.
+ *     COMP_OFF grants 1 Compensatory Off day instead of approving paid OT
+ *     minutes (otMinutesApproved stays null in that case — nothing to bill
+ *     as overtime pay).
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { prisma } from '@/lib/prisma';
+import { checkSpecificPermission } from '@/lib/rbac-employee';
+import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { grantCompOff } from '@/lib/leaveAccrual';
+
+const bodySchema = z.object({
+  settlementType: z.enum(['OT', 'COMP_OFF']).default('OT'),
+  approvedMinutes: z.number().int().min(0).optional(),
+});
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const userId = Number(request.headers.get('x-user-id'));
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const attendanceId = Number(id);
+  const record = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
+  if (!record) {
+    return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 });
+  }
+
+  if (record.otApprovalStatus === 'pending_manager') {
+    const ownEmployeeId = await resolveOwnEmployeeId(userId);
+    if (!ownEmployeeId || !(await isReportingManagerOf(ownEmployeeId, record.employeeId))) {
+      return NextResponse.json({ error: "Forbidden — only this employee's Reporting Manager can approve this stage" }, { status: 403 });
+    }
+    const updated = await prisma.dailyAttendance.update({
+      where: { id: attendanceId },
+      data: { otApprovalStatus: 'pending_hr', otManagerActionByUserId: userId, otManagerActionAt: new Date() },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (record.otApprovalStatus === 'pending_hr') {
+    const permErr = await checkSpecificPermission(request, 'workforce.ot.approve');
+    if (permErr) return permErr;
+
+    const freezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
+    if (freezeErr) return freezeErr;
+
+    const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const isSunday = record.date.getUTCDay() === 0;
+    const settlementType = isSunday ? parsed.data.settlementType : 'OT';
+
+    if (settlementType === 'COMP_OFF') {
+      await grantCompOff(record.employeeId, record.date);
+      const updated = await prisma.dailyAttendance.update({
+        where: { id: attendanceId },
+        data: {
+          otApprovalStatus: 'approved',
+          otSettlementType: 'COMP_OFF',
+          otMinutesApproved: null,
+          otHrActionByUserId: userId,
+          otHrActionAt: new Date(),
+        },
+      });
+      return NextResponse.json(updated);
+    }
+
+    const updated = await prisma.dailyAttendance.update({
+      where: { id: attendanceId },
+      data: {
+        otApprovalStatus: 'approved',
+        otSettlementType: 'OT',
+        otMinutesApproved: parsed.data.approvedMinutes ?? record.otMinutesCalculated,
+        otHrActionByUserId: userId,
+        otHrActionAt: new Date(),
+      },
+    });
+    return NextResponse.json(updated);
+  }
+
+  return NextResponse.json({ error: `OT is already ${record.otApprovalStatus ?? 'not pending'} — nothing to approve` }, { status: 409 });
+}

@@ -16,7 +16,7 @@ interface LeaveMaster {
   name: string;
   description: string | null;
   defaultAnnualDays: number;
-  accrualType: 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED';
+  accrualType: 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED' | 'MANUAL';
   daysWorkedPerAccrualUnit: number | null;
   carryForwardAllowed: boolean;
   carryForwardMaxDays: number | null;
@@ -77,7 +77,7 @@ export default function LeaveMastersPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [defaultAnnualDays, setDefaultAnnualDays] = useState(0);
-  const [accrualType, setAccrualType] = useState<'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED'>('FIXED_ANNUAL');
+  const [accrualType, setAccrualType] = useState<'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED' | 'MANUAL'>('FIXED_ANNUAL');
   const [daysWorkedPerAccrualUnit, setDaysWorkedPerAccrualUnit] = useState<number | ''>('');
   const [carryForwardAllowed, setCarryForwardAllowed] = useState(false);
   const [carryForwardMaxDays, setCarryForwardMaxDays] = useState<number | ''>('');
@@ -218,7 +218,9 @@ export default function LeaveMastersPage() {
       render: (row) =>
         row.accrualType === 'EARNED_PER_DAYS_WORKED'
           ? `1 day / ${row.daysWorkedPerAccrualUnit ?? '?'} worked`
-          : `${Number(row.defaultAnnualDays)} / year`,
+          : row.accrualType === 'MANUAL'
+            ? 'Manually credited'
+            : `${Number(row.defaultAnnualDays)} / year`,
     },
     {
       key: 'carryForward',
@@ -331,16 +333,17 @@ export default function LeaveMastersPage() {
               <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>How is this leave credited? *</label>
               <select
                 value={accrualType}
-                onChange={(e) => setAccrualType(e.target.value as 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED')}
+                onChange={(e) => setAccrualType(e.target.value as 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED' | 'MANUAL')}
                 className={inputClass}
                 style={inputStyle}
               >
                 <option value="FIXED_ANNUAL">Fixed amount every year</option>
                 <option value="EARNED_PER_DAYS_WORKED">Earned per days worked</option>
+                <option value="MANUAL">Manually credited only (e.g. Comp-Off)</option>
               </select>
             </div>
 
-            {accrualType === 'FIXED_ANNUAL' ? (
+            {accrualType === 'FIXED_ANNUAL' && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>How many days per year? *</label>
                 <Stepper value={defaultAnnualDays} onChange={setDefaultAnnualDays} />
@@ -348,7 +351,9 @@ export default function LeaveMastersPage() {
                   Credited in full each year the annual leave-credit run happens.
                 </span>
               </div>
-            ) : (
+            )}
+
+            {accrualType === 'EARNED_PER_DAYS_WORKED' && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Days worked per 1 day earned *</label>
                 <input
@@ -365,6 +370,13 @@ export default function LeaveMastersPage() {
                   the year and divides by this number.
                 </span>
               </div>
+            )}
+
+            {accrualType === 'MANUAL' && (
+              <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Not credited by the annual run — balance only changes when something explicitly grants it (e.g. OT worked on a
+                weekly-off/holiday approved as Comp-Off instead of paid overtime).
+              </p>
             )}
 
             <label className="flex items-center gap-2 cursor-pointer">

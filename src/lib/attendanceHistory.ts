@@ -86,6 +86,12 @@ export interface UpsertResult {
  * `changedBySource` records what caused the change ('manual' | 'biometric'),
  * which is not necessarily the same as the row's own `source` field.
  */
+/** Current JobInfo.overtimeAllowed for one employee — the per-employee OT eligibility flag (BRD: "OT applicable... as per employee basis"). */
+async function resolveOtEligibility(db: Db, employeeId: number): Promise<boolean> {
+  const jobInfo = await db.jobInfo.findFirst({ where: { employeeId, effectiveTo: null }, select: { overtimeAllowed: true } });
+  return jobInfo?.overtimeAllowed ?? false;
+}
+
 export async function upsertDailyAttendanceWithHistory(
   db: Db,
   employeeId: number,
@@ -93,6 +99,21 @@ export async function upsertDailyAttendanceWithHistory(
   values: DailyAttendanceValues,
   actor: { userId: number | null; changedBySource: string }
 ): Promise<UpsertResult> {
+  // Auto-queue OT for approval the moment a write gives a day real OT
+  // minutes — the OT Approval workflow (src/app/api/workforce/attendance/ot)
+  // reads otApprovalStatus='pending_manager' as its queue, so every writer
+  // that ever sets otMinutesCalculated (biometric sync, manual entry,
+  // mispunch approval) needs to land there without each one re-implementing
+  // this. The OT approval route itself passes otApprovalStatus explicitly
+  // (its own decision) — that's the only case this must NOT override, hence
+  // the `=== undefined` guard. Employees without JobInfo.overtimeAllowed
+  // never queue at all: their calculated OT is informational only.
+  let resolvedValues = values;
+  if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined) {
+    const otEligible = values.otMinutesCalculated > 0 && (await resolveOtEligibility(db, employeeId));
+    resolvedValues = { ...values, otApprovalStatus: otEligible ? 'pending_manager' : null, otMinutesApproved: null };
+  }
+
   const existing = await db.dailyAttendance.findUnique({
     where: { employeeId_date: { employeeId, date } },
   });
@@ -102,25 +123,25 @@ export async function upsertDailyAttendanceWithHistory(
       data: {
         employeeId,
         date,
-        status: values.status ?? 'Absent',
-        inTime: values.inTime ?? null,
-        outTime: values.outTime ?? null,
-        workingMinutes: values.workingMinutes ?? 0,
-        lateMinutes: values.lateMinutes ?? 0,
-        earlyOutMinutes: values.earlyOutMinutes ?? 0,
-        otMinutesCalculated: values.otMinutesCalculated ?? 0,
-        otMinutesApproved: values.otMinutesApproved ?? null,
-        otApprovalStatus: values.otApprovalStatus ?? null,
-        source: values.source ?? 'manual',
-        remarks: values.remarks ?? null,
-        shiftMasterId: values.shiftMasterId ?? null,
+        status: resolvedValues.status ?? 'Absent',
+        inTime: resolvedValues.inTime ?? null,
+        outTime: resolvedValues.outTime ?? null,
+        workingMinutes: resolvedValues.workingMinutes ?? 0,
+        lateMinutes: resolvedValues.lateMinutes ?? 0,
+        earlyOutMinutes: resolvedValues.earlyOutMinutes ?? 0,
+        otMinutesCalculated: resolvedValues.otMinutesCalculated ?? 0,
+        otMinutesApproved: resolvedValues.otMinutesApproved ?? null,
+        otApprovalStatus: resolvedValues.otApprovalStatus ?? null,
+        source: resolvedValues.source ?? 'manual',
+        remarks: resolvedValues.remarks ?? null,
+        shiftMasterId: resolvedValues.shiftMasterId ?? null,
         createdByUserId: actor.userId,
       },
     });
     return { outcome: 'created' };
   }
 
-  if (isUnchanged(existing, values)) return { outcome: 'unchanged' };
+  if (isUnchanged(existing, resolvedValues)) return { outcome: 'unchanged' };
 
   // Snapshot first, then overwrite — so the prior values survive even if the
   // update below is what someone later needs to undo.
@@ -146,7 +167,7 @@ export async function upsertDailyAttendanceWithHistory(
 
   await db.dailyAttendance.update({
     where: { employeeId_date: { employeeId, date } },
-    data: { ...values, updatedByUserId: actor.userId },
+    data: { ...resolvedValues, updatedByUserId: actor.userId },
   });
 
   return { outcome: 'updated' };

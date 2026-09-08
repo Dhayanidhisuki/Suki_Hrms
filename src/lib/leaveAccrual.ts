@@ -36,10 +36,43 @@ async function daysWorkedInYear(employeeId: number, year: number): Promise<numbe
   return summaries.reduce((sum, s) => sum + s.presentDays, 0);
 }
 
+/**
+ * Grants 1 Comp-Off day for one employee, dated to `earnedOn`'s year —
+ * called from the OT Approval HR stage when weekly-off/holiday OT is
+ * settled as Comp-Off instead of paid overtime (BRD: "Either based on
+ * approval"). Whole-day grant regardless of hours worked, matching the
+ * standard convention (BRD left the exact accrual rule "Dynamic" — this is
+ * the simplest reading until the client specifies otherwise). Adds onto
+ * whatever balance already exists for the year rather than overwriting it.
+ */
+export async function grantCompOff(employeeId: number, earnedOn: Date): Promise<void> {
+  const compOff = await prisma.leaveMaster.findUnique({ where: { code: 'COMPOFF' } });
+  if (!compOff) throw new Error('COMPOFF leave type is not configured — run scripts/seed-compoff-leave-type.mjs');
+
+  const year = earnedOn.getUTCFullYear();
+  const existing = await prisma.leaveBalance.findUnique({
+    where: { employeeId_leaveMasterId_year: { employeeId, leaveMasterId: compOff.id, year } },
+  });
+
+  const accrued = (existing ? Number(existing.accrued) : 0) + 1;
+  const availed = existing ? Number(existing.availed) : 0;
+  const adjusted = existing ? Number(existing.adjusted) : 0;
+  const openingBalance = existing ? Number(existing.openingBalance) : 0;
+  const closingBalance = openingBalance + accrued - availed + adjusted;
+
+  await prisma.leaveBalance.upsert({
+    where: { employeeId_leaveMasterId_year: { employeeId, leaveMasterId: compOff.id, year } },
+    update: { accrued, closingBalance },
+    create: { employeeId, leaveMasterId: compOff.id, year, openingBalance: 0, accrued, availed: 0, adjusted: 0, closingBalance },
+  });
+}
+
 export async function runAnnualLeaveCredit(companyId: number, year: number): Promise<AccrualRunResult> {
   const [employees, leaveMasters] = await Promise.all([
     prisma.employee.findMany({ where: { companyId, isActive: true, deletedAt: null }, select: { id: true } }),
-    prisma.leaveMaster.findMany({ where: { isActive: true, deletedAt: null } }),
+    // MANUAL types (e.g. Compensatory Off) are credited by their own earning
+    // event, not this yearly run — see src/app/api/workforce/attendance/ot/[id]/approve/route.ts.
+    prisma.leaveMaster.findMany({ where: { isActive: true, deletedAt: null, accrualType: { not: 'MANUAL' } } }),
   ]);
 
   let balancesWritten = 0;

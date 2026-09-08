@@ -240,13 +240,13 @@ export const navigation: NavModule[] = [
         label: "Overtime",
         items: [
           { label: "OT Process", href: "/workforce/overtime/process" },
-          { label: "OT Approval", href: "/workforce/overtime/approval" },
+          { label: "OT Approval", href: "/approvals/workforce/overtime", ready: true },
         ],
       },
       {
         label: "Requests",
         items: [
-          { label: "Comp-Off Approval", href: "/workforce/requests/comp-off" },
+          { label: "Comp-Off Approval", href: "/workforce/leave/approval", ready: true },
           { label: "Permission Entry", href: "/workforce/requests/permission" },
         ],
       },
@@ -407,8 +407,12 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
-          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime" },
-          { label: "Comp-Off Approval", short: "Comp-Off", href: "/approvals/workforce/comp-off" },
+          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
+          // Comp-Off has no separate approval queue: it's earned via OT Approval
+          // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
+          // spent as a normal leave application against the "Compensatory Off"
+          // leave type, reviewed on the existing Leave Approval page.
+          { label: "Comp-Off Approval", short: "Comp-Off", href: "/workforce/leave/approval" },
           { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission" },
         ],
       },

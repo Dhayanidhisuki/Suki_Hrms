@@ -30,7 +30,10 @@ export const assetMasterSchema = simpleMasterSchema;
 export const leaveMasterSchema = simpleMasterSchema
   .extend({
     defaultAnnualDays: z.coerce.number().min(0).max(365).default(0),
-    accrualType: z.enum(['FIXED_ANNUAL', 'EARNED_PER_DAYS_WORKED']).default('FIXED_ANNUAL'),
+    // MANUAL = credited only by its own earning event (e.g. Compensatory
+    // Off, granted when OT worked on a weekly-off/holiday is approved as
+    // Comp-Off instead of paid OT) — excluded from the annual credit run.
+    accrualType: z.enum(['FIXED_ANNUAL', 'EARNED_PER_DAYS_WORKED', 'MANUAL']).default('FIXED_ANNUAL'),
     daysWorkedPerAccrualUnit: z.coerce.number().int().positive().nullable().optional(),
     carryForwardAllowed: z.boolean().default(false),
     carryForwardMaxDays: z.coerce.number().min(0).nullable().optional(),

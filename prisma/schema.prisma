@@ -1316,8 +1316,24 @@ model DailyAttendance {
   earlyOutMinutes     Int     @default(0)
   otMinutesCalculated Int     @default(0)
   otMinutesApproved   Int?
-  // pending | approved | rejected — null until OT calculated > 0
-  otApprovalStatus    String? @db.NVarChar(20)
+  // pending_manager | pending_hr | approved | rejected — null until OT
+  // calculated > 0 AND the employee is OT-eligible (JobInfo.overtimeAllowed)
+  // — see upsertDailyAttendanceWithHistory's auto-queue logic. Two-stage
+  // approval (Reporting Manager, then HR), same pattern as
+  // MispunchCorrection, but tracked directly on the day instead of a
+  // separate request table since OT isn't employee-initiated.
+  otApprovalStatus String? @db.NVarChar(20)
+  // OT | COMP_OFF — set at HR approval time. Only meaningful for work on a
+  // Sunday/weekly-off (BRD: "Either based on approval"); weekday OT is
+  // always settled as OT. COMP_OFF credits the employee's Compensatory Off
+  // leave balance instead of approving paid overtime minutes.
+  otSettlementType String? @db.NVarChar(20)
+
+  otManagerActionByUserId Int?
+  otManagerActionAt       DateTime?
+  otHrActionByUserId      Int?
+  otHrActionAt            DateTime?
+  otRejectionReason       String?   @db.NVarChar(500)
 
   // manual | biometric — everything is "manual" in Phase 1; the column
   // exists now so a future biometric-sync phase needs no migration.
