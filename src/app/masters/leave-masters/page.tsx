@@ -16,6 +16,10 @@ interface LeaveMaster {
   name: string;
   description: string | null;
   defaultAnnualDays: number;
+  accrualType: 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED';
+  daysWorkedPerAccrualUnit: number | null;
+  carryForwardAllowed: boolean;
+  carryForwardMaxDays: number | null;
   isActive: boolean;
   deletedAt: string | null;
 }
@@ -73,10 +77,41 @@ export default function LeaveMastersPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [defaultAnnualDays, setDefaultAnnualDays] = useState(0);
+  const [accrualType, setAccrualType] = useState<'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED'>('FIXED_ANNUAL');
+  const [daysWorkedPerAccrualUnit, setDaysWorkedPerAccrualUnit] = useState<number | ''>('');
+  const [carryForwardAllowed, setCarryForwardAllowed] = useState(false);
+  const [carryForwardMaxDays, setCarryForwardMaxDays] = useState<number | ''>('');
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const [accrualYear, setAccrualYear] = useState(new Date().getFullYear());
+  const [accrualRunning, setAccrualRunning] = useState(false);
+  const [accrualResult, setAccrualResult] = useState<string | null>(null);
+  const [accrualError, setAccrualError] = useState<string | null>(null);
+
+  const runAccrual = async () => {
+    setAccrualRunning(true);
+    setAccrualError(null);
+    setAccrualResult(null);
+    try {
+      const res = await fetch('/api/workforce/leave/accrual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: accrualYear }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Accrual run failed');
+      setAccrualResult(
+        `Credited ${data.employeesProcessed} employee(s) across ${data.leaveTypesProcessed} leave type(s) for ${data.year} — ${data.balancesWritten} balance row(s) written.`
+      );
+    } catch (err) {
+      setAccrualError(err instanceof Error ? err.message : 'Accrual run failed');
+    } finally {
+      setAccrualRunning(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -105,6 +140,10 @@ export default function LeaveMastersPage() {
     setName('');
     setDescription('');
     setDefaultAnnualDays(0);
+    setAccrualType('FIXED_ANNUAL');
+    setDaysWorkedPerAccrualUnit('');
+    setCarryForwardAllowed(false);
+    setCarryForwardMaxDays('');
     setIsActive(true);
     setSaveError(null);
     setModalOpen(true);
@@ -116,6 +155,10 @@ export default function LeaveMastersPage() {
     setName(row.name);
     setDescription(row.description ?? '');
     setDefaultAnnualDays(row.defaultAnnualDays);
+    setAccrualType(row.accrualType);
+    setDaysWorkedPerAccrualUnit(row.daysWorkedPerAccrualUnit ?? '');
+    setCarryForwardAllowed(row.carryForwardAllowed);
+    setCarryForwardMaxDays(row.carryForwardMaxDays ?? '');
     setIsActive(row.isActive);
     setSaveError(null);
     setModalOpen(true);
@@ -140,7 +183,17 @@ export default function LeaveMastersPage() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, name, description: description || null, defaultAnnualDays, isActive }),
+        body: JSON.stringify({
+          code,
+          name,
+          description: description || null,
+          defaultAnnualDays,
+          accrualType,
+          daysWorkedPerAccrualUnit: accrualType === 'EARNED_PER_DAYS_WORKED' ? daysWorkedPerAccrualUnit || null : null,
+          carryForwardAllowed,
+          carryForwardMaxDays: carryForwardAllowed ? carryForwardMaxDays || null : null,
+          isActive,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -159,7 +212,19 @@ export default function LeaveMastersPage() {
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
-    { key: 'defaultAnnualDays', label: 'Days / Year', render: (row) => Number(row.defaultAnnualDays) },
+    {
+      key: 'accrual',
+      label: 'Accrual',
+      render: (row) =>
+        row.accrualType === 'EARNED_PER_DAYS_WORKED'
+          ? `1 day / ${row.daysWorkedPerAccrualUnit ?? '?'} worked`
+          : `${Number(row.defaultAnnualDays)} / year`,
+    },
+    {
+      key: 'carryForward',
+      label: 'Carry Forward',
+      render: (row) => (row.carryForwardAllowed ? (row.carryForwardMaxDays ? `up to ${Number(row.carryForwardMaxDays)}` : 'yes') : 'no'),
+    },
     {
       key: 'isActive',
       label: 'Status',
@@ -196,6 +261,42 @@ export default function LeaveMastersPage() {
         </div>
       )}
 
+      <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: 'var(--border)' }}>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Annual Leave Credit</h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+          Credits every active employee for the selected year — a fixed amount for &ldquo;Fixed amount every year&rdquo; leave types,
+          or days-worked &divide; days-per-unit (rounded down) for &ldquo;Earned per days worked&rdquo; types. Safe to re-run; already
+          availed/adjusted leave for the year is preserved.
+        </p>
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="number"
+            value={accrualYear}
+            onChange={(e) => setAccrualYear(Number(e.target.value))}
+            className="w-28 rounded-lg border px-3 py-2 text-sm"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          />
+          <button
+            onClick={runAccrual}
+            disabled={accrualRunning}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            {accrualRunning ? 'Running…' : `Run Credit for ${accrualYear}`}
+          </button>
+        </div>
+        {accrualResult && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+            {accrualResult}
+          </div>
+        )}
+        {accrualError && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
+            {accrualError}
+          </div>
+        )}
+      </div>
+
       <DataTable
         columns={columns}
         data={records}
@@ -227,12 +328,70 @@ export default function LeaveMastersPage() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>How many days can they take? *</label>
-              <Stepper value={defaultAnnualDays} onChange={setDefaultAnnualDays} />
-              <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                Default annual entitlement for this leave type — seeds each employee&apos;s leave balance for the year.
-              </span>
+              <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>How is this leave credited? *</label>
+              <select
+                value={accrualType}
+                onChange={(e) => setAccrualType(e.target.value as 'FIXED_ANNUAL' | 'EARNED_PER_DAYS_WORKED')}
+                className={inputClass}
+                style={inputStyle}
+              >
+                <option value="FIXED_ANNUAL">Fixed amount every year</option>
+                <option value="EARNED_PER_DAYS_WORKED">Earned per days worked</option>
+              </select>
             </div>
+
+            {accrualType === 'FIXED_ANNUAL' ? (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>How many days per year? *</label>
+                <Stepper value={defaultAnnualDays} onChange={setDefaultAnnualDays} />
+                <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  Credited in full each year the annual leave-credit run happens.
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Days worked per 1 day earned *</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={daysWorkedPerAccrualUnit}
+                  onChange={(e) => setDaysWorkedPerAccrualUnit(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={inputClass}
+                  style={inputStyle}
+                  placeholder="e.g. 20"
+                />
+                <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  e.g. Earned Leave at 1 day per 20 working days worked — the annual run sums each employee&apos;s present days for
+                  the year and divides by this number.
+                </span>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={carryForwardAllowed}
+                onChange={(e) => setCarryForwardAllowed(e.target.checked)}
+                className="h-4 w-4 rounded"
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              <span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Unused balance carries forward to next year</span>
+            </label>
+
+            {carryForwardAllowed && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Max days to carry forward</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={carryForwardMaxDays}
+                  onChange={(e) => setCarryForwardMaxDays(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={inputClass}
+                  style={inputStyle}
+                  placeholder="Leave blank for uncapped"
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Description</label>

@@ -382,6 +382,24 @@ model LeaveMaster {
   // balance is created for an employee. Decimal to allow half-day
   // entitlements (e.g. 12.5), same precision as LeaveBalance's own fields.
   defaultAnnualDays Decimal   @default(0) @db.Decimal(5, 2)
+
+  // How this leave type's yearly credit is computed by the annual accrual
+  // run (src/lib/leaveAccrual.ts) — FIXED_ANNUAL just credits
+  // defaultAnnualDays; EARNED_PER_DAYS_WORKED credits
+  // floor(daysWorkedInYear / daysWorkedPerAccrualUnit), e.g. Earned Leave's
+  // "1 EL per 20 working days worked" (client BRD). daysWorkedPerAccrualUnit
+  // is only meaningful for the EARNED type.
+  accrualType              String @default("FIXED_ANNUAL") @db.NVarChar(30)
+  daysWorkedPerAccrualUnit Int?
+
+  // Carry-forward at year-end: if not allowed (e.g. Casual Leave per BRD —
+  // "no carry forward to next year"), the accrual run always starts the new
+  // year's openingBalance at 0 regardless of the prior year's closing
+  // balance. carryForwardMaxDays caps what carries over when it IS allowed;
+  // null means uncapped.
+  carryForwardAllowed Boolean  @default(false)
+  carryForwardMaxDays Decimal? @db.Decimal(5, 2)
+
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())

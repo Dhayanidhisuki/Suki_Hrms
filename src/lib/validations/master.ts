@@ -24,10 +24,21 @@ export const loanTypeSchema = simpleMasterSchema;
 export const assetMasterSchema = simpleMasterSchema;
 
 // LeaveMaster adds defaultAnnualDays (how many days of this leave type an
-// employee gets per year) on top of the simple-master shape.
-export const leaveMasterSchema = simpleMasterSchema.extend({
-  defaultAnnualDays: z.coerce.number().min(0).max(365).default(0),
-});
+// employee gets per year) plus the accrual/carry-forward rules the annual
+// leave-credit job reads (src/lib/leaveAccrual.ts) on top of the simple-
+// master shape.
+export const leaveMasterSchema = simpleMasterSchema
+  .extend({
+    defaultAnnualDays: z.coerce.number().min(0).max(365).default(0),
+    accrualType: z.enum(['FIXED_ANNUAL', 'EARNED_PER_DAYS_WORKED']).default('FIXED_ANNUAL'),
+    daysWorkedPerAccrualUnit: z.coerce.number().int().positive().nullable().optional(),
+    carryForwardAllowed: z.boolean().default(false),
+    carryForwardMaxDays: z.coerce.number().min(0).nullable().optional(),
+  })
+  .refine((v) => v.accrualType !== 'EARNED_PER_DAYS_WORKED' || !!v.daysWorkedPerAccrualUnit, {
+    message: 'daysWorkedPerAccrualUnit is required when accrualType is EARNED_PER_DAYS_WORKED',
+    path: ['daysWorkedPerAccrualUnit'],
+  });
 
 // ─── Pattern B: SubDepartment (code + name + description + departmentId FK) ──
 
