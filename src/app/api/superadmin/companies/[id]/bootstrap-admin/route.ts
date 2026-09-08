@@ -92,6 +92,8 @@ const WORKFORCE_PERMISSIONS: PermDef[] = [
   { code: 'workforce.mispunch.approve', module: 'workforce', submodule: 'mispunch', page: null, action: 'approve', description: 'Give final HR approval/rejection on a mispunch correction request (after Reporting Manager review)' },
   { code: 'workforce.ot.view', module: 'workforce', submodule: 'ot', page: null, action: 'view', description: 'View overtime awaiting approval' },
   { code: 'workforce.ot.approve', module: 'workforce', submodule: 'ot', page: null, action: 'approve', description: 'Give final HR approval/rejection on overtime, including settling weekly-off/holiday OT as Comp-Off (after Reporting Manager review)' },
+  { code: 'workforce.permission.view', module: 'workforce', submodule: 'permission', page: null, action: 'view', description: 'View permission (short-leave) requests' },
+  { code: 'workforce.permission.approve', module: 'workforce', submodule: 'permission', page: null, action: 'approve', description: 'Approve/reject permission requests' },
 ];
 
 const PAYROLL_PERMISSIONS: PermDef[] = [
@@ -142,6 +144,7 @@ const HR_VIEWER_CODES = [
   'workforce.leave.view',
   'workforce.mispunch.view',
   'workforce.ot.view',
+  'workforce.permission.view',
 ];
 
 interface RoleDef {

@@ -85,6 +85,19 @@ export const mispunchRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
 
+export const permissionRequestSchema = z
+  .object({
+    date: z.coerce.date(),
+    fromTime: wallClockDateTime,
+    toTime: wallClockDateTime,
+    reason: z.string().max(500).optional().nullable(),
+  })
+  .refine((v) => v.toTime > v.fromTime, { message: 'toTime must be after fromTime', path: ['toTime'] });
+
+export const permissionRejectSchema = z.object({
+  rejectionReason: z.string().min(1).max(500),
+});
+
 export const reopenMonthSchema = z.object({
   reason: z.string().min(1).max(500),
 });

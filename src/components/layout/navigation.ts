@@ -247,7 +247,7 @@ export const navigation: NavModule[] = [
         label: "Requests",
         items: [
           { label: "Comp-Off Approval", href: "/workforce/leave/approval", ready: true },
-          { label: "Permission Entry", href: "/workforce/requests/permission" },
+          { label: "Permission Entry", href: "/ess/permission", ready: true },
         ],
       },
       {
@@ -413,7 +413,7 @@ export const navigation: NavModule[] = [
           // spent as a normal leave application against the "Compensatory Off"
           // leave type, reviewed on the existing Leave Approval page.
           { label: "Comp-Off Approval", short: "Comp-Off", href: "/workforce/leave/approval" },
-          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission" },
+          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission", ready: true },
         ],
       },
       {
@@ -442,7 +442,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Attendance", href: "/ess/attendance" },
           { label: "Leave Management", short: "Leave", href: "/ess/leave" },
-          { label: "Permission Requests", short: "Permission", href: "/ess/permission" },
+          { label: "Permission Requests", short: "Permission", href: "/ess/permission", ready: true },
           { label: "Mis-Punch Requests", short: "Mis-Punch", href: "/ess/mis-punch", ready: true },
         ],
       },

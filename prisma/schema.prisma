@@ -172,6 +172,7 @@ model Company {
   gratuityPolicies           GratuityPolicy[]
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
+  permissionPolicy           PermissionPolicy?
 
   @@map("Company")
 }
@@ -632,6 +633,7 @@ model Employee {
   leaveApplications          LeaveApplication[]
   leaveBalances              LeaveBalance[]
   mispunchCorrections        MispunchCorrection[]
+  permissionRequests         PermissionRequest[]
   payrollLines               PayrollLine[]
   salaryRevisionRequests     SalaryRevisionRequest[]
   salaryArrears              SalaryArrear[]
@@ -1699,6 +1701,61 @@ model LeaveBalance {
 
   @@unique([employeeId, leaveMasterId, year])
   @@map("LeaveBalance")
+}
+
+// Per-company "free permission hours per month" policy (BRD: "2 Hrs /
+// Dynamic" — client left the exact number company-configurable, not fixed).
+// One row per company; freeHoursPerMonth defaults to 2 only as a starting
+// point, not a client-confirmed figure.
+model PermissionPolicy {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  freeHoursPerMonth Decimal  @default(2) @db.Decimal(4, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("PermissionPolicy")
+}
+
+// Employee-submitted short-leave-in-hours request (self-service, like
+// Mispunch). Single-stage RBAC approval — the BRD's Permission section
+// names no Reporting-Manager stage the way Mispunch/OT explicitly do.
+// Approval only flags whether this request pushes the employee over their
+// monthly free-hours allowance (exceedsAllowance/excessHours, computed at
+// approval time against PermissionPolicy + the month's other approved
+// requests) — it does NOT auto-convert the excess to LOP on DailyAttendance,
+// since that table has no fractional-day-LOP field; per BRD ("exceed limit
+// = LOM only") the excess is meant to reduce pay, so converting it is left
+// as a manual attendance correction HR makes using the flagged hours.
+model PermissionRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  date       DateTime @db.Date
+  fromTime   DateTime
+  toTime     DateTime
+  hours      Decimal  @db.Decimal(4, 2)
+  reason     String?  @db.NVarChar(500)
+
+  // pending | approved | rejected
+  status           String    @default("pending") @db.NVarChar(20)
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.NVarChar(500)
+
+  exceedsAllowance Boolean @default(false)
+  excessHours      Decimal @default(0) @db.Decimal(4, 2)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("PermissionRequest")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
