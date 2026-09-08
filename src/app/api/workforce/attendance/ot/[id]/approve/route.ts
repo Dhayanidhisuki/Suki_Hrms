@@ -11,9 +11,11 @@
  *     Manager (hierarchy check). Advances to pending_hr.
  *   - pending_hr: caller must hold workforce.ot.approve. Body may include
  *     { settlementType: 'OT' | 'COMP_OFF', approvedMinutes?: number }.
- *     COMP_OFF is only allowed when the day is a Sunday (BRD: "Always
- *     Sunday is weekly off... work means consider as Comp-off & OT") —
- *     any other day is always settled as OT regardless of what's sent.
+ *     COMP_OFF is only allowed when the day is a Sunday or a declared
+ *     holiday (HolidayMaster) — BRD: "Always Sunday is weekly off... work
+ *     means consider as Comp-off & OT", extended to Holiday once
+ *     HolidayMaster existed to detect it. Any other day is always settled
+ *     as OT regardless of what's sent.
  *     COMP_OFF grants 1 Compensatory Off day instead of approving paid OT
  *     minutes (otMinutesApproved stays null in that case — nothing to bill
  *     as overtime pay).
@@ -70,7 +72,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const isSunday = record.date.getUTCDay() === 0;
-    const settlementType = isSunday ? parsed.data.settlementType : 'OT';
+    const employee = await prisma.employee.findUnique({ where: { id: record.employeeId }, select: { companyId: true } });
+    const isHoliday = employee
+      ? await prisma.holidayMaster.findFirst({
+          where: { companyId: employee.companyId, date: record.date, isActive: true, deletedAt: null },
+        })
+      : null;
+    const settlementType = isSunday || isHoliday ? parsed.data.settlementType : 'OT';
 
     if (settlementType === 'COMP_OFF') {
       await grantCompOff(record.employeeId, record.date);

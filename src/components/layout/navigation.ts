@@ -108,6 +108,7 @@ export const navigation: NavModule[] = [
           { label: "Shift Rotation Plans", href: "/masters/shift-rotation-plans", ready: true },
           { label: "OT Plans", href: "/masters/ot-plans", ready: true },
           { label: "Leave Master", href: "/masters/leave-masters", ready: true },
+          { label: "Holiday Master", href: "/masters/holidays", ready: true },
         ],
       },
       {

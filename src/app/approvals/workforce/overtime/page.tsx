@@ -3,9 +3,10 @@
  * (src/app/approvals/workforce/mispunch/page.tsx): "Pending My Approval
  * (Reporting Manager)" is hierarchy-gated, "Pending HR Approval" is
  * RBAC-gated (workforce.ot.approve). HR's Approve action additionally asks
- * how to settle it when the day is a Sunday — Paid OT or Comp-Off (BRD:
- * "Either based on approval") — the API silently forces "OT" for any other
- * day regardless of what's picked here.
+ * how to settle it when the day is a Sunday or a declared holiday
+ * (HolidayMaster) — Paid OT or Comp-Off (BRD: "Either based on approval") —
+ * the API silently forces "OT" for any other day regardless of what's
+ * picked here.
  */
 
 'use client';
@@ -28,8 +29,25 @@ function formatHoursMinutes(minutes: number): string {
   return `${h}h ${String(m).padStart(2, '0')}m`;
 }
 
-function isSunday(iso: string): boolean {
-  return new Date(iso).getUTCDay() === 0;
+function isSundayOrHoliday(iso: string, holidaySet: Set<string>): boolean {
+  return new Date(iso).getUTCDay() === 0 || holidaySet.has(iso.slice(0, 10));
+}
+
+/** This company's declared holidays, for the same Sunday-or-Holiday Comp-Off choice the API enforces server-side. */
+function useHolidaySet(): Set<string> {
+  const [holidaySet, setHolidaySet] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((me: { companyId: number | null }) => {
+        if (!me.companyId) return;
+        return fetch(`/api/masters/holidays?companyId=${me.companyId}&limit=500`)
+          .then((r) => r.json())
+          .then((json: { data: { date: string }[] }) => setHolidaySet(new Set(json.data.map((h) => h.date.slice(0, 10)))));
+      })
+      .catch(() => {});
+  }, []);
+  return holidaySet;
 }
 
 function useOtQueue(scope: 'manager' | 'hr') {
@@ -63,7 +81,7 @@ function useOtQueue(scope: 'manager' | 'hr') {
   return { records, loading, visible, error, refetch: fetchData };
 }
 
-function OtQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
+function OtQueueSection({ title, scope, description, holidaySet }: { title: string; scope: 'manager' | 'hr'; description: string; holidaySet: Set<string> }) {
   const { records, loading, visible, error, refetch } = useOtQueue(scope);
   const [approveRow, setApproveRow] = useState<OtRow | null>(null);
   const [settlementType, setSettlementType] = useState<'OT' | 'COMP_OFF'>('OT');
@@ -89,7 +107,15 @@ function OtQueueSection({ title, scope, description }: { title: string; scope: '
 
   const columns: Column<OtRow>[] = [
     { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
-    { key: 'date', label: 'Date', render: (r) => `${new Date(r.date).toLocaleDateString()}${isSunday(r.date) ? ' (Sunday)' : ''}` },
+    {
+      key: 'date',
+      label: 'Date',
+      render: (r) => {
+        const iso = r.date.slice(0, 10);
+        const tag = new Date(r.date).getUTCDay() === 0 ? ' (Sunday)' : holidaySet.has(iso) ? ' (Holiday)' : '';
+        return `${new Date(r.date).toLocaleDateString()}${tag}`;
+      },
+    },
     { key: 'otMinutesCalculated', label: 'OT Worked', render: (r) => formatHoursMinutes(r.otMinutesCalculated) },
   ];
 
@@ -155,10 +181,10 @@ function OtQueueSection({ title, scope, description }: { title: string; scope: '
                 {new Date(approveRow.date).toLocaleDateString()}
               </p>
 
-              {isSunday(approveRow.date) ? (
+              {isSundayOrHoliday(approveRow.date, holidaySet) ? (
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                    Settle this Sunday&apos;s OT as
+                    Settle this Sunday/Holiday&apos;s OT as
                   </label>
                   <select
                     value={settlementType}
@@ -171,7 +197,7 @@ function OtQueueSection({ title, scope, description }: { title: string; scope: '
                   </select>
                 </div>
               ) : (
-                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Settled as Paid Overtime (only Sunday work can be Comp-Off).</p>
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Settled as Paid Overtime (only Sunday/Holiday work can be Comp-Off).</p>
               )}
 
               <div className="flex justify-end gap-2 pt-2">
@@ -216,6 +242,8 @@ function OtQueueSection({ title, scope, description }: { title: string; scope: '
 }
 
 export default function OvertimeApprovalPage() {
+  const holidaySet = useHolidaySet();
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
@@ -226,12 +254,14 @@ export default function OvertimeApprovalPage() {
         title="Pending My Approval (Reporting Manager)"
         scope="manager"
         description="Overtime worked by your direct reports, awaiting your review."
+        holidaySet={holidaySet}
       />
 
       <OtQueueSection
         title="Pending HR Approval"
         scope="hr"
         description="Overtime already reviewed by the Reporting Manager, awaiting final HR approval and settlement."
+        holidaySet={holidaySet}
       />
     </div>
   );

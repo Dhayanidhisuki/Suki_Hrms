@@ -62,6 +62,16 @@ export const unitSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Holiday calendar — scoped to a Company like Unit, but date+name instead
+// of code+name (no natural short code for a calendar date).
+export const holidayMasterSchema = z.object({
+  date: z.coerce.date(),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional().nullable(),
+  companyId: z.number().int().positive(),
+  isActive: z.boolean().default(true),
+});
+
 // ─── Pattern C: ShiftMaster (code + name + times + grace) ────────────────────
 
 export const shiftMasterSchema = z.object({

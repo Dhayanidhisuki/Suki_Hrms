@@ -173,6 +173,7 @@ model Company {
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
   permissionPolicy           PermissionPolicy?
+  holidayMasters              HolidayMaster[]
 
   @@map("Company")
 }
@@ -410,6 +411,30 @@ model LeaveMaster {
   leaveBalances     LeaveBalance[]
 
   @@map("LeaveMaster")
+}
+
+// Per-company holiday calendar. Was a genuine gap called out while building
+// OT Approval: without this, "Sunday or Holiday work" (BRD) could only ever
+// detect Sunday via date math — a day off for a declared holiday landed as
+// ordinary attendance with no way to offer the same OT/Comp-Off choice.
+// Company-scoped (not global like LeaveMaster) since holiday calendars are
+// genuinely company/location-specific, not shared policy.
+model HolidayMaster {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  date        DateTime  @db.Date
+  name        String    @db.NVarChar(100)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, date])
+  @@index([companyId])
+  @@map("HolidayMaster")
 }
 
 model LoanType {

@@ -36,6 +36,7 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/ot-plans': 'shift',
   '/api/masters/dropdown-master': 'dropdown',
   '/api/masters/leave-masters': 'definition',
+  '/api/masters/holidays': 'definition',
   '/api/masters/loan-types': 'definition',
   '/api/masters/asset-masters': 'definition',
 };

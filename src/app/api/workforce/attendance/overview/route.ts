@@ -9,13 +9,15 @@
  * the derived pre-shift / post-shift extra time. Plus a summary block for
  * the panel under the grid and the month's OPEN/FINALIZED/FROZEN status.
  *
- * Everything here is read-only and derived — nothing is written back. The
- * only interpretation added on top of stored data is `inferredWeeklyOff`:
- * a Sunday with no punches (no row, or an Absent/LOP/MissingPunch row with
- * no in/out) is presented as Weekly Off, because the biometric conversion
- * writes 0-hour Sundays as Absent and no weekly-off master exists yet.
+ * Everything here is read-only and derived — nothing is written back. Two
+ * interpretations are added on top of stored data, both only for a date
+ * with no punches (no row, or an Absent/LOP/MissingPunch row with no
+ * in/out) since the biometric conversion writes 0-hour days as Absent and
+ * neither a weekly-off nor a holiday concept feeds into it directly:
+ *   - `inferredHoliday` — the date is in HolidayMaster for this company.
+ *   - `inferredWeeklyOff` — the date is a Sunday and isn't already a holiday.
  * The stored status is still returned untouched in `storedStatus`, so
- * nothing is hidden. Revisit once the weekly-off rule is confirmed.
+ * nothing is hidden.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -85,6 +87,12 @@ export async function GET(request: NextRequest) {
   const shiftConfig = await resolveEmployeeShiftConfig(employee.id);
   const byDate = new Map(employee.dailyAttendances.map((r) => [r.date.toISOString().slice(0, 10), r]));
 
+  const holidays = await prisma.holidayMaster.findMany({
+    where: { companyId: scope.companyId, isActive: true, deletedAt: null, date: { gte: monthStart, lt: monthEnd } },
+    select: { date: true, name: true },
+  });
+  const holidayByIso = new Map(holidays.map((h) => [h.date.toISOString().slice(0, 10), h.name]));
+
   const numDays = daysInMonth(year, month);
   const shiftIds = new Set<number>();
   const rawDays = Array.from({ length: numDays }, (_, i) => {
@@ -131,9 +139,13 @@ export async function GET(request: NextRequest) {
     const isSunday = date.getUTCDay() === 0;
     const hasPunch = inMin !== null || outMin !== null;
     const storedStatus = rec?.status ?? null;
-    const inferredWeeklyOff =
-      isSunday && !hasPunch && (storedStatus === null || ['Absent', 'LOP', 'MissingPunch'].includes(storedStatus));
-    const status = inferredWeeklyOff ? 'WeeklyOff' : storedStatus ?? (iso > todayIso ? 'Upcoming' : 'NoRecord');
+    const holidayName = holidayByIso.get(iso) ?? null;
+    const noPunchDayOff = !hasPunch && (storedStatus === null || ['Absent', 'LOP', 'MissingPunch'].includes(storedStatus));
+    // Holiday takes precedence over Sunday when a date is both (unusual but
+    // possible) — one status per day, and "Holiday" carries the name.
+    const inferredHoliday = Boolean(holidayName) && noPunchDayOff;
+    const inferredWeeklyOff = !inferredHoliday && isSunday && noPunchDayOff;
+    const status = inferredHoliday ? 'Holiday' : inferredWeeklyOff ? 'WeeklyOff' : storedStatus ?? (iso > todayIso ? 'Upcoming' : 'NoRecord');
 
     return {
       date: iso,
@@ -142,6 +154,8 @@ export async function GET(request: NextRequest) {
       status,
       storedStatus,
       inferredWeeklyOff,
+      inferredHoliday,
+      holidayName,
       inTime: rec?.inTime ?? null,
       outTime: rec?.outTime ?? null,
       punchPairInvalid,
