@@ -210,7 +210,7 @@ trivy:fs:
 
 gitleaks:
   stage: scan
-  allow_failure: true
+  allow_failure: false
   rules: *scan_rules
   needs: []
   image:
