@@ -45,6 +45,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/reports/') ||
     pathname.startsWith('/api/bonus/') ||
     pathname.startsWith('/api/gratuity/') ||
+    pathname.startsWith('/api/manager/') ||
     pathname === '/api/auth/me';
   const isUiRoute =
     pathname.startsWith('/masters/') ||
@@ -53,7 +54,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/superadmin/') ||
     pathname.startsWith('/workforce/') ||
     pathname.startsWith('/payroll/') ||
-    pathname.startsWith('/reports/');
+    pathname.startsWith('/reports/') ||
+    pathname.startsWith('/manager/');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();
@@ -137,6 +139,8 @@ export const config = {
     '/reports/:path*',
     '/api/bonus/:path*',
     '/api/gratuity/:path*',
+    '/api/manager/:path*',
+    '/manager/:path*',
     '/api/auth/me',
   ],
 };
