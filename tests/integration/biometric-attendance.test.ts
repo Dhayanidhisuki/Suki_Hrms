@@ -187,7 +187,7 @@ describe('Biometric attendance import -> DailyAttendance/MonthlyAttendanceSummar
   it('refreshes MonthlyAttendanceSummary counts while leaving status OPEN', async () => {
     const summary = await prisma.monthlyAttendanceSummary.findUnique({ where: { employeeId_year_month: { employeeId, year: YEAR, month: 2 } } });
     expect(summary?.status).toBe('OPEN');
-    expect(summary!.presentDays + summary!.absentDays).toBeGreaterThan(0);
+    expect(Number(summary!.presentDays) + Number(summary!.absentDays)).toBeGreaterThan(0);
   });
 });
 

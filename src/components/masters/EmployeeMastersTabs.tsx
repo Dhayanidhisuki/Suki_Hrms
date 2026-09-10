@@ -87,6 +87,7 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
           embedded
           title={tab.title}
           apiPath={tab.apiPath}
+          statsModule="grades"
           extraFields={[{ name: 'designationId', label: 'Designation', type: 'select', required: true, options: designationOptions }]}
           extraColumns={[
             {
@@ -98,7 +99,7 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
           extraInitialValues={(row) => ({ designationId: (row.designationId as number | null | undefined) ?? undefined })}
         />
       ) : (
-        <SimpleMasterPage key={tab.key} embedded title={tab.title} apiPath={tab.apiPath} />
+        <SimpleMasterPage key={tab.key} embedded title={tab.title} apiPath={tab.apiPath} statsModule={tab.key} />
       )}
     </div>
   );

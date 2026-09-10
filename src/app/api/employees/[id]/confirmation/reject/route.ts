@@ -44,6 +44,12 @@ export async function POST(
   if (employee.jobInfos[0]?.confirmationDate) {
     return NextResponse.json({ error: 'Employee is already confirmed' }, { status: 409 });
   }
+  if (!employee.jobInfos[0]?.managerRecommendation) {
+    return NextResponse.json(
+      { error: 'Manager recommendation is required before HR can reject confirmation' },
+      { status: 409 }
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.employee.update({

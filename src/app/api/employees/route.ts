@@ -82,6 +82,9 @@ export async function GET(request: NextRequest) {
         reportingManager: {
           select: { id: true, firstName: true, lastName: true, employeeCode: true },
         },
+        secondReportingManager: {
+          select: { id: true, firstName: true, lastName: true, employeeCode: true },
+        },
         documents: {
           select: { id: true, expiryDate: true },
         },
@@ -162,6 +165,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (data.secondReportingManagerId) {
+    const secondManager = await prisma.employee.findFirst({
+      where: { id: data.secondReportingManagerId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!secondManager) {
+      return NextResponse.json({ error: 'Second reporting manager not found' }, { status: 400 });
+    }
+  }
+
   try {
     const employee = await prisma.$transaction(async (tx) => {
       const created = await tx.employee.create({
@@ -175,6 +188,7 @@ export async function POST(request: NextRequest) {
           oldEmployeeCode: data.oldEmployeeCode,
           status: data.status,
           reportingManagerId: data.reportingManagerId,
+          secondReportingManagerId: data.secondReportingManagerId,
           profilePhotoPath: data.profilePhotoPath,
           signaturePath: data.signaturePath,
           jobInfos: {

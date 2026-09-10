@@ -117,6 +117,7 @@ interface ProfileHeader {
   status: string;
   isActive: boolean;
   reportingManager: { id: number; firstName: string; lastName: string; employeeCode: string } | null;
+  secondReportingManager: { id: number; firstName: string; lastName: string; employeeCode: string } | null;
   department: { id: number; name: string } | null;
   designation: { id: number; name: string } | null;
   joinDate: string | null;

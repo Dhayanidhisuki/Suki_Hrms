@@ -50,6 +50,12 @@ export async function POST(
   if (currentJob.confirmationDate) {
     return NextResponse.json({ error: 'Employee is already confirmed' }, { status: 409 });
   }
+  if (!currentJob.managerRecommendation) {
+    return NextResponse.json(
+      { error: 'Manager recommendation is required before HR can confirm' },
+      { status: 409 }
+    );
+  }
 
   const confirmationDate = parsed.data.confirmationDate ?? new Date();
 

@@ -634,7 +634,9 @@ model Employee {
   guestEmployee      Boolean @default(false)
   inductionStatus    String? @db.NVarChar(30)
   // E8: Self-referential FK for reporting manager
-  reportingManagerId Int?
+  reportingManagerId       Int?
+  // Level 2: skip-level / second reporting manager
+  secondReportingManagerId Int?
 
   isActive  Boolean   @default(true)
   deletedAt DateTime?
@@ -646,8 +648,10 @@ model Employee {
 
   // Self-referential relation for reporting manager
   // NoAction required to break cyclic cascade through child tables
-  reportingManager Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  directReports    Employee[] @relation("EmployeeToManager")
+  reportingManager       Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  directReports          Employee[] @relation("EmployeeToManager")
+  secondReportingManager Employee?  @relation("EmployeeToSecondManager", fields: [secondReportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  secondLevelReports     Employee[] @relation("EmployeeToSecondManager")
 
   // 1:1 relations
   personalDetails PersonalDetails?
@@ -687,6 +691,7 @@ model Employee {
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
+  @@index([secondReportingManagerId])
   @@index([status])
   @@map("Employee")
 }
@@ -817,6 +822,11 @@ model JobInfo {
   // never accepted directly from the client — see calculateProbationEndDate.
   probationPeriodMonths            Int?
   probationEndDate                 DateTime?
+  // Manager recommendation stage (two-level approval: Manager → HR)
+  managerRecommendation            String?   @db.NVarChar(20) // recommend | extend | reject
+  managerRecommendationByUserId     Int?
+  managerRecommendationAt           DateTime?
+  managerRemarks                    String?   @db.NVarChar(500)
   // Shift / attendance config
   shiftRequired                    Boolean   @default(false)
   dailySheetRequired               Boolean   @default(false)
@@ -1520,14 +1530,15 @@ model MonthlyAttendanceSummary {
   year       Int
   month      Int // 1-12
 
-  totalWorkingDays     Int @default(0)
-  presentDays          Int @default(0)
-  absentDays           Int @default(0)
-  leaveDays            Int @default(0)
-  lopDays              Int @default(0)
-  otMinutesTotal       Int @default(0)
-  lateMinutesTotal     Int @default(0)
-  earlyOutMinutesTotal Int @default(0)
+  totalWorkingDays     Int      @default(0)
+  payableDays          Decimal  @default(0) @db.Decimal(5, 2)
+  presentDays          Decimal  @default(0) @db.Decimal(5, 2)
+  absentDays           Decimal  @default(0) @db.Decimal(5, 2)
+  leaveDays            Decimal  @default(0) @db.Decimal(5, 2)
+  lopDays              Decimal  @default(0) @db.Decimal(5, 2)
+  otMinutesTotal       Int      @default(0)
+  lateMinutesTotal     Int      @default(0)
+  earlyOutMinutesTotal Int      @default(0)
 
   // OPEN | FINALIZED | FROZEN
   status String @default("OPEN") @db.NVarChar(20)
@@ -1737,12 +1748,15 @@ model LeaveApplication {
   isHalfDay     Boolean  @default(false)
   reason        String?  @db.NVarChar(500)
 
-  // pending | approved | rejected | cancelled
-  status           String    @default("pending") @db.NVarChar(20)
-  approvedByUserId Int?
-  approvedAt       DateTime?
-  rejectionReason  String?   @db.NVarChar(500)
-  appliedAt        DateTime  @default(now())
+  // pending_manager | pending_hr | approved | rejected | cancelled
+  status               String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId Int?
+  managerActionAt       DateTime?
+  managerRejectionReason String? @db.NVarChar(500)
+  approvedByUserId      Int?
+  approvedAt            DateTime?
+  rejectionReason       String?   @db.NVarChar(500)
+  appliedAt             DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1851,11 +1865,14 @@ model PermissionRequest {
   hours      Decimal  @db.Decimal(4, 2)
   reason     String?  @db.NVarChar(500)
 
-  // pending | approved | rejected
-  status           String    @default("pending") @db.NVarChar(20)
-  approvedByUserId Int?
-  approvedAt       DateTime?
-  rejectionReason  String?   @db.NVarChar(500)
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
 
   exceedsAllowance Boolean @default(false)
   excessHours      Decimal @default(0) @db.Decimal(4, 2)
@@ -1936,7 +1953,10 @@ model PayrollLine {
   otherEarningsTotal Decimal @default(0) @db.Decimal(18, 2) // sum of isAdhoc earning components
 
   pfEmployee           Decimal @default(0) @db.Decimal(18, 2)
+  pfEmployer           Decimal @default(0) @db.Decimal(18, 2)
+  epsEmployer          Decimal @default(0) @db.Decimal(18, 2)
   esiEmployee          Decimal @default(0) @db.Decimal(18, 2)
+  esiEmployer          Decimal @default(0) @db.Decimal(18, 2)
   professionalTax      Decimal @default(0) @db.Decimal(18, 2)
   tds                  Decimal @default(0) @db.Decimal(18, 2)
   otherDeductionsTotal Decimal @default(0) @db.Decimal(18, 2) // sum of isAdhoc deduction components
@@ -2030,11 +2050,16 @@ model SalaryRevisionRequest {
 
   effectiveFrom DateTime
 
-  // DRAFT | SUBMITTED | APPROVED | REJECTED | HOLD | CANCELLED
+  // DRAFT | SUBMITTED | PENDING_MANAGER | PENDING_HR | APPROVED | REJECTED | HOLD | CANCELLED
   status       String  @default("DRAFT") @db.NVarChar(20)
   holdReason   String? @db.NVarChar(500)
   rejectReason String? @db.NVarChar(500)
   remarks      String? @db.NVarChar(500)
+
+  // Manager stage (two-level approval: Manager → HR)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectReason   String? @db.NVarChar(500)
 
   // Set once approved — the new EmployeeSalaryRevision version this request
   // produced. @unique here is for Prisma's relation typing only — the real

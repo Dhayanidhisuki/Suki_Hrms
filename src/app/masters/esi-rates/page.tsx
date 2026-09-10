@@ -21,5 +21,5 @@ const columns: Column<{ id: number; code: string; employeeContributionRate: numb
 ];
 
 export default function EsiRatesPage() {
-  return <SlabPage title="ESI Rates" apiPath="/api/masters/esi-rates" fields={fields} columns={columns} itemLabel="ESI Rate" />;
+  return <SlabPage statsModule="esi-rates" title="ESI Rates" apiPath="/api/masters/esi-rates" fields={fields} columns={columns} itemLabel="ESI Rate" />;
 }

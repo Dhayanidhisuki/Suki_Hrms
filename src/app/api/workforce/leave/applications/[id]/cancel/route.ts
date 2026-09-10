@@ -16,6 +16,9 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
+import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { refreshMonthlySummary } from '@/lib/biometricConversion';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,6 +43,7 @@ export async function POST(
   const wasApproved = application.status === 'approved';
   const numberOfDays = Number(application.numberOfDays);
   const year = application.fromDate.getUTCFullYear();
+  const userId = Number(request.headers.get('x-user-id'));
 
   if (wasApproved) {
     const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
@@ -48,28 +52,45 @@ export async function POST(
     if (freezeErrTo) return freezeErrTo;
   }
 
-  await prisma.$transaction([
-    prisma.leaveApplication.update({
+  const touchedMonths = new Set<string>();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.leaveApplication.update({
       where: { id: applicationId },
       data: { status: 'cancelled' },
-    }),
-    ...(wasApproved
-      ? [
-          prisma.leaveBalance.updateMany({
-            where: { employeeId: application.employeeId, leaveMasterId: application.leaveMasterId, year },
-            data: { availed: { decrement: numberOfDays }, closingBalance: { increment: numberOfDays } },
-          }),
-          prisma.dailyAttendance.updateMany({
-            where: {
-              employeeId: application.employeeId,
-              date: { gte: application.fromDate, lte: application.toDate },
-              status: 'Leave',
-            },
-            data: { status: 'Absent' },
-          }),
-        ]
-      : []),
-  ]);
+    });
+
+    if (wasApproved) {
+      await tx.leaveBalance.updateMany({
+        where: { employeeId: application.employeeId, leaveMasterId: application.leaveMasterId, year },
+        data: { availed: { decrement: numberOfDays }, closingBalance: { increment: numberOfDays } },
+      });
+
+      const leaveRows = await tx.dailyAttendance.findMany({
+        where: {
+          employeeId: application.employeeId,
+          date: { gte: application.fromDate, lte: application.toDate },
+          status: 'Leave',
+        },
+      });
+
+      for (const row of leaveRows) {
+        await upsertDailyAttendanceWithHistory(
+          tx,
+          application.employeeId,
+          row.date,
+          { status: 'LOP' },
+          { userId, changedBySource: 'manual' }
+        );
+        touchedMonths.add(`${row.date.getUTCFullYear()}-${row.date.getUTCMonth() + 1}`);
+      }
+    }
+  });
+
+  for (const key of touchedMonths) {
+    const [y, m] = key.split('-').map(Number);
+    await refreshMonthlySummary(application.employeeId, y, m);
+  }
 
   return NextResponse.json({ message: 'Leave application cancelled' });
 }

@@ -71,6 +71,7 @@ export const basicDetailsSchema = z.object({
   oldEmployeeCode: z.string().max(20).optional().nullable(),
   status: z.string().max(20).default('active'),
   reportingManagerId: z.number().int().positive().optional().nullable(),
+  secondReportingManagerId: z.number().int().positive().optional().nullable(),
   profilePhotoPath: z.string().max(500).optional().nullable(),
   signaturePath: z.string().max(500).optional().nullable(),
 
@@ -360,6 +361,7 @@ export const employeeUpdateSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
   status: z.string().max(20).optional(),
   reportingManagerId: z.number().int().positive().optional().nullable(),
+  secondReportingManagerId: z.number().int().positive().optional().nullable(),
 });
 
 // ─── EmployeeDocument ─────────────────────────────────────────────────────────

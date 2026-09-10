@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, type Column, KPICard, KPIGrid } from '@/components/ui';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface ExpirySummary {
   total: number;
@@ -35,6 +36,7 @@ interface EmployeeListItem {
     unit: { name: string } | null;
   }>;
   reportingManager: { firstName: string; lastName: string; employeeCode: string } | null;
+  secondReportingManager: { firstName: string; lastName: string; employeeCode: string } | null;
   documentExpirySummary: ExpirySummary;
   createdAt: string;
 }
@@ -157,6 +159,8 @@ export default function EmployeeListPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
 
+  const { stats } = useModuleStats('employees');
+
   const [departmentId, setDepartmentId] = useState('');
   const [designationId, setDesignationId] = useState('');
   const [employeeTypeId, setEmployeeTypeId] = useState('');
@@ -258,6 +262,12 @@ export default function EmployeeListPage() {
         row.reportingManager ? `${row.reportingManager.firstName} ${row.reportingManager.lastName}` : '—',
     },
     {
+      key: 'secondReportingManager',
+      label: 'Second Manager',
+      render: (row) =>
+        row.secondReportingManager ? `${row.secondReportingManager.firstName} ${row.secondReportingManager.lastName}` : '—',
+    },
+    {
       key: 'status',
       label: 'Status',
       render: (row) => {
@@ -334,6 +344,13 @@ export default function EmployeeListPage() {
           </Link>
         </div>
       </div>
+
+      {/* KPI Cards */}
+      <KPIGrid columns={3}>
+        <KPICard label="Total Employees" value={stats.total} tone="info" />
+        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+        <KPICard label="Inactive" value={stats.inactive ?? 0} tone="danger" />
+      </KPIGrid>
 
       {error && (
         <div

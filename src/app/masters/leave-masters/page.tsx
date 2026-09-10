@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid } from '@/components/ui';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface LeaveMaster {
   id: number;
@@ -70,6 +71,8 @@ export default function LeaveMastersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+
+  const { stats } = useModuleStats('leave-masters');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -256,6 +259,12 @@ export default function LeaveMastersPage() {
           + Add Leave Master
         </button>
       </div>
+
+      {/* KPI Cards */}
+      <KPIGrid columns={2}>
+        <KPICard label="Total Leave Masters" value={stats.total} tone="info" />
+        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+      </KPIGrid>
 
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>

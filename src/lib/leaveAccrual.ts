@@ -33,7 +33,7 @@ async function daysWorkedInYear(employeeId: number, year: number): Promise<numbe
     where: { employeeId, year, status: { in: ['FINALIZED', 'FROZEN'] } },
     select: { presentDays: true },
   });
-  return summaries.reduce((sum, s) => sum + s.presentDays, 0);
+  return summaries.reduce((sum, s) => sum + Number(s.presentDays), 0);
 }
 
 /**

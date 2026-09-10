@@ -124,8 +124,9 @@ export async function calculatePayrollRun(payrollRunId: number) {
       continue;
     }
 
-    const payableDays = summary.totalWorkingDays - summary.lopDays;
-    const lopFactor = summary.totalWorkingDays > 0 ? payableDays / summary.totalWorkingDays : 1;
+    const payableDays = Number(summary.payableDays ?? (summary.totalWorkingDays - Number(summary.lopDays)));
+    const totalDays = summary.totalWorkingDays > 0 ? summary.totalWorkingDays : totalWorkingDays;
+    const lopFactor = totalDays > 0 ? Math.min(1, Math.max(0, payableDays / totalDays)) : 0;
 
     let grossEarnings = 0;
     let recurringDeductions = 0;
@@ -160,9 +161,17 @@ export async function calculatePayrollRun(payrollRunId: number) {
 
     const pfApplicable = line.pfApplicable; // per-line override, default true, editable before approval
     let pfEmployee = 0;
+    let pfEmployer = 0;
+    let epsEmployer = 0;
     if (pfApplicable && pfRate) {
       const pfWage = Math.min(grossEarnings, Number(pfRate.wageCeilingMonthly));
       pfEmployee = round(pfWage * (Number(pfRate.employeeContributionRate) / 100));
+      // Employer: total employerContributionRate (12%) split into EPF (3.67%) + EPS (8.33%)
+      const employerRate = Number(pfRate.employerContributionRate) / 100;
+      const epsRate = Number(pfRate.pensionContributionRate ?? 8.33) / 100;
+      const pfEmployerTotal = round(pfWage * employerRate);
+      epsEmployer = round(pfWage * epsRate);
+      pfEmployer = pfEmployerTotal - epsEmployer;
     }
 
     const esiApplicable = jobInfo?.esiApplicable ?? false;
@@ -183,6 +192,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     // Either way the deduction itself is computed on the actual gross
     // earned this month, never the structured salary.
     const esiEmployee = esiEligible && esiRate ? round(grossEarnings * (Number(esiRate.employeeContributionRate) / 100)) : 0;
+    const esiEmployer = esiEligible && esiRate ? round(grossEarnings * (Number(esiRate.employerContributionRate) / 100)) : 0;
 
     const ptApplicable = jobInfo?.professionalTaxApplicable ?? false;
     let professionalTax = 0;
@@ -239,14 +249,17 @@ export async function calculatePayrollRun(payrollRunId: number) {
       prisma.payrollLine.update({
         where: { id: line.id },
         data: {
-          totalWorkingDays: summary.totalWorkingDays,
+          totalWorkingDays: totalDays,
           payableDays,
-          lopDays: summary.lopDays,
+          lopDays: Math.round(Number(summary.lopDays)),
           grossEarnings,
           otAmount,
           otherEarningsTotal,
           pfEmployee,
+          pfEmployer,
+          epsEmployer,
           esiEmployee,
+          esiEmployer,
           professionalTax,
           tds,
           otherDeductionsTotal,

@@ -375,28 +375,51 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
   let absentDays = 0;
   let leaveDays = 0;
   let lopDays = 0;
-  let otMinutesTotal = 0;
+  let halfDays = 0;
+  let weeklyOffDays = 0;
+  let holidayDays = 0;
+  let otMinutesApprovedTotal = 0;
   let lateMinutesTotal = 0;
   let earlyOutMinutesTotal = 0;
 
   for (const d of days) {
-    if (d.status === 'Present' || d.status === 'OnDuty') presentDays += 1;
-    else if (d.status === 'HalfDay') presentDays += 0.5;
-    else if (d.status === 'Absent') absentDays += 1;
-    else if (d.status === 'Leave') leaveDays += 1;
-    else if (d.status === 'LOP') lopDays += 1;
-    otMinutesTotal += d.otMinutesApproved ?? d.otMinutesCalculated;
+    if (d.status === 'Present' || d.status === 'OnDuty') {
+      presentDays += 1;
+    } else if (d.status === 'HalfDay') {
+      presentDays += 0.5;
+      halfDays += 1;
+    } else if (d.status === 'Absent' || d.status === 'MissingPunch') {
+      absentDays += 1;
+    } else if (d.status === 'Leave') {
+      leaveDays += 1;
+    } else if (d.status === 'LOP') {
+      lopDays += 1;
+    } else if (d.status === 'WeeklyOff') {
+      weeklyOffDays += 1;
+    } else if (d.status === 'Holiday') {
+      holidayDays += 1;
+    }
+
+    // Only HR-approved OT with settlementType === 'OT' is paid out in payroll
+    if (d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT' && d.otMinutesApproved) {
+      otMinutesApprovedTotal += d.otMinutesApproved;
+    }
     lateMinutesTotal += d.lateMinutes;
     earlyOutMinutesTotal += d.earlyOutMinutes;
   }
 
+  const totalCalendarDays = daysInMonth(year, month);
+  const totalAbsentDays = absentDays + halfDays * 0.5;
+  const payableDays = Math.max(0, totalCalendarDays - totalAbsentDays - lopDays);
+
   const counts = {
-    totalWorkingDays: daysInMonth(year, month),
-    presentDays: Math.round(presentDays),
-    absentDays,
+    totalWorkingDays: totalCalendarDays,
+    payableDays,
+    presentDays,
+    absentDays: totalAbsentDays,
     leaveDays,
     lopDays,
-    otMinutesTotal,
+    otMinutesTotal: otMinutesApprovedTotal,
     lateMinutesTotal,
     earlyOutMinutesTotal,
   };

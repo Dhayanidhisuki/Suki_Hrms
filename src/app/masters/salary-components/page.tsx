@@ -12,7 +12,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SalaryComponentRow {
   id: number;
@@ -50,6 +51,8 @@ export default function SalaryComponentsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const { stats } = useModuleStats('salary-components');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -196,6 +199,12 @@ export default function SalaryComponentsPage() {
           + Add Component
         </button>
       </div>
+
+      {/* KPI Cards */}
+      <KPIGrid columns={2}>
+        <KPICard label="Total Components" value={stats.total} tone="info" />
+        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+      </KPIGrid>
 
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>

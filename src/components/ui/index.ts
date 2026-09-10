@@ -8,3 +8,6 @@ export type { FieldDef, FieldOption, FieldType } from './Field';
 export { default as Stepper } from './Stepper';
 export type { StepDef } from './Stepper';
 export { default as SearchableSelect } from './SearchableSelect';
+export { default as KPICard } from './KPICard';
+export type { KPITone } from './KPICard';
+export { default as KPIGrid } from './KPIGrid';

@@ -6,7 +6,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface Department {
   id: number;
@@ -38,6 +39,8 @@ export default function DepartmentPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+
+  const { stats } = useModuleStats('departments');
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -155,6 +158,12 @@ export default function DepartmentPage() {
           + Add Department
         </button>
       </div>
+
+      {/* KPI Cards */}
+      <KPIGrid columns={2}>
+        <KPICard label="Total Departments" value={stats.total} tone="info" />
+        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+      </KPIGrid>
 
       {error && (
         <div

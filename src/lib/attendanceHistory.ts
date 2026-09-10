@@ -27,6 +27,11 @@ export interface DailyAttendanceValues {
   otMinutesCalculated?: number;
   otMinutesApproved?: number | null;
   otApprovalStatus?: string | null;
+  otSettlementType?: string | null;
+  otManagerActionByUserId?: number | null;
+  otManagerActionAt?: Date | null;
+  otHrActionByUserId?: number | null;
+  otHrActionAt?: Date | null;
   source?: string;
   remarks?: string | null;
   shiftMasterId?: number | null;

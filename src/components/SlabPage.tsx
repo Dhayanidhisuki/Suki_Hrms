@@ -7,7 +7,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SlabRecord {
   id: number;
@@ -29,15 +30,18 @@ interface SlabPageProps<T extends SlabRecord> {
   fields: FieldDef[];
   columns: Column<T>[];
   itemLabel: string;
+  statsModule?: string;
 }
 
-export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields, columns, itemLabel }: SlabPageProps<T>) {
+export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields, columns, itemLabel, statsModule }: SlabPageProps<T>) {
   const [records, setRecords] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+
+  const { stats } = useModuleStats(statsModule || '');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
@@ -125,6 +129,15 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add {itemLabel}</button>
       </div>
+
+      {/* KPI Cards */}
+      {statsModule && (
+        <KPIGrid columns={2}>
+          <KPICard label={`Total ${title}`} value={stats.total} tone="info" />
+          <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+        </KPIGrid>
+      )}
+
       {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
       <DataTable columns={allColumns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}

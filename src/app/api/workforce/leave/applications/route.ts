@@ -15,6 +15,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { leaveApplicationSchema } from '@/lib/validations/workforce';
+import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.leave.view');
@@ -25,12 +26,29 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
   const employeeIdParam = searchParams.get('employeeId');
+  const queue = searchParams.get('queue'); // 'manager' | 'hr'
+
+  // Manager queue: only pending_manager for this manager's reports
+  let managerFilter: Record<string, unknown> = {};
+  if (queue === 'manager') {
+    const userId = Number(request.headers.get('x-user-id'));
+    const ownEmployeeId = await resolveOwnEmployeeId(userId);
+    if (ownEmployeeId) {
+      managerFilter = {
+        status: 'pending_manager',
+        employee: { reportingManagerId: ownEmployeeId, companyId: scope.companyId, deletedAt: null },
+      };
+    }
+  } else if (queue === 'hr') {
+    managerFilter = { status: 'pending_hr' };
+  }
 
   const records = await prisma.leaveApplication.findMany({
     where: {
       employee: { companyId: scope.companyId, deletedAt: null },
       ...(status ? { status } : {}),
       ...(employeeIdParam ? { employeeId: Number(employeeIdParam) } : {}),
+      ...managerFilter,
     },
     include: {
       employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
@@ -85,7 +103,7 @@ export async function POST(request: NextRequest) {
   }
 
   const record = await prisma.leaveApplication.create({
-    data: { employeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason, status: 'pending' },
+    data: { employeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason, status: 'pending_manager' },
   });
 
   return NextResponse.json(record, { status: 201 });

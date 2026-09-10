@@ -75,23 +75,30 @@ export async function calculateArrear(salaryRevisionRequestId: number) {
   const monthRows = affected.map((run) => {
     const line = run.lines[0];
     const oldGross = Number(line.grossEarnings);
-    const grossDifference = round(revisedGross - oldGross);
+
+    // Prorate revisedGross by the same LOP factor that was applied to oldGross
+    // so the arrear only covers days actually worked, not LOP days.
+    const payableDays = Number(line.payableDays ?? line.totalWorkingDays);
+    const totalDays = Number(line.totalWorkingDays) || 1;
+    const lopFactor = Math.min(1, Math.max(0, payableDays / totalDays));
+    const proratedRevisedGross = round(revisedGross * lopFactor);
+    const grossDifference = round(proratedRevisedGross - oldGross);
 
     let pfArrear = 0;
     if (line.pfApplicable && pfRate) {
       const ceiling = Number(pfRate.wageCeilingMonthly);
       const rate = Number(pfRate.employeeContributionRate) / 100;
-      pfArrear = round((Math.min(revisedGross, ceiling) - Math.min(oldGross, ceiling)) * rate);
+      pfArrear = round((Math.min(proratedRevisedGross, ceiling) - Math.min(oldGross, ceiling)) * rate);
     }
 
     let esiArrear = 0;
-    if (line.esiApplicable && esiRate && revisedGross <= Number(esiRate.wageCeilingMonthly)) {
+    if (line.esiApplicable && esiRate && proratedRevisedGross <= Number(esiRate.wageCeilingMonthly)) {
       esiArrear = round(grossDifference * (Number(esiRate.employeeContributionRate) / 100));
     }
 
     const netArrear = round(grossDifference - pfArrear - esiArrear);
 
-    return { year: run.year, month: run.month, oldGross, revisedGross, grossDifference, pfArrear, esiArrear, netArrear };
+    return { year: run.year, month: run.month, oldGross, revisedGross: proratedRevisedGross, grossDifference, pfArrear, esiArrear, netArrear };
   });
 
   const grossArrearTotal = monthRows.reduce((s, m) => s + m.grossDifference, 0);
