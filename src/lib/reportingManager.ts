@@ -94,7 +94,7 @@ export async function getReportingChain(
   let level = 0;
 
   for (let depth = 0; depth < 50 && currentId !== null; depth++) {
-    const emp = await prisma.employee.findFirst({
+    const emp: { id: number; employeeCode: string; firstName: string; lastName: string; reportingManagerId: number | null } | null = await prisma.employee.findFirst({
       where: { id: currentId, deletedAt: null },
       select: { id: true, employeeCode: true, firstName: true, lastName: true, reportingManagerId: true },
     });
@@ -200,7 +200,7 @@ export async function wouldCreateSecondLevelCycle(
   if (candidateManagerId === employeeId) return true;
   let currentId: number | null = candidateManagerId;
   for (let depth = 0; depth < 50 && currentId !== null; depth++) {
-    const manager = await prisma.employee.findFirst({
+    const manager: { reportingManagerId: number | null; secondReportingManagerId: number | null } | null = await prisma.employee.findFirst({
       where: { id: currentId, deletedAt: null },
       select: { reportingManagerId: true, secondReportingManagerId: true },
     });

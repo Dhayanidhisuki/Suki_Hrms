@@ -43,8 +43,12 @@ export async function GET(request: NextRequest) {
         select: {
           designation: { select: { name: true } },
           department: { select: { name: true } },
-          currentSalaryRevision: { select: { grossSalary: true } },
         },
+      },
+      salaryRevisions: {
+        where: { effectiveTo: null },
+        take: 1,
+        select: { grossSalary: true },
       },
     },
     orderBy: { firstName: 'asc' },
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
     byManager.get(mgrId)!.push(emp);
   }
 
-  // Cache for all-reports headcount/salary to avoid O(n^2) queries
+  // Cache for all-reports headcount/salary
   const headcountCache = new Map<number, { headcount: number; salaryCost: number }>();
 
   async function computeStats(managerId: number): Promise<{ headcount: number; salaryCost: number }> {
@@ -67,7 +71,7 @@ export async function GET(request: NextRequest) {
     let salaryCost = 0;
     for (const r of reports) {
       const emp = employees.find((e) => e.id === r.id);
-      const gross = emp?.jobInfos[0]?.currentSalaryRevision?.grossSalary;
+      const gross = emp?.salaryRevisions[0]?.grossSalary;
       if (gross) salaryCost += Number(gross);
     }
     const result = { headcount: reports.length, salaryCost };
@@ -87,8 +91,8 @@ export async function GET(request: NextRequest) {
         lastName: emp.lastName,
         designation: emp.jobInfos[0]?.designation?.name ?? null,
         department: emp.jobInfos[0]?.department?.name ?? null,
-        grossSalary: emp.jobInfos[0]?.currentSalaryRevision?.grossSalary
-          ? Number(emp.jobInfos[0].currentSalaryRevision.grossSalary)
+        grossSalary: emp.salaryRevisions[0]?.grossSalary
+          ? Number(emp.salaryRevisions[0].grossSalary)
           : null,
         headcount: stats.headcount,
         totalSalaryCost: stats.salaryCost,

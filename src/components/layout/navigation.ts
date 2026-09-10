@@ -52,7 +52,10 @@ export const navigation: NavModule[] = [
     groups: [
       {
         label: "Overview",
-        items: [{ label: "My Dashboard", href: "/", ready: true }],
+        items: [
+          { label: "My Dashboard", href: "/", ready: true },
+          { label: "Manager Dashboard", short: "My Team", href: "/manager/dashboard", ready: true },
+        ],
       },
       {
         label: "HR",
@@ -88,7 +91,7 @@ export const navigation: NavModule[] = [
           { label: "Sub Departments", href: "/masters/sub-departments", ready: true },
           { label: "Branches / Sites", short: "Branches", href: "/masters/branches" },
           { label: "Units", href: "/masters/units", ready: true },
-          { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure" },
+          { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure", ready: true },
         ],
       },
       {
@@ -585,7 +588,7 @@ export const navigation: NavModule[] = [
           { label: "Company Profile", href: "/admin/company-profile" },
           { label: "Branch Configuration", short: "Branch Config", href: "/admin/branch-configuration" },
           { label: "Salary Logic", href: "/admin/salary-logic" },
-          { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart" },
+          { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart", ready: true },
         ],
       },
       {

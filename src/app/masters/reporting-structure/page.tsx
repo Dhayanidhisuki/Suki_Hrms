@@ -198,15 +198,61 @@ export default function ReportingStructurePage() {
         <KPICard label="Root Managers" value={stats.rootCount} tone="success" />
       </KPIGrid>
 
-      <div style={{ margin: '16px 0' }}>
+      <div style={{ margin: '16px 0', display: 'flex', gap: 12 }}>
         <input
           type="text"
           placeholder="Search by name, code, designation, or department…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ width: '100%', padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
+          style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4 }}
         />
+        <button
+          onClick={() => setShowReassign(!showReassign)}
+          style={{ padding: '8px 16px', background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+        >
+          Bulk Reassign
+        </button>
       </div>
+
+      {showReassign && (
+        <div style={{ border: '1px solid #ddd', borderRadius: 4, padding: 16, marginBottom: 16, background: '#f9fafb' }}>
+          <h3 style={{ marginTop: 0, fontSize: 16 }}>Bulk Reassign Reports</h3>
+          <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
+            When a manager leaves or is reassigned, move all their direct reports to a new manager in one action.
+          </p>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Departing Manager</label>
+              <select value={reassignOld} onChange={(e) => setReassignOld(e.target.value)} style={{ padding: '6px 8px', minWidth: 200 }}>
+                <option value="">— Select —</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeCode})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>New Manager</label>
+              <select value={reassignNew} onChange={(e) => setReassignNew(e.target.value)} style={{ padding: '6px 8px', minWidth: 200 }}>
+                <option value="">— Unassign —</option>
+                {employees.filter((e) => String(e.id) !== reassignOld).map((e) => (
+                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeCode})</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleReassign}
+              style={{ padding: '6px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+            >
+              Reassign All Reports
+            </button>
+          </div>
+          {reassignMsg && (
+            <div style={{ marginTop: 12, padding: '8px 12px', background: '#d1fae5', borderRadius: 4, fontSize: 13 }}>
+              {reassignMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ border: '1px solid #ddd', borderRadius: 4, maxHeight: '70vh', overflowY: 'auto' }}>
         {tree.length === 0 ? (
