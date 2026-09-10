@@ -7,7 +7,7 @@ export function useModuleStats(module: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchStats = async () => {
       setLoading(true);
       setError(null);
       try {
@@ -23,7 +23,7 @@ export function useModuleStats(module: string) {
       }
     };
 
-    fetch();
+    fetchStats();
   }, [module]);
 
   return { stats, loading, error };

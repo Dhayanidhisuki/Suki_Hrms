@@ -37,16 +37,22 @@ export async function GET(request: NextRequest) {
       lastName: true,
       reportingManagerId: true,
       secondReportingManagerId: true,
+      reportingManager: {
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      },
+      secondReportingManager: {
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      },
       jobInfos: {
         where: { effectiveTo: null },
         take: 1,
         select: {
-          designation: { select: { name: true } },
-          department: { select: { name: true } },
+          designation: { select: { id: true, name: true } },
+          department: { select: { id: true, name: true } },
         },
       },
     },
-    orderBy: { firstName: 'asc' },
+    orderBy: [{ firstName: 'asc' }, { employeeCode: 'asc' }],
   });
 
   // Build a map: managerId -> children
@@ -75,10 +81,59 @@ export async function GET(request: NextRequest) {
   const tree = buildNode(null);
   const totalEmployees = employees.length;
   const rootCount = tree.length;
+  const assignedCount = employees.filter((e) => e.reportingManagerId !== null).length;
+  const unassignedCount = totalEmployees - assignedCount;
+
+  // Set of IDs who are managers to at least 1 employee
+  const managerIds = new Set<number>();
+  for (const emp of employees) {
+    if (emp.reportingManagerId) managerIds.add(emp.reportingManagerId);
+  }
+
+  // Flat list for table view & easy searching
+  const flat = employees.map((emp) => {
+    const directCount = (byManager.get(emp.id) ?? []).length;
+    return {
+      id: emp.id,
+      employeeCode: emp.employeeCode,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      fullName: `${emp.firstName} ${emp.lastName}`.trim(),
+      reportingManagerId: emp.reportingManagerId,
+      secondReportingManagerId: emp.secondReportingManagerId,
+      reportingManager: emp.reportingManager,
+      secondReportingManager: emp.secondReportingManager,
+      designation: emp.jobInfos[0]?.designation?.name ?? null,
+      department: emp.jobInfos[0]?.department?.name ?? null,
+      directReportsCount: directCount,
+      isManager: directCount > 0,
+    };
+  });
+
+  // Manager options list for dropdowns (all employees with designations)
+  const managers = flat.map((e) => ({
+    id: e.id,
+    employeeCode: e.employeeCode,
+    firstName: e.firstName,
+    lastName: e.lastName,
+    fullName: e.fullName,
+    designation: e.designation,
+    department: e.department,
+    isManager: e.isManager,
+    directReportsCount: e.directReportsCount,
+  }));
 
   return NextResponse.json({
     data: tree,
-    stats: { totalEmployees, rootCount },
+    flat,
+    managers,
+    stats: {
+      totalEmployees,
+      rootCount,
+      assignedCount,
+      unassignedCount,
+      managersCount: managerIds.size,
+    },
   });
 }
 
@@ -88,11 +143,31 @@ export async function PUT(request: NextRequest) {
   const { companyId } = scope;
 
   const body = await request.json().catch(() => null);
-  if (!body?.updates || !Array.isArray(body.updates)) {
-    return NextResponse.json({ error: 'updates array is required' }, { status: 400 });
+
+  // Support both bulk assignment by employeeIds array OR updates array
+  let updates: Array<{
+    employeeId: number;
+    reportingManagerId?: number | null;
+    secondReportingManagerId?: number | null;
+  }> = [];
+
+  if (Array.isArray(body?.employeeIds) && body.employeeIds.length > 0) {
+    const { employeeIds, reportingManagerId, secondReportingManagerId } = body;
+    updates = employeeIds.map((id: number) => ({
+      employeeId: id,
+      reportingManagerId: reportingManagerId !== undefined ? reportingManagerId : undefined,
+      secondReportingManagerId: secondReportingManagerId !== undefined ? secondReportingManagerId : undefined,
+    }));
+  } else if (Array.isArray(body?.updates)) {
+    updates = body.updates;
+  } else {
+    return NextResponse.json(
+      { error: 'updates array or employeeIds array is required' },
+      { status: 400 }
+    );
   }
 
-  for (const update of body.updates) {
+  for (const update of updates) {
     if (typeof update.employeeId !== 'number') {
       return NextResponse.json({ error: 'employeeId is required in each update' }, { status: 400 });
     }
@@ -108,9 +183,15 @@ export async function PUT(request: NextRequest) {
 
     if (update.reportingManagerId !== undefined) {
       if (update.reportingManagerId !== null) {
+        if (update.employeeId === update.reportingManagerId) {
+          return NextResponse.json(
+            { error: `An employee cannot report to themselves` },
+            { status: 400 }
+          );
+        }
         if (await wouldCreateCycle(update.employeeId, update.reportingManagerId)) {
           return NextResponse.json(
-            { error: `Cycle detected: assigning ${update.employeeId} to ${update.reportingManagerId} would create a loop` },
+            { error: `Cycle detected: assigning employee ${update.employeeId} to manager ${update.reportingManagerId} would create a reporting loop` },
             { status: 400 }
           );
         }
@@ -122,6 +203,12 @@ export async function PUT(request: NextRequest) {
     }
 
     if (update.secondReportingManagerId !== undefined) {
+      if (update.secondReportingManagerId !== null && update.employeeId === update.secondReportingManagerId) {
+        return NextResponse.json(
+          { error: `An employee cannot be their own second reporting manager` },
+          { status: 400 }
+        );
+      }
       await prisma.employee.update({
         where: { id: update.employeeId },
         data: { secondReportingManagerId: update.secondReportingManagerId },
@@ -129,5 +216,8 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ message: `Updated ${body.updates.length} reporting assignment(s)` });
+  return NextResponse.json({
+    message: `Successfully updated reporting assignment for ${updates.length} employee(s)`,
+    count: updates.length,
+  });
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import StatCard from './StatCard';
 import type { Tone } from './data';
+import type { IconName } from '@/components/layout/NavIcons';
 
 interface DashboardStatData {
   label: string;
@@ -10,7 +11,7 @@ interface DashboardStatData {
   delta: string;
   trend: 'up' | 'down';
   tone: Tone;
-  icon: string;
+  icon: IconName;
   visual: 'spark' | 'bars' | 'ticks' | 'meter';
   description: string;
 }
