@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 const approveSchema = z.object({
   confirmationDate: z.coerce.date().optional(),
+  remarks: z.string().max(500).optional().nullable(),
 });
 
 export async function POST(
@@ -65,7 +66,7 @@ export async function POST(
       performedByUserId,
       oldValue: { confirmationDate: null },
       newValue: { confirmationDate },
-      remarks: 'Probation confirmed by admin',
+      remarks: parsed.data.remarks?.trim() || 'Probation confirmed by admin',
     });
   });
 

@@ -118,14 +118,18 @@ export default function NewEmployeePage() {
     });
   }, []);
 
+  // `values` is passed so the Level select narrows to the chosen Grade.
   const basicFields: FieldDef[] = useMemo(
     () =>
-      buildBasicFields({
-        companies, units, departments, subDepartments, designations,
-        employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
-        reportingManagers,
-      }),
-    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans, reportingManagers]
+      buildBasicFields(
+        {
+          companies, units, departments, subDepartments, designations,
+          employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
+          reportingManagers,
+        },
+        values
+      ),
+    [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans, reportingManagers, values]
   );
 
   const fieldsByStep: FieldDef[][] = useMemo(

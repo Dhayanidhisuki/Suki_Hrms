@@ -8,8 +8,9 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { SectionCard } from './SectionCard';
 
 interface RecordBase {
   id: number;
@@ -18,6 +19,8 @@ interface RecordBase {
 export interface RepeatableListTabProps<T extends RecordBase> {
   apiBasePath: string; // e.g. `/api/employees/5/education`
   title: string;
+  /** Section-header icon (see SectionIcon). */
+  icon?: ReactNode;
   addLabel: string;
   fields: FieldDef[];
   columns: Column<T>[];
@@ -29,6 +32,7 @@ export interface RepeatableListTabProps<T extends RecordBase> {
 export default function RepeatableListTab<T extends RecordBase>({
   apiBasePath,
   title,
+  icon,
   addLabel,
   fields,
   columns,
@@ -107,11 +111,10 @@ export default function RepeatableListTab<T extends RecordBase>({
   };
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-          {title}
-        </h2>
+    <SectionCard
+      icon={icon}
+      title={title}
+      action={
         <button
           onClick={handleAdd}
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
@@ -119,8 +122,9 @@ export default function RepeatableListTab<T extends RecordBase>({
         >
           {addLabel}
         </button>
-      </div>
-
+      }
+    >
+      <div className="space-y-4">
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
           {error}
@@ -153,6 +157,7 @@ export default function RepeatableListTab<T extends RecordBase>({
         onConfirm={() => deleteId && handleDelete(deleteId)}
         onClose={() => setDeleteId(null)}
       />
-    </div>
+      </div>
+    </SectionCard>
   );
 }

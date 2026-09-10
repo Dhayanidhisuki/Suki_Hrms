@@ -16,10 +16,18 @@ const simpleMasterSchema = z.object({
 
 export const departmentSchema = simpleMasterSchema;
 export const designationSchema = simpleMasterSchema;
-export const employeeTypeSchema = simpleMasterSchema;
-export const categorySchema = simpleMasterSchema;
-export const gradeSchema = simpleMasterSchema;
-export const levelSchema = simpleMasterSchema;
+// Code is server-generated for these two (ET001.../CAT001...) — the admin
+// never types it, so it's optional on the wire and ignored if sent.
+export const employeeTypeSchema = simpleMasterSchema.extend({ code: z.string().max(20).optional() });
+export const categorySchema = simpleMasterSchema.extend({ code: z.string().max(20).optional() });
+// Grade is defined under a Designation (migration 000022).
+export const gradeSchema = simpleMasterSchema.extend({
+  designationId: z.coerce.number().int().positive(),
+});
+// Level is defined under a Grade (migration 000023).
+export const levelSchema = simpleMasterSchema.extend({
+  gradeId: z.coerce.number().int().positive(),
+});
 export const loanTypeSchema = simpleMasterSchema;
 export const assetMasterSchema = simpleMasterSchema;
 

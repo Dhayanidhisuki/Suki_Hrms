@@ -94,10 +94,10 @@ export const navigation: NavModule[] = [
       {
         label: "Employee",
         items: [
-          { label: "Designations", href: "/masters/designations", ready: true },
           { label: "Employee Types", href: "/masters/employee-types", ready: true },
           { label: "Employee Categories", href: "/masters/categories", ready: true },
-          { label: "Grades", href: "/masters/grades", ready: true },
+          // Designations + Grades are tabs on one page; their old routes redirect there.
+          { label: "Designations & Grades", href: "/masters/designations-grades", ready: true },
           { label: "Levels", href: "/masters/levels", ready: true },
         ],
       },

@@ -7,7 +7,19 @@
 
 import type { FieldDef } from '@/components/ui';
 
-export type OptionList = { id: number; name: string }[];
+export type OptionList = { id: number; name: string; gradeId?: number | null }[];
+
+/**
+ * Levels belong to a Grade (Level.gradeId). Given the grade currently chosen
+ * on the employee form, keep only that grade's levels — plus any legacy
+ * level that predates the link (gradeId null) so old data stays selectable.
+ * No grade chosen → every level.
+ */
+export function levelsForGrade(levels: OptionList, gradeId: string | number | boolean | undefined): OptionList {
+  const id = gradeId === undefined || gradeId === '' ? undefined : Number(gradeId);
+  if (!id) return levels;
+  return levels.filter((l) => l.gradeId == null || l.gradeId === id);
+}
 
 export function toOptions(list: OptionList) {
   return list.map((o) => ({ label: o.name, value: o.id }));
@@ -71,7 +83,17 @@ export interface BasicFieldOptions {
   reportingManagers: EmployeeRef[];
 }
 
-export function buildBasicFields(opts: BasicFieldOptions): FieldDef[] {
+/**
+ * @param values Current form values, when the caller can supply them — used
+ *   to narrow the Level list to the selected Grade. Omit for the unfiltered
+ *   list (e.g. when the form is built once before any value exists).
+ */
+export function buildBasicFields(
+  opts: BasicFieldOptions,
+  values?: Record<string, string | number | boolean | undefined>
+): FieldDef[] {
+  const levelOptions = toOptions(levelsForGrade(opts.levels, values?.gradeId));
+  const gradeChosen = values?.gradeId !== undefined && values?.gradeId !== '';
   return [
     {
       name: 'title',
@@ -104,7 +126,13 @@ export function buildBasicFields(opts: BasicFieldOptions): FieldDef[] {
     { name: 'categoryId', label: 'Category', type: 'select', options: toOptions(opts.categories) },
     { name: 'subCategory', label: 'Subcategory', type: 'text' },
     { name: 'gradeId', label: 'Grade', type: 'select', options: toOptions(opts.grades) },
-    { name: 'levelId', label: 'Level', type: 'select', options: toOptions(opts.levels) },
+    {
+      name: 'levelId',
+      label: 'Level',
+      type: 'select',
+      options: levelOptions,
+      helpText: gradeChosen ? 'Levels under the selected Grade.' : 'Choose a Grade to narrow the levels to that grade.',
+    },
     { name: 'productionLine', label: 'Production Line', type: 'text' },
     { name: 'additionalRole', label: 'Additional Role', type: 'text' },
     { name: 'teamGroup', label: 'Team Group', type: 'text' },
@@ -317,6 +345,11 @@ export function applyEmployeeFieldChange(
   value: string | number | boolean
 ): Record<string, string | number | boolean | undefined> {
   const next = applyContactFieldChange(values, name, value);
+
+  // Level belongs to Grade — changing the grade invalidates the chosen level.
+  if (name === 'gradeId' && String(value) !== String(values.gradeId ?? '')) {
+    next.levelId = undefined;
+  }
 
   if (name === 'joinDate' || name === 'probationPeriodMonths') {
     const joinDate = (name === 'joinDate' ? value : next.joinDate) as string | undefined;

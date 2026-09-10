@@ -122,7 +122,9 @@ build:
     # exposes them to every RUN without an explicit ARG, which is how apt-get,
     # npm ci, `prisma generate` and next/font reach the allowlisted mirrors.
     - |
-      buildctl --addr "$BUILDKIT_HOST" build \
+      buildctl --addr "$BUILDKIT_HOST" \
+        --tlscacert "$BUILDKIT_CA" --tlscert "$BUILDKIT_CERT" --tlskey "$BUILDKIT_KEY" \
+        build \
         --frontend dockerfile.v0 --local context=. --local dockerfile=. \
         --opt build-arg:HTTP_PROXY="$HTTP_PROXY" \
         --opt build-arg:HTTPS_PROXY="$HTTPS_PROXY" \
@@ -210,7 +212,7 @@ trivy:fs:
 
 gitleaks:
   stage: scan
-  allow_failure: true
+  allow_failure: false
   rules: *scan_rules
   needs: []
   image:

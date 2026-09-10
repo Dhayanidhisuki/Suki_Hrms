@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { levelSchema } from '@/lib/validations/master';
 
+const gradeSelect = { grade: { select: { id: true, name: true } } };
+
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
@@ -10,14 +12,16 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
+  const gradeId = searchParams.get('gradeId');
 
   const where = {
     deletedAt: null,
+    ...(gradeId ? { gradeId: parseInt(gradeId) } : {}),
     ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
   };
 
   const [data, total] = await Promise.all([
-    prisma.level.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.level.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, include: gradeSelect }),
     prisma.level.count({ where }),
   ]);
 
@@ -31,9 +35,16 @@ export async function POST(request: NextRequest) {
   const parsed = levelSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.level.findUnique({ where: { code: parsed.data.code } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  const grade = await prisma.grade.findFirst({ where: { id: parsed.data.gradeId, deletedAt: null }, select: { id: true } });
+  if (!grade) return NextResponse.json({ error: 'Grade not found' }, { status: 400 });
 
-  const record = await prisma.level.create({ data: parsed.data });
+  // Code is unique per grade — "L1" may exist under several grades.
+  const existing = await prisma.level.findFirst({
+    where: { code: parsed.data.code, gradeId: parsed.data.gradeId, deletedAt: null },
+    select: { id: true },
+  });
+  if (existing) return NextResponse.json({ error: 'Code already exists under this grade' }, { status: 409 });
+
+  const record = await prisma.level.create({ data: parsed.data, include: gradeSelect });
   return NextResponse.json(record, { status: 201 });
 }

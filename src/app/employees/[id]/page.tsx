@@ -9,11 +9,14 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Field, DataTable, FormModal, ConfirmDialog, type FieldDef, type Column } from '@/components/ui';
 import RepeatableListTab from '@/components/employees/RepeatableListTab';
+import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
+import { SectionCard, DetailGrid, EditButton, SectionIcon } from '@/components/employees/SectionCard';
+import { formatDate } from '@/lib/format-date';
 import {
   buildBasicFields,
   buildPersonalFields,
@@ -46,31 +49,62 @@ interface SalaryComponentRow { salaryComponent: { name: string; code: string; ty
 interface SalaryRevisionRow { id: number; financialYear: string | null; grossSalary: string; netSalary: string | null; effectiveFrom: string; effectiveTo: string | null; components: SalaryComponentRow[]; }
 interface ActivityRow { id: number; activityAt: string; module: string; activityType: string; remarks: string | null; }
 
+/**
+ * Tab strip. Contact + Emergency Contacts live inside Personal Details,
+ * CTC inside Salary Details, and Experience alongside Education — each of
+ * those is still its own API/section card, just stacked on the one tab.
+ */
 type TabKey =
-  | 'basic' | 'personal' | 'contact' | 'job_profile'
-  | 'salary' | 'ctc' | 'education' | 'experience' | 'emergency'
+  | 'basic' | 'personal' | 'job_profile' | 'salary' | 'education'
   | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity';
 
-const TABS: { key: TabKey; label: string; built: boolean }[] = [
-  { key: 'basic', label: 'Basic Details', built: true },
-  { key: 'personal', label: 'Personal Details', built: true },
-  { key: 'contact', label: 'Contact Details', built: true },
-  { key: 'job_profile', label: 'Job Profile', built: true },
-  { key: 'salary', label: 'Salary Details', built: true },
-  { key: 'ctc', label: 'CTC Details', built: true },
-  { key: 'education', label: 'Education', built: true },
-  { key: 'experience', label: 'Experience', built: true },
-  { key: 'emergency', label: 'Emergency Contacts', built: true },
-  { key: 'passport', label: 'Passport', built: true },
-  { key: 'dependents', label: 'Dependents', built: true },
-  { key: 'assets', label: 'Assets', built: true },
-  { key: 'skills', label: 'Skill Matrix', built: true },
-  { key: 'kyc', label: 'KYC & Statutory', built: true },
-  { key: 'activity', label: 'Activity', built: true },
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'basic', label: 'Basic Details' },
+  { key: 'personal', label: 'Personal Details' },
+  { key: 'job_profile', label: 'Job Profile' },
+  { key: 'salary', label: 'Salary Details' },
+  { key: 'education', label: 'Education & Experience' },
+  { key: 'passport', label: 'Passport' },
+  { key: 'dependents', label: 'Dependents' },
+  { key: 'assets', label: 'Assets' },
+  { key: 'skills', label: 'Skill Matrix' },
+  { key: 'kyc', label: 'KYC & Statutory' },
+  { key: 'activity', label: 'Activity' },
 ];
+
+interface SiblingRef {
+  id: number;
+  firstName: string;
+  lastName: string;
+  employeeCode: string;
+  oldEmployeeCode: string | null;
+}
+
+const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  active: { bg: 'var(--success-soft)', fg: 'var(--success)' },
+  'on-leave': { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  terminated: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  resigned: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+};
+
+function StatusPill({ status }: { status: string }) {
+  const tone = STATUS_TONE[status] ?? { bg: 'var(--surface-muted)', fg: 'var(--foreground-muted)' };
+  const label = status.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: tone.bg, color: tone.fg }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tone.fg }} />
+      {label}
+    </span>
+  );
+}
 
 interface ProfileHeader {
   id: number;
+  prev: SiblingRef | null;
+  next: SiblingRef | null;
   companyId: number;
   company: { id: number; name: string } | null;
   title: string | null;
@@ -89,21 +123,48 @@ interface ProfileHeader {
   confirmationDate: string | null;
 }
 
-/** Generic lazy-loaded, per-tab form: fetch on first activation, atomic PUT save. */
+type FormValues = Record<string, string | number | boolean | undefined>;
+
+/** Human-readable display of one field's stored value. */
+function displayValue(def: FieldDef, value: string | number | boolean | undefined): ReactNode {
+  if (value === undefined || value === null || value === '') return '—';
+  if (def.type === 'checkbox') return value ? 'Yes' : 'No';
+  if (def.type === 'select') {
+    const opt = def.options?.find((o) => String(o.value) === String(value));
+    return opt?.label ?? String(value);
+  }
+  if (def.type === 'date') return formatDate(String(value));
+  return String(value);
+}
+
+/**
+ * Generic lazy-loaded, per-tab section: fetch on first activation, show a
+ * read-only label/value grid, and switch to the editable form (atomic PUT
+ * save) when the header's Edit button is clicked.
+ */
 function ProfileTabForm({
+  title,
+  icon,
   fetchUrl,
   saveUrl,
   fields,
   onSaved,
   onDirtyChange,
+  children,
 }: {
+  title: string;
+  icon?: ReactNode;
   fetchUrl: string;
   saveUrl: string;
-  fields: FieldDef[] | ((values: Record<string, string | number | boolean | undefined>) => FieldDef[]);
+  fields: FieldDef[] | ((values: FormValues) => FieldDef[]);
   onSaved?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Extra read-only content rendered under the grid (view mode only). */
+  children?: ReactNode;
 }) {
-  const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
+  const [values, setValues] = useState<FormValues>({});
+  const [savedValues, setSavedValues] = useState<FormValues>({});
+  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +197,7 @@ function ProfileTabForm({
           }
         }
         setValues(normalized);
+        setSavedValues(normalized);
       })
       .catch(() => setError('Failed to load'))
       .finally(() => !cancelled && setLoading(false));
@@ -171,6 +233,8 @@ function ProfileTabForm({
       }
       setDirty(false);
       setSaved(true);
+      setSavedValues(values);
+      setEditing(false);
       onSaved?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -179,44 +243,75 @@ function ProfileTabForm({
     }
   };
 
-  if (loading) {
-    return (
-      <div className="card p-6 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-        Loading...
-      </div>
-    );
-  }
+  const handleCancel = () => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+    setValues(savedValues);
+    setDirty(false);
+    setError(null);
+    setEditing(false);
+  };
+
+  const action = loading ? undefined : editing ? (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleCancel}
+        disabled={saving}
+        className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-50"
+        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving || !dirty}
+        className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition disabled:opacity-50"
+        style={{ backgroundColor: 'var(--accent)' }}
+      >
+        {saving ? 'Saving...' : 'Save'}
+      </button>
+    </div>
+  ) : (
+    <EditButton onClick={() => setEditing(true)} />
+  );
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {resolvedFields.map((f) => (
-          <Field key={f.name} def={f} value={values[f.name]} onChange={(v) => handleChange(f.name, v)} />
-        ))}
-      </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
+    <SectionCard title={title} icon={icon} action={action}>
+      {loading ? (
+        <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+          Loading...
+        </div>
+      ) : editing ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {resolvedFields.map((f) => (
+              <Field key={f.name} def={f} value={values[f.name]} onChange={(v) => handleChange(f.name, v)} />
+            ))}
+          </div>
+          {error && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {error}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {error && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {error}
+            </div>
+          )}
+          {saved && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
+              Saved.
+            </div>
+          )}
+          <DetailGrid items={resolvedFields.map((f) => ({ label: f.label, value: displayValue(f, values[f.name]) }))} />
+          {children}
         </div>
       )}
-      {saved && !dirty && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
-          Saved.
-        </div>
-      )}
-
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving || !dirty}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-      </div>
-    </div>
+    </SectionCard>
   );
 }
 
@@ -265,9 +360,10 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
   ];
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>CTC Details</h2>
+    <SectionCard
+      title="CTC Details"
+      icon={<SectionIcon.Wallet />}
+      action={
         <button
           onClick={() => setModalOpen(true)}
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
@@ -275,7 +371,9 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
         >
           + New Revision
         </button>
-      </div>
+      }
+    >
+      <div className="space-y-4">
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
       )}
@@ -297,7 +395,8 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
         }}
         submitLabel="Add"
       />
-    </div>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -390,9 +489,10 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   ];
 
   return (
-    <div className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Salary Details</h2>
+    <SectionCard
+      title="Salary Details"
+      icon={<SectionIcon.Wallet />}
+      action={
         <button
           onClick={() => setFormOpen((o) => !o)}
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
@@ -400,8 +500,9 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
         >
           {formOpen ? 'Cancel' : '+ New Revision'}
         </button>
-      </div>
-
+      }
+    >
+      <div className="space-y-4">
       {formOpen && (
         <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)' }}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -487,7 +588,8 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
       )}
 
       <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No salary revisions recorded yet." />
-    </div>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -512,12 +614,9 @@ function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
   ];
 
   return (
-    <div className="card p-5 space-y-4">
-      <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-        Activity
-      </h2>
+    <SectionCard title="Activity" icon={<SectionIcon.Activity />}>
       <DataTable columns={columns} data={items} loading={loading} emptyMessage="No activity recorded for this employee yet." />
-    </div>
+    </SectionCard>
   );
 }
 
@@ -547,12 +646,11 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
   };
 
   return (
-    <div className="card p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-          Sensitive Fields
-        </h2>
-        {revealed ? (
+    <SectionCard
+      title="Sensitive Fields"
+      icon={<SectionIcon.Shield />}
+      action={
+        revealed ? (
           <button
             onClick={() => setRevealed(null)}
             className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
@@ -569,8 +667,10 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
           >
             {loading ? 'Revealing...' : 'Reveal PAN / Aadhaar'}
           </button>
-        )}
-      </div>
+        )
+      }
+    >
+      <div className="space-y-3">
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
           {error}
@@ -588,7 +688,13 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
           </div>
         </div>
       )}
-    </div>
+      {!revealed && !error && (
+        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+          PAN and Aadhaar are masked above. Revealing them is permission-gated and logged.
+        </p>
+      )}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -693,13 +799,18 @@ export default function EmployeeProfilePage() {
     );
   }, [fetchHeader, employeeId]);
 
-  const basicFields: FieldDef[] = useMemo(
-    () =>
-      buildBasicFields({
-        companies, units, departments, subDepartments, designations,
-        employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
-        reportingManagers,
-      }),
+  // Function form — the Level select is narrowed to the Grade currently
+  // chosen on the form, which only ProfileTabForm's own values can drive.
+  const basicFields = useCallback(
+    (v: FormValues) =>
+      buildBasicFields(
+        {
+          companies, units, departments, subDepartments, designations,
+          employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans,
+          reportingManagers,
+        },
+        v
+      ),
     [companies, units, departments, subDepartments, designations, employeeTypes, categories, grades, levels, shiftMasters, shiftRotationPlans, reportingManagers]
   );
 
@@ -768,80 +879,121 @@ export default function EmployeeProfilePage() {
     );
   }
 
+  const siblingName = (s: SiblingRef) => `${s.firstName} ${s.lastName}`;
+  const siblingCode = (s: SiblingRef) => s.oldEmployeeCode ?? s.employeeCode;
+
   return (
     <div className="space-y-4">
-      {/* Profile header */}
-      <div className="card p-5 flex flex-wrap items-center gap-4">
-        <div
-          className="h-14 w-14 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0"
-          style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}
+      {/* Page title */}
+      <div className="flex items-center gap-3">
+        <Link
+          href="/employees"
+          aria-label="Back to Employee Master"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg transition hover:opacity-70"
+          style={{ color: 'var(--foreground)' }}
         >
-          {header.firstName[0]}
-          {header.lastName[0]}
-        </div>
-        <div className="flex-1 min-w-[220px]">
-          <h1 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--foreground)' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 19-7-7 7-7" /><path d="M19 12H5" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+          Employee Details
+        </h1>
+      </div>
+
+      {/* Profile header */}
+      <div className="card flex flex-wrap items-center gap-5 p-5">
+        <EmployeeAvatar firstName={header.firstName} lastName={header.lastName} photoPath={header.profilePhotoPath} size={88} />
+        <div className="min-w-[240px] flex-1 space-y-2">
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
             {header.title ? `${header.title} ` : ''}
             {header.firstName} {header.middleName ?? ''} {header.lastName}
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="rounded-md px-2 py-0.5 text-xs font-medium"
+              style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--foreground)' }}
+            >
+              {header.oldEmployeeCode ?? header.employeeCode}
+            </span>
+            <StatusPill status={header.status} />
             {!header.isActive && (
-              <span
-                className="px-2 py-0.5 text-xs font-medium rounded-full"
-                style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}
-              >
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
                 Inactive
               </span>
             )}
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            {header.oldEmployeeCode ?? header.employeeCode} · {header.designation?.name ?? '—'} · {header.department?.name ?? '—'}
-          </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm" style={{ color: 'var(--foreground)' }}>
+            <span className="inline-flex items-center gap-1.5">
+              <span style={{ color: 'var(--foreground-muted)' }}><SectionIcon.Briefcase /></span>
+              {header.department?.name ?? '—'}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span style={{ color: 'var(--foreground-muted)' }}><SectionIcon.User /></span>
+              {header.designation?.name ?? '—'}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span style={{ color: 'var(--foreground-muted)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" />
+                </svg>
+              </span>
+              Joined On {formatDate(header.joinDate)}
+            </span>
+            {header.confirmationDate && (
+              <span className="inline-flex items-center gap-1.5">
+                <span style={{ color: 'var(--foreground-muted)' }}><SectionIcon.Shield /></span>
+                Confirmed {formatDate(header.confirmationDate)}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-4 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          <div>
-            <div className="text-xs uppercase tracking-wide">Reporting Manager</div>
-            <div style={{ color: 'var(--foreground)' }}>
-              {header.reportingManager
-                ? `${header.reportingManager.firstName} ${header.reportingManager.lastName}`
-                : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wide">Status</div>
-            <div style={{ color: 'var(--foreground)' }}>{header.status}</div>
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wide">Joining Date</div>
-            <div style={{ color: 'var(--foreground)' }}>
-              {header.joinDate ? header.joinDate.slice(0, 10) : '—'}
-            </div>
-          </div>
-          {header.confirmationDate && (
-            <div>
-              <div className="text-xs uppercase tracking-wide">Confirmation Date</div>
-              <div style={{ color: 'var(--foreground)' }}>{header.confirmationDate.slice(0, 10)}</div>
-            </div>
-          )}
-        </div>
-        {header.confirmationDate && (
-          <a
-            href={`/api/employees/${employeeId}/confirmation/letter`}
-            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
-            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+
+        {/* Right column: prev/next navigator + secondary actions */}
+        <div className="flex flex-col items-end gap-2">
+          <div
+            className="flex items-stretch rounded-xl border"
+            style={{ borderColor: 'var(--accent-soft)', backgroundColor: 'var(--accent-soft)' }}
           >
-            Download Confirmation Letter
-          </a>
-        )}
-        <button
-          onClick={() => setConfirmToggle(true)}
-          className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
-          style={
-            header.isActive
-              ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
-              : { borderColor: 'var(--accent)', color: 'var(--accent)' }
-          }
-        >
-          {header.isActive ? 'Deactivate' : 'Reactivate'}
-        </button>
+            <SiblingNav
+              direction="prev"
+              label="Previous Employee"
+              sibling={header.prev}
+              code={header.prev ? siblingCode(header.prev) : undefined}
+              name={header.prev ? siblingName(header.prev) : undefined}
+            />
+            <div className="my-3 w-px" style={{ backgroundColor: 'var(--border)' }} />
+            <SiblingNav
+              direction="next"
+              label="Next Employee"
+              sibling={header.next}
+              code={header.next ? siblingCode(header.next) : undefined}
+              name={header.next ? siblingName(header.next) : undefined}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {header.confirmationDate && (
+              <a
+                href={`/api/employees/${employeeId}/confirmation/letter`}
+                className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
+                style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+              >
+                Confirmation Letter
+              </a>
+            )}
+            <button
+              onClick={() => setConfirmToggle(true)}
+              className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
+              style={
+                header.isActive
+                  ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
+                  : { borderColor: 'var(--accent)', color: 'var(--accent)' }
+              }
+            >
+              {header.isActive ? 'Deactivate' : 'Reactivate'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {toggleError && (
@@ -864,27 +1016,37 @@ export default function EmployeeProfilePage() {
       />
 
       {/* Tab strip */}
-      <div className="flex flex-wrap gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => handleTabClick(tab.key)}
-            className="px-3 py-2 text-sm font-medium rounded-t-lg transition"
-            style={{
-              color: activeTab === tab.key ? 'var(--accent)' : 'var(--foreground-muted)',
-              borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
-            }}
-          >
-            {tab.label}
-            {!tab.built && <span className="ml-1 text-[10px] opacity-60">(Coming soon)</span>}
-          </button>
-        ))}
+      <div className="card overflow-x-auto p-2">
+        <div className="flex min-w-max items-center gap-1" role="tablist">
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => handleTabClick(tab.key)}
+                className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition"
+                style={{
+                  backgroundColor: active ? 'var(--accent)' : 'transparent',
+                  color: active ? '#fff' : 'var(--foreground-muted)',
+                }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tab content */}
       {activeTab === 'basic' && (
         <ProfileTabForm
           key={activeTab}
+          title="Basic Details"
+          icon={<SectionIcon.IdCard />}
           fetchUrl={`/api/employees/${employeeId}/basic`}
           saveUrl={`/api/employees/${employeeId}/basic`}
           fields={basicFields}
@@ -893,93 +1055,101 @@ export default function EmployeeProfilePage() {
         />
       )}
       {activeTab === 'personal' && (
-        <ProfileTabForm
-          key={activeTab}
-          fetchUrl={`/api/employees/${employeeId}/personal`}
-          saveUrl={`/api/employees/${employeeId}/personal`}
-          fields={personalFields}
-          onDirtyChange={setActiveTabDirty}
-        />
-      )}
-      {activeTab === 'contact' && (
-        <ProfileTabForm
-          key={activeTab}
-          fetchUrl={`/api/employees/${employeeId}/contact`}
-          saveUrl={`/api/employees/${employeeId}/contact`}
-          fields={contactFields}
-          onDirtyChange={setActiveTabDirty}
-        />
+        <div className="space-y-4">
+          <ProfileTabForm
+            key="personal"
+            title="Personal Details"
+            icon={<SectionIcon.User />}
+            fetchUrl={`/api/employees/${employeeId}/personal`}
+            saveUrl={`/api/employees/${employeeId}/personal`}
+            fields={personalFields}
+            onDirtyChange={setActiveTabDirty}
+          />
+          <ProfileTabForm
+            key="contact"
+            title="Contact Details"
+            icon={<SectionIcon.Phone />}
+            fetchUrl={`/api/employees/${employeeId}/contact`}
+            saveUrl={`/api/employees/${employeeId}/contact`}
+            fields={contactFields}
+            onDirtyChange={setActiveTabDirty}
+          />
+          <RepeatableListTab<EmergencyContactRow>
+            apiBasePath={`/api/employees/${employeeId}/emergency-contacts`}
+            title="Emergency Contacts"
+            icon={<SectionIcon.Phone />}
+            addLabel="+ Add Emergency Contact"
+            fields={buildEmergencyContactFields()}
+            emptyMessage="No emergency contacts yet."
+            columns={[
+              { key: 'contactName', label: 'Name' },
+              { key: 'relationship', label: 'Relationship' },
+              { key: 'mobile', label: 'Phone Number', render: (r) => r.mobile ?? '—' },
+              {
+                key: 'isPrimary',
+                label: 'Primary',
+                render: (r) => (r.isPrimary ? <span style={{ color: 'var(--accent)' }}>Primary</span> : '—'),
+              },
+            ]}
+          />
+        </div>
       )}
       {activeTab === 'job_profile' && (
         <ProfileTabForm
           key={activeTab}
+          title="Job Profile"
+          icon={<SectionIcon.Briefcase />}
           fetchUrl={`/api/employees/${employeeId}/job-profile`}
           saveUrl={`/api/employees/${employeeId}/job-profile`}
           fields={jobProfileFields}
           onDirtyChange={setActiveTabDirty}
         />
       )}
-      {activeTab === 'salary' && <EmployeeSalaryTab employeeId={employeeId} />}
-      {activeTab === 'ctc' && <EmployeeCtcTab employeeId={employeeId} />}
+      {activeTab === 'salary' && (
+        <div className="space-y-4">
+          <EmployeeSalaryTab employeeId={employeeId} />
+          <EmployeeCtcTab employeeId={employeeId} />
+        </div>
+      )}
       {activeTab === 'education' && (
-        <RepeatableListTab<EducationRow>
-          apiBasePath={`/api/employees/${employeeId}/education`}
-          title="Education"
-          addLabel="+ Add Education"
-          fields={buildEducationFields()}
-          emptyMessage="No education records yet."
-          columns={[
-            { key: 'qualification', label: 'Qualification' },
-            { key: 'institution', label: 'Institution', render: (r) => r.institution ?? '—' },
-            { key: 'university', label: 'University', render: (r) => r.university ?? '—' },
-            { key: 'yearOfPassing', label: 'Year', render: (r) => r.yearOfPassing ?? '—' },
-            { key: 'percentage', label: '%', render: (r) => r.percentage ?? '—' },
-          ]}
-        />
-      )}
-      {activeTab === 'experience' && (
-        <RepeatableListTab<ExperienceRow>
-          apiBasePath={`/api/employees/${employeeId}/experience`}
-          title="Experience"
-          addLabel="+ Add Experience"
-          fields={buildExperienceFields()}
-          emptyMessage="No experience records yet."
-          columns={[
-            { key: 'companyName', label: 'Company' },
-            { key: 'designation', label: 'Designation' },
-            { key: 'fromDate', label: 'From', render: (r) => r.fromDate.slice(0, 10) },
-            { key: 'toDate', label: 'To', render: (r) => (r.toDate ? r.toDate.slice(0, 10) : 'Current') },
-            { key: 'lastDrawnSalary', label: 'Last Drawn Salary', render: (r) => r.lastDrawnSalary ?? '—' },
-          ]}
-        />
-      )}
-      {activeTab === 'emergency' && (
-        <RepeatableListTab<EmergencyContactRow>
-          apiBasePath={`/api/employees/${employeeId}/emergency-contacts`}
-          title="Emergency Contacts"
-          addLabel="+ Add Emergency Contact"
-          fields={buildEmergencyContactFields()}
-          emptyMessage="No emergency contacts yet."
-          columns={[
-            { key: 'contactName', label: 'Name' },
-            { key: 'relationship', label: 'Relationship' },
-            { key: 'mobile', label: 'Mobile', render: (r) => r.mobile ?? '—' },
-            {
-              key: 'isPrimary',
-              label: 'Primary',
-              render: (r) =>
-                r.isPrimary ? (
-                  <span style={{ color: 'var(--accent)' }}>Primary</span>
-                ) : (
-                  '—'
-                ),
-            },
-          ]}
-        />
+        <div className="space-y-4">
+          <RepeatableListTab<EducationRow>
+            apiBasePath={`/api/employees/${employeeId}/education`}
+            title="Education"
+            icon={<SectionIcon.GraduationCap />}
+            addLabel="+ Add Education"
+            fields={buildEducationFields()}
+            emptyMessage="No education records yet."
+            columns={[
+              { key: 'qualification', label: 'Qualification' },
+              { key: 'institution', label: 'Institution', render: (r) => r.institution ?? '—' },
+              { key: 'university', label: 'University', render: (r) => r.university ?? '—' },
+              { key: 'yearOfPassing', label: 'Year', render: (r) => r.yearOfPassing ?? '—' },
+              { key: 'percentage', label: '%', render: (r) => r.percentage ?? '—' },
+            ]}
+          />
+          <RepeatableListTab<ExperienceRow>
+            apiBasePath={`/api/employees/${employeeId}/experience`}
+            title="Experience"
+            icon={<SectionIcon.Briefcase />}
+            addLabel="+ Add Experience"
+            fields={buildExperienceFields()}
+            emptyMessage="No experience records yet."
+            columns={[
+              { key: 'companyName', label: 'Company' },
+              { key: 'designation', label: 'Designation' },
+              { key: 'fromDate', label: 'From', render: (r) => formatDate(r.fromDate) },
+              { key: 'toDate', label: 'To', render: (r) => (r.toDate ? formatDate(r.toDate) : 'Current') },
+              { key: 'lastDrawnSalary', label: 'Last Drawn Salary', render: (r) => r.lastDrawnSalary ?? '—' },
+            ]}
+          />
+        </div>
       )}
       {activeTab === 'passport' && (
         <ProfileTabForm
           key={activeTab}
+          title="Passport"
+          icon={<SectionIcon.Passport />}
           fetchUrl={`/api/employees/${employeeId}/passport`}
           saveUrl={`/api/employees/${employeeId}/passport`}
           fields={buildPassportFields()}
@@ -989,13 +1159,14 @@ export default function EmployeeProfilePage() {
         <RepeatableListTab<DependentRow>
           apiBasePath={`/api/employees/${employeeId}/dependents`}
           title="Dependents"
+          icon={<SectionIcon.Users />}
           addLabel="+ Add Dependent"
           fields={buildDependentFields()}
           emptyMessage="No dependents added yet."
           columns={[
             { key: 'name', label: 'Name' },
             { key: 'relationship', label: 'Relationship' },
-            { key: 'dateOfBirth', label: 'Date of Birth', render: (r) => (r.dateOfBirth ? r.dateOfBirth.slice(0, 10) : '—') },
+            { key: 'dateOfBirth', label: 'Date of Birth', render: (r) => formatDate(r.dateOfBirth) },
             { key: 'isDependent', label: 'Is Dependent', render: (r) => (r.isDependent ? 'Yes' : 'No') },
           ]}
         />
@@ -1004,6 +1175,7 @@ export default function EmployeeProfilePage() {
         <RepeatableListTab<SkillRow>
           apiBasePath={`/api/employees/${employeeId}/skills`}
           title="Skill Matrix"
+          icon={<SectionIcon.Award />}
           addLabel="+ Add Skill"
           fields={buildSkillFields()}
           emptyMessage="No skills recorded yet."
@@ -1020,6 +1192,7 @@ export default function EmployeeProfilePage() {
         <RepeatableListTab<AssetRow>
           apiBasePath={`/api/employees/${employeeId}/assets`}
           title="Assets"
+          icon={<SectionIcon.Laptop />}
           addLabel="+ Allocate Asset"
           fields={buildAssetFields(assetMasters)}
           emptyMessage="No assets allocated yet."
@@ -1052,21 +1225,62 @@ export default function EmployeeProfilePage() {
       )}
       {activeTab === 'kyc' && (
         <div className="space-y-4">
-          <KycRevealPanel employeeId={employeeId} />
           <ProfileTabForm
             key={activeTab}
+            title="KYC & Statutory"
+            icon={<SectionIcon.Shield />}
             fetchUrl={`/api/employees/${employeeId}/kyc`}
             saveUrl={`/api/employees/${employeeId}/kyc`}
             fields={buildKycFields()}
           />
+          <KycRevealPanel employeeId={employeeId} />
         </div>
       )}
       {activeTab === 'activity' && <EmployeeActivityTab employeeId={employeeId} />}
-      {!TABS.find((t) => t.key === activeTab)?.built && (
-        <div className="card p-8 text-center text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          {TABS.find((t) => t.key === activeTab)?.label} is coming soon.
-        </div>
-      )}
     </div>
+  );
+}
+
+/** One half of the "Previous / Next Employee" navigator in the profile header. */
+function SiblingNav({
+  direction,
+  label,
+  sibling,
+  code,
+  name,
+}: {
+  direction: 'prev' | 'next';
+  label: string;
+  sibling: SiblingRef | null;
+  code?: string;
+  name?: string;
+}) {
+  const arrow = (
+    <span
+      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border"
+      style={{ borderColor: 'var(--accent)', color: 'var(--accent)', opacity: sibling ? 1 : 0.4 }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {direction === 'prev' ? <><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></> : <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>}
+      </svg>
+    </span>
+  );
+  const text = (
+    <span className="min-w-[120px]">
+      <span className="block text-xs" style={{ color: 'var(--foreground-muted)' }}>{label}</span>
+      <span className="block text-sm font-semibold" style={{ color: 'var(--foreground)' }}>{code ?? '—'}</span>
+      <span className="block text-xs" style={{ color: 'var(--foreground-muted)' }}>{name ?? 'None'}</span>
+    </span>
+  );
+  const inner = direction === 'prev' ? <>{arrow}{text}</> : <>{text}{arrow}</>;
+  const cls = `flex items-center gap-3 px-4 py-3 ${direction === 'next' ? 'text-right' : ''}`;
+
+  if (!sibling) {
+    return <div className={cls} aria-disabled="true">{inner}</div>;
+  }
+  return (
+    <Link href={`/employees/${sibling.id}`} className={`${cls} rounded-xl transition hover:opacity-80`}>
+      {inner}
+    </Link>
   );
 }
