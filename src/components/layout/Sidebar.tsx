@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Icon from "./NavIcons";
 import { navigation, allNavLeaves, type NavModule } from "./navigation";
 
@@ -23,39 +23,9 @@ const totalCount = allNavLeaves.length;
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
-  // The sidebar itself is a flat, always-collapsed list of top-level modules
-  // (new design) — a module's sub-pages surface in a hover flyout instead of
-  // pushing the list down inline. `activeFlyout` is purely interaction-driven
-  // (no auto-open on route match) since an unprompted flyout on page load
-  // would look like a stray popup, not navigation.
-  const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const moduleRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [openModule, setOpenModule] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [me, setMe] = useState<CurrentUser | null>(null);
-
-  const clearCloseTimer = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-
-  const openFlyout = (mod: NavModule) => {
-    clearCloseTimer();
-    const el = moduleRefs.current.get(mod.label);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      setFlyoutPos({ top: rect.top, left: rect.right + 6 });
-    }
-    setActiveFlyout(mod.label);
-  };
-
-  const scheduleClose = () => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => setActiveFlyout(null), 150);
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +67,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       ? pathname === "/"
       : pathname === mod.href || pathname.startsWith(`${mod.href}/`);
 
+  // The module holding the current route opens by default until the user picks another.
+  const activeModule = visibleNavigation.find(isModuleActive)?.label ?? null;
+  const expandedModule = openModule ?? activeModule;
+
   const visibleModuleLabels = useMemo(
     () => new Set(visibleNavigation.map((mod) => mod.label)),
     [visibleNavigation]
@@ -116,6 +90,15 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       .slice(0, 40);
   }, [query]);
 
+  const handleModuleClick = (mod: NavModule) => {
+    if (collapsed) {
+      onToggleCollapse();
+      setOpenModule(mod.label);
+      return;
+    }
+    setOpenModule((current) => (current === mod.label ? "" : mod.label));
+  };
+
   const readyDot = (
     <span
       className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full"
@@ -126,23 +109,14 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
 
   const renderModule = (mod: NavModule) => {
     const active = isModuleActive(mod);
-    const flyoutOpen = activeFlyout === mod.label;
+    const expanded = expandedModule === mod.label && !collapsed;
 
     return (
-      <div
-        key={mod.label}
-        ref={(el) => {
-          if (el) moduleRefs.current.set(mod.label, el);
-          else moduleRefs.current.delete(mod.label);
-        }}
-        onMouseEnter={() => openFlyout(mod)}
-        onMouseLeave={scheduleClose}
-      >
+      <div key={mod.label}>
         <button
           type="button"
-          onClick={() => (flyoutOpen ? setActiveFlyout(null) : openFlyout(mod))}
-          aria-expanded={flyoutOpen}
-          aria-haspopup="true"
+          onClick={() => handleModuleClick(mod)}
+          aria-expanded={expanded}
           title={mod.label}
           className={`group flex w-full items-center gap-3 rounded-full py-2 pl-2 pr-3 text-sm font-medium transition ${
             collapsed ? "justify-center px-2" : ""
@@ -163,13 +137,61 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
             <Icon name={mod.icon} size={17} />
           </span>
 
-          {!collapsed && <span className="flex-1 truncate text-left">{mod.short ?? mod.label}</span>}
+          {!collapsed && (
+            <>
+              <span className="flex-1 truncate text-left">{mod.short ?? mod.label}</span>
+              <Icon
+                name="chevron"
+                size={14}
+                className="shrink-0 transition-transform"
+                style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+              />
+            </>
+          )}
         </button>
+
+        {expanded && (
+          <div
+            className="mt-1 mb-2 ml-[26px] border-l pl-3"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {mod.groups.map((group) => (
+              <div key={group.label} className="mb-2 last:mb-0">
+                <p
+                  className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider"
+                  style={{ color: "var(--foreground-muted)" }}
+                >
+                  {group.label}
+                </p>
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const itemActive = isLeafActive(item.href);
+                    return (
+                      <Link
+                        key={item.href + item.label}
+                        href={item.href}
+                        onClick={onClose}
+                        title={item.label}
+                        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] leading-snug transition hover:bg-[color:var(--surface-hover)]"
+                        style={{
+                          color: itemActive ? "var(--accent)" : "var(--foreground-muted)",
+                          fontWeight: itemActive ? 600 : 400,
+                          background: itemActive ? "var(--accent-soft)" : "transparent",
+                        }}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{item.short ?? item.label}</span>
+                        {item.ready && readyDot}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
-
-  const flyoutModule = visibleNavigation.find((mod) => mod.label === activeFlyout) ?? null;
 
   return (
     <>
@@ -329,58 +351,6 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
           </div>
         )}
       </aside>
-
-      {/* Sub-page flyout — rendered as a sibling of <aside>, not a descendant,
-          so its `position: fixed` is relative to the viewport rather than
-          the aside's own transformed (translate-x) box, which would
-          otherwise become the containing block and break the coordinates
-          computed from getBoundingClientRect(). */}
-      {flyoutModule && flyoutPos && (
-        <div
-          className="fixed z-50 w-64 rounded-2xl border py-2 shadow-lg"
-          style={{ top: flyoutPos.top, left: flyoutPos.left, background: "var(--surface)", borderColor: "var(--border)" }}
-          onMouseEnter={() => openFlyout(flyoutModule)}
-          onMouseLeave={scheduleClose}
-        >
-          <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--foreground-muted)" }}>
-            {flyoutModule.label}
-          </p>
-          <div className="max-h-[70vh] overflow-y-auto scroll-thin px-1">
-            {flyoutModule.groups.map((group) => (
-              <div key={group.label} className="mb-1 last:mb-0">
-                <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--foreground-muted)" }}>
-                  {group.label}
-                </p>
-                <div className="space-y-0.5">
-                  {group.items.map((item) => {
-                    const itemActive = isLeafActive(item.href);
-                    return (
-                      <Link
-                        key={item.href + item.label}
-                        href={item.href}
-                        onClick={() => {
-                          setActiveFlyout(null);
-                          onClose();
-                        }}
-                        title={item.label}
-                        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] leading-snug transition hover:bg-[color:var(--surface-hover)]"
-                        style={{
-                          color: itemActive ? "var(--accent)" : "var(--foreground-muted)",
-                          fontWeight: itemActive ? 600 : 400,
-                          background: itemActive ? "var(--accent-soft)" : "transparent",
-                        }}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{item.short ?? item.label}</span>
-                        {item.ready && readyDot}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </>
   );
 }
