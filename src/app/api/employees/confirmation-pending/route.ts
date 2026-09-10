@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
         include: {
           department: { select: { id: true, name: true } },
           designation: { select: { id: true, name: true } },
+          employeeType: { select: { id: true, name: true } },
         },
       },
     },
@@ -47,6 +48,8 @@ export async function GET(request: NextRequest) {
       lastName: emp.lastName,
       department: emp.jobInfos[0]?.department ?? null,
       designation: emp.jobInfos[0]?.designation ?? null,
+      employeeType: emp.jobInfos[0]?.employeeType ?? null,
+      profilePhotoPath: emp.profilePhotoPath,
       joinDate: emp.jobInfos[0]?.joinDate ?? null,
       probationEndDate: emp.jobInfos[0]?.probationEndDate ?? null,
     })),

@@ -93,6 +93,7 @@ model Designation {
   updatedAt   DateTime  @updatedAt
 
   jobInfos JobInfo[]
+  grades   Grade[]
 
   @@map("Designation")
 }
@@ -205,29 +206,43 @@ model Grade {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // A grade sits under a designation (migration 000022). Nullable so the
+  // rows that predate the link keep loading; the master form requires it.
+  designationId Int?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  jobInfos JobInfo[]
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  levels      Level[]
+  jobInfos    JobInfo[]
 
+  @@index([designationId])
   @@map("Grade")
 }
 
 // Q1: Drafted as separate table from Grade.
 model Level {
   id          Int       @id @default(autoincrement())
-  code        String    @unique @db.NVarChar(20)
+  // Unique per grade (migration 000024): "L1" may exist under several grades.
+  code        String    @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // A level sits under a grade (migration 000023): one grade has many
+  // levels and an employee moves between levels within their grade.
+  // Nullable so pre-link rows keep loading; the master form requires it.
+  gradeId     Int?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  grade    Grade?    @relation(fields: [gradeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   jobInfos JobInfo[]
 
+  @@unique([gradeId, code])
+  @@index([gradeId])
   @@map("Level")
 }
 

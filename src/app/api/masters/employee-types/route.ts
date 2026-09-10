@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { employeeTypeSchema } from '@/lib/validations/master';
+import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -31,9 +32,12 @@ export async function POST(request: NextRequest) {
   const parsed = employeeTypeSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.employeeType.findUnique({ where: { code: parsed.data.code } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  // Code is always server-generated — ignore whatever (if anything) the
+  // client sent. Scans all rows, deleted included, since code stays unique
+  // even after a soft delete.
+  const existing = await prisma.employeeType.findMany({ select: { code: true } });
+  const code = nextSequentialCode(existing.map((e) => e.code), 'ET');
 
-  const record = await prisma.employeeType.create({ data: parsed.data });
+  const record = await prisma.employeeType.create({ data: { ...parsed.data, code } });
   return NextResponse.json(record, { status: 201 });
 }

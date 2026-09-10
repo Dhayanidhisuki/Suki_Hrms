@@ -1,5 +1,6 @@
-import SimpleMasterPage from '@/components/SimpleMasterPage';
+import { redirect } from 'next/navigation';
 
-export default function GradesPage() {
-  return <SimpleMasterPage title="Grades" apiPath="/api/masters/grades" />;
+/** Folded into the combined Designations & Grades page — keep old links working. */
+export default function Page() {
+  redirect('/masters/designations-grades?tab=grades');
 }

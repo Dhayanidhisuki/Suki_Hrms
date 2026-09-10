@@ -65,7 +65,27 @@ export async function GET(
 
   const currentJob = employee.jobInfos[0] ?? null;
 
+  // Previous / next employee for the profile header's navigator. Ordering
+  // mirrors the Employee Master list (createdAt desc) so "next" on the
+  // profile is the row below on the list.
+  const siblingSelect = { id: true, firstName: true, lastName: true, employeeCode: true, oldEmployeeCode: true };
+  const siblingWhere = { companyId: employee.companyId, deletedAt: null };
+  const [prev, next] = await Promise.all([
+    prisma.employee.findFirst({
+      where: { ...siblingWhere, createdAt: { gt: employee.createdAt } },
+      orderBy: { createdAt: 'asc' },
+      select: siblingSelect,
+    }),
+    prisma.employee.findFirst({
+      where: { ...siblingWhere, createdAt: { lt: employee.createdAt } },
+      orderBy: { createdAt: 'desc' },
+      select: siblingSelect,
+    }),
+  ]);
+
   return NextResponse.json({
+    prev,
+    next,
     id: employee.id,
     companyId: employee.companyId,
     company: employee.company,

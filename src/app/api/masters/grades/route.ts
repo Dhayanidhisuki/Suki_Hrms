@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { gradeSchema } from '@/lib/validations/master';
 
+const designationSelect = { designation: { select: { id: true, name: true } } };
+
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
@@ -10,14 +12,16 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
+  const designationId = searchParams.get('designationId');
 
   const where = {
     deletedAt: null,
+    ...(designationId ? { designationId: parseInt(designationId) } : {}),
     ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
   };
 
   const [data, total] = await Promise.all([
-    prisma.grade.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.grade.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, include: designationSelect }),
     prisma.grade.count({ where }),
   ]);
 
@@ -34,6 +38,9 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.grade.findUnique({ where: { code: parsed.data.code } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.grade.create({ data: parsed.data });
+  const designation = await prisma.designation.findFirst({ where: { id: parsed.data.designationId, deletedAt: null }, select: { id: true } });
+  if (!designation) return NextResponse.json({ error: 'Designation not found' }, { status: 400 });
+
+  const record = await prisma.grade.create({ data: parsed.data, include: designationSelect });
   return NextResponse.json(record, { status: 201 });
 }

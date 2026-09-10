@@ -18,6 +18,8 @@ interface SimpleMaster {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Extra columns/relations returned by masters that extend the simple shape (e.g. Grade.designation). */
+  [extra: string]: unknown;
 }
 
 interface ApiResponse {
@@ -25,20 +27,46 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-const simpleFields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. MGR' },
-  { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Manager' },
-  { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
-  { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
-];
+const codeField: FieldDef = { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. MGR' };
+const autoCodeField: FieldDef = { name: 'code', label: 'Code', type: 'text', disabled: true, helpText: 'Generated automatically' };
+const nameField: FieldDef = { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Manager' };
+const descriptionField: FieldDef = { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' };
+const activeField: FieldDef = { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true };
+
+const simpleFields: FieldDef[] = [codeField, nameField, descriptionField, activeField];
 
 interface SimpleMasterPageProps {
   title: string;
   apiPath: string;
   addLabel?: string;
+  /**
+   * Render as a section inside a larger page (smaller heading) instead of a
+   * standalone page with an h1 — used by the combined Employee Masters tabs.
+   */
+  embedded?: boolean;
+  /** Extra form fields shown before Code (e.g. a parent-master select). */
+  extraFields?: FieldDef[];
+  /** Extra table columns shown after Name. */
+  extraColumns?: Column<SimpleMaster>[];
+  /** Extra initial form values when editing a row (for the extraFields). */
+  extraInitialValues?: (row: SimpleMaster) => Record<string, string | number | boolean | undefined>;
+  /**
+   * Code is a system id, not something an admin types — the API generates
+   * it. Hides the Code field on Add; shows it disabled (for reference) on Edit.
+   */
+  autoCode?: boolean;
 }
 
-export default function SimpleMasterPage({ title, apiPath, addLabel }: SimpleMasterPageProps) {
+export default function SimpleMasterPage({
+  title,
+  apiPath,
+  addLabel,
+  embedded = false,
+  extraFields = [],
+  extraColumns = [],
+  extraInitialValues,
+  autoCode = false,
+}: SimpleMasterPageProps) {
   const [records, setRecords] = useState<SimpleMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +108,13 @@ export default function SimpleMasterPage({ title, apiPath, addLabel }: SimpleMas
 
   const handleEdit = (row: SimpleMaster) => {
     setEditingId(row.id);
-    setInitialValues({ code: row.code, name: row.name, description: row.description ?? '', isActive: row.isActive });
+    setInitialValues({
+      code: row.code,
+      name: row.name,
+      description: row.description ?? '',
+      isActive: row.isActive,
+      ...(extraInitialValues ? extraInitialValues(row) : {}),
+    });
     setModalOpen(true);
   };
 
@@ -109,6 +143,7 @@ export default function SimpleMasterPage({ title, apiPath, addLabel }: SimpleMas
   const columns: Column<SimpleMaster>[] = [
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
+    ...extraColumns,
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive',
@@ -130,9 +165,15 @@ export default function SimpleMasterPage({ title, apiPath, addLabel }: SimpleMas
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          {title}
-        </h1>
+        {embedded ? (
+          <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+            {title}
+          </h2>
+        ) : (
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            {title}
+          </h1>
+        )}
         <button
           onClick={handleAdd}
           className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
@@ -168,7 +209,11 @@ export default function SimpleMasterPage({ title, apiPath, addLabel }: SimpleMas
 
       <FormModal
         title={editingId ? `Edit ${title.replace(/s$/, '')}` : `Add ${title.replace(/s$/, '')}`}
-        fields={simpleFields}
+        fields={
+          autoCode
+            ? [...extraFields, ...(editingId ? [autoCodeField] : []), nameField, descriptionField, activeField]
+            : [...extraFields, ...simpleFields]
+        }
         initialValues={initialValues}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
