@@ -28,6 +28,10 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { grantCompOff } from '@/lib/leaveAccrual';
+import { creditCompOff } from '@/lib/compOffTransactions';
+
+import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { refreshMonthlySummary } from '@/lib/biometricConversion';
 
 const bodySchema = z.object({
   settlementType: z.enum(['OT', 'COMP_OFF']).default('OT'),
@@ -52,10 +56,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!ownEmployeeId || !(await isReportingManagerOf(ownEmployeeId, record.employeeId))) {
       return NextResponse.json({ error: "Forbidden — only this employee's Reporting Manager can approve this stage" }, { status: 403 });
     }
-    const updated = await prisma.dailyAttendance.update({
-      where: { id: attendanceId },
-      data: { otApprovalStatus: 'pending_hr', otManagerActionByUserId: userId, otManagerActionAt: new Date() },
-    });
+    await upsertDailyAttendanceWithHistory(
+      prisma,
+      record.employeeId,
+      record.date,
+      {
+        otApprovalStatus: 'pending_hr',
+        otManagerActionByUserId: userId,
+        otManagerActionAt: new Date(),
+      },
+      { userId, changedBySource: 'manual' }
+    );
+    await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
+    const updated = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
     return NextResponse.json(updated);
   }
 
@@ -82,29 +95,40 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (settlementType === 'COMP_OFF') {
       await grantCompOff(record.employeeId, record.date);
-      const updated = await prisma.dailyAttendance.update({
-        where: { id: attendanceId },
-        data: {
+      await creditCompOff(record.employeeId, 1, record.date, 'OT_APPROVAL', attendanceId, `OT approved as comp-off on ${record.date.toISOString().slice(0, 10)}`);
+      await upsertDailyAttendanceWithHistory(
+        prisma,
+        record.employeeId,
+        record.date,
+        {
           otApprovalStatus: 'approved',
           otSettlementType: 'COMP_OFF',
           otMinutesApproved: null,
           otHrActionByUserId: userId,
           otHrActionAt: new Date(),
         },
-      });
+        { userId, changedBySource: 'manual' }
+      );
+      await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
+      const updated = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
       return NextResponse.json(updated);
     }
 
-    const updated = await prisma.dailyAttendance.update({
-      where: { id: attendanceId },
-      data: {
+    await upsertDailyAttendanceWithHistory(
+      prisma,
+      record.employeeId,
+      record.date,
+      {
         otApprovalStatus: 'approved',
         otSettlementType: 'OT',
         otMinutesApproved: parsed.data.approvedMinutes ?? record.otMinutesCalculated,
         otHrActionByUserId: userId,
         otHrActionAt: new Date(),
       },
-    });
+      { userId, changedBySource: 'manual' }
+    );
+    await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
+    const updated = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
     return NextResponse.json(updated);
   }
 

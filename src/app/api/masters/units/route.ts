@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { unitSchema } from '@/lib/validations/master';
+import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -37,9 +38,16 @@ export async function POST(request: NextRequest) {
   const parsed = unitSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.unit.findUnique({ where: { code: parsed.data.code } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  const company = await prisma.company.findFirst({ where: { id: parsed.data.companyId, deletedAt: null }, select: { code: true } });
+  if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 400 });
 
-  const record = await prisma.unit.create({ data: parsed.data });
+  // Code is always server-generated, scoped to the company — "<CompanyCode>-001",
+  // "-002"... Ignore whatever (if anything) the client sent. Scans all rows for
+  // this company, deleted included, since (companyId, code) stays unique
+  // even after a soft delete.
+  const siblings = await prisma.unit.findMany({ where: { companyId: parsed.data.companyId }, select: { code: true } });
+  const code = nextSequentialCode(siblings.map((s) => s.code), `${company.code}-`);
+
+  const record = await prisma.unit.create({ data: { ...parsed.data, code } });
   return NextResponse.json(record, { status: 201 });
 }

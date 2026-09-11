@@ -53,13 +53,19 @@ model Department {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // Budgeted/approved staffing count for this department (KUN BRD review,
+  // 2026-09-10). "Current" headcount is derived at read time from actual
+  // JobInfo assignments, not stored.
+  sanctionedHeadcount Int?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  subDepartments SubDepartment[]
-  jobInfos       JobInfo[]
+  subDepartments   SubDepartment[]
+  jobInfos         JobInfo[]
+  jobDescriptions  JobDescription[]
+  jobPostings      JobPosting[]
 
   @@map("Department")
 }
@@ -67,9 +73,14 @@ model Department {
 model SubDepartment {
   id           Int       @id @default(autoincrement())
   departmentId Int
-  code         String    @unique @db.NVarChar(20)
+  // Unique per department, not globally (migration 000031) — auto-generated
+  // as "<DeptCode>-001", "<DeptCode>-002"... so two departments can each
+  // have their own "-001".
+  code         String    @db.NVarChar(20)
   name         String    @db.NVarChar(100)
   description  String?   @db.NVarChar(500)
+  // Same convention as Department.sanctionedHeadcount.
+  sanctionedHeadcount Int?
   isActive     Boolean   @default(true)
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -78,6 +89,7 @@ model SubDepartment {
   department Department @relation(fields: [departmentId], references: [id])
   jobInfos   JobInfo[]  @relation("SubDepartmentJobInfos")
 
+  @@unique([departmentId, code])
   @@index([departmentId])
   @@map("SubDepartment")
 }
@@ -87,13 +99,32 @@ model Designation {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // KUN BRD review (2026-09-10): budget/experience/qualification/headcount
+  // added to the Designation master. JD Upload (bulk import) is separate,
+  // deferred to a later session.
+  budget              Decimal? @db.Decimal(18, 2)
+  experienceYears     Decimal? @db.Decimal(4, 1)
+  qualification       String?  @db.NVarChar(200)
+  sanctionedHeadcount Int?
+  // Reporting Structure (KUN BRD review, 2026-09-10): which Designation this
+  // one reports to by default — an org-chart template the employee wizard
+  // can suggest a Reporting Manager from, not a per-employee assignment.
+  reportsToId Int?
+  // JD Upload (KUN BRD review, 2026-09-10): populated via bulk Excel/CSV
+  // import (Designation Code + Job Description columns), not typed per row
+  // in the Designation form itself.
+  jobDescription String? @db.NVarChar(Max)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  jobInfos JobInfo[]
-  grades   Grade[]
+  reportsTo       Designation?  @relation("DesignationReportsTo", fields: [reportsToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates    Designation[] @relation("DesignationReportsTo")
+  jobInfos        JobInfo[]
+  grades          Grade[]
+  jobDescriptions JobDescription[]
+  jobPostings     JobPosting[]
 
   @@map("Designation")
 }
@@ -129,25 +160,31 @@ model Category {
   @@map("Category")
 }
 
-// Q3: PENDING CLIENT CONFIRMATION — Site model commented out, will NOT migrate.
-//     If "Site" needs factory-license-number / legal-entity / registration
-//     fields that a generic "Branch" does not, this must be split into two
-//     models before migration. Uncomment or split once client confirms.
-// model Site {
-//   id         Int       @id @default(autoincrement())
-//   code       String    @unique @db.NVarChar(20)
-//   name       String    @db.NVarChar(100)
-//   branchType String    @db.NVarChar(20) // "site" | "branch"
-//   address    String?   @db.NVarChar(500)
-//   city       String?   @db.NVarChar(100)
-//   state      String?   @db.NVarChar(100)
-//   isActive   Boolean   @default(true)
-//   deletedAt  DateTime?
-//   createdAt  DateTime  @default(now())
-//   updatedAt  DateTime  @updatedAt
-//
-//   @@map("Site")
-// }
+// Q3 RESOLVED (KUN BRD review, 2026-09-10): Unit is the legal/org entity —
+// stays as-is, just relabelled "Branch / Unit" in the UI. Site is the
+// physical location an employee actually reports to — its own master,
+// company-scoped the same way Unit is, but deliberately no FK to Unit since
+// the client's own wording drew the line at "legal entity vs physical
+// location", not a Unit-owns-Sites hierarchy.
+model Site {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  address     String?   @db.NVarChar(500)
+  city        String?   @db.NVarChar(100)
+  state       String?   @db.NVarChar(100)
+  pinCode     String?   @db.NVarChar(10)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId])
+  @@map("Site")
+}
 
 // Q3 RESOLVED: full Company master added (multi-company future-proofing).
 // Unit is reused as Branch/Site/Plant/Work Location, scoped to a Company.
@@ -179,6 +216,33 @@ model Company {
   benefitRates               BenefitRateByEmployeeType[]
   visitorGatePasses          VisitorGatePass[]
   gnrRecords                 GateNumberRegister[]
+  grossSplitRules            GrossSplitRule[]
+  sites                      Site[]
+  deductionRates             DeductionRate[]
+  lomConfig                  LomConfig?
+  roundingConfig             RoundingConfig?
+  payrollValidationConfig    PayrollValidationConfig?
+  payrollWorkflowConfig      PayrollWorkflowConfig?
+  payrollDisplayConfig       PayrollDisplayConfig?
+  compOffPolicy              CompOffPolicy?
+  otIncentiveSlabs           OTIncentiveSlab[]
+  attendanceBonusConfig      AttendanceBonusConfig?
+  lwfRates                   LwfRate[]
+  statePtConfigs             StatePtConfig[]
+  tdsRegimeConfig            TdsRegimeConfig?
+  healthInsuranceConfig      HealthInsuranceConfig?
+  leaveEncashmentConfig      LeaveEncashmentConfig?
+  fullAndFinalConfig         FullAndFinalConfig?
+  bankFileTemplates          BankFileTemplate[]
+  tdsInvestmentDeclarations  TdsInvestmentDeclaration[]
+  loans                       Loan[]
+  fnfSettlements              FnFSettlement[]
+  incentivePolicies           IncentivePolicy[]
+  allowanceConfigs            AllowanceConfig[]
+  attendanceColorConfig       AttendanceColorConfig?
+  manualArrears               ManualArrear[]
+  licDeductionConfig          LicDeductionConfig?
+  attendancePolicy            AttendancePolicy?
 
   @@map("Company")
 }
@@ -187,9 +251,14 @@ model Company {
 model Unit {
   id          Int       @id @default(autoincrement())
   companyId   Int
-  code        String    @unique @db.NVarChar(20)
+  // Unique per company, not globally (migration 000033) — auto-generated as
+  // "<CompanyCode>-001", "-002"... so two companies can each have their own "-001".
+  code        String    @db.NVarChar(20)
   name        String    @db.NVarChar(100)
+  address     String?   @db.NVarChar(500)
   description String?   @db.NVarChar(500)
+  // Phase 17 — state for state-wise PT lookup via StatePtConfig.
+  state       String?   @db.NVarChar(100)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -198,6 +267,7 @@ model Unit {
   company  Company   @relation(fields: [companyId], references: [id])
   jobInfos JobInfo[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@map("Unit")
 }
@@ -272,6 +342,35 @@ model TDSSlab {
   @@map("TDSSlab")
 }
 
+// Deduction Rates (KUN BRD review, 2026-09-10, item 15) — a catch-all
+// rate table for misc. statutory/company deductions (Canteen, Uniform,
+// Damage recovery, ...) alongside the dedicated TDS/PT/ESI/PF slabs above.
+// Company-scoped, versioned the same way. `isLop` flags the row(s)
+// representing Loss-of-Pay / attendance-based deduction — folded in here
+// per the client's own call rather than a separate Common Logic section;
+// this table stays a read-only rate reference for now, same as
+// GrossSplitRule — nothing in payroll consumes it yet.
+model DeductionRate {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  code          String    @db.NVarChar(20)
+  name          String    @db.NVarChar(100)
+  deductionType String    @db.NVarChar(10) // "PERCENT" | "FLAT" — how rateValue is interpreted
+  rateValue     Decimal   @db.Decimal(10, 2) // a percent (0-100) or a flat currency amount, per deductionType
+  isLop         Boolean   @default(false)
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // NULL = currently active
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, code])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("DeductionRate")
+}
+
 model ProfessionalTaxSlab {
   id            Int       @id @default(autoincrement())
   code          String    @db.NVarChar(20)
@@ -337,6 +436,20 @@ model ShiftMaster {
   startTime    String    @db.NVarChar(8) // "09:00" (HH:mm)
   endTime      String    @db.NVarChar(8) // "18:00" (HH:mm)
   graceMinutes Int       @default(0)
+  // KUN BRD review (2026-09-10): night/snacks/meals allowances for this shift.
+  nightAllowed               Boolean @default(false)
+  bufferMinutes              Int     @default(0)
+  snacksAllowed              Boolean @default(false)
+  mealsAllowed               Boolean @default(false)
+  snacksMealsDurationMinutes Int?
+  // Phase 2A.6 (2026-09-11): configurable break time deducted from working
+  // duration, and per-shift allowance amounts auto-applied by payroll.
+  breakMinutes               Int     @default(0) // lunch/tea break deducted from working duration
+  nightAllowanceAmount       Decimal? @db.Decimal(18, 2)
+  nightAllowanceFromHour     Int?     // e.g. 22 (10 PM)
+  snacksAllowanceAmount      Decimal? @db.Decimal(18, 2)
+  foodAllowanceAmount        Decimal? @db.Decimal(18, 2)
+  mealsAllowanceAmount       Decimal? @db.Decimal(18, 2)
   description  String?   @db.NVarChar(500)
   isActive     Boolean   @default(true)
   deletedAt    DateTime?
@@ -358,11 +471,38 @@ model OTPlan {
   otRateMultiplier       Decimal   @db.Decimal(5, 2) // e.g. 1.50, 2.00
   applicableAfterMinutes Int       @default(0) // OT kicks in after N minutes
   maxOtHoursPerDay       Int? // NULL = no cap
+  // KUN BRD review (2026-09-10): which SalaryComponent the calculated OT
+  // amount is credited to on the payslip (e.g. "OT Pay"). OTPlan itself is
+  // a global master (no companyId), unlike SalaryComponent — the API
+  // validates the chosen component belongs to the caller's own company at
+  // write time; nothing enforces that at the DB level.
+  payComponentId         Int?
+  // Phase 2B.1 (2026-09-11): day-type multipliers and weekly/monthly caps.
+  // weekdayFactor applies to normal working days; weeklyOffFactor to
+  // weekly offs (Sunday); holidayFactor to holidays. Each multiplies the
+  // base otRateMultiplier, so a 2x weekly-off with 1.5x base = 3x total.
+  weekdayFactor          Decimal   @default(1) @db.Decimal(5, 2)
+  weeklyOffFactor        Decimal   @default(1.5) @db.Decimal(5, 2)
+  holidayFactor          Decimal   @default(2) @db.Decimal(5, 2)
+  maxOtHoursPerWeek      Int? // NULL = no weekly cap
+  maxOtHoursPerMonth     Int? // NULL = no monthly cap
+  // COMP_OFF | PAYMENT | CHOICE — whether OT on weekly-off/holiday credits
+  // comp-off balance, pays out, or lets the employee choose at approval.
+  weeklyOffSettlement   String    @default("PAYMENT") @db.NVarChar(20)
+  // Phase 13 — OT calculation basis selection (BRD §5).
+  // GROSS: hourlyRate = gross / workingDays / 8 (existing default)
+  // BASIC: hourlyRate = basic / workingDays / 8
+  // BASIC_DA: hourlyRate = (basic + DA) / workingDays / 8
+  // BASIC_DA_HRA: hourlyRate = (basic + DA + HRA) / workingDays / 8
+  // FIXED: uses JobInfo.overtimeRatePerHour directly (no factor)
+  otCalculationBasis   String    @default("GROSS") @db.NVarChar(20)
   description            String?   @db.NVarChar(500)
   isActive               Boolean   @default(true)
   deletedAt              DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+
+  payComponent SalaryComponent? @relation(fields: [payComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("OTPlan")
 }
@@ -421,6 +561,11 @@ model LeaveMaster {
   carryForwardAllowed Boolean  @default(false)
   carryForwardMaxDays Decimal? @db.Decimal(5, 2)
 
+  // Probation eligibility — whether employees on probation can avail this
+  // leave type, and if so, the maximum days allowed during probation.
+  probationEligible Boolean  @default(true)
+  probationMaxDays  Decimal? @db.Decimal(5, 2)
+
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -443,6 +588,8 @@ model HolidayMaster {
   companyId   Int
   date        DateTime  @db.Date
   name        String    @db.NVarChar(100)
+  // KUN BRD review (2026-09-10): COMPANY | FESTIVAL | GOVERNMENT | OTHER.
+  holidayType String    @default("OTHER") @db.NVarChar(20)
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -460,11 +607,16 @@ model LoanType {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
+  // KUN BRD review (2026-09-10): min/max amount this loan type may be sanctioned for.
+  minAmount   Decimal?  @db.Decimal(18, 2)
+  maxAmount   Decimal?  @db.Decimal(18, 2)
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  loans Loan[]
 
   @@map("LoanType")
 }
@@ -569,6 +721,10 @@ model User {
   role     Role?     @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   employee Employee?
 
+  jobDescriptionsCreated JobDescription[]        @relation("JdCreatedBy")
+  jobDescriptionEdits    JobDescriptionVersion[] @relation("JdVersionEditedBy")
+  jobPostingsCreated     JobPosting[]            @relation("JobPostingCreatedBy")
+
   @@index([roleId])
   @@index([companyId])
   @@map("User")
@@ -636,20 +792,27 @@ model Employee {
   guestEmployee      Boolean @default(false)
   inductionStatus    String? @db.NVarChar(30)
   // E8: Self-referential FK for reporting manager
-  reportingManagerId Int?
+  reportingManagerId       Int?
+  // Level 2: skip-level / second reporting manager
+  secondReportingManagerId Int?
+  // Optional link to JD Master — used for usageCount (employees referencing a JD).
+  jdId Int?
 
   isActive  Boolean   @default(true)
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user    User?   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user           User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobDescription JobDescription? @relation(fields: [jdId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   // Self-referential relation for reporting manager
   // NoAction required to break cyclic cascade through child tables
-  reportingManager Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  directReports    Employee[] @relation("EmployeeToManager")
+  reportingManager       Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  directReports          Employee[] @relation("EmployeeToManager")
+  secondReportingManager Employee?  @relation("EmployeeToSecondManager", fields: [secondReportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  secondLevelReports     Employee[] @relation("EmployeeToSecondManager")
 
   // 1:1 relations
   personalDetails PersonalDetails?
@@ -687,10 +850,21 @@ model Employee {
   biometricAttendanceImports BiometricAttendanceImport[]
   dailyAttendanceHistory     DailyAttendanceHistory[]
   visitorGatePasses          VisitorGatePass[]
+  compOffBalance             CompOffBalance?
+  compOffTransactions        CompOffTransaction[]
+  tdsInvestmentDeclarations  TdsInvestmentDeclaration[]
+  loans                      Loan[]
+  fnfSettlements             FnFSettlement[]
+  doubleMachineEntries       DoubleMachineEntry[]
+  canteenTokens              CanteenToken[]
+  petrolAllowanceEntries     PetrolAllowanceEntry[]
+  manualArrears              ManualArrear[]
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
+  @@index([secondReportingManagerId])
   @@index([status])
+  @@index([jdId])
   @@map("Employee")
 }
 
@@ -820,6 +994,11 @@ model JobInfo {
   // never accepted directly from the client — see calculateProbationEndDate.
   probationPeriodMonths            Int?
   probationEndDate                 DateTime?
+  // Manager recommendation stage (two-level approval: Manager → HR)
+  managerRecommendation            String?   @db.NVarChar(20) // recommend | extend | reject
+  managerRecommendationByUserId     Int?
+  managerRecommendationAt           DateTime?
+  managerRemarks                    String?   @db.NVarChar(500)
   // Shift / attendance config
   shiftRequired                    Boolean   @default(false)
   dailySheetRequired               Boolean   @default(false)
@@ -1092,6 +1271,7 @@ model ExitInterview {
 
   employee       Employee        @relation(fields: [employeeId], references: [id])
   gratuityRecord GratuityRecord?
+  fnfSettlement  FnFSettlement?
 
   @@map("ExitInterview")
 }
@@ -1228,6 +1408,10 @@ model SalaryComponent {
   // src/lib/gratuityCalculation.ts. Defaults false; a company admin opts
   // components in via this Masters page.
   includeInGratuity Boolean   @default(false)
+  // KUN BRD review (2026-09-10): whether this component counts toward the
+  // ESI / PF eligible-wage base — same convention as includeInGratuity.
+  includeInEsi      Boolean   @default(false)
+  includeInPf       Boolean   @default(false)
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -1238,9 +1422,32 @@ model SalaryComponent {
   payrollLineItems    PayrollLineComponent[]
   salaryRevisionItems SalaryRevisionComponent[]
   benefitRates        BenefitRateByEmployeeType[]
+  grossSplitRule      GrossSplitRule?
+  otPlansPayingHere   OTPlan[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
+}
+
+// Common Logic > Gross % Split (KUN BRD review, 2026-09-10): the fixed
+// percentage of Gross Salary each earning SalaryComponent is entitled to
+// (e.g. Basic = 40%, HRA = 20%). Company-scoped, one row per component.
+// Read-only reference table for now — nothing in payroll consumes it yet;
+// wiring it into Salary Revision's component auto-fill is a later session.
+model GrossSplitRule {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  salaryComponentId Int      @unique
+  percentOfGross    Decimal  @db.Decimal(5, 2)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId])
+  @@map("GrossSplitRule")
 }
 
 // Per-Employee-Type monthly rate for a benefit (BRD: Canteen Deduction and
@@ -1457,6 +1664,10 @@ model DailyAttendance {
   // exists now so a future biometric-sync phase needs no migration.
   source String @default("manual") @db.NVarChar(20)
 
+  // Phase 12 — flags for holiday/weekly-off work differentiation.
+  isHolidayWorked   Boolean @default(false) // true if employee worked on a declared holiday
+  isWeeklyOffWorked Boolean @default(false) // true if employee worked on their weekly off
+
   remarks         String? @db.NVarChar(500)
   createdByUserId Int?
   updatedByUserId Int?
@@ -1523,16 +1734,29 @@ model MonthlyAttendanceSummary {
   year       Int
   month      Int // 1-12
 
-  totalWorkingDays     Int @default(0)
-  presentDays          Int @default(0)
-  absentDays           Int @default(0)
-  leaveDays            Int @default(0)
-  lopDays              Int @default(0)
-  otMinutesTotal       Int @default(0)
-  lateMinutesTotal     Int @default(0)
-  earlyOutMinutesTotal Int @default(0)
+  totalWorkingDays     Int      @default(0)
+  payableDays          Decimal  @default(0) @db.Decimal(5, 2)
+  presentDays          Decimal  @default(0) @db.Decimal(5, 2)
+  absentDays           Decimal  @default(0) @db.Decimal(5, 2)
+  leaveDays            Decimal  @default(0) @db.Decimal(5, 2)
+  lopDays              Decimal  @default(0) @db.Decimal(5, 2)
+  otMinutesTotal       Int      @default(0)
+  lateMinutesTotal     Int      @default(0)
+  earlyOutMinutesTotal Int      @default(0)
 
-  // OPEN | FINALIZED | FROZEN
+  // Phase 12 — Leave-type breakdown (EL/CL/SL/ML/etc.) and holiday worked.
+  elDays               Decimal  @default(0) @db.Decimal(5, 2) // Earned Leave
+  clDays               Decimal  @default(0) @db.Decimal(5, 2) // Casual Leave
+  slDays               Decimal  @default(0) @db.Decimal(5, 2) // Sick Leave
+  mlDays               Decimal  @default(0) @db.Decimal(5, 2) // Maternity Leave
+  plDays               Decimal  @default(0) @db.Decimal(5, 2) // Paternity Leave
+  compOffDays          Decimal  @default(0) @db.Decimal(5, 2) // Comp-Off utilized
+  otherLeaveDays       Decimal  @default(0) @db.Decimal(5, 2) // any other leave type
+  holidayWorkedDays    Int      @default(0) // days worked on declared holidays
+  permissionHours      Decimal  @default(0) @db.Decimal(5, 2) // total approved permission hours
+  permissionExcessHours Decimal @default(0) @db.Decimal(5, 2) // excess beyond free allowance
+
+  // OPEN | FINALIZED | FROZEN | READY_FOR_PAYROLL
   status String @default("OPEN") @db.NVarChar(20)
 
   finalizedAt       DateTime?
@@ -1541,6 +1765,11 @@ model MonthlyAttendanceSummary {
   reopenedAt        DateTime?
   reopenedByUserId  Int?
   reopenReason      String?   @db.NVarChar(500)
+
+  // Phase 12 — Time Office Final handoff
+  readyForPayrollAt       DateTime?
+  readyForPayrollByUserId Int?
+  readyForPayrollRemarks  String?  @db.NVarChar(500)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1740,12 +1969,15 @@ model LeaveApplication {
   isHalfDay     Boolean  @default(false)
   reason        String?  @db.NVarChar(500)
 
-  // pending | approved | rejected | cancelled
-  status           String    @default("pending") @db.NVarChar(20)
-  approvedByUserId Int?
-  approvedAt       DateTime?
-  rejectionReason  String?   @db.NVarChar(500)
-  appliedAt        DateTime  @default(now())
+  // pending_manager | pending_hr | approved | rejected | cancelled
+  status               String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId Int?
+  managerActionAt       DateTime?
+  managerRejectionReason String? @db.NVarChar(500)
+  approvedByUserId      Int?
+  approvedAt            DateTime?
+  rejectionReason       String?   @db.NVarChar(500)
+  appliedAt             DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1835,6 +2067,314 @@ model PermissionPolicy {
   @@map("PermissionPolicy")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic Payroll Config (Phase 2A) — company-scoped single-row configs that
+// make payroll calculation rules admin-configurable instead of hard-coded.
+// Each model uses companyId @unique so upsert by companyId is the write path.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// LOM (Loss of Minutes) — converts late + early-out minutes to a currency
+// deduction. When no row exists, payrollCalculation.ts falls back to the
+// default formula (gross / totalWorkingDays / 8 / 60) × lomMinutes.
+model LomConfig {
+  id                      Int      @id @default(autoincrement())
+  companyId               Int      @unique
+  calculationBasis        String   @default("GROSS") @db.NVarChar(20) // GROSS | BASIC
+  multiplier              Decimal  @default(1) @db.Decimal(5, 2) // 1 or 2
+  shiftDurationSource     String   @default("FIXED_8") @db.NVarChar(20) // FIXED_8 | SHIFT_MASTER
+  payrollDaysDenominator  String   @default("CALENDAR") @db.NVarChar(20) // CALENDAR | FIXED_26
+  graceMinutesExempt      Int      @default(0)
+  dailyLomCap             Int?     // null = no cap
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("LomConfig")
+}
+
+// Salary rounding — applied to net salary (or all components) after calc.
+model RoundingConfig {
+  id           Int      @id @default(autoincrement())
+  companyId    Int      @unique
+  roundingMode String   @default("NEAREST_1") @db.NVarChar(20) // NONE | NEAREST_1 | NEAREST_5 | NEAREST_10 | NEAREST_100
+  applyTo      String   @default("NET_ONLY") @db.NVarChar(20) // NET_ONLY | ALL_COMPONENTS
+  showRoundOff Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("RoundingConfig")
+}
+
+// Payroll validation — negative net salary and deduction limit checks.
+model PayrollValidationConfig {
+  id                        Int      @id @default(autoincrement())
+  companyId                 Int      @unique
+  allowNegativeNet          Boolean  @default(false)
+  minNetPercentOfGross      Decimal  @default(0) @db.Decimal(5, 2) // 0-100
+  requireApprovalIfNegative Boolean  @default(true)
+  maxDeductionPercent       Decimal  @default(100) @db.Decimal(5, 2)
+  statutoryIncludedInLimit  Boolean  @default(true)
+  // Phase 11 — additional BRD §17 validations
+  maxOtHoursPerMonth        Decimal? @db.Decimal(5, 2) // null = no cap
+  maxOtPercentOfGross       Decimal? @db.Decimal(5, 2) // e.g. 25 = 25%
+  checkGrossReconciliation  Boolean  @default(false) // gross = sum of components
+  maxLopDaysPerMonth        Int?    // null = no cap
+  checkAttendanceFrozen     Boolean  @default(false) // attendance must be FINALIZED/FROZEN
+  checkDuplicateComponents  Boolean  @default(true) // no duplicate component codes
+  minPayableDays            Decimal? @db.Decimal(5, 2) // null = no min
+  warnIfZeroGross           Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("PayrollValidationConfig")
+}
+
+// Payroll workflow — which stages are enabled and approval chain.
+model PayrollWorkflowConfig {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int      @unique
+  enableValidatedStage Boolean  @default(false)
+  enableSubmittedStage Boolean  @default(false)
+  enablePostedStage    Boolean  @default(false)
+  approvalStages       String   @default("HR") @db.NVarChar(100) // HR | MANAGER_HR | HR_FINANCE | MANAGER_HR_FINANCE
+  cutoffDayOfMonth     Int?     // e.g. 25 = 25th of each month
+  allowReopenAfterLock Boolean  @default(true)
+  reopenRequiresReason Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("PayrollWorkflowConfig")
+}
+
+// Payslip display — what to show on the payslip.
+model PayrollDisplayConfig {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  showDeductionPercent Boolean @default(true)
+  decimalPlaces     Int      @default(2)
+  showYTD           Boolean  @default(false)
+  showLeaveBalance  Boolean  @default(false)
+  showTaxBreakdown  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("PayrollDisplayConfig")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Time Office Config (Phase 2B) — Comp-Off, OT incentive slabs, attendance bonus.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Comp-Off policy — company-scoped single-row config. Defines how comp-off
+// is earned (minimum qualifying hours, qualifying day types), expiry, and
+// encashment. When no row exists, comp-off is disabled.
+model CompOffPolicy {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  minQualifyingHours    Int      @default(4) // minimum OT hours to earn 1 comp-off
+  qualifyingDayTypes    String   @default("WEEKLY_OFF,HOLIDAY") @db.NVarChar(100)
+  requiresApproval      Boolean  @default(true)
+  expiryMonths          Int      @default(3) // comp-off expires after N months
+  allowEncashment       Boolean  @default(false)
+  encashmentRatePerDay  Decimal? @db.Decimal(18, 2) // flat amount per comp-off day encashed
+  autoCreditOnApproval  Boolean  @default(true) // auto-credit when OT approved as COMP_OFF
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("CompOffPolicy")
+}
+
+// Per-employee comp-off balance — one row per employee. Updated by
+// CompOffTransaction entries (credit on OT approval, debit on leave usage).
+model CompOffBalance {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int      @unique
+  balance     Decimal  @default(0) @db.Decimal(8, 2) // current available comp-off days
+  earned      Decimal  @default(0) @db.Decimal(8, 2) // total earned to date
+  used        Decimal  @default(0) @db.Decimal(8, 2) // total used to date
+  expired     Decimal  @default(0) @db.Decimal(8, 2) // total expired to date
+  encashed    Decimal  @default(0) @db.Decimal(8, 2) // total encashed to date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("CompOffBalance")
+}
+
+// Comp-off transaction log — one row per credit/debit/expire/encash event.
+// Preserves the full audit trail; CompOffBalance is the running total.
+model CompOffTransaction {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int
+  date        DateTime @db.Date
+  type        String   @db.NVarChar(20) // CREDIT | DEBIT | EXPIRE | ENCASH
+  days        Decimal  @db.Decimal(8, 2) // positive for CREDIT, negative for DEBIT/EXPIRE/ENCASH
+  balanceAfter Decimal @db.Decimal(8, 2)
+  reason      String?  @db.NVarChar(500)
+  // Source: which DailyAttendance OT approval credited this, or which
+  // LeaveApplication debited it.
+  sourceType  String?  @db.NVarChar(20) // OT_APPROVAL | LEAVE | MANUAL | EXPIRY
+  sourceId    Int?
+  createdAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId, date])
+  @@map("CompOffTransaction")
+}
+
+// OT incentive slab — tiered incentive rates based on monthly OT hours.
+// E.g. 0-25 hrs = 1x, 25-50 hrs = 1.25x, 50+ hrs = 1.5x. Company-scoped.
+model OTIncentiveSlab {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  code            String   @db.NVarChar(20)
+  name            String   @db.NVarChar(100)
+  minOtHours      Decimal  @db.Decimal(8, 2) // lower bound (inclusive)
+  maxOtHours      Decimal? @db.Decimal(8, 2) // upper bound (exclusive), null = no upper limit
+  incentiveMultiplier Decimal @db.Decimal(5, 2) // multiplier on OT amount for hours in this slab
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, code])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("OTIncentiveSlab")
+}
+
+// Attendance bonus — company-scoped single-row config. Defines the bonus
+// amount for perfect attendance (zero LOP, zero late) and proration rules.
+model AttendanceBonusConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  bonusAmount           Decimal  @default(0) @db.Decimal(18, 2)
+  requiresZeroLop       Boolean  @default(true)
+  requiresZeroLate      Boolean  @default(false)
+  requiresZeroEarlyOut  Boolean  @default(false)
+  prorateByPayableDays  Boolean  @default(false) // prorate bonus by payableDays/totalDays
+  minPayableDaysPercent Decimal  @default(100) @db.Decimal(5, 2) // minimum % of days present to qualify
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("AttendanceBonusConfig")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statutory Config (Phase 2C) — LWF, state PT, TDS regime, health insurance.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Labour Welfare Fund — company-scoped effective-dated rate. Different
+// states have different rates and frequencies; the admin configures one
+// row per state they operate in. Payroll applies the matching row based
+// on the employee's work state (from JobInfo.site.state or Unit state).
+model LwfRate {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  code              String   @db.NVarChar(20)
+  state             String   @db.NVarChar(50)
+  employeeRate      Decimal  @db.Decimal(10, 2) // flat amount or % of gross
+  employerRate      Decimal  @db.Decimal(10, 2)
+  rateType          String   @default("FLAT") @db.NVarChar(10) // FLAT | PERCENT
+  frequency         String   @default("MONTHLY") @db.NVarChar(20) // MONTHLY | HALF_YEARLY | YEARLY
+  deductionMonth    Int      @default(1) // for HALF_YEARLY/YEARLY: which month (1-12) to deduct
+  effectiveFrom     DateTime
+  effectiveTo       DateTime?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, state, effectiveFrom])
+  @@index([companyId, state])
+  @@map("LwfRate")
+}
+
+// State-wise Professional Tax — extends ProfessionalTaxSlab with state
+// jurisdiction. The existing ProfessionalTaxSlab remains for backward
+// compatibility (no state = applies to all states); this table takes
+// precedence when a row matches the employee's work state.
+model StatePtConfig {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  code          String   @db.NVarChar(20)
+  state         String   @db.NVarChar(50)
+  slabCode      String   @db.NVarChar(20) // links to ProfessionalTaxSlab.code
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, state, effectiveFrom])
+  @@index([companyId, state])
+  @@map("StatePtConfig")
+}
+
+// TDS regime configuration — company-scoped single-row config. Defines
+// which regime is default, financial year start, and surcharge/cess rates.
+// The existing TDSSlab table holds the rate slabs; this config wraps them.
+model TdsRegimeConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  defaultRegime         String   @default("NEW") @db.NVarChar(20) // OLD | NEW
+  financialYearStart    Int      @default(4) // month (1-12), April=4
+  cessRate              Decimal  @default(4) @db.Decimal(5, 2) // health & education cess %
+  surchargeThreshold    Decimal  @default(5000000) @db.Decimal(18, 2) // income above which surcharge applies
+  surchargeRate         Decimal  @default(10) @db.Decimal(5, 2) // surcharge %
+  rebateUptoIncome      Decimal  @default(500000) @db.Decimal(18, 2) // 87A rebate threshold
+  rebateAmount          Decimal  @default(12500) @db.Decimal(18, 2) // 87A rebate amount
+  standardDeduction     Decimal  @default(50000) @db.Decimal(18, 2) // old regime standard deduction
+  isActive              Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("TdsRegimeConfig")
+}
+
+// Health insurance — company-scoped single-row config. Defines employee +
+// employer contribution rates and policy master linkage.
+model HealthInsuranceConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  employeeContributionRate Decimal @default(0) @db.Decimal(5, 2) // % of gross
+  employerContributionRate  Decimal @default(0) @db.Decimal(5, 2) // % of gross
+  monthlyPremium         Decimal @default(0) @db.Decimal(18, 2) // flat monthly premium
+  applyToAllEmployees    Boolean  @default(true)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("HealthInsuranceConfig")
+}
+
 // Employee-submitted short-leave-in-hours request (self-service, like
 // Mispunch). Single-stage RBAC approval — the BRD's Permission section
 // names no Reporting-Manager stage the way Mispunch/OT explicitly do.
@@ -1854,11 +2394,14 @@ model PermissionRequest {
   hours      Decimal  @db.Decimal(4, 2)
   reason     String?  @db.NVarChar(500)
 
-  // pending | approved | rejected
-  status           String    @default("pending") @db.NVarChar(20)
-  approvedByUserId Int?
-  approvedAt       DateTime?
-  rejectionReason  String?   @db.NVarChar(500)
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
 
   exceedsAllowance Boolean @default(false)
   excessHours      Decimal @default(0) @db.Decimal(4, 2)
@@ -1898,15 +2441,23 @@ model PayrollRun {
   year      Int
   month     Int // 1-12
 
-  // DRAFT | CALCULATED | APPROVED | LOCKED — a deliberately compressed
-  // version of the BRD's fuller status chain; Phase 1 has one approver, not
-  // multiple distinct verification/submission stages.
+  // DRAFT | CALCULATED | VALIDATED | SUBMITTED | APPROVED | LOCKED | POSTED
+  // — extended from the compressed 4-stage chain to support the BRD's
+  // fuller workflow when PayrollWorkflowConfig enables the extra stages.
+  // VALIDATED/SUBMITTED/POSTED are optional — only used when the
+  // corresponding enable* flag is true on PayrollWorkflowConfig.
   status String @default("DRAFT") @db.NVarChar(20)
 
-  calculatedAt     DateTime?
-  approvedAt       DateTime?
-  approvedByUserId Int?
-  lockedAt         DateTime?
+  calculatedAt      DateTime?
+  validatedAt       DateTime?
+  validatedByUserId Int?
+  submittedAt       DateTime?
+  submittedByUserId Int?
+  approvedAt        DateTime?
+  approvedByUserId  Int?
+  lockedAt          DateTime?
+  postedAt          DateTime?
+  postedByUserId    Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1919,6 +2470,8 @@ model PayrollRun {
   // Bonuses applied into this run as ad-hoc PayrollLineComponent rows —
   // see BonusRecord.appliedPayrollRunId.
   appliedBonuses BonusRecord[]
+  // Manual arrears applied into this run — see ManualArrear.appliedPayrollRunId.
+  appliedManualArrears ManualArrear[]
 
   @@unique([companyId, year, month])
   @@map("PayrollRun")
@@ -1939,10 +2492,17 @@ model PayrollLine {
   otherEarningsTotal Decimal @default(0) @db.Decimal(18, 2) // sum of isAdhoc earning components
 
   pfEmployee           Decimal @default(0) @db.Decimal(18, 2)
+  pfEmployer           Decimal @default(0) @db.Decimal(18, 2)
+  epsEmployer          Decimal @default(0) @db.Decimal(18, 2)
   esiEmployee          Decimal @default(0) @db.Decimal(18, 2)
+  esiEmployer          Decimal @default(0) @db.Decimal(18, 2)
   professionalTax      Decimal @default(0) @db.Decimal(18, 2)
   tds                  Decimal @default(0) @db.Decimal(18, 2)
   otherDeductionsTotal Decimal @default(0) @db.Decimal(18, 2) // sum of isAdhoc deduction components
+  lomAmount            Decimal @default(0) @db.Decimal(18, 2) // Loss of Minutes deduction
+  lwfAmount            Decimal @default(0) @db.Decimal(18, 2) // Labour Welfare Fund deduction
+  healthInsurance      Decimal @default(0) @db.Decimal(18, 2) // Health insurance employee contribution
+  licAmount            Decimal @default(0) @db.Decimal(18, 2) // LIC premium deduction
 
   netSalary Decimal @default(0) @db.Decimal(18, 2)
 
@@ -2033,11 +2593,16 @@ model SalaryRevisionRequest {
 
   effectiveFrom DateTime
 
-  // DRAFT | SUBMITTED | APPROVED | REJECTED | HOLD | CANCELLED
+  // DRAFT | SUBMITTED | PENDING_MANAGER | PENDING_HR | APPROVED | REJECTED | HOLD | CANCELLED
   status       String  @default("DRAFT") @db.NVarChar(20)
   holdReason   String? @db.NVarChar(500)
   rejectReason String? @db.NVarChar(500)
   remarks      String? @db.NVarChar(500)
+
+  // Manager stage (two-level approval: Manager → HR)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectReason   String? @db.NVarChar(500)
 
   // Set once approved — the new EmployeeSalaryRevision version this request
   // produced. @unique here is for Prisma's relation typing only — the real
@@ -2230,6 +2795,15 @@ model BonusRecord {
 
   appliedPayrollRunId Int?
   appliedAt           DateTime?
+
+  // Phase 14 — bonus type categorization + paid/balance tracking (BRD §6).
+  // FESTIVAL | ANNUAL | PERFORMANCE | EX_GRATIA | PRODUCTION | OTHER
+  bonusType       String   @default("ANNUAL") @db.NVarChar(30)
+  // For monthly accrual: amount accrued per month, total accrued, paid, balance
+  monthlyAccrual  Decimal  @default(0) @db.Decimal(18, 2)
+  totalAccrued    Decimal  @default(0) @db.Decimal(18, 2)
+  totalPaid       Decimal  @default(0) @db.Decimal(18, 2)
+  balanceDue      Decimal  @default(0) @db.Decimal(18, 2)
 
   calculatedAt     DateTime?
   approvedByUserId Int?
@@ -2555,4 +3129,628 @@ model VisitorNotificationLog {
   @@index([companyId, status])
   @@index([companyId, createdAt])
   @@map("VisitorNotificationLog")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2D — Leave Encashment, Full & Final, Bank File Template.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Leave encashment — company-scoped single-row config. Defines the basis
+// (basic/gross), denominator (26/30), and eligibility (min service, max days).
+model LeaveEncashmentConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  calculationBasis      String   @default("GROSS") @db.NVarChar(20) // GROSS | BASIC | BASIC_DA
+  denominator           Int      @default(26) // 26 or 30
+  minServiceMonths      Int      @default(0) // 0 = no minimum
+  maxEncashableDays     Int      @default(45) // cap on days encashable per year
+  includeEarnedOnly     Boolean  @default(true) // encash earned leaves only, not accrued
+  prorateByLop          Boolean  @default(false) // reduce encashment by LOP days
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("LeaveEncashmentConfig")
+}
+
+// Full & Final settlement — company-scoped single-row config. Defines which
+// components are included in the settlement and the approval chain.
+model FullAndFinalConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  includeUnpaidSalary   Boolean  @default(true)
+  includeLeaveEncashment Boolean @default(true)
+  includeGratuity       Boolean  @default(true)
+  includeBonusProportion Boolean @default(false)
+  includeNoticePay      Boolean  @default(true) // notice pay recovery or payable
+  noticePeriodDays      Int      @default(30)
+  includeLoanRecovery   Boolean  @default(true)
+  includeAssetRecovery  Boolean  @default(true)
+  approvalStages        String   @default("HR_FINANCE") @db.NVarChar(100) // HR | HR_FINANCE | MANAGER_HR_FINANCE
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("FullAndFinalConfig")
+}
+
+// Bank file template — company-scoped. Defines the format for the bank
+// transfer file (RTGS/NEFT/IMPS). Multiple templates per company (one per bank).
+model BankFileTemplate {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  code            String   @db.NVarChar(20)
+  name            String   @db.NVarChar(100)
+  bankName        String   @db.NVarChar(100)
+  fileFormat      String   @default("CSV") @db.NVarChar(20) // CSV | XLSX | TXT | FIXED_WIDTH
+  delimiter       String   @default(",") @db.NVarChar(5)
+  // Column definitions as JSON: [{ "field": "employeeCode", "label": "Employee ID", "width": 10, "pad": "left" }, ...]
+  columnMapping   String   @db.NVarChar(2000)
+  headerRow       Boolean  @default(true)
+  footerRow       Boolean  @default(false)
+  footerTemplate  String?  @db.NVarChar(500)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("BankFileTemplate")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 — TDS Annual Engine (investment declarations, proofs, annual calc).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Investment declaration — employee-submitted, per financial year. An
+// employee may submit multiple declarations (e.g. amend during the year);
+// the latest approved one is used by the TDS engine.
+model TdsInvestmentDeclaration {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  companyId       Int
+  financialYear   Int      // e.g. 2026 for FY 2026-27
+  regime          String   @default("NEW") @db.NVarChar(20) // OLD | NEW
+
+  // Old regime deductions (section 80C, 80D, 80CCD, etc.)
+  section80C      Decimal  @default(0) @db.Decimal(18, 2) // PF, ELSS, LIC, PPF, etc. (cap 150000)
+  section80D      Decimal  @default(0) @db.Decimal(18, 2) // health insurance premium
+  section80CCD    Decimal  @default(0) @db.Decimal(18, 2) // NPS
+  section80G      Decimal  @default(0) @db.Decimal(18, 2) // donations
+  section80E      Decimal  @default(0) @db.Decimal(18, 2) // education loan interest
+  section80TTA    Decimal  @default(0) @db.Decimal(18, 2) // savings account interest
+  otherDeductions Decimal  @default(0) @db.Decimal(18, 2) // any other declared deduction
+  hraExemption    Decimal  @default(0) @db.Decimal(18, 2) // HRA exemption claimed
+
+  // New regime — standard deduction is auto-applied from TdsRegimeConfig;
+  // no investment deductions allowed, but this field lets employees
+  // declare other income (e.g. interest) that increases taxable income.
+  otherIncome     Decimal  @default(0) @db.Decimal(18, 2)
+
+  // pending_hr | approved | rejected
+  status          String   @default("pending_hr") @db.NVarChar(20)
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectionReason  String? @db.NVarChar(500)
+  remarks         String? @db.NVarChar(500)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company Company  @relation(fields: [companyId], references: [id])
+  proofs   TdsInvestmentProof[]
+
+  @@index([employeeId, financialYear])
+  @@index([companyId, financialYear])
+  @@map("TdsInvestmentDeclaration")
+}
+
+// Investment proof — uploaded documents backing a declaration. One
+// declaration may have multiple proofs (e.g. ELSS statement, LIC receipt).
+model TdsInvestmentProof {
+  id              Int      @id @default(autoincrement())
+  declarationId   Int
+  section         String   @db.NVarChar(20) // 80C | 80D | 80CCD | 80G | 80E | 80TTA | OTHER | HRA
+  amount          Decimal  @db.Decimal(18, 2)
+  description     String?  @db.NVarChar(500)
+  // Document reference — stored as a URL/path to the uploaded file. The
+  // actual file upload is handled by a separate file API; this stores the
+  // reference so the proof can be retrieved and verified.
+  documentUrl     String?  @db.NVarChar(500)
+  // pending | verified | rejected
+  status          String   @default("pending") @db.NVarChar(20)
+  verifiedByUserId Int?
+  verifiedAt       DateTime?
+  rejectionReason  String? @db.NVarChar(500)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  declaration TdsInvestmentDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+
+  @@index([declarationId])
+  @@map("TdsInvestmentProof")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Loans and Advances.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Loan — an employee's sanctioned loan. Tracks principal, interest,
+// tenure, disbursement, and repayment status. LoanType defines the
+// product (min/max amount, description); this model is the instance.
+model Loan {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  loanTypeId      Int
+  code            String   @db.NVarChar(20) // unique loan reference within company
+  principal       Decimal  @db.Decimal(18, 2)
+  interestRate    Decimal  @default(0) @db.Decimal(5, 2) // annual %, 0 = interest-free
+  tenureMonths    Int      // total installment count
+  installmentAmount Decimal @db.Decimal(18, 2) // principal+interest per month (EMI)
+  disbursementDate DateTime @db.Date
+  firstDeductionMonth Int?  // 1-12, null = next month after disbursement
+  firstDeductionYear  Int?
+
+  // pending | approved | rejected | disbursed | active | closed | written_off
+  status          String   @default("pending") @db.NVarChar(20)
+
+  // Approval chain
+  requestedByUserId  Int?
+  approvedByUserId   Int?
+  approvedAt         DateTime?
+  rejectionReason    String?  @db.NVarChar(500)
+
+  // Disbursement
+  disbursedByUserId  Int?
+  disbursedAt        DateTime?
+  disbursementReference String? @db.NVarChar(100) // cheque/UTR
+
+  // Running totals (updated as installments are deducted via payroll)
+  principalPaid    Decimal  @default(0) @db.Decimal(18, 2)
+  interestPaid     Decimal  @default(0) @db.Decimal(18, 2)
+  outstandingBalance Decimal @db.Decimal(18, 2) // principal - principalPaid
+  installmentsPaid Int      @default(0)
+
+  closedAt         DateTime?
+  closureReason    String?  @db.NVarChar(500)
+  remarks         String?   @db.NVarChar(500)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id])
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  loanType  LoanType  @relation(fields: [loanTypeId], references: [id])
+  installments LoanInstallment[]
+
+  @@unique([companyId, code])
+  @@index([employeeId])
+  @@index([companyId, status])
+  @@map("Loan")
+}
+
+// Loan installment — one row per scheduled EMI. Generated when the loan
+// is disbursed. Each row is linked to a payroll run when deducted.
+model LoanInstallment {
+  id          Int      @id @default(autoincrement())
+  loanId      Int
+  installmentNumber Int  // 1-based
+  dueDate     DateTime @db.Date
+  principalComponent Decimal @db.Decimal(18, 2)
+  interestComponent  Decimal @db.Decimal(18, 2)
+  totalAmount        Decimal @db.Decimal(18, 2)
+
+  // pending | deducted | skipped | adjusted
+  status      String   @default("pending") @db.NVarChar(20)
+  payrollRunId Int?
+  deductedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId, installmentNumber])
+  @@map("LoanInstallment")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 8 — Full & Final Settlement.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FnF settlement — one per exited employee. Aggregates all terminal dues:
+// unpaid salary, leave encashment, gratuity, bonus proportion, notice pay,
+// loan recovery, asset recovery. Created when an exit is recorded; components
+// are calculated based on FullAndFinalConfig.
+model FnFSettlement {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  exitInterviewId Int     @unique
+
+  // Settlement period
+  lastWorkingDay  DateTime @db.Date
+  settlementDate  DateTime?
+
+  // Components (all amounts in currency)
+  unpaidSalary       Decimal  @default(0) @db.Decimal(18, 2)
+  leaveEncashment    Decimal  @default(0) @db.Decimal(18, 2)
+  leaveEncashmentDays Int     @default(0)
+  gratuity           Decimal  @default(0) @db.Decimal(18, 2)
+  bonusProportion    Decimal  @default(0) @db.Decimal(18, 2)
+  noticePay          Decimal  @default(0) @db.Decimal(18, 2) // +ve = payable, -ve = recovery
+  loanRecovery        Decimal  @default(0) @db.Decimal(18, 2)
+  assetRecovery       Decimal  @default(0) @db.Decimal(18, 2)
+  otherPayments      Decimal  @default(0) @db.Decimal(18, 2)
+  otherDeductions     Decimal  @default(0) @db.Decimal(18, 2)
+
+  // Totals
+  totalPayable     Decimal  @default(0) @db.Decimal(18, 2) // sum of all +ve
+  totalRecovery    Decimal  @default(0) @db.Decimal(18, 2) // sum of all -ve
+  netPayable       Decimal  @default(0) @db.Decimal(18, 2) // payable - recovery
+
+  // pending | calculated | approved | paid | rejected
+  status           String   @default("pending") @db.NVarChar(20)
+
+  calculatedByUserId Int?
+  calculatedAt       DateTime?
+  approvedByUserId   Int?
+  approvedAt         DateTime?
+  rejectionReason    String?  @db.NVarChar(500)
+  remarks            String?  @db.NVarChar(500)
+
+  paymentDate        DateTime?
+  paymentReference   String?  @db.NVarChar(100)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  exitInterview ExitInterview @relation(fields: [exitInterviewId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, status])
+  @@map("FnFSettlement")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 9 — Incentives & Allowances (Batch 2E).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// IncentivePolicy — company-scoped. Defines incentive types (attendance
+// bonus, shift bonus, production, special) and how they're calculated.
+model IncentivePolicy {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  type              String   @db.NVarChar(30) // ATTENDANCE_BONUS | SHIFT_BONUS | PRODUCTION | SPECIAL | OTHER
+  name              String   @db.NVarChar(100)
+  amount            Decimal  @db.Decimal(18, 2)
+  calculationType   String   @default("FLAT") @db.NVarChar(20) // FLAT | FORMULA
+  formula           String?  @db.NVarChar(500) // JSON formula if calculationType=FORMULA
+  eligibility       String?  @db.NVarChar(500) // JSON eligibility criteria
+  eligibleShiftCodes String? @db.NVarChar(200) // comma-separated shift codes for SHIFT_BONUS
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, type])
+  @@map("IncentivePolicy")
+}
+
+// DoubleMachineEntry — per-employee, per-day. Tracks when an employee
+// works on two machines simultaneously; incentive is calculated based
+// on working hours and rate.
+model DoubleMachineEntry {
+  id                Int      @id @default(autoincrement())
+  employeeId        Int
+  date              DateTime @db.Date
+  machine1          String?   @db.NVarChar(50)
+  machine2          String?   @db.NVarChar(50)
+  numMachines       Int       @default(1)
+  workingHours      Decimal   @db.Decimal(5, 2)
+  incentiveRate     Decimal  @db.Decimal(18, 2)
+  calculatedIncentive Decimal @db.Decimal(18, 2)
+  hrRemarks         String?   @db.NVarChar(500)
+  status            String   @default("PENDING") @db.NVarChar(20) // PENDING | APPROVED | REJECTED
+  approvedByUserId  Int?
+  approvedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@map("DoubleMachineEntry")
+}
+
+// CanteenToken — per-employee, per-day. Tracks canteen token usage;
+// employee contribution is deducted from payroll.
+model CanteenToken {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  date            DateTime @db.Date
+  tokensUsed      Int      @default(0)
+  ratePerToken    Decimal  @db.Decimal(18, 2)
+  employeeContribution Decimal @db.Decimal(18, 2)
+  companyContribution   Decimal @default(0) @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId, date])
+  @@map("CanteenToken")
+}
+
+// PetrolAllowanceEntry — per-employee, per-travel-date. KM-based
+// allowance; approved entries are added as earnings in payroll.
+model PetrolAllowanceEntry {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  month           Int
+  year            Int
+  travelDate      DateTime @db.Date
+  km              Decimal  @db.Decimal(10, 2)
+  ratePerKm       Decimal  @db.Decimal(18, 2)
+  eligibleAmount  Decimal  @db.Decimal(18, 2)
+  approvedAmount  Decimal  @db.Decimal(18, 2)
+  status          String   @default("PENDING") @db.NVarChar(20) // PENDING | APPROVED | REJECTED
+  managerActionByUserId Int?
+  managerActionAt DateTime?
+  rejectionReason  String?  @db.NVarChar(500)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([employeeId, year, month])
+  @@map("PetrolAllowanceEntry")
+}
+
+// AllowanceConfig — company-scoped. Configures special allowances
+// (heat allowance, etc.) linked to a SalaryComponent code.
+model AllowanceConfig {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  componentCode   String   @db.NVarChar(30) // links to SalaryComponent
+  amount          Decimal  @db.Decimal(18, 2)
+  eligibilityType String   @default("ALL") @db.NVarChar(20) // ALL | DESIGNATION | DEPARTMENT | SHIFT
+  eligibilityValue String? @db.NVarChar(200) // comma-separated IDs
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@map("AllowanceConfig")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10 — Attendance Config (Batch 2H).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AttendanceColorConfig — company-scoped single-row config. Defines the
+// color thresholds for the attendance grid (zero/short/partial/normal/
+// extended hours, weekly off). Used by the monthly attendance grid to
+// color-code cells based on working hours.
+model AttendanceColorConfig {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int      @unique
+  zeroHoursColor       String   @default("#ef4444") @db.NVarChar(10) // red
+  shortHoursColor      String   @default("#f97316") @db.NVarChar(10) // orange
+  shortHoursThreshold  Int      @default(4) // hours
+  partialHoursColor    String   @default("#eab308") @db.NVarChar(10) // yellow
+  partialHoursThreshold Int     @default(6) // hours
+  normalHoursColor     String   @default("#22c55e") @db.NVarChar(10) // light green
+  normalHoursThreshold Int      @default(8) // hours
+  extendedHoursColor   String   @default("#15803d") @db.NVarChar(10) // dark green
+  weeklyOffColor       String   @default("#3b82f6") @db.NVarChar(10) // blue
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("AttendanceColorConfig")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 — Manual Arrears + Bonus tracking.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ManualArrear — supports the 5 missing arrear types from BRD §5:
+// ALLOWANCE, DEDUCTION_REVERSAL, ATTENDANCE, INCENTIVE, MANUAL.
+// Unlike SalaryArrear (which is tied to a SalaryRevisionRequest), these are
+// standalone adjustments that can be applied to any payroll run.
+model ManualArrear {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  // ALLOWANCE | DEDUCTION_REVERSAL | ATTENDANCE | INCENTIVE | MANUAL
+  arrearType  String   @db.NVarChar(30)
+  // EARNING | DEDUCTION — whether this arrear adds to or subtracts from net
+  amountType  String   @default("EARNING") @db.NVarChar(10)
+  amount      Decimal  @db.Decimal(18, 2)
+  // The month this arrear applies to (for display, not enforcement)
+  arrearYear  Int
+  arrearMonth Int
+  description String?  @db.NVarChar(500)
+  // PENDING | APPROVED | REJECTED | APPLIED
+  status      String   @default("PENDING") @db.NVarChar(20)
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectReason     String?  @db.NVarChar(500)
+  appliedPayrollRunId Int?
+  appliedAt          DateTime?
+  createdByUserId Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company           Company    @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee          Employee   @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  appliedPayrollRun PayrollRun? @relation(fields: [appliedPayrollRunId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, status])
+  @@index([employeeId])
+  @@map("ManualArrear")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 17 — LIC, Attendance Policy, Hourly/Daily wage support.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// LicDeductionConfig — company-scoped. Defines LIC premium deduction
+// rules. Can be flat amount or percentage of gross.
+model LicDeductionConfig {
+  id              Int      @id @default(autoincrement())
+  companyId       Int      @unique
+  deductionType   String   @default("FLAT") @db.NVarChar(20) // FLAT | PERCENT
+  amount          Decimal  @default(0) @db.Decimal(18, 2) // flat amount or % of gross
+  minAmount       Decimal  @default(0) @db.Decimal(18, 2) // minimum deduction
+  maxAmount       Decimal? @db.Decimal(18, 2) // null = no cap
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("LicDeductionConfig")
+}
+
+// AttendancePolicy — company-scoped. Defines break rules, grace periods,
+// and attendance thresholds beyond what LomConfig and AttendanceColorConfig
+// already cover.
+model AttendancePolicy {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int      @unique
+  // Break rules
+  breakMinutesPerDay   Int      @default(30) // lunch/tea break deducted from working duration
+  breakDeductible      Boolean  @default(false) // whether break is deducted from pay
+  // Grace periods (minutes) — separate from LomConfig.graceMinutesExempt
+  lateGraceMinutes     Int      @default(0) // grace before marking late
+  earlyOutGraceMinutes Int      @default(0) // grace before marking early out
+  // Half-day rules
+  halfDayMinHours      Int?    // null = no half-day rule; e.g. 4 = <4h = half day
+  halfDayMaxHours      Int?    // e.g. 8 = >=8h = full day
+  // Minimum hours for full present
+  minFullDayHours      Int      @default(8)
+  // Auto-absent if no punch
+  autoAbsentIfNoPunch  Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("AttendancePolicy")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JD MASTER (HR Masters) + minimal Job Posting linkage for recruitment
+// ─────────────────────────────────────────────────────────────────────────────
+
+model JobDescription {
+  id              Int      @id @default(autoincrement())
+  jdCode          String   @unique @db.NVarChar(40)
+  departmentId    Int
+  designationId   Int
+  title           String   @db.NVarChar(200)
+  description     String   @db.NVarChar(Max)
+  jdFileUrl            String?  @db.NVarChar(500)
+  minExperienceYears   Decimal? @db.Decimal(4, 1)
+  maxExperienceYears   Decimal? @db.Decimal(4, 1)
+  salaryPackage        String?  @db.NVarChar(100)
+  status               String   @default("Draft") @db.NVarChar(20) // Draft | Active | Archived
+  createdByUserId Int?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  department  Department  @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy   User?       @relation("JdCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  versions    JobDescriptionVersion[]
+  tags        JobDescriptionTag[]
+  jobPostings JobPosting[]
+  employees   Employee[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([status])
+  @@index([createdByUserId])
+  @@map("JobDescription")
+}
+
+model JobDescriptionVersion {
+  id               Int      @id @default(autoincrement())
+  jobDescriptionId Int
+  title                String   @db.NVarChar(200)
+  description          String   @db.NVarChar(Max)
+  jdFileUrl            String?  @db.NVarChar(500)
+  minExperienceYears   Decimal? @db.Decimal(4, 1)
+  maxExperienceYears   Decimal? @db.Decimal(4, 1)
+  salaryPackage        String?  @db.NVarChar(100)
+  editedByUserId       Int?
+  editedAt         DateTime @default(now())
+
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  editedBy       User?          @relation("JdVersionEditedBy", fields: [editedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([jobDescriptionId])
+  @@index([editedByUserId])
+  @@map("JobDescriptionVersion")
+}
+
+model JobDescriptionTag {
+  id               Int    @id @default(autoincrement())
+  jobDescriptionId Int
+  tag              String @db.NVarChar(50)
+
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([jobDescriptionId, tag])
+  @@index([tag])
+  @@map("JobDescriptionTag")
+}
+
+// Global sequence for JD0001, JD0002, … (departmentId 0 is the counter row).
+model JobDescriptionSequence {
+  departmentId Int @id
+  lastNumber   Int
+
+  @@map("JobDescriptionSequence")
+}
+
+model JobPosting {
+  id              Int      @id @default(autoincrement())
+  title           String   @db.NVarChar(200)
+  departmentId    Int?
+  designationId   Int?
+  jdId            Int?
+  status          String   @default("Open") @db.NVarChar(20)
+  createdByUserId Int?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  department  Department?     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation?    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobDescription JobDescription? @relation(fields: [jdId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy   User?           @relation("JobPostingCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([jdId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([createdByUserId])
+  @@map("JobPosting")
 }

@@ -2,7 +2,7 @@
 
 import SearchableSelect from './SearchableSelect';
 
-export type FieldType = 'text' | 'number' | 'email' | 'password' | 'date' | 'select' | 'checkbox' | 'textarea';
+export type FieldType = 'text' | 'number' | 'email' | 'password' | 'date' | 'select' | 'checkbox' | 'textarea' | 'file';
 
 export interface FieldOption {
   label: string;

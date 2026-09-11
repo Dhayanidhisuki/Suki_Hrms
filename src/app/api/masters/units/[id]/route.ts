@@ -25,10 +25,18 @@ export async function PUT(
   const parsed = unitSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.unit.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
-
-  const record = await prisma.unit.update({ where: { id: parseInt(id) }, data: parsed.data });
+  // Code is server-generated and never changes after creation — write only
+  // the editable fields, ignoring whatever (if anything) the client sent for code.
+  const record = await prisma.unit.update({
+    where: { id: parseInt(id) },
+    data: {
+      name: parsed.data.name,
+      address: parsed.data.address,
+      description: parsed.data.description,
+      companyId: parsed.data.companyId,
+      isActive: parsed.data.isActive,
+    },
+  });
   return NextResponse.json(record);
 }
 

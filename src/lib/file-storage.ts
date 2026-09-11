@@ -14,10 +14,18 @@ import { randomUUID } from 'crypto';
 
 const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
 
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.webp']);
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.webp', '.doc', '.docx']);
 
+/**
+ * Used both for the subdir passed to saveUploadedFile (no dots expected)
+ * and for the full relative path passed to readStoredFile (which DOES
+ * include a file extension, e.g. "employees/12/<uuid>.jpg") — the allowed
+ * character set must include '.' or every stored file's extension gets
+ * silently stripped, breaking every read. '..' is still rejected explicitly
+ * to block path traversal.
+ */
 function sanitizeSubdir(subdir: string): string {
-  const cleaned = subdir.replace(/[^a-zA-Z0-9/_-]/g, '');
+  const cleaned = subdir.replace(/[^a-zA-Z0-9/_.-]/g, '');
   if (cleaned.includes('..')) throw new Error('Invalid subdirectory path.');
   return cleaned;
 }

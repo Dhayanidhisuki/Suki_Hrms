@@ -41,6 +41,7 @@ const columns: Column<GratuityPolicyRow>[] = [
 export default function GratuityPoliciesPage() {
   return (
     <SlabPage<GratuityPolicyRow>
+      statsModule="gratuity-policies"
       title="Gratuity Policies"
       apiPath="/api/masters/gratuity-policies"
       fields={fields}

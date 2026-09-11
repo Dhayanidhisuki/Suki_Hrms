@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { subDepartmentSchema } from '@/lib/validations/master';
+import { currentHeadcounts } from '@/lib/master-headcount';
+import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -10,13 +12,15 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
+  const departmentId = searchParams.get('departmentId');
 
   const where = {
     deletedAt: null,
+    ...(departmentId ? { departmentId: parseInt(departmentId) } : {}),
     ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
   };
 
-  const [data, total] = await Promise.all([
+  const [data, total, headcounts] = await Promise.all([
     prisma.subDepartment.findMany({
       where,
       skip: (page - 1) * limit,
@@ -25,9 +29,13 @@ export async function GET(request: NextRequest) {
       include: { department: { select: { id: true, name: true } } },
     }),
     prisma.subDepartment.count({ where }),
+    currentHeadcounts('subDepartmentId'),
   ]);
 
-  return NextResponse.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  return NextResponse.json({
+    data: data.map((d) => ({ ...d, currentHeadcount: headcounts.get(d.id) ?? 0 })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -37,9 +45,16 @@ export async function POST(request: NextRequest) {
   const parsed = subDepartmentSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.subDepartment.findUnique({ where: { code: parsed.data.code } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  const department = await prisma.department.findFirst({ where: { id: parsed.data.departmentId, deletedAt: null }, select: { code: true } });
+  if (!department) return NextResponse.json({ error: 'Department not found' }, { status: 400 });
 
-  const record = await prisma.subDepartment.create({ data: parsed.data, include: { department: { select: { id: true, name: true } } } });
+  // Code is always server-generated, scoped to the department — "<DeptCode>-001",
+  // "-002"... Ignore whatever (if anything) the client sent. Scans all rows for
+  // this department, deleted included, since (departmentId, code) stays unique
+  // even after a soft delete.
+  const siblings = await prisma.subDepartment.findMany({ where: { departmentId: parsed.data.departmentId }, select: { code: true } });
+  const code = nextSequentialCode(siblings.map((s) => s.code), `${department.code}-`);
+
+  const record = await prisma.subDepartment.create({ data: { ...parsed.data, code }, include: { department: { select: { id: true, name: true } } } });
   return NextResponse.json(record, { status: 201 });
 }

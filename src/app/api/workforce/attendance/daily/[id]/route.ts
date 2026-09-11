@@ -13,6 +13,9 @@ import { getCompanyId } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
 
+import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { refreshMonthlySummary } from '@/lib/biometricConversion';
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -49,13 +52,11 @@ export async function PUT(
 
   const userId = Number(request.headers.get('x-user-id'));
 
-  // employeeId/date are intentionally not editable here — this endpoint
-  // corrects an existing day's record in place, not reassigns which
-  // employee/date it belongs to (that would defeat the [employeeId, date]
-  // uniqueness this data model relies on).
-  const record = await prisma.dailyAttendance.update({
-    where: { id: attendanceId },
-    data: {
+  await upsertDailyAttendanceWithHistory(
+    prisma,
+    existing.employeeId,
+    existing.date,
+    {
       shiftMasterId: parsed.data.shiftMasterId,
       status: parsed.data.status,
       inTime: parsed.data.inTime,
@@ -65,9 +66,17 @@ export async function PUT(
       earlyOutMinutes: parsed.data.earlyOutMinutes,
       otMinutesCalculated: parsed.data.otMinutesCalculated,
       remarks: parsed.data.remarks,
-      updatedByUserId: userId,
+      source: 'manual',
     },
-  });
+    { userId, changedBySource: 'manual' }
+  );
 
+  await refreshMonthlySummary(
+    existing.employeeId,
+    existing.date.getUTCFullYear(),
+    existing.date.getUTCMonth() + 1
+  );
+
+  const record = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
   return NextResponse.json(record);
 }

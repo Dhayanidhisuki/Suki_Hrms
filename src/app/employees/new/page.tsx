@@ -48,7 +48,7 @@ const WIZARD_STEPS: { key: string; label: string; fieldNames: string[] }[] = [
   {
     key: 'role',
     label: 'Role & Team',
-    fieldNames: ['productionLine', 'additionalRole', 'teamGroup', 'reportingManagerId'],
+    fieldNames: ['productionLine', 'additionalRole', 'teamGroup', 'reportingManagerId', 'secondReportingManagerId'],
   },
   {
     key: 'terms',

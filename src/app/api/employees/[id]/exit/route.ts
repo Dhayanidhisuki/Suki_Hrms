@@ -13,6 +13,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { exitInterviewSchema } from '@/lib/validations/employee';
 import { logActivity } from '@/lib/activity-log';
+import { reassignAllReports } from '@/lib/reportingManager';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permErr = await checkSpecificPermission(request, 'employee.separation.view');
@@ -52,9 +53,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const employeeStatus = parsed.data.exitType === 'resignation' ? 'resigned' : 'terminated';
 
+  // Check if this employee is a manager — if so, auto-reassign their reports
+  const departingManager = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { reportingManagerId: true },
+  });
+  const directReportCount = await prisma.employee.count({
+    where: { reportingManagerId: employeeId, deletedAt: null, isActive: true },
+  });
+
   const created = await prisma.$transaction(async (tx) => {
     const record = await tx.exitInterview.create({ data: { employeeId, ...parsed.data } });
-    await tx.employee.update({ where: { id: employeeId }, data: { status: employeeStatus } });
+    await tx.employee.update({ where: { id: employeeId }, data: { status: employeeStatus, isActive: false } });
     await logActivity(tx, {
       employeeId,
       activityType: 'separation_recorded',
@@ -66,5 +76,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return record;
   });
 
-  return NextResponse.json(created, { status: 201 });
+  // Auto-reassign: move departing manager's reports to their own manager
+  let reassignedCount = 0;
+  if (directReportCount > 0) {
+    const newManagerId = departingManager?.reportingManagerId ?? null;
+    const result = await reassignAllReports(employeeId, newManagerId);
+    reassignedCount = result.reassigned;
+    await logActivity(prisma, {
+      employeeId,
+      activityType: 'reports_reassigned',
+      module: 'separation',
+      performedByUserId,
+      newValue: { reassignedCount, newManagerId },
+      remarks: `Auto-reassigned ${reassignedCount} report(s) on separation`,
+    });
+  }
+
+  return NextResponse.json({ ...created, reassignedReports: reassignedCount }, { status: 201 });
 }

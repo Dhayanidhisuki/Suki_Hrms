@@ -22,7 +22,7 @@ export async function POST(
   if (!run) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (run.status !== 'DRAFT' && run.status !== 'CALCULATED') {
+  if (run.status !== 'DRAFT' && run.status !== 'CALCULATED' && run.status !== 'VALIDATED' && run.status !== 'SUBMITTED') {
     return NextResponse.json({ error: `Cannot approve a run that is ${run.status}` }, { status: 409 });
   }
   if (run.status === 'DRAFT') {

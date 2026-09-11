@@ -44,6 +44,9 @@ export async function GET(
       reportingManager: {
         select: { id: true, firstName: true, lastName: true, employeeCode: true },
       },
+      secondReportingManager: {
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      },
       jobInfos: {
         where: { effectiveTo: null },
         take: 1,

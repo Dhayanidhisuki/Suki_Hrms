@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { verifyTokenNode } from "@/lib/jwt";
-import StatCard from "@/components/dashboard/StatCard";
+import DashboardStats from "@/components/dashboard/DashboardStats";
 import SecurityDashboardKpi from "@/components/dashboard/SecurityDashboardKpi";
 import AttendanceChart from "@/components/dashboard/AttendanceChart";
 import LeaveApplications from "@/components/dashboard/LeaveApplications";
 import NoticeBoard from "@/components/dashboard/NoticeBoard";
 import AwardTable from "@/components/dashboard/AwardTable";
-import { stats } from "@/components/dashboard/data";
 
 export default async function Home() {
   const cookieStore = await cookies();
@@ -17,9 +16,8 @@ export default async function Home() {
     redirect("/login");
   }
 
-  // This dashboard is company-scoped (mock employee/attendance/leave data,
-  // pending real queries) — meaningless for superadmin, which isn't tied to
-  // any company. Send it straight to its own module instead.
+  // This dashboard is company-scoped
+  // — Now fetching real data from the database instead of mock data.
   const payload = verifyTokenNode(token.value);
   if (!payload) {
     redirect("/login");
@@ -30,10 +28,8 @@ export default async function Home() {
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
-      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <StatCard key={stat.label} {...stat} />
-        ))}
+      <section>
+        <DashboardStats />
       </section>
 
       <section>

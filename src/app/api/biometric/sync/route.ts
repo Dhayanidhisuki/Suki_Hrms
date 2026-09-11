@@ -3,6 +3,9 @@
  *      — sync status for the Biometric page: whether the device API is
  *        configured, scheduler timing, the last 10 runs, and the device
  *        user IDs from the latest run that matched no employee.
+ * GET  /api/biometric/sync?test=1
+ *      — one probe request to the device API; returns ok/httpStatus/ms and
+ *        a human-readable reason on failure (ECONNREFUSED, timeout, ...).
  * POST /api/biometric/sync  { startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD' }
  *      — run the device sync now for that range (max 62 days), e.g. a
  *        month catch-up before payroll. Same code path as the 8-hourly job.
@@ -13,7 +16,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { biometricApiConfigured } from '@/lib/biometricApi';
+import { biometricApiConfigured, testDeviceConnection } from '@/lib/biometricApi';
 import { runBiometricSync } from '@/lib/biometricSync';
 import { getSchedulerState } from '@/lib/biometricScheduler';
 
@@ -30,6 +33,12 @@ export async function GET(request: NextRequest) {
   if (permErr) return permErr;
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
+
+  // ?test=1 — probe the device API once (no DB writes) and report exactly
+  // why it can/can't be reached. Backs the page's "Test connection" button.
+  if (new URL(request.url).searchParams.get('test') === '1') {
+    return NextResponse.json(await testDeviceConnection());
+  }
 
   const runs = await prisma.biometricSyncRun.findMany({
     where: { companyId: scope.companyId },

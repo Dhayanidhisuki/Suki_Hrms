@@ -21,5 +21,5 @@ const columns: Column<{ id: number; code: string; minSalary: number; maxSalary: 
 ];
 
 export default function TdsSlabsPage() {
-  return <SlabPage title="TDS Slabs" apiPath="/api/masters/tds-slabs" fields={fields} columns={columns} itemLabel="TDS Slab" />;
+  return <SlabPage statsModule="tds-slabs" title="TDS Slabs" apiPath="/api/masters/tds-slabs" fields={fields} columns={columns} itemLabel="TDS Slab" />;
 }

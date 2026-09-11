@@ -121,6 +121,21 @@ export async function PUT(
     }
   }
 
+  if (data.secondReportingManagerId) {
+    if (data.secondReportingManagerId === employeeId) {
+      return NextResponse.json(
+        { error: 'Second reporting manager cannot be the employee themselves' },
+        { status: 400 }
+      );
+    }
+    if (await wouldCreateCycle(employeeId, data.secondReportingManagerId)) {
+      return NextResponse.json(
+        { error: 'Second reporting manager cannot create a reporting cycle' },
+        { status: 400 }
+      );
+    }
+  }
+
   const codeConflict = await prisma.employee.findFirst({
     where: { companyId: data.companyId, employeeCode: data.employeeCode, NOT: { id: employeeId } },
   });
@@ -142,6 +157,7 @@ export async function PUT(
           oldEmployeeCode: data.oldEmployeeCode,
           status: data.status,
           reportingManagerId: data.reportingManagerId,
+          secondReportingManagerId: data.secondReportingManagerId,
           profilePhotoPath: data.profilePhotoPath,
           signaturePath: data.signaturePath,
         },

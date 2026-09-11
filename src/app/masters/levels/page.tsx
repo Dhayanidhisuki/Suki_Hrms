@@ -28,6 +28,7 @@ export default function LevelsPage() {
 
   return (
     <SimpleMasterPage
+      statsModule="levels"
       title="Levels"
       apiPath="/api/masters/levels"
       extraFields={[{ name: 'gradeId', label: 'Grade', type: 'select', required: true, options: gradeOptions }]}

@@ -54,5 +54,5 @@ const columns: Column<BonusRateRow>[] = [
 ];
 
 export default function BonusRatesPage() {
-  return <SlabPage<BonusRateRow> title="Bonus Rates" apiPath="/api/masters/bonus-rates" fields={fields} columns={columns} itemLabel="Bonus Rate" />;
+  return <SlabPage<BonusRateRow> statsModule="bonus-rates" title="Bonus Rates" apiPath="/api/masters/bonus-rates" fields={fields} columns={columns} itemLabel="Bonus Rate" />;
 }

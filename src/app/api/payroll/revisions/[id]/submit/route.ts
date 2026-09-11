@@ -1,5 +1,8 @@
 /**
- * POST /api/payroll/revisions/[id]/submit — DRAFT → SUBMITTED.
+ * POST /api/payroll/revisions/[id]/submit — DRAFT → PENDING_MANAGER.
+ *
+ * Two-stage approval: Manager → HR. Submitting sends the revision to the
+ * employee's reporting manager for the first stage.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const updated = await prisma.salaryRevisionRequest.update({
     where: { id: record.id },
-    data: { status: 'SUBMITTED' },
+    data: { status: 'PENDING_MANAGER' },
   });
 
   return NextResponse.json(updated);

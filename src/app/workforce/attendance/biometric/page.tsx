@@ -24,8 +24,96 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+
+/* ── Icons (inline; no icon library in this project) ──────────────────── */
+const Icon = {
+  Calendar: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" />
+    </svg>
+  ),
+  Refresh: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" />
+    </svg>
+  ),
+  Download: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" />
+    </svg>
+  ),
+  File: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" />
+    </svg>
+  ),
+  Upload: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" />
+    </svg>
+  ),
+  Check: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  ),
+  X: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+    </svg>
+  ),
+};
+
+/** Small rounded pill — used for status/result/count badges throughout this page. */
+function Pill({ tone, icon, children }: { tone: 'success' | 'danger' | 'warning' | 'neutral'; icon?: ReactNode; children: ReactNode }) {
+  const map = {
+    success: { bg: 'var(--success-soft)', fg: 'var(--success)' },
+    danger: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+    warning: { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+    neutral: { bg: 'var(--surface-muted)', fg: 'var(--foreground-muted)' },
+  }[tone];
+  return (
+    <span
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium"
+      style={{ backgroundColor: map.bg, color: map.fg }}
+    >
+      {icon}
+      {children}
+    </span>
+  );
+}
+
+/** Card wrapper matching the mockup — white rounded card, optional header row. */
+function Card({ title, subtitle, headerExtra, action, children }: { title?: string; subtitle?: ReactNode; headerExtra?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+      {(title || action) && (
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <div className="flex items-center gap-2">
+              {title && (
+                <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                  {title}
+                </h2>
+              )}
+              {headerExtra}
+            </div>
+            {subtitle && (
+              <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {action}
+        </div>
+      )}
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
 
 interface ImportRow {
   id: number;
@@ -354,10 +442,10 @@ export default function BiometricAttendancePage() {
   };
 
   const columns: Column<ImportRow & { id: number }>[] = [
-    { key: 'empIdRaw', label: 'EMP_ID' },
+    { key: 'empIdRaw', label: 'Employee ID' },
     {
       key: 'matchedEmployee',
-      label: 'Employee',
+      label: 'Employee Name',
       render: (r) =>
         r.matchedEmployee ? (
           `${r.matchedEmployee.employeeCode} — ${r.matchedEmployee.firstName} ${r.matchedEmployee.lastName}`
@@ -369,8 +457,8 @@ export default function BiometricAttendancePage() {
     },
     { key: 'attForMonth', label: 'Wage Period' },
     { key: 'hours', label: 'Hours', render: (r) => (r.hours ?? '—') },
-    { key: 'inTimeRaw', label: 'In', render: (r) => formatRawTime(r.inTimeRaw) },
-    { key: 'outTimeRaw', label: 'Out', render: (r) => formatRawTime(r.outTimeRaw) },
+    { key: 'inTimeRaw', label: 'In Time', render: (r) => formatRawTime(r.inTimeRaw) },
+    { key: 'outTimeRaw', label: 'Out Time', render: (r) => formatRawTime(r.outTimeRaw) },
     {
       key: 'fromWhere',
       label: 'Source',
@@ -388,6 +476,11 @@ export default function BiometricAttendancePage() {
     },
   ];
 
+  const sNoColumns: Column<ImportRow & { id: number; sNo: number }>[] = [
+    { key: 'sNo', label: 'S.No' },
+    ...columns,
+  ];
+
   const reopenFields: FieldDef[] = [{ name: 'reason', label: 'Reopen Reason', type: 'textarea', required: true }];
 
   // ── Device sync (automatic every N hours + manual catch-up) ──────────────
@@ -399,6 +492,29 @@ export default function BiometricAttendancePage() {
     const start = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
     return { start, end };
   });
+  const [showAllUnmatched, setShowAllUnmatched] = useState(false);
+  const UNMATCHED_PREVIEW = 6;
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  /** One probe to the device API — tells HR whether the box is reachable before they hit Sync Now. */
+  const testConnection = async () => {
+    setTestBusy(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/biometric/sync?test=1');
+      const json = (await res.json()) as { ok: boolean; url: string; httpStatus: number | null; ms: number; rows?: number; error?: string };
+      setTestResult(
+        json.ok
+          ? { ok: true, text: `Device API at ${json.url} is reachable (HTTP ${json.httpStatus}, ${json.ms} ms${json.rows !== undefined ? `, ${json.rows} rows today` : ''}).` }
+          : { ok: false, text: json.error ?? 'Device API is not reachable.' }
+      );
+    } catch (err) {
+      setTestResult({ ok: false, text: err instanceof Error ? err.message : 'Connection test failed' });
+    } finally {
+      setTestBusy(false);
+    }
+  };
 
   const loadSync = useCallback(async () => {
     try {
@@ -439,28 +555,58 @@ export default function BiometricAttendancePage() {
     }
   };
 
+  // ── Derived display bits ─────────────────────────────────────────────────
+  const latestRun = sync?.runs[0] ?? null;
+  const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
+  const monthTone = monthStatus === 'FROZEN' ? 'danger' : monthStatus === 'FINALIZED' ? 'success' : 'neutral';
+  const monthText = monthStatus === 'FROZEN' ? 'Frozen' : monthStatus === 'FINALIZED' ? 'Finalized' : 'Open';
+  const unmatchedShown = showAllUnmatched ? (sync?.unmatched ?? []) : (sync?.unmatched ?? []).slice(0, UNMATCHED_PREVIEW);
+  /** "2026-09-07" (or ISO) -> "7/9/2026" like the mockup's range column. */
+  const dmy = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+    return `${d}/${m}/${y}`;
+  };
+  const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' };
+  const th = 'whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium';
+  const td = 'px-3 py-2.5 text-sm';
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Biometric Attendance
-        </h1>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm"
-            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-          />
+    <div className="space-y-5">
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+            Biometric Attendance
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
+            Manage device sync and attendance records
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+            style={inputStyle}
+          >
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="bg-transparent outline-none"
+              style={{ color: 'var(--foreground)' }}
+            />
+            <span style={{ color: 'var(--foreground-muted)' }}>
+              <Icon.Calendar />
+            </span>
+          </label>
           <span
-            className="rounded-full px-3 py-1 text-xs font-medium"
+            className="rounded-lg px-4 py-2 text-sm font-medium"
             style={{
-              backgroundColor: monthStatus === 'FROZEN' ? '#fee2e2' : monthStatus === 'FINALIZED' ? '#fef9c3' : '#dcfce7',
-              color: monthStatus === 'FROZEN' ? '#991b1b' : monthStatus === 'FINALIZED' ? '#854d0e' : '#166534',
+              backgroundColor: monthTone === 'danger' ? 'var(--danger-soft)' : monthTone === 'success' ? 'var(--success-soft)' : 'var(--surface-muted)',
+              color: monthTone === 'danger' ? 'var(--danger)' : monthTone === 'success' ? 'var(--success)' : 'var(--foreground-muted)',
             }}
           >
-            {monthStatus === 'FROZEN' ? `🔒 ${year}-${String(month).padStart(2, '0')} Frozen` : `${year}-${String(month).padStart(2, '0')} ${monthStatus}`}
+            {monthStatus === 'FROZEN' ? '🔒 ' : ''}
+            {monthLabel} {monthText}
           </span>
           {monthStatus === 'FROZEN' && (
             <button
@@ -475,205 +621,314 @@ export default function BiometricAttendancePage() {
       </div>
 
       {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
           {error}
         </div>
       )}
 
-      {/* Device sync — the automated path: the server pulls from the biometric controller every N hours; this card shows status and lets HR run a catch-up now */}
-      <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
-              Device Sync
-            </h2>
-            <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-              {sync === null
-                ? 'Loading status…'
-                : !sync.configured
-                  ? 'Device API is not configured on the server.'
-                  : sync.scheduler
-                    ? `Automatic every ${sync.scheduler.intervalHours} h from ${sync.apiUrl}. ` +
-                      (sync.scheduler.running
-                        ? 'A run is in progress.'
-                        : sync.scheduler.nextRunAt
-                          ? `Next run ${new Date(sync.scheduler.nextRunAt).toLocaleString()}.`
-                          : '')
-                    : `Device API ${sync.apiUrl} configured; scheduler starts with the server.`}
-            </p>
-          </div>
+      {/* ── Device Sync ─────────────────────────────────────────────────── */}
+      <Card
+        title="Device Sync"
+        headerExtra={
+          latestRun ? (
+            latestRun.status === 'success' ? (
+              <Pill tone="success" icon={<Icon.Check />}>Last sync successful</Pill>
+            ) : (
+              <Pill tone="danger" icon={<Icon.X />}>Last sync failed</Pill>
+            )
+          ) : null
+        }
+        subtitle={
+          sync === null
+            ? 'Loading status…'
+            : !sync.configured
+              ? 'Device API is not configured on the server.'
+              : sync.scheduler
+                ? `Automatic every ${sync.scheduler.intervalHours} h from ${sync.apiUrl}. ` +
+                  (sync.scheduler.running
+                    ? 'A run is in progress.'
+                    : sync.scheduler.nextRunAt
+                      ? `Next run ${new Date(sync.scheduler.nextRunAt).toLocaleString()}.`
+                      : '')
+                : `Device API ${sync.apiUrl} configured; scheduler starts with the server.`
+        }
+        action={
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="date"
-              value={syncRange.start}
-              onChange={(e) => setSyncRange((r) => ({ ...r, start: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-            />
-            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-              to
-            </span>
-            <input
-              type="date"
-              value={syncRange.end}
-              onChange={(e) => setSyncRange((r) => ({ ...r, end: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-            />
+            <div className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" style={inputStyle}>
+              <input
+                type="date"
+                value={syncRange.start}
+                onChange={(e) => setSyncRange((r) => ({ ...r, start: e.target.value }))}
+                className="bg-transparent outline-none"
+                style={{ color: 'var(--foreground)' }}
+              />
+              <span style={{ color: 'var(--foreground-muted)' }}>→</span>
+              <input
+                type="date"
+                value={syncRange.end}
+                onChange={(e) => setSyncRange((r) => ({ ...r, end: e.target.value }))}
+                className="bg-transparent outline-none"
+                style={{ color: 'var(--foreground)' }}
+              />
+              <span style={{ color: 'var(--foreground-muted)' }}>
+                <Icon.Calendar />
+              </span>
+            </div>
+            <button
+              onClick={testConnection}
+              disabled={testBusy || sync?.configured === false}
+              title="Send one request to the device API and report whether it answers"
+              className="rounded-lg border px-3 py-2 text-sm font-medium transition hover:opacity-80 disabled:opacity-50"
+              style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'var(--surface)' }}
+            >
+              {testBusy ? 'Testing…' : 'Test Connection'}
+            </button>
             <button
               onClick={runSyncNow}
               disabled={syncBusy || sync?.configured === false}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               style={{ backgroundColor: 'var(--accent)' }}
             >
-              {syncBusy ? 'Syncing…' : 'Sync now'}
+              <span className={syncBusy ? 'animate-spin' : ''}>
+                <Icon.Refresh />
+              </span>
+              {syncBusy ? 'Syncing…' : 'Sync Now'}
             </button>
           </div>
-        </div>
-
+        }
+      >
+        {testResult && (
+          <div
+            className="mb-4 rounded-lg px-3 py-2 text-sm"
+            style={{
+              backgroundColor: testResult.ok ? 'var(--success-soft)' : 'var(--danger-soft)',
+              color: testResult.ok ? 'var(--success)' : 'var(--danger)',
+            }}
+          >
+            {testResult.text}
+          </div>
+        )}
         {syncMsg && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: syncMsg.startsWith('Sync failed') ? '#fef2f2' : '#f0fdf4', color: syncMsg.startsWith('Sync failed') ? '#dc2626' : '#166534', border: `1px solid ${syncMsg.startsWith('Sync failed') ? '#fecaca' : '#bbf7d0'}` }}>
+          <div
+            className="mb-4 rounded-lg px-3 py-2 text-sm"
+            style={{
+              backgroundColor: syncMsg.startsWith('Sync failed') ? 'var(--danger-soft)' : 'var(--success-soft)',
+              color: syncMsg.startsWith('Sync failed') ? 'var(--danger)' : 'var(--success)',
+            }}
+          >
             {syncMsg}
           </div>
         )}
 
-        {sync && sync.runs.length > 0 && (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
-              <table className="w-full text-xs">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_1fr]">
+          {/* Sync history */}
+          <div className="rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center gap-2 px-4 py-3">
+              <h3 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                Sync History
+              </h3>
+              {sync && <Pill tone="success">Recent {sync.runs.length} records</Pill>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
-                    {['When', 'Trigger', 'Range', 'Result', 'Rows', 'New', 'Upd', 'Same', 'Frozen'].map((h) => (
-                      <th key={h} className="whitespace-nowrap px-2 py-1.5 text-left font-medium">
+                    {['S.No', 'When', 'Trigger', 'Range', 'Result', 'Rows', 'New', 'Upd', 'Same', 'Frozen'].map((h) => (
+                      <th key={h} className={th}>
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {sync.runs.map((r) => (
-                    <tr key={r.id} style={{ borderTop: '1px solid var(--border)', color: 'var(--foreground)' }} title={r.error ?? undefined}>
-                      <td className="whitespace-nowrap px-2 py-1.5">{new Date(r.startedAt).toLocaleString()}</td>
-                      <td className="px-2 py-1.5">{r.trigger}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5">
-                        {r.rangeStart.slice(0, 10)} → {r.rangeEnd.slice(0, 10)}
+                  {!sync || sync.runs.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--foreground-muted)' }}>
+                        {sync === null ? 'Loading…' : 'No sync runs yet.'}
                       </td>
-                      <td className="px-2 py-1.5" style={{ color: r.status === 'success' ? '#166534' : r.status === 'failed' ? '#b91c1c' : undefined }}>
-                        {r.status}
-                        {r.error ? ' ⚠' : ''}
-                      </td>
-                      <td className="px-2 py-1.5 tabular-nums">{r.rowsFetched}</td>
-                      <td className="px-2 py-1.5 tabular-nums">{r.daysCreated}</td>
-                      <td className="px-2 py-1.5 tabular-nums">{r.daysUpdated}</td>
-                      <td className="px-2 py-1.5 tabular-nums">{r.daysUnchanged}</td>
-                      <td className="px-2 py-1.5 tabular-nums">{r.skippedFrozen}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    sync.runs.map((r, i) => (
+                      <tr key={r.id} style={{ borderTop: '1px solid var(--border)', color: 'var(--foreground)' }} title={r.error ?? undefined}>
+                        <td className={td}>{i + 1}</td>
+                        <td className={`${td} whitespace-nowrap`}>{new Date(r.startedAt).toLocaleString()}</td>
+                        <td className={`${td} capitalize`}>{r.trigger}</td>
+                        <td className={`${td} whitespace-nowrap`}>
+                          {dmy(r.rangeStart)} → {dmy(r.rangeEnd)}
+                        </td>
+                        <td className={td}>
+                          {r.status === 'success' ? (
+                            <Pill tone="success" icon={<Icon.Check />}>Success</Pill>
+                          ) : r.status === 'failed' ? (
+                            <Pill tone="danger" icon={<Icon.X />}>Failed</Pill>
+                          ) : (
+                            <Pill tone="warning">{r.status}</Pill>
+                          )}
+                        </td>
+                        <td className={`${td} tabular-nums`}>{r.rowsFetched}</td>
+                        <td className={`${td} tabular-nums`}>{r.daysCreated}</td>
+                        <td className={`${td} tabular-nums`}>{r.daysUpdated}</td>
+                        <td className={`${td} tabular-nums`}>{r.daysUnchanged}</td>
+                        <td className={`${td} tabular-nums`}>{r.skippedFrozen}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-            <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
-              <div className="mb-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>
-                Unmatched device IDs (latest run)
-              </div>
-              {sync.unmatched.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-                  Every device user matched an employee.
+          </div>
+
+          {/* Unmatched device IDs */}
+          <div className="rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                  Unmatched Device IDs <span style={{ color: 'var(--accent)' }}>(Latest Run)</span>
+                </h3>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  {!sync || sync.unmatched.length === 0
+                    ? 'Every device user matched an employee.'
+                    : "Enter the device ID as the employee's Employee Code to map them; the next sync picks it up."}
                 </p>
-              ) : (
-                <>
-                  <p className="mb-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                    Enter the device ID as the employee&apos;s Employee Code to map them; the next sync picks it up.
-                  </p>
-                  <ul className="flex flex-wrap gap-1.5">
-                    {sync.unmatched.map((u) => (
-                      <li key={u.userid} className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }} title={`${u.days} day(s) in range`}>
-                        <span className="font-mono">{u.userid}</span> {u.username}
-                      </li>
-                    ))}
-                  </ul>
-                </>
+              </div>
+              {sync && sync.unmatched.length > UNMATCHED_PREVIEW && (
+                <button
+                  onClick={() => setShowAllUnmatched((v) => !v)}
+                  className="rounded-lg border px-3 py-1.5 text-xs font-medium"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                >
+                  {showAllUnmatched ? 'Show Less' : 'View All'}
+                </button>
               )}
             </div>
+            {sync && sync.unmatched.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
+                      {['S.No', 'Device ID', 'Name', 'Status', 'Days'].map((h) => (
+                        <th key={h} className={th}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unmatchedShown.map((u, i) => (
+                      <tr key={u.userid} style={{ borderTop: '1px solid var(--border)', color: 'var(--foreground)' }}>
+                        <td className={td}>{i + 1}</td>
+                        <td className={`${td} font-mono`}>{u.userid}</td>
+                        <td className={td}>{u.username || '—'}</td>
+                        <td className={td}>
+                          <Pill tone="danger" icon={<Icon.X />}>Unmatched</Pill>
+                        </td>
+                        <td className={`${td} tabular-nums`}>{u.days}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      <DataTable columns={columns} data={rows.map((r) => ({ ...r }))} loading={loading} emptyMessage="No biometric data imported for this date." />
-
-      {/* Bulk upload — the fallback path for when the automated device push isn't running */}
-      <div className="rounded-lg border p-4 space-y-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
-        <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
-          Bulk Upload
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          Use this when the automated device push isn&apos;t working: download the template, fill in one row per employee per day (EMP_ID,
-          Name, Date, In-Time, Out-Time), and upload it back below. Working hours and overtime are calculated automatically from the
-          in/out times.
-        </p>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={downloadTemplate}
-            className="rounded-lg border px-3 py-2 text-sm font-medium"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          >
-            Download Template
-          </button>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)}
-            className="text-sm"
-            style={{ color: 'var(--foreground)' }}
-          />
-          {uploadedFile && (
-            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-              {uploadedFile.name}
-            </span>
-          )}
         </div>
+      </Card>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
-              Source Tag
-            </label>
-            <select
-              value={fromWhere}
-              onChange={(e) => setFromWhere(e.target.value as 'MANUAL' | 'BIOMETRIC')}
-              className="rounded-lg border px-3 py-2 text-sm"
-              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+      {/* ── Bulk Upload ─────────────────────────────────────────────────── */}
+      <Card
+        title="Bulk Upload"
+        subtitle="Use this when the automated device push isn't working: download the template, fill in one row per employee per day (EMP_ID, Name, Date, In-Time, Out-Time), and upload it back below. Working hours and overtime are calculated automatically from the in/out times."
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {/* Step 1 */}
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
+                <Icon.Download />
+              </span>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Download Template</div>
+                <div className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Get the latest template file</div>
+              </div>
+            </div>
+            <button
+              onClick={downloadTemplate}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition hover:opacity-80"
+              style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'var(--success-soft)' }}
             >
-              <option value="MANUAL">Manual</option>
-              <option value="BIOMETRIC">Biometric</option>
-            </select>
+              <Icon.Upload />
+              Download Template
+            </button>
           </div>
-          <button
-            onClick={handleImport}
-            disabled={importing}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            {importing ? 'Importing...' : 'Parse & Import'}
-          </button>
+
+          {/* Step 2 */}
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
+                <Icon.File />
+              </span>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Choose File</div>
+                <div className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Select the filled template file</div>
+              </div>
+            </div>
+            <label
+              className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs font-medium transition hover:opacity-80"
+              style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+            >
+              <Icon.Upload />
+              <span className="truncate">{uploadedFile ? uploadedFile.name : 'Choose File'}</span>
+              <input type="file" accept=".csv" className="hidden" onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)} />
+            </label>
+          </div>
+
+          {/* Step 3 */}
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
+                <Icon.File />
+              </span>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Parse &amp; Import</div>
+                <div className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Validate and import data</div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <label className="text-xs" style={{ color: 'var(--foreground)' }}>Source Tag</label>
+              <select
+                value={fromWhere}
+                onChange={(e) => setFromWhere(e.target.value as 'MANUAL' | 'BIOMETRIC')}
+                className="rounded-lg border px-2 py-1.5 text-xs"
+                style={inputStyle}
+              >
+                <option value="MANUAL">Manual</option>
+                <option value="BIOMETRIC">Biometric</option>
+              </select>
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                <Icon.Upload />
+                {importing ? 'Importing…' : 'Parse & Import'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {importError && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+          <div className="mt-4 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
             {importError}
           </div>
         )}
         {importResult && (
-          <div className="rounded-lg px-3 py-2 text-sm space-y-1" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+          <div className="mt-4 space-y-1 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
             <div>
               Processed {importResult.monthsProcessed} month{importResult.monthsProcessed === 1 ? '' : 's'}, {importResult.imported} employee-period
               row(s) imported.
             </div>
             <div>Unmatched EMP_IDs: {importResult.unmatched}</div>
-            {importResult.duplicatesMerged > 0 && (
-              <div>Duplicate rows for the same employee/period merged: {importResult.duplicatesMerged}</div>
-            )}
+            {importResult.duplicatesMerged > 0 && <div>Duplicate rows for the same employee/period merged: {importResult.duplicatesMerged}</div>}
             <div>
               Pushed to Daily Attendance: {importResult.converted} day(s), skipped (frozen month): {importResult.skippedFrozen}, unparseable
               punch times: {importResult.unmatchedTimes}
@@ -688,14 +943,24 @@ export default function BiometricAttendancePage() {
                 </ul>
               </div>
             )}
-            {importResult.apiErrors.length > 0 && (
-              <div style={{ color: '#dc2626' }}>
-                Errors: {importResult.apiErrors.join('; ')}
-              </div>
-            )}
+            {importResult.apiErrors.length > 0 && <div style={{ color: 'var(--danger)' }}>Errors: {importResult.apiErrors.join('; ')}</div>}
           </div>
         )}
-      </div>
+      </Card>
+
+      {/* ── Uploaded Attendance Records ─────────────────────────────────── */}
+      <Card
+        title="Uploaded Attendance Records"
+        subtitle="Preview of parsed data from the uploaded file."
+        action={<Pill tone="success">{rows.length} records Found</Pill>}
+      >
+        <DataTable
+          columns={sNoColumns}
+          data={rows.map((r, i) => ({ ...r, sNo: i + 1 }))}
+          loading={loading}
+          emptyMessage="No biometric data imported for this date."
+        />
+      </Card>
 
       <FormModal
         title="Reopen Period"

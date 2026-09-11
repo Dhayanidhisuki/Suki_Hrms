@@ -35,8 +35,14 @@ export default function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(0);
+  // Flips the panel above the trigger when there isn't enough room below —
+  // e.g. the last field in a card, where opening downward would spill onto
+  // (or get clipped by) whatever sits after the card.
+  const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const PANEL_MAX_HEIGHT = 280; // search box (~48px) + list (max-h-56 = 224px), roughly
 
   const selected = options.find((opt) => String(opt.value) === String(value));
 
@@ -110,8 +116,13 @@ export default function SearchableSelect({
         type="button"
         id={id}
         disabled={disabled}
-        onClick={() => {
+        onClick={(e) => {
           setHighlightIndex(0);
+          if (!open) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            setDropUp(spaceBelow < PANEL_MAX_HEIGHT && rect.top > spaceBelow);
+          }
           setOpen((o) => !o);
         }}
         aria-haspopup="listbox"
@@ -132,7 +143,7 @@ export default function SearchableSelect({
 
       {open && !disabled && (
         <div
-          className="absolute z-20 mt-1 w-full rounded-lg border shadow-lg"
+          className={`absolute z-20 w-full rounded-lg border shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
           onKeyDown={handleKeyDown}
         >

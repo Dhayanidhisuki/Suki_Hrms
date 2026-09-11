@@ -1,8 +1,45 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Icon from "@/components/layout/NavIcons";
 import { Avatar } from "./Primitives";
-import { awards } from "./data";
+
+interface Award {
+  id: string;
+  name: string;
+  department: string;
+  award: string;
+  date: string;
+}
 
 export default function AwardTable() {
+  const [awards, setAwards] = useState<Award[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const fetchAwards = async () => {
+      try {
+        const res = await fetch('/api/awards?limit=10');
+        if (res.ok) {
+          const data = await res.json();
+          setAwards(data.data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching awards:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAwards();
+  }, []);
+
+  const filteredAwards = awards.filter((award) =>
+    award.name.toLowerCase().includes(search.toLowerCase()) ||
+    award.award.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <section className="card">
       <div className="flex flex-wrap items-center gap-3 px-5 pt-5 pb-4">
@@ -20,6 +57,8 @@ export default function AwardTable() {
             <input
               type="search"
               placeholder="Search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-24 bg-transparent text-[12px] outline-none placeholder:text-[color:var(--foreground-muted)] sm:w-32"
               style={{ color: "var(--foreground)" }}
             />
@@ -55,31 +94,45 @@ export default function AwardTable() {
             </tr>
           </thead>
           <tbody>
-            {awards.map((row) => (
-              <tr key={row.id} className="border-t" style={{ borderColor: "var(--border)" }}>
-                <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
-                  {row.id}
-                </td>
-                <td className="px-3 py-3">
-                  <Avatar name={row.name} size={34} />
-                </td>
-                <td className="px-3 py-3 text-[13px] font-medium" style={{ color: "var(--foreground)" }}>
-                  {row.name}
-                </td>
-                <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
-                  {row.department}
-                </td>
-                <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground)" }}>
-                  <span className="inline-flex items-center gap-2">
-                    <Icon name="award" size={15} style={{ color: "var(--warning)" }} />
-                    {row.award}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
-                  {row.date}
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8" style={{ color: "var(--foreground-muted)" }}>
+                  Loading...
                 </td>
               </tr>
-            ))}
+            ) : filteredAwards.length > 0 ? (
+              filteredAwards.map((row, idx) => (
+                <tr key={row.id} className="border-t" style={{ borderColor: "var(--border)" }}>
+                  <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
+                    {idx + 1}
+                  </td>
+                  <td className="px-3 py-3">
+                    <Avatar name={row.name} size={34} />
+                  </td>
+                  <td className="px-3 py-3 text-[13px] font-medium" style={{ color: "var(--foreground)" }}>
+                    {row.name}
+                  </td>
+                  <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
+                    {row.department}
+                  </td>
+                  <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground)" }}>
+                    <span className="inline-flex items-center gap-2">
+                      <Icon name="award" size={15} style={{ color: "var(--warning)" }} />
+                      {row.award}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-[13px]" style={{ color: "var(--foreground-muted)" }}>
+                    {row.date}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="text-center py-8" style={{ color: "var(--foreground-muted)" }}>
+                  No awards found
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

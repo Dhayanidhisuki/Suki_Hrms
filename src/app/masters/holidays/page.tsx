@@ -9,16 +9,33 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
+type HolidayType = 'COMPANY' | 'FESTIVAL' | 'GOVERNMENT' | 'OTHER';
+
 interface Holiday {
   id: number;
   date: string;
   name: string;
+  holidayType: HolidayType;
   description: string | null;
   companyId: number;
   isActive: boolean;
   deletedAt: string | null;
   company: { id: number; name: string } | null;
 }
+
+const HOLIDAY_TYPE_OPTIONS: { label: string; value: HolidayType }[] = [
+  { label: 'Company', value: 'COMPANY' },
+  { label: 'Festival', value: 'FESTIVAL' },
+  { label: 'Government', value: 'GOVERNMENT' },
+  { label: 'Other', value: 'OTHER' },
+];
+
+const HOLIDAY_TYPE_TONE: Record<HolidayType, { bg: string; fg: string }> = {
+  COMPANY: { bg: 'var(--accent-soft)', fg: 'var(--accent)' },
+  FESTIVAL: { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  GOVERNMENT: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  OTHER: { bg: 'var(--surface-muted)', fg: 'var(--foreground-muted)' },
+};
 
 interface ApiResponse {
   data: Holiday[];
@@ -48,6 +65,7 @@ export default function HolidaysPage() {
     { name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions },
     { name: 'date', label: 'Date', type: 'date', required: true },
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Diwali' },
+    { name: 'holidayType', label: 'Holiday Type', type: 'select', required: true, options: HOLIDAY_TYPE_OPTIONS, defaultValue: 'OTHER' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
   ];
@@ -75,7 +93,7 @@ export default function HolidaysPage() {
 
   const handleAdd = () => {
     setEditingId(null);
-    setInitialValues({ isActive: true });
+    setInitialValues({ isActive: true, holidayType: 'OTHER' });
     setModalOpen(true);
   };
 
@@ -84,6 +102,7 @@ export default function HolidaysPage() {
     setInitialValues({
       date: row.date.slice(0, 10),
       name: row.name,
+      holidayType: row.holidayType,
       description: row.description ?? '',
       companyId: row.companyId,
       isActive: row.isActive,
@@ -116,6 +135,19 @@ export default function HolidaysPage() {
   const columns: Column<Holiday>[] = [
     { key: 'date', label: 'Date', sortable: true, render: (row) => new Date(row.date).toLocaleDateString() },
     { key: 'name', label: 'Name' },
+    {
+      key: 'holidayType',
+      label: 'Type',
+      render: (row) => {
+        const tone = HOLIDAY_TYPE_TONE[row.holidayType] ?? HOLIDAY_TYPE_TONE.OTHER;
+        const label = HOLIDAY_TYPE_OPTIONS.find((o) => o.value === row.holidayType)?.label ?? row.holidayType;
+        return (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+            {label}
+          </span>
+        );
+      },
+    },
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {

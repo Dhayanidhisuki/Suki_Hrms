@@ -14,6 +14,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
 
 export async function GET(request: NextRequest) {
@@ -85,6 +86,10 @@ export async function POST(request: NextRequest) {
     rest,
     { userId: userId || null, changedBySource: 'manual' }
   );
+
+  // Keep MonthlyAttendanceSummary in sync with the upserted daily row
+  const attDate = new Date(date);
+  await refreshMonthlySummary(employeeId, attDate.getUTCFullYear(), attDate.getUTCMonth() + 1);
 
   const record = await prisma.dailyAttendance.findUnique({
     where: { employeeId_date: { employeeId, date } },

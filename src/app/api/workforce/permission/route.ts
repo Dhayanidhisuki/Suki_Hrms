@@ -1,13 +1,16 @@
 /**
- * GET  /api/workforce/permission?scope=mine|hr
+ * GET  /api/workforce/permission?scope=mine|manager|hr
  *      — mine: the logged-in employee's own requests, any status.
- *      — hr: all pending requests for the company (RBAC-gated on
- *        workforce.permission.view) — single-stage approval, no
- *        Reporting-Manager queue (unlike Mispunch/OT).
+ *      — manager: pending_manager requests for this manager's reports
+ *        (hierarchy-gated, no RBAC permission needed).
+ *      — hr: all pending_hr requests for the company (RBAC-gated on
+ *        workforce.permission.view).
  * POST /api/workforce/permission
  *      — the logged-in employee applies for permission (short leave in
  *        hours) on one of their own days. Self-service: employeeId is
  *        resolved from the session, never taken from the request body.
+ *        New requests start at status 'pending_manager' (two-stage
+ *        approval: Manager → HR).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -37,18 +40,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
-  if (scopeParam === 'hr') {
-    const permErr = await checkSpecificPermission(request, 'workforce.permission.view');
-    if (permErr) return permErr;
+  if (scopeParam === 'manager') {
+    const ownEmployeeId = await resolveOwnEmployeeId(userId);
+    if (!ownEmployeeId) {
+      return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
+    }
     const data = await prisma.permissionRequest.findMany({
-      where: { status: 'pending', employee: { companyId: scope.companyId } },
+      where: { status: 'pending_manager', employee: { reportingManagerId: ownEmployeeId, companyId: scope.companyId, deletedAt: null } },
       include,
       orderBy: { appliedAt: 'asc' },
     });
     return NextResponse.json({ data });
   }
 
-  return NextResponse.json({ error: 'scope must be one of: mine, hr' }, { status: 400 });
+  if (scopeParam === 'hr') {
+    const permErr = await checkSpecificPermission(request, 'workforce.permission.view');
+    if (permErr) return permErr;
+    const data = await prisma.permissionRequest.findMany({
+      where: { status: 'pending_hr', employee: { companyId: scope.companyId } },
+      include,
+      orderBy: { appliedAt: 'asc' },
+    });
+    return NextResponse.json({ data });
+  }
+
+  return NextResponse.json({ error: 'scope must be one of: mine, manager, hr' }, { status: 400 });
 }
 
 export async function POST(request: NextRequest) {

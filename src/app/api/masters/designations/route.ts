@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { designationSchema } from '@/lib/validations/master';
+import { currentHeadcounts } from '@/lib/master-headcount';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -16,12 +17,22 @@ export async function GET(request: NextRequest) {
     ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
   };
 
-  const [data, total] = await Promise.all([
-    prisma.designation.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' } }),
+  const [data, total, headcounts] = await Promise.all([
+    prisma.designation.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: { reportsTo: { select: { id: true, name: true } } },
+    }),
     prisma.designation.count({ where }),
+    currentHeadcounts('designationId'),
   ]);
 
-  return NextResponse.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  return NextResponse.json({
+    data: data.map((d) => ({ ...d, currentHeadcount: headcounts.get(d.id) ?? 0 })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -34,6 +45,11 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.designation.findUnique({ where: { code: parsed.data.code } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.designation.create({ data: parsed.data });
+  if (parsed.data.reportsToId) {
+    const target = await prisma.designation.findFirst({ where: { id: parsed.data.reportsToId, deletedAt: null }, select: { id: true } });
+    if (!target) return NextResponse.json({ error: 'Reports To designation not found' }, { status: 400 });
+  }
+
+  const record = await prisma.designation.create({ data: parsed.data, include: { reportsTo: { select: { id: true, name: true } } } });
   return NextResponse.json(record, { status: 201 });
 }

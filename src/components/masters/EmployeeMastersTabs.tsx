@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import SimpleMasterPage from '@/components/SimpleMasterPage';
 import type { FieldOption } from '@/components/ui';
 import { EMPLOYEE_MASTER_TABS, EMPLOYEE_MASTERS_PATH, type EmployeeMasterTabKey } from './employeeMasterTabs';
@@ -22,8 +23,9 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
   const [active, setActive] = useState<EmployeeMasterTabKey>(initialTab);
   const tab = EMPLOYEE_MASTER_TABS.find((t) => t.key === active) ?? EMPLOYEE_MASTER_TABS[0];
 
-  // Designation options for the Grade form. Re-fetched whenever the Grades
-  // tab is opened so a designation added a moment ago on the other tab shows up.
+  // Designation options — used by the Grade form's Designation select AND
+  // the Designation form's own "Reports To" select. Re-fetched whenever
+  // either tab is opened so a designation added a moment ago elsewhere shows up.
   const [designationOptions, setDesignationOptions] = useState<FieldOption[]>([]);
   const loadDesignations = useCallback(async () => {
     try {
@@ -36,7 +38,7 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
     }
   }, []);
   useEffect(() => {
-    if (active === 'grades') void loadDesignations();
+    void loadDesignations();
   }, [active, loadDesignations]);
 
   const select = (key: EmployeeMasterTabKey) => {
@@ -46,13 +48,24 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Designations &amp; Grades
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          Designation and grade masters used across the employee profile.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            Designations &amp; Grades
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+            Designation and grade masters used across the employee profile.
+          </p>
+        </div>
+        {active === 'designations' && (
+          <Link
+            href="/masters/designations/jd-upload"
+            className="shrink-0 rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
+            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+          >
+            JD Upload
+          </Link>
+        )}
       </div>
 
       <div className="card overflow-x-auto p-2">
@@ -87,6 +100,7 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
           embedded
           title={tab.title}
           apiPath={tab.apiPath}
+          statsModule="grades"
           extraFields={[{ name: 'designationId', label: 'Designation', type: 'select', required: true, options: designationOptions }]}
           extraColumns={[
             {
@@ -98,7 +112,57 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
           extraInitialValues={(row) => ({ designationId: (row.designationId as number | null | undefined) ?? undefined })}
         />
       ) : (
-        <SimpleMasterPage key={tab.key} embedded title={tab.title} apiPath={tab.apiPath} />
+        <SimpleMasterPage
+          key="designations"
+          embedded
+          title={tab.title}
+          apiPath={tab.apiPath}
+          statsModule="designations"
+          extraFields={[
+            { name: 'qualification', label: 'Qualification', type: 'text', placeholder: 'e.g. B.E / B.Tech' },
+            { name: 'experienceYears', label: 'Experience (years)', type: 'number', min: 0, max: 60, step: '0.5', placeholder: 'e.g. 2' },
+            { name: 'budget', label: 'Budget', type: 'number', min: 0, placeholder: 'Monthly budget for this designation' },
+            { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 5' },
+            {
+              name: 'reportsToId',
+              label: 'Reports To (Designation)',
+              type: 'select',
+              options: designationOptions,
+              helpText: 'Reporting Structure — the default org-chart template, not a per-employee assignment.',
+            },
+          ]}
+          extraColumns={[
+            {
+              key: 'headcount',
+              label: 'Headcount (Sanctioned / Current)',
+              render: (row) => `${(row.sanctionedHeadcount as number | null) ?? '—'} / ${(row.currentHeadcount as number | undefined) ?? 0}`,
+            },
+            {
+              key: 'reportsTo',
+              label: 'Reports To',
+              render: (row) => (row.reportsTo as { name: string } | null | undefined)?.name ?? '—',
+            },
+            {
+              key: 'jobDescription',
+              label: 'JD',
+              render: (row) =>
+                (row.jobDescription as string | null | undefined) ? (
+                  <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
+                    Set
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--foreground-muted)' }}>—</span>
+                ),
+            },
+          ]}
+          extraInitialValues={(row) => ({
+            qualification: (row.qualification as string | null | undefined) ?? '',
+            experienceYears: (row.experienceYears as number | null | undefined) ?? '',
+            budget: (row.budget as number | null | undefined) ?? '',
+            sanctionedHeadcount: (row.sanctionedHeadcount as number | null | undefined) ?? '',
+            reportsToId: (row.reportsToId as number | null | undefined) ?? '',
+          })}
+        />
       )}
     </div>
   );

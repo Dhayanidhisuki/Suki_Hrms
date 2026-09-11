@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
 interface SubDepartment {
@@ -9,6 +10,9 @@ interface SubDepartment {
   name: string;
   description: string | null;
   departmentId: number;
+  sanctionedHeadcount: number | null;
+  /** Live count of active employees currently assigned here — derived server-side, not editable. */
+  currentHeadcount: number;
   isActive: boolean;
   deletedAt: string | null;
   department: { id: number; name: string };
@@ -20,6 +24,20 @@ interface ApiResponse {
 }
 
 export default function SubDepartmentsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}>
+      <SubDepartmentsPageInner />
+    </Suspense>
+  );
+}
+
+function SubDepartmentsPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  // Arriving from a department row ("View Sub Departments") scopes the list
+  // and pre-fills the Add form to that department.
+  const departmentIdFilter = searchParams.get('departmentId');
+
   const [records, setRecords] = useState<SubDepartment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,16 +50,25 @@ export default function SubDepartmentsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deptOptions, setDeptOptions] = useState<FieldOption[]>([]);
 
+  const filteredDeptName = departmentIdFilter
+    ? deptOptions.find((o) => String(o.value) === departmentIdFilter)?.label
+    : undefined;
+
   useEffect(() => {
     fetch('/api/masters/departments?limit=100')
       .then((r) => r.json())
       .then((json: ApiResponse) => setDeptOptions(json.data.map((d) => ({ label: d.name, value: d.id }))));
   }, []);
 
+  // Sub-Code is server-generated per department ("<DeptCode>-001"...) — no
+  // field on Add; shown disabled (for reference) on Edit.
   const fields: FieldDef[] = [
     { name: 'departmentId', label: 'Department', type: 'select', required: true, options: deptOptions },
-    { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. IT-SUB1' },
+    ...(editingId
+      ? [{ name: 'code', label: 'Sub-Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef]
+      : []),
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. IT Support' },
+    { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 10', helpText: 'Approved/budgeted staffing count for this sub-department.' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
   ];
@@ -50,7 +77,12 @@ export default function SubDepartmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(departmentIdFilter ? { departmentId: departmentIdFilter } : {}),
+      });
       const res = await fetch(`/api/masters/sub-departments?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
@@ -61,19 +93,34 @@ export default function SubDepartmentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, departmentIdFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true }); setModalOpen(true); };
+  const handleAdd = () => {
+    setEditingId(null);
+    setInitialValues({ isActive: true, ...(departmentIdFilter ? { departmentId: Number(departmentIdFilter) } : {}) });
+    setModalOpen(true);
+  };
   const handleEdit = (row: SubDepartment) => {
     setEditingId(row.id);
-    setInitialValues({ code: row.code, name: row.name, description: row.description ?? '', departmentId: row.departmentId, isActive: row.isActive });
+    setInitialValues({
+      code: row.code,
+      name: row.name,
+      sanctionedHeadcount: row.sanctionedHeadcount ?? '',
+      description: row.description ?? '',
+      departmentId: row.departmentId,
+      isActive: row.isActive,
+    });
     setModalOpen(true);
   };
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const payload = { ...values, description: values.description || null };
+    const payload = {
+      ...values,
+      description: values.description || null,
+      sanctionedHeadcount: values.sanctionedHeadcount === '' ? null : values.sanctionedHeadcount,
+    };
     const url = editingId ? `/api/masters/sub-departments/${editingId}` : '/api/masters/sub-departments';
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -88,9 +135,14 @@ export default function SubDepartmentsPage() {
   };
 
   const columns: Column<SubDepartment>[] = [
-    { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
+    { key: 'code', label: 'Sub-Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'department', label: 'Department', render: (row) => row.department?.name ?? '—' },
+    {
+      key: 'headcount',
+      label: 'Headcount (Sanctioned / Current)',
+      render: (row) => `${row.sanctionedHeadcount ?? '—'} / ${row.currentHeadcount}`,
+    },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive', label: 'Status',
@@ -106,7 +158,18 @@ export default function SubDepartmentsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Sub Departments</h1>
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Sub Departments</h1>
+          {departmentIdFilter && (
+            <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
+              Showing sub departments under <strong>{filteredDeptName ?? `department #${departmentIdFilter}`}</strong>{' '}
+              &mdash;{' '}
+              <button onClick={() => router.push('/masters/sub-departments')} className="hover:underline" style={{ color: 'var(--accent)' }}>
+                clear filter
+              </button>
+            </p>
+          )}
+        </div>
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add Sub Department</button>
       </div>

@@ -133,14 +133,19 @@ export function buildBasicFields(
       options: levelOptions,
       helpText: gradeChosen ? 'Levels under the selected Grade.' : 'Choose a Grade to narrow the levels to that grade.',
     },
-    { name: 'productionLine', label: 'Production Line', type: 'text' },
     { name: 'additionalRole', label: 'Additional Role', type: 'text' },
-    { name: 'teamGroup', label: 'Team Group', type: 'text' },
     {
       name: 'reportingManagerId',
       label: 'Reporting Manager',
       type: 'select',
       options: toReportingManagerOptions(opts.reportingManagers),
+    },
+    {
+      name: 'secondReportingManagerId',
+      label: 'Second Reporting Manager',
+      type: 'select',
+      options: toReportingManagerOptions(opts.reportingManagers),
+      helpText: 'Skip-level / second manager (optional).',
     },
     {
       name: 'status',
@@ -391,7 +396,12 @@ export function buildJobProfileFields(): FieldDef[] {
     { name: 'professionalTaxApplicable', label: 'Professional Tax Applicable', type: 'checkbox' },
     { name: 'bonusApplicable', label: 'Bonus Applicable', type: 'checkbox' },
     { name: 'ltaEligible', label: 'LTA/UTA Eligible', type: 'checkbox' },
-    { name: 'pfRestrictionAmount', label: 'PF Restriction Amount', type: 'number' },
+    {
+      name: 'pfRestrictionAmount',
+      label: 'PF Restriction Amount',
+      type: 'number',
+      helpText: 'Caps this employee\'s PF wage below the statutory ceiling (e.g. restrict to 15000 even if gross is higher). Leave blank to use only the statutory ceiling.',
+    },
     { name: 'overtimeAllowed', label: 'Overtime Allowed', type: 'checkbox' },
     { name: 'overtimeFactor', label: 'Overtime Factor', type: 'number', step: '0.1' },
     { name: 'overtimeRatePerHour', label: 'Overtime Rate / Hour', type: 'number' },
@@ -589,5 +599,29 @@ export function buildAssetFields(assetMasters: OptionList): FieldDef[] {
     { name: 'expectedReturnDate', label: 'Expected Return Date', type: 'date' },
     { name: 'returnedDate', label: 'Actual Return Date', type: 'date' },
     { name: 'notes', label: 'Comments', type: 'textarea' },
+  ];
+}
+
+export function buildExitFields(): FieldDef[] {
+  return [
+    {
+      name: 'exitReason',
+      label: 'Exit Reason',
+      type: 'select',
+      required: true,
+      options: [
+        { label: 'Resignation', value: 'resignation' },
+        { label: 'Termination', value: 'termination' },
+        { label: 'Retirement', value: 'retirement' },
+        { label: 'Redundancy', value: 'redundancy' },
+        { label: 'Contract Completion', value: 'contract-completion' },
+        { label: 'Other', value: 'other' },
+      ],
+    },
+    { name: 'exitComments', label: 'Comments', type: 'textarea', helpText: 'Additional comments or details about the exit' },
+    { name: 'noDueFormAttachment', label: 'No Due Form', type: 'file', helpText: 'Upload the No Due Form document' },
+    { name: 'exitInterviewAttachment', label: 'Exit Interview Document', type: 'file', helpText: 'Upload the Exit Interview form' },
+    { name: 'finalSettlementAmount', label: 'Final Settlement Amount', type: 'number', min: 0 },
+    { name: 'exitDate', label: 'Exit Date', type: 'date', required: true },
   ];
 }

@@ -21,5 +21,5 @@ const columns: Column<{ id: number; code: string; minSalary: number; maxSalary: 
 ];
 
 export default function ProfessionalTaxSlabsPage() {
-  return <SlabPage title="Professional Tax Slabs" apiPath="/api/masters/professional-tax-slabs" fields={fields} columns={columns} itemLabel="PT Slab" />;
+  return <SlabPage statsModule="professional-tax-slabs" title="Professional Tax Slabs" apiPath="/api/masters/professional-tax-slabs" fields={fields} columns={columns} itemLabel="PT Slab" />;
 }

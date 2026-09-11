@@ -23,5 +23,5 @@ const columns: Column<{ id: number; code: string; employeeContributionRate: numb
 ];
 
 export default function PfRatesPage() {
-  return <SlabPage title="PF Rates" apiPath="/api/masters/pf-rates" fields={fields} columns={columns} itemLabel="PF Rate" />;
+  return <SlabPage statsModule="pf-rates" title="PF Rates" apiPath="/api/masters/pf-rates" fields={fields} columns={columns} itemLabel="PF Rate" />;
 }

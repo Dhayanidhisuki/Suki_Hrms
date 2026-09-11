@@ -54,7 +54,10 @@ export const navigation: NavModule[] = [
     groups: [
       {
         label: "Overview",
-        items: [{ label: "My Dashboard", href: "/", ready: true }],
+        items: [
+          { label: "My Dashboard", href: "/", ready: true },
+          { label: "Manager Dashboard", short: "My Team", href: "/manager/dashboard", ready: true },
+        ],
       },
       {
         label: "Security",
@@ -92,9 +95,11 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Departments", href: "/masters/departments", ready: true },
           { label: "Sub Departments", href: "/masters/sub-departments", ready: true },
-          { label: "Branches / Sites", short: "Branches", href: "/masters/branches" },
-          { label: "Units", href: "/masters/units", ready: true },
-          { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure" },
+          { label: "Branch / Unit", href: "/masters/units", ready: true },
+          { label: "Site Master", href: "/masters/sites", ready: true },
+          // Reporting Structure is now a real module (org chart, manager
+          // approval stages, bulk reassign) — see /masters/reporting-structure.
+          { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure", ready: true },
         ],
       },
       {
@@ -113,28 +118,50 @@ export const navigation: NavModule[] = [
           { label: "Shift Master", href: "/masters/shift-masters", ready: true },
           { label: "Shift Rotation Plans", href: "/masters/shift-rotation-plans", ready: true },
           { label: "OT Plans", href: "/masters/ot-plans", ready: true },
+          { label: "OT Incentive Slabs", href: "/masters/ot-incentive-slabs", ready: true },
           { label: "Leave Master", href: "/masters/leave-masters", ready: true },
           { label: "Holiday Master", href: "/masters/holidays", ready: true },
+          { label: "Attendance Policy", href: "/masters/attendance-policy", ready: true },
+          { label: "Attendance Color Config", short: "Color Config", href: "/masters/attendance-color-config", ready: true },
+          { label: "Comp-Off Policy", href: "/masters/comp-off-policy", ready: true },
         ],
       },
       {
         label: "Payroll & Statutory",
         items: [
           { label: "Loan Types", href: "/masters/loan-types", ready: true },
+          { label: "Deduction Rates", href: "/masters/deduction-rates", ready: true },
           { label: "TDS Slabs", href: "/masters/tds-slabs", ready: true },
+          { label: "TDS Regime Config", href: "/masters/tds-regime-config", ready: true },
           { label: "Professional Tax Slabs", short: "PT Slabs", href: "/masters/professional-tax-slabs", ready: true },
+          { label: "State PT Configs", href: "/masters/state-pt-configs", ready: true },
           { label: "Income Tax Slabs", href: "/masters/income-tax-slabs" },
           { label: "Salary Components", href: "/masters/salary-components", ready: true },
           { label: "Benefit Rates", href: "/masters/benefit-rates", ready: true },
           { label: "Bonus Rates", href: "/masters/bonus-rates", ready: true },
+          { label: "Attendance Bonus Config", short: "Att Bonus", href: "/masters/attendance-bonus-config", ready: true },
           { label: "Gratuity Policies", href: "/masters/gratuity-policies", ready: true },
+          { label: "Leave Encashment Config", href: "/masters/leave-encashment-config", ready: true },
+          { label: "Full & Final Config", href: "/masters/full-and-final-config", ready: true },
+          { label: "Incentive Policies", href: "/masters/incentive-policies", ready: true },
+          { label: "Allowance Configs", href: "/masters/allowance-configs", ready: true },
+          { label: "LIC Deduction Config", short: "LIC Config", href: "/masters/lic-deduction-config", ready: true },
+          { label: "Health Insurance Config", short: "Health Ins", href: "/masters/health-insurance-config", ready: true },
+          { label: "LWF Rates", href: "/masters/lwf-rates", ready: true },
+          { label: "LOM Config", href: "/masters/lom-config", ready: true },
+          { label: "Rounding Config", href: "/masters/rounding-config", ready: true },
+          { label: "Payroll Validation Config", short: "Validation", href: "/masters/payroll-validation-config", ready: true },
+          { label: "Payroll Workflow Config", short: "Workflow", href: "/masters/payroll-workflow-config", ready: true },
+          { label: "Payroll Display Config", short: "Display", href: "/masters/payroll-display-config", ready: true },
+          { label: "Bank File Templates", href: "/masters/bank-file-templates", ready: true },
+          { label: "Common Logic", href: "/masters/common-logic", ready: true },
         ],
       },
       {
         label: "HR Masters",
         items: [
           { label: "Interview Criteria", href: "/masters/interview-criteria" },
-          { label: "JD Master", href: "/masters/jd-master" },
+          { label: "JD Master", href: "/masters/jd-master", ready: true },
         ],
       },
       {
@@ -158,6 +185,7 @@ export const navigation: NavModule[] = [
       {
         label: "Hiring",
         items: [
+          { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
           { label: "Offer Letter", href: "/recruitment/offer-letter" },
           { label: "Appointment Order", href: "/recruitment/appointment-order" },
           { label: "Internship", href: "/recruitment/internship" },
@@ -285,6 +313,7 @@ export const navigation: NavModule[] = [
           { label: "Salary Processing", href: "/payroll/processing/salary", ready: true },
           { label: "Salary Revision", href: "/payroll/processing/revision", ready: true },
           { label: "Arrears", href: "/payroll/processing/arrears", ready: true },
+          { label: "Manual Arrears", href: "/payroll/processing/manual-arrears", ready: true },
           { label: "Bonus", href: "/payroll/processing/bonus", ready: true },
           { label: "Gratuity", href: "/payroll/processing/gratuity", ready: true },
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
@@ -516,14 +545,16 @@ export const navigation: NavModule[] = [
           { label: "Employee Summary", short: "Summary", href: "/reports/employee/summary" },
           { label: "KYC Report", short: "KYC", href: "/reports/employee/kyc" },
           { label: "Birthday List", short: "Birthdays", href: "/reports/employee/birthday" },
-          { label: "Headcount", href: "/reports/employee/headcount" },
+          { label: "Headcount", href: "/reports/headcount" },
         ],
       },
       {
         label: "Attendance",
         items: [
+          { label: "Attendance Summary", short: "Summary", href: "/reports/attendance-summary" },
           { label: "Attendance Statement", short: "Statement", href: "/reports/attendance/statement" },
-          { label: "Leave Summary", href: "/reports/attendance/leave-summary" },
+          { label: "Leave Summary", href: "/reports/leave" },
+          { label: "Leave Report", short: "Leave", href: "/reports/attendance/leave-summary" },
           { label: "OT Report", short: "Overtime", href: "/reports/attendance/overtime" },
           { label: "Comp-Off Report", short: "Comp-Off", href: "/reports/attendance/comp-off" },
         ],
@@ -531,6 +562,8 @@ export const navigation: NavModule[] = [
       {
         label: "Payroll",
         items: [
+          { label: "Payroll Summary", short: "Summary", href: "/reports/payroll-summary" },
+          { label: "Exception Report", short: "Exceptions", href: "/reports/exceptions" },
           { label: "Salary Statement", href: "/reports/payroll/salary-statement" },
           { label: "Bank Statement", href: "/reports/payroll/bank-statement" },
           { label: "Payslip Report", short: "Payslip", href: "/reports/payroll/payslip" },
@@ -608,7 +641,7 @@ export const navigation: NavModule[] = [
           { label: "Company Profile", href: "/admin/company-profile" },
           { label: "Branch Configuration", short: "Branch Config", href: "/admin/branch-configuration" },
           { label: "Salary Logic", href: "/admin/salary-logic" },
-          { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart" },
+          { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart", ready: true },
         ],
       },
       {

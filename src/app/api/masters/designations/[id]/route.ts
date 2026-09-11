@@ -10,7 +10,10 @@ export async function GET(
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
   const { id } = await params;
-  const record = await prisma.designation.findFirst({ where: { id: parseInt(id), deletedAt: null } });
+  const record = await prisma.designation.findFirst({
+    where: { id: parseInt(id), deletedAt: null },
+    include: { reportsTo: { select: { id: true, name: true } } },
+  });
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(record);
 }
@@ -22,13 +25,26 @@ export async function PUT(
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
   const { id } = await params;
+  const designationId = parseInt(id);
   const parsed = designationSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.designation.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
+  const existing = await prisma.designation.findFirst({ where: { code: parsed.data.code, NOT: { id: designationId, deletedAt: null } } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.designation.update({ where: { id: parseInt(id) }, data: parsed.data });
+  if (parsed.data.reportsToId) {
+    if (parsed.data.reportsToId === designationId) {
+      return NextResponse.json({ error: 'A designation cannot report to itself' }, { status: 400 });
+    }
+    const target = await prisma.designation.findFirst({ where: { id: parsed.data.reportsToId, deletedAt: null }, select: { id: true } });
+    if (!target) return NextResponse.json({ error: 'Reports To designation not found' }, { status: 400 });
+  }
+
+  const record = await prisma.designation.update({
+    where: { id: designationId },
+    data: parsed.data,
+    include: { reportsTo: { select: { id: true, name: true } } },
+  });
   return NextResponse.json(record);
 }
 

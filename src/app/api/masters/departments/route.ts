@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { departmentSchema } from '@/lib/validations/master';
+import { currentHeadcounts } from '@/lib/master-headcount';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       : {}),
   };
 
-  const [data, total] = await Promise.all([
+  const [data, total, headcounts, subDeptCounts] = await Promise.all([
     prisma.department.findMany({
       where,
       skip: (page - 1) * limit,
@@ -36,10 +37,19 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     }),
     prisma.department.count({ where }),
+    currentHeadcounts('departmentId'),
+    // Sub-department count per department, so the list can link straight
+    // into "Sub Departments filtered to this department" without a fetch per row.
+    prisma.subDepartment.groupBy({ by: ['departmentId'], where: { deletedAt: null }, _count: { _all: true } }),
   ]);
+  const subDeptCountMap = new Map(subDeptCounts.map((g) => [g.departmentId, g._count._all]));
 
   return NextResponse.json({
-    data,
+    data: data.map((d) => ({
+      ...d,
+      currentHeadcount: headcounts.get(d.id) ?? 0,
+      subDepartmentCount: subDeptCountMap.get(d.id) ?? 0,
+    })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 }

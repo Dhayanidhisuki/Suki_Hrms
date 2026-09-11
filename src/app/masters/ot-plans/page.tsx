@@ -1,25 +1,24 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
 interface OTPlan {
   id: number; code: string; name: string; otRateMultiplier: number;
+  otCalculationBasis: string | null;
   applicableAfterMinutes: number; maxOtHoursPerDay: number | null;
+  payComponentId: number | null;
+  payComponent: { id: number; name: string } | null;
+  weekdayFactor: number;
+  weeklyOffFactor: number;
+  holidayFactor: number;
+  maxOtHoursPerWeek: number | null;
+  maxOtHoursPerMonth: number | null;
+  weeklyOffSettlement: string;
   description: string | null; isActive: boolean; deletedAt: string | null;
 }
 
 interface ApiResponse { data: OTPlan[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
-
-const fields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. OT-1.5x' },
-  { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Overtime 1.5x' },
-  { name: 'otRateMultiplier', label: 'OT Rate Multiplier', type: 'number', required: true, step: '0.01', min: 0, helpText: 'e.g. 1.50, 2.00' },
-  { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0 },
-  { name: 'maxOtHoursPerDay', label: 'Max OT Hours/Day', type: 'number', min: 0, helpText: 'Leave blank for no cap' },
-  { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
-  { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
-];
 
 export default function OTPlansPage() {
   const [records, setRecords] = useState<OTPlan[]>([]);
@@ -32,6 +31,42 @@ export default function OTPlansPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [componentOptions, setComponentOptions] = useState<FieldOption[]>([]);
+
+  useEffect(() => {
+    fetch('/api/masters/salary-components?type=earning')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((json: { data: { id: number; name: string }[] }) => setComponentOptions(json.data.map((c) => ({ label: c.name, value: c.id }))))
+      .catch(() => {});
+  }, []);
+
+  const fields: FieldDef[] = [
+    { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. OT-1.5x' },
+    { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Overtime 1.5x' },
+    { name: 'otRateMultiplier', label: 'OT Rate Multiplier', type: 'number', required: true, step: '0.01', min: 0, helpText: 'e.g. 1.50, 2.00' },
+    { name: 'otCalculationBasis', label: 'Calculation Basis', type: 'select', defaultValue: 'GROSS', options: [
+      { label: 'Gross Salary', value: 'GROSS' },
+      { label: 'Basic', value: 'BASIC' },
+      { label: 'Basic + DA', value: 'BASIC_DA' },
+      { label: 'Basic + DA + HRA', value: 'BASIC_DA_HRA' },
+      { label: 'Fixed Rate', value: 'FIXED' },
+    ], helpText: 'Basis for OT hourly rate calculation' },
+    { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0 },
+    { name: 'maxOtHoursPerDay', label: 'Max OT Hours/Day', type: 'number', min: 0, helpText: 'Leave blank for no cap' },
+    { name: 'payComponentId', label: 'Pay Component', type: 'select', options: componentOptions, helpText: 'The salary component the calculated OT amount is credited to on the payslip.' },
+    { name: 'weekdayFactor', label: 'Weekday Factor', type: 'number', defaultValue: 1, step: '0.01', min: 0, helpText: 'Multiplier for OT on normal working days (1 = same as base)' },
+    { name: 'weeklyOffFactor', label: 'Weekly-Off Factor', type: 'number', defaultValue: 1.5, step: '0.01', min: 0, helpText: 'Multiplier for OT on weekly off (e.g. Sunday)' },
+    { name: 'holidayFactor', label: 'Holiday Factor', type: 'number', defaultValue: 2, step: '0.01', min: 0, helpText: 'Multiplier for OT on holidays' },
+    { name: 'maxOtHoursPerWeek', label: 'Max OT Hours/Week', type: 'number', min: 0, helpText: 'Leave blank for no weekly cap' },
+    { name: 'maxOtHoursPerMonth', label: 'Max OT Hours/Month', type: 'number', min: 0, helpText: 'Leave blank for no monthly cap' },
+    { name: 'weeklyOffSettlement', label: 'Weekly-Off Settlement', type: 'select', defaultValue: 'PAYMENT', options: [
+      { label: 'Payment', value: 'PAYMENT' },
+      { label: 'Comp-Off', value: 'COMP_OFF' },
+      { label: 'Employee Choice', value: 'CHOICE' },
+    ], helpText: 'How OT on weekly-off/holiday is settled' },
+    { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
+    { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
+  ];
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null);
@@ -50,7 +85,23 @@ export default function OTPlansPage() {
   const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true, applicableAfterMinutes: 0 }); setModalOpen(true); };
   const handleEdit = (row: OTPlan) => {
     setEditingId(row.id);
-    setInitialValues({ code: row.code, name: row.name, otRateMultiplier: row.otRateMultiplier, applicableAfterMinutes: row.applicableAfterMinutes, maxOtHoursPerDay: row.maxOtHoursPerDay ?? '', description: row.description ?? '', isActive: row.isActive });
+    setInitialValues({
+      code: row.code,
+      name: row.name,
+      otRateMultiplier: row.otRateMultiplier,
+      otCalculationBasis: row.otCalculationBasis ?? 'GROSS',
+      applicableAfterMinutes: row.applicableAfterMinutes,
+      maxOtHoursPerDay: row.maxOtHoursPerDay ?? '',
+      payComponentId: row.payComponentId ?? '',
+      weekdayFactor: row.weekdayFactor,
+      weeklyOffFactor: row.weeklyOffFactor,
+      holidayFactor: row.holidayFactor,
+      maxOtHoursPerWeek: row.maxOtHoursPerWeek ?? '',
+      maxOtHoursPerMonth: row.maxOtHoursPerMonth ?? '',
+      weeklyOffSettlement: row.weeklyOffSettlement,
+      description: row.description ?? '',
+      isActive: row.isActive,
+    });
     setModalOpen(true);
   };
 
@@ -59,6 +110,9 @@ export default function OTPlansPage() {
       ...values,
       description: values.description || null,
       maxOtHoursPerDay: values.maxOtHoursPerDay || null,
+      maxOtHoursPerWeek: values.maxOtHoursPerWeek || null,
+      maxOtHoursPerMonth: values.maxOtHoursPerMonth || null,
+      payComponentId: values.payComponentId || null,
     };
     const url = editingId ? `/api/masters/ot-plans/${editingId}` : '/api/masters/ot-plans';
     const method = editingId ? 'PUT' : 'POST';
@@ -77,8 +131,10 @@ export default function OTPlansPage() {
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'otRateMultiplier', label: 'Rate Multiplier', render: (row) => `${row.otRateMultiplier}x` },
+    { key: 'otCalculationBasis', label: 'Basis', render: (row) => row.otCalculationBasis ?? 'GROSS' },
     { key: 'applicableAfterMinutes', label: 'After (min)' },
     { key: 'maxOtHoursPerDay', label: 'Max hrs/day', render: (row) => row.maxOtHoursPerDay ?? 'No cap' },
+    { key: 'payComponent', label: 'Pay Component', render: (row) => row.payComponent?.name ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive', label: 'Status',

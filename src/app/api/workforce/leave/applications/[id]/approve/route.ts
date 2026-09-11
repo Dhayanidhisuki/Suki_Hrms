@@ -1,10 +1,14 @@
 /**
  * POST /api/workforce/leave/applications/[id]/approve
  *
- * Per BRD §11: approving leave must (a) deduct from the balance ledger and
- * (b) automatically update attendance. In one transaction: flips the
- * application to approved, upserts LeaveBalance.availed/closingBalance, and
- * marks every date in [fromDate, toDate] as a "Leave" day in DailyAttendance.
+ * Two-stage approval (Manager → HR), per BRD §11:
+ *   Stage 1 (pending_manager): only the employee's own Reporting Manager
+ *     (Level 1 or Level 2) may act. Advances to pending_hr. No balance
+ *     deduction or attendance write yet.
+ *   Stage 2 (pending_hr): requires workforce.leave.approve. Deducts from
+ *     the balance ledger, marks every date in [fromDate, toDate] as a
+ *     "Leave" day in DailyAttendance, and flips the application to
+ *     approved.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,6 +16,11 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
+
+import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { debitCompOff } from '@/lib/compOffTransactions';
 
 function datesBetween(from: Date, to: Date): Date[] {
   const dates: Date[] = [];
@@ -28,72 +37,122 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const permErr = await checkSpecificPermission(request, 'workforce.leave.approve');
-  if (permErr) return permErr;
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
   const { id } = await params;
   const applicationId = parseInt(id);
+  const userId = Number(request.headers.get('x-user-id'));
 
   const application = await prisma.leaveApplication.findFirst({
     where: { id: applicationId, employee: { companyId: scope.companyId, deletedAt: null } },
+    include: { leaveMaster: { select: { code: true } } },
   });
   if (!application) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (application.status !== 'pending') {
-    return NextResponse.json({ error: `Cannot approve a ${application.status} application` }, { status: 409 });
+
+  // ── Stage 1: Manager approval ──────────────────────────────────────────
+  if (application.status === 'pending_manager') {
+    const ownEmployeeId = await resolveOwnEmployeeId(userId);
+    if (!ownEmployeeId || !(await isManagerOfAnyLevel(ownEmployeeId, application.employeeId))) {
+      return NextResponse.json(
+        { error: "Forbidden — only the employee's Reporting Manager can approve this stage" },
+        { status: 403 }
+      );
+    }
+    const updated = await prisma.leaveApplication.update({
+      where: { id: applicationId },
+      data: {
+        status: 'pending_hr',
+        managerActionByUserId: userId,
+        managerActionAt: new Date(),
+      },
+    });
+    return NextResponse.json({ message: 'Approved by manager, forwarded to HR', data: updated });
   }
 
-  // Approving writes DailyAttendance rows (below) — block if either end of
-  // the range falls in a frozen month (per-day checks for a range spanning
-  // 3+ months are not done in Phase 1; rare enough to accept for now).
-  const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
-  if (freezeErrFrom) return freezeErrFrom;
-  const freezeErrTo = await checkMonthNotFrozen(application.employeeId, application.toDate);
-  if (freezeErrTo) return freezeErrTo;
+  // ── Stage 2: HR approval ───────────────────────────────────────────────
+  if (application.status === 'pending_hr') {
+    const permErr = await checkSpecificPermission(request, 'workforce.leave.approve');
+    if (permErr) return permErr;
 
-  const userId = Number(request.headers.get('x-user-id'));
-  const numberOfDays = Number(application.numberOfDays);
-  const year = application.fromDate.getUTCFullYear();
+    // Approving writes DailyAttendance rows (below) — block if either end of
+    // the range falls in a frozen month.
+    const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
+    if (freezeErrFrom) return freezeErrFrom;
+    const freezeErrTo = await checkMonthNotFrozen(application.employeeId, application.toDate);
+    if (freezeErrTo) return freezeErrTo;
 
-  const [updated] = await prisma.$transaction([
-    prisma.leaveApplication.update({
-      where: { id: applicationId },
-      data: { status: 'approved', approvedByUserId: userId, approvedAt: new Date() },
-    }),
-    prisma.leaveBalance.upsert({
-      where: {
-        employeeId_leaveMasterId_year: {
+    const numberOfDays = Number(application.numberOfDays);
+    const year = application.fromDate.getUTCFullYear();
+    const touchedMonths = new Set<string>();
+    const leaveDates = datesBetween(application.fromDate, application.toDate);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const app = await tx.leaveApplication.update({
+        where: { id: applicationId },
+        data: { status: 'approved', approvedByUserId: userId, approvedAt: new Date() },
+      });
+
+      await tx.leaveBalance.upsert({
+        where: {
+          employeeId_leaveMasterId_year: {
+            employeeId: application.employeeId,
+            leaveMasterId: application.leaveMasterId,
+            year,
+          },
+        },
+        update: {
+          availed: { increment: numberOfDays },
+          closingBalance: { decrement: numberOfDays },
+        },
+        create: {
           employeeId: application.employeeId,
           leaveMasterId: application.leaveMasterId,
           year,
+          availed: numberOfDays,
+          closingBalance: -numberOfDays,
         },
-      },
-      update: {
-        availed: { increment: numberOfDays },
-        closingBalance: { decrement: numberOfDays },
-      },
-      // No prior balance row: Phase 1 has no accrual job yet, so this seeds
-      // one at zero opening balance — closingBalance goes negative, which is
-      // visible on the Leave History screen as "over-availed" for HR to
-      // reconcile once real balances are set up.
-      create: {
-        employeeId: application.employeeId,
-        leaveMasterId: application.leaveMasterId,
-        year,
-        availed: numberOfDays,
-        closingBalance: -numberOfDays,
-      },
-    }),
-    ...datesBetween(application.fromDate, application.toDate).map((date) =>
-      prisma.dailyAttendance.upsert({
-        where: { employeeId_date: { employeeId: application.employeeId, date } },
-        update: { status: 'Leave' },
-        create: { employeeId: application.employeeId, date, status: 'Leave', source: 'manual' },
-      })
-    ),
-  ]);
+      });
 
-  return NextResponse.json(updated);
+      for (const date of leaveDates) {
+        await upsertDailyAttendanceWithHistory(
+          tx,
+          application.employeeId,
+          date,
+          { status: 'Leave', source: 'manual' },
+          { userId, changedBySource: 'manual' }
+        );
+        touchedMonths.add(`${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`);
+      }
+
+      return app;
+    });
+
+    for (const key of touchedMonths) {
+      const [y, m] = key.split('-').map(Number);
+      await refreshMonthlySummary(application.employeeId, y, m);
+    }
+
+    // If this is a comp-off leave, also debit the CompOffBalance audit trail.
+    // The LeaveBalance ledger is the source of truth for availability; this
+    // layer tracks individual transactions with policy-driven expiry.
+    if (application.leaveMaster.code === 'COMPOFF') {
+      await debitCompOff(
+        application.employeeId,
+        numberOfDays,
+        application.fromDate,
+        'LEAVE',
+        applicationId,
+        `Comp-off leave approved (${numberOfDays} day(s))`
+      );
+    }
+
+    return NextResponse.json(updated);
+  }
+
+  return NextResponse.json(
+    { error: `Cannot approve a ${application.status} application` },
+    { status: 409 }
+  );
 }
