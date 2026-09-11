@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
@@ -14,6 +15,11 @@ interface Department {
   code: string;
   name: string;
   description: string | null;
+  sanctionedHeadcount: number | null;
+  /** Live count of active employees currently assigned here — derived server-side, not editable. */
+  currentHeadcount: number;
+  /** Count of active sub-departments under this department — derived server-side. */
+  subDepartmentCount: number;
   isActive: boolean;
   deletedAt: string | null;
   createdAt: string;
@@ -28,6 +34,7 @@ interface ApiResponse {
 const fields: FieldDef[] = [
   { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. IT' },
   { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Information Technology' },
+  { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 25', helpText: 'Approved/budgeted staffing count for this department.' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
 ];
@@ -82,6 +89,7 @@ export default function DepartmentPage() {
     setInitialValues({
       code: row.code,
       name: row.name,
+      sanctionedHeadcount: row.sanctionedHeadcount ?? '',
       description: row.description ?? '',
       isActive: row.isActive,
     });
@@ -92,6 +100,7 @@ export default function DepartmentPage() {
     const payload = {
       ...values,
       description: values.description || null,
+      sanctionedHeadcount: values.sanctionedHeadcount === '' ? null : values.sanctionedHeadcount,
     };
 
     const url = editingId
@@ -126,6 +135,59 @@ export default function DepartmentPage() {
   const columns: Column<Department>[] = [
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
+    {
+      key: 'headcount',
+      label: 'Headcount (Current / Sanctioned)',
+      render: (row) => {
+        const { sanctionedHeadcount: sanctioned, currentHeadcount: current } = row;
+        if (sanctioned == null) {
+          return <span style={{ color: 'var(--foreground)' }}>{current} / —</span>;
+        }
+        const shortBy = sanctioned - current;
+        return (
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--foreground)' }}>
+              {current} / {sanctioned}
+            </span>
+            {shortBy > 0 ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
+                title={`${shortBy} position${shortBy === 1 ? '' : 's'} still open against the sanctioned headcount`}
+              >
+                {shortBy} short
+              </span>
+            ) : shortBy < 0 ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}
+                title="Currently staffed above the sanctioned headcount"
+              >
+                {-shortBy} over
+              </span>
+            ) : (
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+                Full
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'subDepartments',
+      label: 'Sub Departments',
+      render: (row) => (
+        <Link
+          href={`/masters/sub-departments?departmentId=${row.id}`}
+          className="hover:underline"
+          style={{ color: 'var(--accent)' }}
+          title="View / add sub departments under this department"
+        >
+          {row.subDepartmentCount} {row.subDepartmentCount === 1 ? 'sub dept' : 'sub depts'}
+        </Link>
+      ),
+    },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive',

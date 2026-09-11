@@ -25,10 +25,19 @@ export async function PUT(
   const parsed = subDepartmentSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.subDepartment.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
-
-  const record = await prisma.subDepartment.update({ where: { id: parseInt(id) }, data: parsed.data, include: { department: { select: { id: true, name: true } } } });
+  // Code is server-generated and never changes after creation — write only
+  // the editable fields, ignoring whatever (if anything) the client sent for code.
+  const record = await prisma.subDepartment.update({
+    where: { id: parseInt(id) },
+    data: {
+      name: parsed.data.name,
+      description: parsed.data.description,
+      departmentId: parsed.data.departmentId,
+      sanctionedHeadcount: parsed.data.sanctionedHeadcount,
+      isActive: parsed.data.isActive,
+    },
+    include: { department: { select: { id: true, name: true } } },
+  });
   return NextResponse.json(record);
 }
 

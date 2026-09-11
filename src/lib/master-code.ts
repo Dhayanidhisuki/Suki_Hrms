@@ -8,7 +8,8 @@
  * unique even after a soft delete — reusing a retired code would collide.
  */
 export function nextSequentialCode(existingCodes: string[], prefix: string, pad = 3): string {
-  const re = new RegExp(`^${prefix}(\\d+)$`);
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${escapedPrefix}(\\d+)$`);
   let max = 0;
   for (const code of existingCodes) {
     const m = code.match(re);

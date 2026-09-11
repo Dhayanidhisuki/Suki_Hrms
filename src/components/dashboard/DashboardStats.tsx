@@ -29,6 +29,7 @@ export default function DashboardStats() {
           fetch('/api/stats/attendance'),
         ]);
 
+        if (!empRes.ok || !attRes.ok) throw new Error('Stats API unavailable');
         const employees = await empRes.json();
         const attendance = await attRes.json();
 

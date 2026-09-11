@@ -262,7 +262,10 @@ export const kycSchema = z.object({
   bankName: z.string().max(100).optional().nullable(),
   branchName: z.string().max(100).optional().nullable(),
   accountNumber: z.string().max(30).optional().nullable(),
-  ifscCode: z.string().regex(ifscRegex, 'Invalid IFSC format').optional().nullable(),
+  // Same '' escape hatch as panNumber/aadhaarNumber above — an untouched,
+  // never-filled-in field submits as '' (not undefined), which the regex
+  // alone would reject even though the field is genuinely optional.
+  ifscCode: z.union([z.string().regex(ifscRegex, 'Invalid IFSC format'), z.literal('')]).optional().nullable(),
   accountType: z.string().max(20).optional().nullable(),
 });
 

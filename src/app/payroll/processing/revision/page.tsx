@@ -71,6 +71,16 @@ interface ComponentRow {
   name: string;
   currentAmount: number;
   revisedAmount: number;
+  /** Set when this row's revisedAmount tracks the company's Gross % Split
+   * rule (Masters > Common Logic) rather than being scaled proportionally
+   * from the current amount — see the auto-fill effect below. */
+  splitPercent?: number;
+}
+
+interface GrossSplitRuleRow {
+  salaryComponentId: number;
+  percentOfGross: string | null;
+  isActive: boolean;
 }
 
 function AddRevisionModal({
@@ -97,6 +107,11 @@ function AddRevisionModal({
   const [loadingSalary, setLoadingSalary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Company's Gross % Split rules (Masters > Common Logic), keyed by
+  // salaryComponentId. When a component has an active rule, its revised
+  // amount tracks that fixed % of the revised Gross instead of being
+  // scaled proportionally from the current amount.
+  const [splitPercents, setSplitPercents] = useState<Record<number, number>>({});
 
   useEffect(() => {
     if (!isOpen) return;
@@ -111,6 +126,16 @@ function AddRevisionModal({
     setCurrent(null);
     setComponentRows([]);
     setError(null);
+    fetch('/api/masters/gross-split-rules')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((json: { data: GrossSplitRuleRow[] }) => {
+        const map: Record<number, number> = {};
+        for (const r of json.data) {
+          if (r.isActive && r.percentOfGross != null) map[r.salaryComponentId] = Number(r.percentOfGross);
+        }
+        setSplitPercents(map);
+      })
+      .catch(() => setSplitPercents({}));
   }, [isOpen]);
 
   useEffect(() => {
@@ -149,9 +174,12 @@ function AddRevisionModal({
     incrementPercentComputed = currentGross > 0 ? Number(((incrementAmountComputed / currentGross) * 100).toFixed(2)) : 0;
   }
 
-  // Recompute the component grid whenever the derived revisedGross changes —
-  // scales each current component proportionally (BRD §9's worked example),
-  // still editable per-row afterward.
+  // Recompute the component grid whenever the derived revisedGross changes.
+  // A component with an active Gross % Split rule (Masters > Common Logic)
+  // is auto-filled at that fixed % of the revised Gross; every other
+  // component keeps the original behaviour — scaled proportionally from its
+  // current amount (BRD §9's worked example). Either way it's still
+  // editable per-row afterward.
   useEffect(() => {
     if (!current) {
       setComponentRows([]);
@@ -159,15 +187,19 @@ function AddRevisionModal({
     }
     const ratio = currentGross > 0 ? revisedGross / currentGross : 1;
     setComponentRows(
-      current.components.map((c) => ({
-        salaryComponentId: c.salaryComponentId,
-        name: `${c.salaryComponent.name} (${c.salaryComponent.type})`,
-        currentAmount: Number(c.amount),
-        revisedAmount: round(Number(c.amount) * ratio),
-      }))
+      current.components.map((c) => {
+        const percent = splitPercents[c.salaryComponentId];
+        return {
+          salaryComponentId: c.salaryComponentId,
+          name: `${c.salaryComponent.name} (${c.salaryComponent.type})`,
+          currentAmount: Number(c.amount),
+          revisedAmount: percent != null ? round(revisedGross * (percent / 100)) : round(Number(c.amount) * ratio),
+          splitPercent: percent,
+        };
+      })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, revisedGross]);
+  }, [current, revisedGross, splitPercents]);
 
   const submit = async (asSubmit: boolean) => {
     setError(null);
@@ -329,6 +361,15 @@ function AddRevisionModal({
               {componentRows.length > 0 && (
                 <div>
                   <h3 className="mb-1 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--foreground-muted)' }}>Salary Components</h3>
+                  {Object.keys(splitPercents).length > 0 && (
+                    <p className="mb-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      Components marked{' '}
+                      <span className="rounded-full px-1.5 py-0.5 font-medium" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        %
+                      </span>{' '}
+                      are auto-filled from Masters &gt; Common Logic&apos;s Gross % Split; the rest scale proportionally from their current amount. Any value is still editable.
+                    </p>
+                  )}
                   <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
                     <table className="w-full text-sm">
                       <thead>
@@ -341,7 +382,20 @@ function AddRevisionModal({
                       <tbody>
                         {componentRows.map((c, idx) => (
                           <tr key={c.salaryComponentId} style={{ borderTop: '1px solid var(--border)' }}>
-                            <td className="px-3 py-1.5" style={{ color: 'var(--foreground)' }}>{c.name}</td>
+                            <td className="px-3 py-1.5" style={{ color: 'var(--foreground)' }}>
+                              <span className="inline-flex items-center gap-1.5">
+                                {c.name}
+                                {c.splitPercent != null && (
+                                  <span
+                                    className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                                    style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}
+                                    title={`Auto-filled at ${c.splitPercent}% of revised Gross`}
+                                  >
+                                    {c.splitPercent}%
+                                  </span>
+                                )}
+                              </span>
+                            </td>
                             <td className="px-3 py-1.5 text-right" style={{ color: 'var(--foreground-muted)' }}>{c.currentAmount}</td>
                             <td className="px-3 py-1.5 text-right">
                               <input

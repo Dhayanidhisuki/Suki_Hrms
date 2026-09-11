@@ -5,7 +5,13 @@ import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from 
 
 interface ShiftMaster {
   id: number; code: string; name: string; startTime: string; endTime: string;
-  graceMinutes: number; description: string | null; isActive: boolean; deletedAt: string | null;
+  graceMinutes: number;
+  nightAllowed: boolean;
+  bufferMinutes: number;
+  snacksAllowed: boolean;
+  mealsAllowed: boolean;
+  snacksMealsDurationMinutes: number | null;
+  description: string | null; isActive: boolean; deletedAt: string | null;
 }
 
 interface ApiResponse { data: ShiftMaster[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
@@ -16,6 +22,11 @@ const fields: FieldDef[] = [
   { name: 'startTime', label: 'Start Time', type: 'text', required: true, placeholder: '09:00', helpText: 'HH:mm format' },
   { name: 'endTime', label: 'End Time', type: 'text', required: true, placeholder: '18:00', helpText: 'HH:mm format' },
   { name: 'graceMinutes', label: 'Grace Minutes', type: 'number', defaultValue: 0, min: 0 },
+  { name: 'bufferMinutes', label: 'Buffer Minutes', type: 'number', defaultValue: 0, min: 0, helpText: 'Extra minutes tolerated beyond the shift window.' },
+  { name: 'nightAllowed', label: 'Night Allowed', type: 'checkbox', defaultValue: false, helpText: 'This shift qualifies for night-shift allowance.' },
+  { name: 'snacksAllowed', label: 'Snacks Allowed', type: 'checkbox', defaultValue: false },
+  { name: 'mealsAllowed', label: 'Meals Allowed', type: 'checkbox', defaultValue: false },
+  { name: 'snacksMealsDurationMinutes', label: 'Snacks/Meals Duration (min)', type: 'number', min: 0, placeholder: 'e.g. 30' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
 ];
@@ -49,7 +60,20 @@ export default function ShiftMastersPage() {
   const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true, graceMinutes: 0 }); setModalOpen(true); };
   const handleEdit = (row: ShiftMaster) => {
     setEditingId(row.id);
-    setInitialValues({ code: row.code, name: row.name, startTime: row.startTime, endTime: row.endTime, graceMinutes: row.graceMinutes, description: row.description ?? '', isActive: row.isActive });
+    setInitialValues({
+      code: row.code,
+      name: row.name,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      graceMinutes: row.graceMinutes,
+      bufferMinutes: row.bufferMinutes,
+      nightAllowed: row.nightAllowed,
+      snacksAllowed: row.snacksAllowed,
+      mealsAllowed: row.mealsAllowed,
+      snacksMealsDurationMinutes: row.snacksMealsDurationMinutes ?? '',
+      description: row.description ?? '',
+      isActive: row.isActive,
+    });
     setModalOpen(true);
   };
 
@@ -74,6 +98,29 @@ export default function ShiftMastersPage() {
     { key: 'startTime', label: 'Start' },
     { key: 'endTime', label: 'End' },
     { key: 'graceMinutes', label: 'Grace (min)' },
+    { key: 'bufferMinutes', label: 'Buffer (min)' },
+    {
+      key: 'allowances',
+      label: 'Allowances',
+      render: (row) => {
+        const tags = [
+          row.nightAllowed && 'Night',
+          row.snacksAllowed && 'Snacks',
+          row.mealsAllowed && 'Meals',
+        ].filter(Boolean) as string[];
+        if (tags.length === 0) return <span style={{ color: 'var(--foreground-muted)' }}>—</span>;
+        return (
+          <span className="flex flex-wrap gap-1">
+            {tags.map((t) => (
+              <span key={t} className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                {t}
+              </span>
+            ))}
+            {row.snacksMealsDurationMinutes ? ` (${row.snacksMealsDurationMinutes} min)` : ''}
+          </span>
+        );
+      },
+    },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive', label: 'Status',

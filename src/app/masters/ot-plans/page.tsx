@@ -1,25 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
 interface OTPlan {
   id: number; code: string; name: string; otRateMultiplier: number;
   applicableAfterMinutes: number; maxOtHoursPerDay: number | null;
+  payComponentId: number | null;
+  payComponent: { id: number; name: string } | null;
   description: string | null; isActive: boolean; deletedAt: string | null;
 }
 
 interface ApiResponse { data: OTPlan[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
-
-const fields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. OT-1.5x' },
-  { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Overtime 1.5x' },
-  { name: 'otRateMultiplier', label: 'OT Rate Multiplier', type: 'number', required: true, step: '0.01', min: 0, helpText: 'e.g. 1.50, 2.00' },
-  { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0 },
-  { name: 'maxOtHoursPerDay', label: 'Max OT Hours/Day', type: 'number', min: 0, helpText: 'Leave blank for no cap' },
-  { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
-  { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
-];
 
 export default function OTPlansPage() {
   const [records, setRecords] = useState<OTPlan[]>([]);
@@ -32,6 +24,25 @@ export default function OTPlansPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [componentOptions, setComponentOptions] = useState<FieldOption[]>([]);
+
+  useEffect(() => {
+    fetch('/api/masters/salary-components?type=earning')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((json: { data: { id: number; name: string }[] }) => setComponentOptions(json.data.map((c) => ({ label: c.name, value: c.id }))))
+      .catch(() => {});
+  }, []);
+
+  const fields: FieldDef[] = [
+    { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. OT-1.5x' },
+    { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Overtime 1.5x' },
+    { name: 'otRateMultiplier', label: 'OT Rate Multiplier', type: 'number', required: true, step: '0.01', min: 0, helpText: 'e.g. 1.50, 2.00' },
+    { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0 },
+    { name: 'maxOtHoursPerDay', label: 'Max OT Hours/Day', type: 'number', min: 0, helpText: 'Leave blank for no cap' },
+    { name: 'payComponentId', label: 'Pay Component', type: 'select', options: componentOptions, helpText: 'The salary component the calculated OT amount is credited to on the payslip.' },
+    { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
+    { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
+  ];
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null);
@@ -50,7 +61,16 @@ export default function OTPlansPage() {
   const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true, applicableAfterMinutes: 0 }); setModalOpen(true); };
   const handleEdit = (row: OTPlan) => {
     setEditingId(row.id);
-    setInitialValues({ code: row.code, name: row.name, otRateMultiplier: row.otRateMultiplier, applicableAfterMinutes: row.applicableAfterMinutes, maxOtHoursPerDay: row.maxOtHoursPerDay ?? '', description: row.description ?? '', isActive: row.isActive });
+    setInitialValues({
+      code: row.code,
+      name: row.name,
+      otRateMultiplier: row.otRateMultiplier,
+      applicableAfterMinutes: row.applicableAfterMinutes,
+      maxOtHoursPerDay: row.maxOtHoursPerDay ?? '',
+      payComponentId: row.payComponentId ?? '',
+      description: row.description ?? '',
+      isActive: row.isActive,
+    });
     setModalOpen(true);
   };
 
@@ -59,6 +79,7 @@ export default function OTPlansPage() {
       ...values,
       description: values.description || null,
       maxOtHoursPerDay: values.maxOtHoursPerDay || null,
+      payComponentId: values.payComponentId || null,
     };
     const url = editingId ? `/api/masters/ot-plans/${editingId}` : '/api/masters/ot-plans';
     const method = editingId ? 'PUT' : 'POST';
@@ -79,6 +100,7 @@ export default function OTPlansPage() {
     { key: 'otRateMultiplier', label: 'Rate Multiplier', render: (row) => `${row.otRateMultiplier}x` },
     { key: 'applicableAfterMinutes', label: 'After (min)' },
     { key: 'maxOtHoursPerDay', label: 'Max hrs/day', render: (row) => row.maxOtHoursPerDay ?? 'No cap' },
+    { key: 'payComponent', label: 'Pay Component', render: (row) => row.payComponent?.name ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive', label: 'Status',

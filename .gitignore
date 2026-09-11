@@ -45,3 +45,7 @@ scripts/erp-extract/out/
 
 # stray editor temp files (FUSE-mounted filesystem artifacts from a deleted-while-open file)
 .fuse_hidden*
+
+# Employee uploads (profile photos, etc.) — served through the permission-gated
+# /api/uploads/[...path] route, never committed. See src/lib/file-storage.ts.
+/uploads/

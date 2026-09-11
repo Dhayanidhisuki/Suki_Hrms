@@ -65,9 +65,13 @@ export async function calculateArrear(salaryRevisionRequestId: number) {
     return null;
   }
 
-  const [pfRate, esiRate] = await Promise.all([
+  const [pfRate, esiRate, currentJobInfo] = await Promise.all([
     prisma.pfRate.findFirst({ where: { effectiveTo: null, isActive: true } }),
     prisma.esiRate.findFirst({ where: { effectiveTo: null, isActive: true } }),
+    prisma.jobInfo.findFirst({
+      where: { employeeId: request.employeeId, effectiveTo: null },
+      select: { pfRestrictionAmount: true },
+    }),
   ]);
 
   const revisedGross = Number(request.revisedGross);
@@ -86,7 +90,12 @@ export async function calculateArrear(salaryRevisionRequestId: number) {
 
     let pfArrear = 0;
     if (line.pfApplicable && pfRate) {
-      const ceiling = Number(pfRate.wageCeilingMonthly);
+      // Same "Employee PF Cont. Customize" cap payrollCalculation.ts
+      // applies — keeps arrear consistent with what regular payroll would
+      // have deducted for this employee.
+      const ceiling = currentJobInfo?.pfRestrictionAmount != null
+        ? Math.min(Number(pfRate.wageCeilingMonthly), Number(currentJobInfo.pfRestrictionAmount))
+        : Number(pfRate.wageCeilingMonthly);
       const rate = Number(pfRate.employeeContributionRate) / 100;
       pfArrear = round((Math.min(proratedRevisedGross, ceiling) - Math.min(oldGross, ceiling)) * rate);
     }

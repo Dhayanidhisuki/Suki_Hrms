@@ -53,6 +53,10 @@ model Department {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // Budgeted/approved staffing count for this department (KUN BRD review,
+  // 2026-09-10). "Current" headcount is derived at read time from actual
+  // JobInfo assignments, not stored.
+  sanctionedHeadcount Int?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -67,9 +71,14 @@ model Department {
 model SubDepartment {
   id           Int       @id @default(autoincrement())
   departmentId Int
-  code         String    @unique @db.NVarChar(20)
+  // Unique per department, not globally (migration 000031) — auto-generated
+  // as "<DeptCode>-001", "<DeptCode>-002"... so two departments can each
+  // have their own "-001".
+  code         String    @db.NVarChar(20)
   name         String    @db.NVarChar(100)
   description  String?   @db.NVarChar(500)
+  // Same convention as Department.sanctionedHeadcount.
+  sanctionedHeadcount Int?
   isActive     Boolean   @default(true)
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -78,6 +87,7 @@ model SubDepartment {
   department Department @relation(fields: [departmentId], references: [id])
   jobInfos   JobInfo[]  @relation("SubDepartmentJobInfos")
 
+  @@unique([departmentId, code])
   @@index([departmentId])
   @@map("SubDepartment")
 }
@@ -87,13 +97,30 @@ model Designation {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // KUN BRD review (2026-09-10): budget/experience/qualification/headcount
+  // added to the Designation master. JD Upload (bulk import) is separate,
+  // deferred to a later session.
+  budget              Decimal? @db.Decimal(18, 2)
+  experienceYears     Decimal? @db.Decimal(4, 1)
+  qualification       String?  @db.NVarChar(200)
+  sanctionedHeadcount Int?
+  // Reporting Structure (KUN BRD review, 2026-09-10): which Designation this
+  // one reports to by default — an org-chart template the employee wizard
+  // can suggest a Reporting Manager from, not a per-employee assignment.
+  reportsToId Int?
+  // JD Upload (KUN BRD review, 2026-09-10): populated via bulk Excel/CSV
+  // import (Designation Code + Job Description columns), not typed per row
+  // in the Designation form itself.
+  jobDescription String? @db.NVarChar(Max)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  jobInfos JobInfo[]
-  grades   Grade[]
+  reportsTo    Designation?  @relation("DesignationReportsTo", fields: [reportsToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates Designation[] @relation("DesignationReportsTo")
+  jobInfos     JobInfo[]
+  grades       Grade[]
 
   @@map("Designation")
 }
@@ -129,25 +156,31 @@ model Category {
   @@map("Category")
 }
 
-// Q3: PENDING CLIENT CONFIRMATION — Site model commented out, will NOT migrate.
-//     If "Site" needs factory-license-number / legal-entity / registration
-//     fields that a generic "Branch" does not, this must be split into two
-//     models before migration. Uncomment or split once client confirms.
-// model Site {
-//   id         Int       @id @default(autoincrement())
-//   code       String    @unique @db.NVarChar(20)
-//   name       String    @db.NVarChar(100)
-//   branchType String    @db.NVarChar(20) // "site" | "branch"
-//   address    String?   @db.NVarChar(500)
-//   city       String?   @db.NVarChar(100)
-//   state      String?   @db.NVarChar(100)
-//   isActive   Boolean   @default(true)
-//   deletedAt  DateTime?
-//   createdAt  DateTime  @default(now())
-//   updatedAt  DateTime  @updatedAt
-//
-//   @@map("Site")
-// }
+// Q3 RESOLVED (KUN BRD review, 2026-09-10): Unit is the legal/org entity —
+// stays as-is, just relabelled "Branch / Unit" in the UI. Site is the
+// physical location an employee actually reports to — its own master,
+// company-scoped the same way Unit is, but deliberately no FK to Unit since
+// the client's own wording drew the line at "legal entity vs physical
+// location", not a Unit-owns-Sites hierarchy.
+model Site {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String    @unique @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  address     String?   @db.NVarChar(500)
+  city        String?   @db.NVarChar(100)
+  state       String?   @db.NVarChar(100)
+  pinCode     String?   @db.NVarChar(10)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId])
+  @@map("Site")
+}
 
 // Q3 RESOLVED: full Company master added (multi-company future-proofing).
 // Unit is reused as Branch/Site/Plant/Work Location, scoped to a Company.
@@ -177,6 +210,9 @@ model Company {
   permissionPolicy           PermissionPolicy?
   holidayMasters              HolidayMaster[]
   benefitRates               BenefitRateByEmployeeType[]
+  grossSplitRules            GrossSplitRule[]
+  sites                      Site[]
+  deductionRates             DeductionRate[]
 
   @@map("Company")
 }
@@ -185,8 +221,11 @@ model Company {
 model Unit {
   id          Int       @id @default(autoincrement())
   companyId   Int
-  code        String    @unique @db.NVarChar(20)
+  // Unique per company, not globally (migration 000033) — auto-generated as
+  // "<CompanyCode>-001", "-002"... so two companies can each have their own "-001".
+  code        String    @db.NVarChar(20)
   name        String    @db.NVarChar(100)
+  address     String?   @db.NVarChar(500)
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -196,6 +235,7 @@ model Unit {
   company  Company   @relation(fields: [companyId], references: [id])
   jobInfos JobInfo[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@map("Unit")
 }
@@ -270,6 +310,35 @@ model TDSSlab {
   @@map("TDSSlab")
 }
 
+// Deduction Rates (KUN BRD review, 2026-09-10, item 15) — a catch-all
+// rate table for misc. statutory/company deductions (Canteen, Uniform,
+// Damage recovery, ...) alongside the dedicated TDS/PT/ESI/PF slabs above.
+// Company-scoped, versioned the same way. `isLop` flags the row(s)
+// representing Loss-of-Pay / attendance-based deduction — folded in here
+// per the client's own call rather than a separate Common Logic section;
+// this table stays a read-only rate reference for now, same as
+// GrossSplitRule — nothing in payroll consumes it yet.
+model DeductionRate {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  code          String    @db.NVarChar(20)
+  name          String    @db.NVarChar(100)
+  deductionType String    @db.NVarChar(10) // "PERCENT" | "FLAT" — how rateValue is interpreted
+  rateValue     Decimal   @db.Decimal(10, 2) // a percent (0-100) or a flat currency amount, per deductionType
+  isLop         Boolean   @default(false)
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // NULL = currently active
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, code])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("DeductionRate")
+}
+
 model ProfessionalTaxSlab {
   id            Int       @id @default(autoincrement())
   code          String    @db.NVarChar(20)
@@ -335,6 +404,12 @@ model ShiftMaster {
   startTime    String    @db.NVarChar(8) // "09:00" (HH:mm)
   endTime      String    @db.NVarChar(8) // "18:00" (HH:mm)
   graceMinutes Int       @default(0)
+  // KUN BRD review (2026-09-10): night/snacks/meals allowances for this shift.
+  nightAllowed               Boolean @default(false)
+  bufferMinutes              Int     @default(0)
+  snacksAllowed              Boolean @default(false)
+  mealsAllowed               Boolean @default(false)
+  snacksMealsDurationMinutes Int?
   description  String?   @db.NVarChar(500)
   isActive     Boolean   @default(true)
   deletedAt    DateTime?
@@ -356,11 +431,19 @@ model OTPlan {
   otRateMultiplier       Decimal   @db.Decimal(5, 2) // e.g. 1.50, 2.00
   applicableAfterMinutes Int       @default(0) // OT kicks in after N minutes
   maxOtHoursPerDay       Int? // NULL = no cap
+  // KUN BRD review (2026-09-10): which SalaryComponent the calculated OT
+  // amount is credited to on the payslip (e.g. "OT Pay"). OTPlan itself is
+  // a global master (no companyId), unlike SalaryComponent — the API
+  // validates the chosen component belongs to the caller's own company at
+  // write time; nothing enforces that at the DB level.
+  payComponentId         Int?
   description            String?   @db.NVarChar(500)
   isActive               Boolean   @default(true)
   deletedAt              DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+
+  payComponent SalaryComponent? @relation(fields: [payComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("OTPlan")
 }
@@ -441,6 +524,8 @@ model HolidayMaster {
   companyId   Int
   date        DateTime  @db.Date
   name        String    @db.NVarChar(100)
+  // KUN BRD review (2026-09-10): COMPANY | FESTIVAL | GOVERNMENT | OTHER.
+  holidayType String    @default("OTHER") @db.NVarChar(20)
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -458,6 +543,9 @@ model LoanType {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
+  // KUN BRD review (2026-09-10): min/max amount this loan type may be sanctioned for.
+  minAmount   Decimal?  @db.Decimal(18, 2)
+  maxAmount   Decimal?  @db.Decimal(18, 2)
   description String?   @db.NVarChar(500)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -1235,6 +1323,10 @@ model SalaryComponent {
   // src/lib/gratuityCalculation.ts. Defaults false; a company admin opts
   // components in via this Masters page.
   includeInGratuity Boolean   @default(false)
+  // KUN BRD review (2026-09-10): whether this component counts toward the
+  // ESI / PF eligible-wage base — same convention as includeInGratuity.
+  includeInEsi      Boolean   @default(false)
+  includeInPf       Boolean   @default(false)
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -1245,9 +1337,32 @@ model SalaryComponent {
   payrollLineItems    PayrollLineComponent[]
   salaryRevisionItems SalaryRevisionComponent[]
   benefitRates        BenefitRateByEmployeeType[]
+  grossSplitRule      GrossSplitRule?
+  otPlansPayingHere   OTPlan[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
+}
+
+// Common Logic > Gross % Split (KUN BRD review, 2026-09-10): the fixed
+// percentage of Gross Salary each earning SalaryComponent is entitled to
+// (e.g. Basic = 40%, HRA = 20%). Company-scoped, one row per component.
+// Read-only reference table for now — nothing in payroll consumes it yet;
+// wiring it into Salary Revision's component auto-fill is a later session.
+model GrossSplitRule {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  salaryComponentId Int      @unique
+  percentOfGross    Decimal  @db.Decimal(5, 2)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId])
+  @@map("GrossSplitRule")
 }
 
 // Per-Employee-Type monthly rate for a benefit (BRD: Canteen Deduction and

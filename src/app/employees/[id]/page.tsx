@@ -14,7 +14,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Field, DataTable, FormModal, ConfirmDialog, type FieldDef, type Column } from '@/components/ui';
 import RepeatableListTab from '@/components/employees/RepeatableListTab';
-import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
+import EmployeeAvatarUpload from '@/components/employees/EmployeeAvatarUpload';
 import { SectionCard, DetailGrid, EditButton, SectionIcon } from '@/components/employees/SectionCard';
 import { formatDate } from '@/lib/format-date';
 import {
@@ -230,7 +230,11 @@ function ProfileTabForm({
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error ?? 'Save failed');
+        // A plain "Validation failed" doesn't say which field, or why — surface
+        // the first Zod field error (e.g. "ifscCode: Invalid IFSC format") when present.
+        const fieldErrors = err.details?.fieldErrors as Record<string, string[]> | undefined;
+        const firstFieldError = fieldErrors && Object.entries(fieldErrors).find(([, msgs]) => msgs?.length);
+        throw new Error(firstFieldError ? `${firstFieldError[0]}: ${firstFieldError[1][0]}` : (err.error ?? 'Save failed'));
       }
       setDirty(false);
       setSaved(true);
@@ -360,6 +364,11 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
     { key: 'basic', label: 'Basic' },
   ];
 
+  // The first-ever CTC entered for an employee isn't a "revision" of
+  // anything — HR/payroll terms that "CTC Fixation" (an employee with no
+  // CTC row yet); only subsequent entries are a revision.
+  const isFixation = !loading && rows.length === 0;
+
   return (
     <SectionCard
       title="CTC Details"
@@ -370,7 +379,7 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
-          + New Revision
+          {isFixation ? '+ Fix CTC' : '+ New Revision'}
         </button>
       }
     >
@@ -378,9 +387,9 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
       {error && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
       )}
-      <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No CTC revisions recorded yet." />
+      <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No CTC fixed yet." />
       <FormModal
-        title="New CTC Revision"
+        title={isFixation ? 'CTC Fixation' : 'New CTC Revision'}
         fields={buildCtcFields()}
         initialValues={{}}
         isOpen={modalOpen}
@@ -394,7 +403,7 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
             throw err;
           }
         }}
-        submitLabel="Add"
+        submitLabel={isFixation ? 'Fix CTC' : 'Add'}
       />
       </div>
     </SectionCard>
@@ -419,6 +428,13 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   const [compRows, setCompRows] = useState<{ salaryComponentId: string; amount: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Computed Gross — the live sum of every component row's amount (Basic +
+  // HRA + DA + every allowance), shown alongside the typed Gross Salary so
+  // a mismatch between "what was typed" and "what the components add up
+  // to" is visible before saving, not discovered later on a payslip.
+  const computedGross = compRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const grossMismatch = grossSalary !== '' && Math.abs(computedGross - (Number(grossSalary) || 0)) > 0.01;
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -483,11 +499,28 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
       key: 'components',
       label: 'Components',
       render: (r) =>
-        r.components.length
-          ? r.components.map((c) => `${c.salaryComponent.name}: ${c.amount}`).join(', ')
-          : '—',
+        r.components.length ? (
+          <div className="flex max-w-md flex-wrap gap-1.5">
+            {r.components.map((c) => (
+              <span
+                key={c.salaryComponent.code}
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--foreground)' }}
+              >
+                <span style={{ color: 'var(--foreground-muted)' }}>{c.salaryComponent.name}</span>
+                <span className="font-semibold">{c.amount}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          '—'
+        ),
     },
   ];
+
+  // Same "Fixation vs Revision" distinction as CTC — the first salary
+  // structure entered for an employee is a Fixation, not a Revision.
+  const isFixation = !loading && rows.length === 0;
 
   return (
     <SectionCard
@@ -499,13 +532,16 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
-          {formOpen ? 'Cancel' : '+ New Revision'}
+          {formOpen ? 'Cancel' : isFixation ? '+ Fix Salary' : '+ New Revision'}
         </button>
       }
     >
       <div className="space-y-4">
       {formOpen && (
         <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)' }}>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+            {isFixation ? 'Salary Fixation' : 'New Salary Revision'}
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Financial Year</label>
@@ -513,7 +549,25 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
             </div>
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Gross Salary *</label>
-              <input type="number" min={0} value={grossSalary} onChange={(e) => setGrossSalary(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
+              <input type="number" min={0} value={grossSalary} onChange={(e) => setGrossSalary(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: grossMismatch ? 'var(--warning)' : 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
+              {compRows.length > 0 && (
+                <p className="mt-1 text-xs" style={{ color: grossMismatch ? 'var(--warning)' : 'var(--foreground-muted)' }}>
+                  Computed from components: <span className="font-semibold tabular-nums">{computedGross}</span>
+                  {grossMismatch && (
+                    <>
+                      {' — doesn\'t match Gross Salary. '}
+                      <button
+                        type="button"
+                        onClick={() => setGrossSalary(String(computedGross))}
+                        className="font-medium hover:underline"
+                        style={{ color: 'var(--accent)' }}
+                      >
+                        Use this value
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Net Salary</label>
@@ -582,13 +636,13 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
               className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
               style={{ backgroundColor: 'var(--accent)' }}
             >
-              {saving ? 'Saving...' : 'Add Revision'}
+              {saving ? 'Saving...' : isFixation ? 'Fix Salary' : 'Add Revision'}
             </button>
           </div>
         </div>
       )}
 
-      <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No salary revisions recorded yet." />
+      <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No salary fixed yet." />
       </div>
     </SectionCard>
   );
@@ -904,7 +958,14 @@ export default function EmployeeProfilePage() {
 
       {/* Profile header */}
       <div className="card flex flex-wrap items-center gap-5 p-5">
-        <EmployeeAvatar firstName={header.firstName} lastName={header.lastName} photoPath={header.profilePhotoPath} size={88} />
+        <EmployeeAvatarUpload
+          employeeId={header.id}
+          firstName={header.firstName}
+          lastName={header.lastName}
+          photoPath={header.profilePhotoPath}
+          size={88}
+          onChanged={(profilePhotoPath) => setHeader((h) => (h ? { ...h, profilePhotoPath } : h))}
+        />
         <div className="min-w-[240px] flex-1 space-y-2">
           <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
             {header.title ? `${header.title} ` : ''}

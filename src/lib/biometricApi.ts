@@ -16,7 +16,18 @@
  *     not our employee code — see resolveDeviceUser in biometricSync.ts.
  *
  * Configuration comes from env only; the key never reaches the browser.
+ *
+ * TLS: the on-prem controller (e.g. 192.168.1.151:9593) serves this over
+ * HTTPS with a self-signed / internal-CA certificate that Node won't trust
+ * by default (fetch fails with "unable to verify the first certificate").
+ * Set BIOMETRIC_API_ALLOW_SELF_SIGNED=true to accept it — opt-in, and only
+ * affects this one client, never global Node TLS behaviour.
  */
+
+import { Agent } from 'undici';
+
+const insecureDispatcher =
+  process.env.BIOMETRIC_API_ALLOW_SELF_SIGNED === 'true' ? new Agent({ connect: { rejectUnauthorized: false } }) : undefined;
 
 export interface DeviceDailyRow {
   date: string; // dd/MM/yyyy
@@ -71,6 +82,115 @@ function formatDeviceDateTime(d: Date, endOfDay: boolean): string {
 }
 
 /**
+ * Turns Node's opaque `TypeError: fetch failed` into something an HR admin
+ * can act on: the socket-level code (ECONNREFUSED = nothing listening on
+ * that port, ETIMEDOUT/EHOSTUNREACH = firewall or host down, ENOTFOUND =
+ * bad hostname) plus the host:port it tried.
+ */
+export function describeFetchError(err: unknown, url: URL, timeoutMs: number): string {
+  if (err instanceof Error && err.name === 'AbortError') {
+    return `Device API at ${url.host} did not answer within ${Math.round(timeoutMs / 1000)}s (timed out)`;
+  }
+  const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+  const code = cause?.code;
+  const hint =
+    code === 'ECONNREFUSED'
+      ? 'connection refused — nothing is listening on that port (device API service stopped, or bound to localhost)'
+      : code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH'
+        ? 'no route / no reply — host down or a firewall is dropping the connection'
+        : code === 'ENOTFOUND'
+          ? 'hostname does not resolve'
+          : code === 'ECONNRESET'
+            ? 'connection reset by the device API'
+            : null;
+  const base = err instanceof Error ? err.message : String(err);
+  if (code) return `Cannot reach device API at ${url.host}: ${code}${hint ? ` (${hint})` : ''}`;
+  if (cause?.message) return `Cannot reach device API at ${url.host}: ${cause.message}`;
+  return `Cannot reach device API at ${url.host}: ${base}`;
+}
+
+function buildAttendanceUrl(base: string, rangeStart: Date, rangeEnd: Date): URL {
+  const url = new URL('/api/v1/attendance', base);
+  url.searchParams.set('startDate', formatDeviceDateTime(rangeStart, false));
+  url.searchParams.set('endDate', formatDeviceDateTime(rangeEnd, true));
+  url.searchParams.set('includeEvents', 'false');
+  url.searchParams.set('includeDaily', 'true');
+  return url;
+}
+
+/**
+ * One GET against the device API with the configured timeout. Network
+ * failures are retried (BIOMETRIC_API_RETRIES, default 2, ~2s apart) because
+ * the on-prem controller has been observed flapping; HTTP errors are not.
+ */
+async function deviceGet(url: URL, key: string): Promise<Response> {
+  const timeoutMs = Number(process.env.BIOMETRIC_API_TIMEOUT_MS ?? 30000);
+  const retries = Math.max(0, Number(process.env.BIOMETRIC_API_RETRIES ?? 2));
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        headers: { 'X-API-Key': key, Accept: 'application/json' },
+        signal: controller.signal,
+        cache: 'no-store',
+        ...(insecureDispatcher ? { dispatcher: insecureDispatcher } : {}),
+      } as RequestInit);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 2000));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(describeFetchError(lastErr, url, timeoutMs) + (retries ? ` — after ${retries + 1} attempts` : ''));
+}
+
+export interface DeviceConnectionTest {
+  ok: boolean;
+  url: string;
+  httpStatus: number | null;
+  ms: number;
+  rows?: number;
+  error?: string;
+}
+
+/**
+ * Lightweight reachability check for the Biometric page's "Test connection"
+ * button: one request for today's rollup, no DB writes, no retries.
+ */
+export async function testDeviceConnection(): Promise<DeviceConnectionTest> {
+  const base = process.env.BIOMETRIC_API_URL;
+  const key = process.env.BIOMETRIC_API_KEY;
+  if (!base || !key) return { ok: false, url: base ?? '', httpStatus: null, ms: 0, error: 'BIOMETRIC_API_URL / BIOMETRIC_API_KEY are not configured' };
+  const today = new Date();
+  const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const url = buildAttendanceUrl(base, day, day);
+  const timeoutMs = Number(process.env.BIOMETRIC_API_TIMEOUT_MS ?? 30000);
+  const started = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: { 'X-API-Key': key, Accept: 'application/json' },
+      signal: controller.signal,
+      cache: 'no-store',
+      ...(insecureDispatcher ? { dispatcher: insecureDispatcher } : {}),
+    } as RequestInit);
+    const ms = Date.now() - started;
+    if (!res.ok) return { ok: false, url: url.host, httpStatus: res.status, ms, error: `Device API responded ${res.status} ${res.statusText}` };
+    const body = (await res.json().catch(() => null)) as { 'daily-attendance'?: unknown[] } | null;
+    const rows = Array.isArray(body?.['daily-attendance']) ? body['daily-attendance'].length : undefined;
+    return { ok: true, url: url.host, httpStatus: res.status, ms, rows };
+  } catch (err) {
+    return { ok: false, url: url.host, httpStatus: null, ms: Date.now() - started, error: describeFetchError(err, url, timeoutMs) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Fetches and parses the daily rollup for [rangeStart, rangeEnd] (both UTC
  * midnight dates, inclusive). Throws on network / HTTP / shape errors so the
  * caller can record a failed run.
@@ -80,20 +200,8 @@ export async function fetchDeviceDailyAttendance(rangeStart: Date, rangeEnd: Dat
   const key = process.env.BIOMETRIC_API_KEY;
   if (!base || !key) throw new Error('BIOMETRIC_API_URL / BIOMETRIC_API_KEY are not configured');
 
-  const url = new URL('/api/v1/attendance', base);
-  url.searchParams.set('startDate', formatDeviceDateTime(rangeStart, false));
-  url.searchParams.set('endDate', formatDeviceDateTime(rangeEnd, true));
-  url.searchParams.set('includeEvents', 'false');
-  url.searchParams.set('includeDaily', 'true');
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(process.env.BIOMETRIC_API_TIMEOUT_MS ?? 30000));
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: { 'X-API-Key': key, Accept: 'application/json' }, signal: controller.signal, cache: 'no-store' });
-  } finally {
-    clearTimeout(timeout);
-  }
+  const url = buildAttendanceUrl(base, rangeStart, rangeEnd);
+  const res = await deviceGet(url, key);
   if (!res.ok) throw new Error(`Device API responded ${res.status} ${res.statusText}`);
 
   const body = (await res.json()) as { 'daily-attendance'?: DeviceDailyRow[] };

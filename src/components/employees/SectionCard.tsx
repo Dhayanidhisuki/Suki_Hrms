@@ -22,7 +22,11 @@ export function SectionCard({
   className?: string;
 }) {
   return (
-    <section className={`card overflow-hidden ${className}`}>
+    // No overflow-hidden here — SearchableSelect's dropdown panel is an
+    // absolutely-positioned child that needs to float outside the card
+    // (e.g. the last field in a grid, near the card's bottom edge); clipping
+    // the card would cut its option list off instead of letting it overlay.
+    <section className={`card ${className}`}>
       <header className="flex items-center justify-between gap-3 border-b px-5 py-3.5" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
           {icon && (

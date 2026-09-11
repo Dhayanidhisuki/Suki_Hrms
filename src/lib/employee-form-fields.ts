@@ -396,7 +396,12 @@ export function buildJobProfileFields(): FieldDef[] {
     { name: 'professionalTaxApplicable', label: 'Professional Tax Applicable', type: 'checkbox' },
     { name: 'bonusApplicable', label: 'Bonus Applicable', type: 'checkbox' },
     { name: 'ltaEligible', label: 'LTA/UTA Eligible', type: 'checkbox' },
-    { name: 'pfRestrictionAmount', label: 'PF Restriction Amount', type: 'number' },
+    {
+      name: 'pfRestrictionAmount',
+      label: 'PF Restriction Amount',
+      type: 'number',
+      helpText: 'Caps this employee\'s PF wage below the statutory ceiling (e.g. restrict to 15000 even if gross is higher). Leave blank to use only the statutory ceiling.',
+    },
     { name: 'overtimeAllowed', label: 'Overtime Allowed', type: 'checkbox' },
     { name: 'overtimeFactor', label: 'Overtime Factor', type: 'number', step: '0.1' },
     { name: 'overtimeRatePerHour', label: 'Overtime Rate / Hour', type: 'number' },

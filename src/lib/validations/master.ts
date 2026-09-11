@@ -14,8 +14,43 @@ const simpleMasterSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const departmentSchema = simpleMasterSchema;
-export const designationSchema = simpleMasterSchema;
+/**
+ * An optional numeric field fed by a plain HTML number input, which sends
+ * '' rather than omitting the key when left blank — z.coerce would turn
+ * that into NaN, so '' (and null) are normalized to undefined first.
+ */
+function optionalNumber<T extends z.ZodTypeAny>(inner: T) {
+  return z.preprocess((v) => (v === '' || v === null ? undefined : v), inner.optional());
+}
+
+// Sanctioned headcount — Department, Sub-Department, Designation (KUN BRD
+// review, 2026-09-10). "Current" headcount is derived, never written here.
+const sanctionedHeadcountField = optionalNumber(z.coerce.number().int().min(0));
+
+export const departmentSchema = simpleMasterSchema.extend({
+  sanctionedHeadcount: sanctionedHeadcountField,
+});
+export const designationSchema = simpleMasterSchema.extend({
+  budget: optionalNumber(z.coerce.number().min(0)),
+  experienceYears: optionalNumber(z.coerce.number().min(0).max(60)),
+  qualification: z.string().max(200).nullable().optional(),
+  sanctionedHeadcount: sanctionedHeadcountField,
+  // Reporting Structure (KUN BRD review, 2026-09-10).
+  reportsToId: optionalNumber(z.coerce.number().int().positive()),
+});
+
+// Site Master (KUN BRD review, 2026-09-10) — company-scoped physical
+// location; Unit is the legal/org entity, kept separate.
+export const siteSchema = z.object({
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pinCode: z.string().max(10).optional().nullable(),
+  companyId: z.number().int().positive(),
+  isActive: z.boolean().default(true),
+});
 // Code is server-generated for these two (ET001.../CAT001...) — the admin
 // never types it, so it's optional on the wire and ignored if sent.
 export const employeeTypeSchema = simpleMasterSchema.extend({ code: z.string().max(20).optional() });
@@ -28,7 +63,14 @@ export const gradeSchema = simpleMasterSchema.extend({
 export const levelSchema = simpleMasterSchema.extend({
   gradeId: z.coerce.number().int().positive(),
 });
-export const loanTypeSchema = simpleMasterSchema;
+// KUN BRD review (2026-09-10): sanctionable min/max amount.
+export const loanTypeSchema = simpleMasterSchema.extend({
+  minAmount: optionalNumber(z.coerce.number().min(0)),
+  maxAmount: optionalNumber(z.coerce.number().min(0)),
+}).refine((v) => v.minAmount == null || v.maxAmount == null || v.minAmount <= v.maxAmount, {
+  message: 'Minimum Slab cannot exceed Maximum Slab',
+  path: ['minAmount'],
+});
 export const assetMasterSchema = simpleMasterSchema;
 
 // LeaveMaster adds defaultAnnualDays (how many days of this leave type an
@@ -53,18 +95,24 @@ export const leaveMasterSchema = simpleMasterSchema
 
 // ─── Pattern B: SubDepartment (code + name + description + departmentId FK) ──
 
+// Code is server-generated per department ("<DeptCode>-001", "-002"...) —
+// the admin never types it (migration 000031).
 export const subDepartmentSchema = z.object({
-  code: z.string().min(1).max(20),
+  code: z.string().max(20).optional(),
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional().nullable(),
   departmentId: z.number().int().positive(),
+  sanctionedHeadcount: sanctionedHeadcountField,
   isActive: z.boolean().default(true),
 });
 
 // Unit doubles as Branch/Site/Plant/Work Location, scoped to a Company.
+// Code is server-generated per company ("<CompanyCode>-001", "-002"...) —
+// the admin never types it (migration 000033).
 export const unitSchema = z.object({
-  code: z.string().min(1).max(20),
+  code: z.string().max(20).optional(),
   name: z.string().min(1).max(100),
+  address: z.string().max(500).optional().nullable(),
   description: z.string().max(500).optional().nullable(),
   companyId: z.number().int().positive(),
   isActive: z.boolean().default(true),
@@ -72,9 +120,11 @@ export const unitSchema = z.object({
 
 // Holiday calendar — scoped to a Company like Unit, but date+name instead
 // of code+name (no natural short code for a calendar date).
+export const HOLIDAY_TYPES = ['COMPANY', 'FESTIVAL', 'GOVERNMENT', 'OTHER'] as const;
 export const holidayMasterSchema = z.object({
   date: z.coerce.date(),
   name: z.string().min(1).max(100),
+  holidayType: z.enum(HOLIDAY_TYPES).default('OTHER'),
   description: z.string().max(500).optional().nullable(),
   companyId: z.number().int().positive(),
   isActive: z.boolean().default(true),
@@ -98,6 +148,12 @@ export const shiftMasterSchema = z.object({
   startTime: z.string().min(1).max(8),
   endTime: z.string().min(1).max(8),
   graceMinutes: z.number().int().min(0).default(0),
+  // KUN BRD review (2026-09-10): night/snacks/meals allowances.
+  nightAllowed: z.boolean().default(false),
+  bufferMinutes: z.preprocess((v) => (v === '' ? 0 : v), z.coerce.number().int().min(0)).default(0),
+  snacksAllowed: z.boolean().default(false),
+  mealsAllowed: z.boolean().default(false),
+  snacksMealsDurationMinutes: optionalNumber(z.coerce.number().int().min(0)),
   description: z.string().max(500).optional().nullable(),
   isActive: z.boolean().default(true),
 });
@@ -110,6 +166,9 @@ export const otPlanSchema = z.object({
   otRateMultiplier: z.coerce.number().positive().max(10),
   applicableAfterMinutes: z.number().int().min(0).default(0),
   maxOtHoursPerDay: z.number().int().positive().optional().nullable(),
+  // KUN BRD review (2026-09-10): which SalaryComponent the calculated OT
+  // amount pays through.
+  payComponentId: optionalNumber(z.coerce.number().int().positive()),
   description: z.string().max(500).optional().nullable(),
   isActive: z.boolean().default(true),
 });
@@ -139,6 +198,25 @@ export const tdsSlabSchema = z.object({
   effectiveTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().default(true),
 });
+
+// Deduction Rates (KUN BRD review, 2026-09-10, item 15). Company-scoped
+// (companyId comes from the session, not the body, same convention as
+// every other company-scoped write). `isLop` flags a Loss-of-Pay row.
+export const deductionRateSchema = z
+  .object({
+    code: z.string().min(1).max(20),
+    name: z.string().min(1).max(100),
+    deductionType: z.enum(['PERCENT', 'FLAT']),
+    rateValue: z.coerce.number().nonnegative(),
+    isLop: z.boolean().default(false),
+    effectiveFrom: z.coerce.date(),
+    effectiveTo: z.coerce.date().optional().nullable(),
+    isActive: z.boolean().default(true),
+  })
+  .refine((v) => v.deductionType !== 'PERCENT' || v.rateValue <= 100, {
+    message: 'A percentage rate cannot exceed 100',
+    path: ['rateValue'],
+  });
 
 export const professionalTaxSlabSchema = z.object({
   code: z.string().min(1).max(20),
@@ -223,6 +301,18 @@ export const dropdownMasterSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Common Logic > Gross % Split (KUN BRD review, 2026-09-10). companyId comes
+// from the session, not the body, same convention as other company-scoped
+// writes. Bulk-saved as a set — see /api/masters/gross-split-rules.
+export const grossSplitRuleSchema = z.object({
+  salaryComponentId: z.number().int().positive(),
+  percentOfGross: z.coerce.number().min(0).max(100),
+  isActive: z.boolean().default(true),
+});
+export const grossSplitRuleBulkSchema = z.object({
+  rules: z.array(grossSplitRuleSchema).max(200),
+});
+
 // Company-scoped since migration 000012 — companyId comes from the session
 // (getCompanyId()), never the request body, same convention as every other
 // company-scoped write this session.
@@ -231,6 +321,10 @@ export const salaryComponentSchema = z.object({
   name: z.string().min(1).max(100),
   type: z.enum(['earning', 'deduction', 'employer_contribution']),
   includeInGratuity: z.boolean().default(false),
+  // KUN BRD review (2026-09-10): whether this component counts toward the
+  // ESI / PF eligible-wage base.
+  includeInEsi: z.boolean().default(false),
+  includeInPf: z.boolean().default(false),
   isActive: z.boolean().default(true),
 });
 

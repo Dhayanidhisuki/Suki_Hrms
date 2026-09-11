@@ -12,6 +12,7 @@ interface Unit {
   id: number;
   code: string;
   name: string;
+  address: string | null;
   description: string | null;
   companyId: number;
   isActive: boolean;
@@ -45,10 +46,15 @@ export default function UnitsPage() {
       );
   }, []);
 
+  // Code is server-generated per company ("<CompanyCode>-001"...) — no field
+  // on Add; shown disabled (for reference) on Edit.
   const fields: FieldDef[] = [
     { name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions },
-    { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. UNIT1' },
+    ...(editingId
+      ? [{ name: 'code', label: 'Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef]
+      : []),
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Chennai Plant' },
+    { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Optional' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
   ];
@@ -85,6 +91,7 @@ export default function UnitsPage() {
     setInitialValues({
       code: row.code,
       name: row.name,
+      address: row.address ?? '',
       description: row.description ?? '',
       companyId: row.companyId,
       isActive: row.isActive,
@@ -93,7 +100,7 @@ export default function UnitsPage() {
   };
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const payload = { ...values, description: values.description || null };
+    const payload = { ...values, address: values.address || null, description: values.description || null };
     const url = editingId ? `/api/masters/units/${editingId}` : '/api/masters/units';
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -118,6 +125,7 @@ export default function UnitsPage() {
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
+    { key: 'address', label: 'Address', render: (row) => row.address ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
       key: 'isActive',

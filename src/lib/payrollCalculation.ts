@@ -15,7 +15,11 @@
  * - PF/ESI wage basis is the full LOP-adjusted gross earnings, not a
  *   component-code-specific "Basic + DA" subset — avoids a fragile
  *   dependency on which SalaryComponent codes exist in a given company's
- *   catalog.
+ *   catalog. The PF wage is additionally capped at the employee's own
+ *   JobInfo.pfRestrictionAmount when one is set ("Employee PF Cont.
+ *   Customize" on the legacy screen), on top of the statutory
+ *   PfRate.wageCeilingMonthly — src/lib/arrearCalculation.ts applies the
+ *   same cap for consistency.
  * - TDS is a flat single-slab lookup against TDSSlab (min/maxSalary vs.
  *   monthly gross), not full annual computation with regime/exemptions/
  *   rebate/surcharge/cess.
@@ -63,6 +67,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
             overtimeAllowed: true,
             overtimeFactor: true,
             overtimeRatePerHour: true,
+            pfRestrictionAmount: true,
           },
         },
       },
@@ -164,7 +169,14 @@ export async function calculatePayrollRun(payrollRunId: number) {
     let pfEmployer = 0;
     let epsEmployer = 0;
     if (pfApplicable && pfRate) {
-      const pfWage = Math.min(grossEarnings, Number(pfRate.wageCeilingMonthly));
+      // "Employee PF Cont. Customize" (legacy screen) — a per-employee cap
+      // below the statutory wage ceiling, e.g. PF restricted to 15000 even
+      // though actual gross is higher. Read from JobInfo.pfRestrictionAmount
+      // when the admin has set one; otherwise only the statutory ceiling applies.
+      const pfWageCap = jobInfo?.pfRestrictionAmount != null
+        ? Math.min(Number(pfRate.wageCeilingMonthly), Number(jobInfo.pfRestrictionAmount))
+        : Number(pfRate.wageCeilingMonthly);
+      const pfWage = Math.min(grossEarnings, pfWageCap);
       pfEmployee = round(pfWage * (Number(pfRate.employeeContributionRate) / 100));
       // Employer: total employerContributionRate (12%) split into EPF (3.67%) + EPS (8.33%)
       const employerRate = Number(pfRate.employerContributionRate) / 100;

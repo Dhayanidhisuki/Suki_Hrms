@@ -89,8 +89,10 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Departments", href: "/masters/departments", ready: true },
           { label: "Sub Departments", href: "/masters/sub-departments", ready: true },
-          { label: "Branches / Sites", short: "Branches", href: "/masters/branches" },
-          { label: "Units", href: "/masters/units", ready: true },
+          { label: "Branch / Unit", href: "/masters/units", ready: true },
+          { label: "Site Master", href: "/masters/sites", ready: true },
+          // Reporting Structure is now a real module (org chart, manager
+          // approval stages, bulk reassign) — see /masters/reporting-structure.
           { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure", ready: true },
         ],
       },
@@ -118,6 +120,7 @@ export const navigation: NavModule[] = [
         label: "Payroll & Statutory",
         items: [
           { label: "Loan Types", href: "/masters/loan-types", ready: true },
+          { label: "Deduction Rates", href: "/masters/deduction-rates", ready: true },
           { label: "TDS Slabs", href: "/masters/tds-slabs", ready: true },
           { label: "Professional Tax Slabs", short: "PT Slabs", href: "/masters/professional-tax-slabs", ready: true },
           { label: "Income Tax Slabs", href: "/masters/income-tax-slabs" },
@@ -125,6 +128,7 @@ export const navigation: NavModule[] = [
           { label: "Benefit Rates", href: "/masters/benefit-rates", ready: true },
           { label: "Bonus Rates", href: "/masters/bonus-rates", ready: true },
           { label: "Gratuity Policies", href: "/masters/gratuity-policies", ready: true },
+          { label: "Common Logic", href: "/masters/common-logic", ready: true },
         ],
       },
       {

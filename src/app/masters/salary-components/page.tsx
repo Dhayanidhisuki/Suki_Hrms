@@ -21,6 +21,8 @@ interface SalaryComponentRow {
   name: string;
   type: string;
   includeInGratuity: boolean;
+  includeInEsi: boolean;
+  includeInPf: boolean;
   isSystemDefined: boolean;
   isActive: boolean;
 }
@@ -40,6 +42,8 @@ const fields: FieldDef[] = [
     ],
   },
   { name: 'includeInGratuity', label: 'Include in Gratuity', type: 'checkbox', defaultValue: false },
+  { name: 'includeInEsi', label: 'Include in ESI', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the ESI eligible-wage base.' },
+  { name: 'includeInPf', label: 'Include in PF', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the PF eligible-wage base.' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
 ];
 
@@ -75,7 +79,7 @@ export default function SalaryComponentsPage() {
 
   const handleAdd = () => {
     setEditingId(null);
-    setInitialValues({ isActive: true, includeInGratuity: false });
+    setInitialValues({ isActive: true, includeInGratuity: false, includeInEsi: false, includeInPf: false });
     setModalOpen(true);
   };
 
@@ -86,6 +90,8 @@ export default function SalaryComponentsPage() {
       name: row.name,
       type: row.type,
       includeInGratuity: row.includeInGratuity,
+      includeInEsi: row.includeInEsi,
+      includeInPf: row.includeInPf,
       isActive: row.isActive,
     });
     setModalOpen(true);
@@ -112,9 +118,10 @@ export default function SalaryComponentsPage() {
     fetchData();
   };
 
-  // Inline toggle — works for system-defined rows too, since the PUT route
-  // permits includeInGratuity changes even when code/name/type are locked.
-  const toggleGratuity = async (row: SalaryComponentRow) => {
+  // Inline toggles — work for system-defined rows too, since the PUT route
+  // permits includeInGratuity/includeInEsi/includeInPf changes even when
+  // code/name/type are locked.
+  const toggleFlag = async (row: SalaryComponentRow, flag: 'includeInGratuity' | 'includeInEsi' | 'includeInPf') => {
     setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
@@ -124,7 +131,10 @@ export default function SalaryComponentsPage() {
         name: row.name,
         type: row.type,
         isActive: row.isActive,
-        includeInGratuity: !row.includeInGratuity,
+        includeInGratuity: row.includeInGratuity,
+        includeInEsi: row.includeInEsi,
+        includeInPf: row.includeInPf,
+        [flag]: !row[flag],
       }),
     });
     if (!res.ok) {
@@ -143,7 +153,21 @@ export default function SalaryComponentsPage() {
       key: 'includeInGratuity',
       label: 'Gratuity',
       render: (r) => (
-        <input type="checkbox" checked={r.includeInGratuity} onChange={() => toggleGratuity(r)} />
+        <input type="checkbox" checked={r.includeInGratuity} onChange={() => toggleFlag(r, 'includeInGratuity')} />
+      ),
+    },
+    {
+      key: 'includeInEsi',
+      label: 'ESI',
+      render: (r) => (
+        <input type="checkbox" checked={r.includeInEsi} onChange={() => toggleFlag(r, 'includeInEsi')} />
+      ),
+    },
+    {
+      key: 'includeInPf',
+      label: 'PF',
+      render: (r) => (
+        <input type="checkbox" checked={r.includeInPf} onChange={() => toggleFlag(r, 'includeInPf')} />
       ),
     },
     {
