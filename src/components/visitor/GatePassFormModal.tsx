@@ -322,7 +322,7 @@ export default function GatePassFormModal({
                 <input
                   type="number"
                   min={1}
-                  value={values.noOfPersons as number | undefined}
+                  value={(values.noOfPersons as number | undefined) ?? 1}
                   onChange={(e) => handleChange('noOfPersons', e.target.value === '' ? 1 : Number(e.target.value))}
                   className={inputClass}
                   style={baseStyle}
@@ -387,7 +387,7 @@ export default function GatePassFormModal({
                   type="number"
                   min={0.5}
                   step={0.5}
-                  value={values.qrValidHours as number | undefined}
+                  value={(values.qrValidHours as string | number | undefined) ?? ''}
                   onChange={(e) => handleChange('qrValidHours', e.target.value === '' ? '' : Number(e.target.value))}
                   className={inputClass}
                   style={baseStyle}
