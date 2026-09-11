@@ -213,6 +213,8 @@ model Company {
   grossSplitRules            GrossSplitRule[]
   sites                      Site[]
   deductionRates             DeductionRate[]
+  pmsIncentiveConfigs        PmsIncentiveConfig[]
+  doubleMachineIncentives    DoubleMachineIncentive[]
 
   @@map("Company")
 }
@@ -769,6 +771,7 @@ model Employee {
   mispunchCorrections        MispunchCorrection[]
   permissionRequests         PermissionRequest[]
   pmsIncentives              PmsIncentive[]
+  doubleMachineIncentives    DoubleMachineIncentive[]
   payrollLines               PayrollLine[]
   salaryRevisionRequests     SalaryRevisionRequest[]
   salaryArrears              SalaryArrear[]
@@ -1339,6 +1342,8 @@ model SalaryComponent {
   benefitRates        BenefitRateByEmployeeType[]
   grossSplitRule      GrossSplitRule?
   otPlansPayingHere   OTPlan[]
+  pmsIncentives       PmsIncentive[]
+  pmsIncentiveConfigs PmsIncentiveConfig[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
@@ -1394,44 +1399,143 @@ model BenefitRateByEmployeeType {
   @@map("BenefitRateByEmployeeType")
 }
 
-// PMS Incentive — BRD: monthly % entered jointly (50% company contribution,
-// 50% Reporting Manager's own input), approved by HR before payroll. Only
-// the PERCENTAGE agreement and its approval are modeled here; the client
-// never specified what base amount the percentage applies to, so this does
-// NOT compute or push a rupee amount to payroll automatically — HR applies
-// the actual incentive amount through the general bulk ad-hoc payroll-line
-// upload (reusing the existing PayrollLineComponent.isAdhoc mechanism) once
-// they know the base, using this record's approved totalPercent as the
-// reference figure.
-model PmsIncentive {
-  id         Int @id @default(autoincrement())
-  employeeId Int
-  year       Int
-  month      Int // 1-12
+model PmsIncentiveConfig {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  financialYear String   @db.NVarChar(10) // e.g. "2026-27"
+  effectiveFrom DateTime
+  effectiveTo   DateTime
 
-  companyPercent Decimal @default(50) @db.Decimal(5, 2)
-  managerPercent Decimal @db.Decimal(5, 2)
-  totalPercent   Decimal @db.Decimal(5, 2)
+  calculationBasis  String @default("basic") @db.NVarChar(30) // basic | gross | ctc | target_incentive | component
+  salaryComponentId Int? // required when calculationBasis = 'component'
+  incentiveType     String @default("percentage") @db.NVarChar(20) // percentage | fixed
 
-  // pending_hr | approved | rejected — single-stage, unlike Mispunch/OT:
-  // the Reporting Manager's own act of submitting managerPercent IS their
-  // contribution (not a review of an employee request), so a row is always
-  // created directly at pending_hr for HR's approval.
-  status String @default("pending_hr") @db.NVarChar(20)
+  companyPercent        Decimal  @default(0) @db.Decimal(5, 2)
+  companyValue          Decimal? @db.Decimal(18, 2) // fixed-value mode
+  targetIncentiveAmount Decimal? @db.Decimal(18, 2) // basis = target_incentive
 
-  managerActionByUserId Int?
-  managerActionAt       DateTime?
-  hrActionByUserId      Int?
-  hrActionAt             DateTime?
-  rejectionReason        String?   @db.NVarChar(500)
+  remarks String? @db.NVarChar(500)
+  status  String  @default("active") @db.NVarChar(20) // draft | active | finalized
+
+  createdByUserId Int?
+  updatedByUserId Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent? @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pmsIncentives   PmsIncentive[]
+
+  @@unique([companyId, financialYear])
+  @@map("PmsIncentiveConfig")
+}
+
+// Performance Incentive — one employee-level row per period. A row starts as
+// a draft while the Reporting Manager keys the individual %, moves to
+// submitted for HR review, then approved / rejected / returned. HR/Admin may
+// override any field; every mutation is mirrored into EmployeeActivity
+// (module = 'pms') for the audit trail the BRD requires.
+model PmsIncentive {
+  id            Int  @id @default(autoincrement())
+  employeeId    Int
+  configId      Int?
+  year          Int // anchor year of the configured effective period
+  month         Int // anchor month (1-12) of the configured effective period
+  financialYear String? @db.NVarChar(10)
+
+  calculationBasis  String? @db.NVarChar(30) // copied from config at save time
+  salaryComponentId Int? // 'component' basis snapshot
+  incentiveType     String  @default("percentage") @db.NVarChar(20) // percentage | fixed
+  basisAmount       Decimal @default(0) @db.Decimal(18, 2)
+
+  companyPercent Decimal  @default(0) @db.Decimal(5, 2)
+  managerPercent Decimal  @default(0) @db.Decimal(5, 2) // "Individual %" in the BRD
+  totalPercent   Decimal  @default(0) @db.Decimal(5, 2)
+
+  companyValue    Decimal? @db.Decimal(18, 2) // fixed-value mode
+  individualValue Decimal? @db.Decimal(18, 2) // fixed-value mode
+  companyAmount   Decimal  @default(0) @db.Decimal(18, 2)
+  individualAmount Decimal @default(0) @db.Decimal(18, 2)
+  overallAmount   Decimal  @default(0) @db.Decimal(18, 2)
+
+  // Attendance-based payout computation, stored at save time (the "fixed"
+  // Performance Incentive salary component is the base, MonthlyAttendance
+  // .presentDays prorates it over the calendar month, PMS % scales it, and
+  // ESI shares split off the earned amount):
+  //   incentiveMoney = performanceIncentive / monthDays * presentDays
+  //   incentiveEarn  = incentiveMoney * totalPercent / 100
+  //   employeeEsi    = incentiveEarn * 0.75 / 100
+  //   employerEsi    = incentiveEarn * 3.25 / 100
+  //   pmsNet         = incentiveEarn - employeeEsi
+  performanceIncentive Decimal @default(0) @db.Decimal(18, 2)
+  monthDays            Int     @default(0)
+  presentDays          Decimal @default(0) @db.Decimal(5, 2)
+  incentiveMoney       Decimal @default(0) @db.Decimal(18, 2)
+  incentiveEarn        Decimal @default(0) @db.Decimal(18, 2)
+  employeeEsi          Decimal @default(0) @db.Decimal(18, 2)
+  employerEsi          Decimal @default(0) @db.Decimal(18, 2)
+  pmsNet               Decimal @default(0) @db.Decimal(18, 2)
+
+  // draft | submitted | under_review | approved | rejected | returned | finalized
+  status String @default("draft") @db.NVarChar(20)
+
+  supportingFileName String? @db.NVarChar(200)
+  supportingFilePath String? @db.NVarChar(500)
+  remarks            String? @db.NVarChar(500)
+  rejectionReason    String? @db.NVarChar(500)
+
+  managerActionByUserId Int? // who entered / submitted the individual incentive
+  managerActionAt       DateTime?
+  hrActionByUserId      Int? // HR approver / rejector / overrider
+  hrActionAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee        Employee            @relation(fields: [employeeId], references: [id])
+  config          PmsIncentiveConfig? @relation(fields: [configId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent?    @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([employeeId, year, month])
+  @@index([configId])
+  @@index([status])
   @@map("PmsIncentive")
+}
+
+// Double Machine Incentive — BRD B5/B6 + Suki ERP DOUBLE_MACHINE_INCENTIVE
+// / INCENTIVE_DET_MULTI_MACHINE. Manual HR entry per employee per month
+// (employee, Double Machine, Att.Bonus, Shift Incentive, OT Weekly Inc,
+// Employee R, status). Employee code/name/dept/designation come from
+// Employee + JobInfo, not stored here.
+model DoubleMachineIncentive {
+  id              Int     @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  year            Int
+  month           Int // 1-12
+  doubleMachine   Decimal @default(0) @db.Decimal(18, 2)
+  attendanceBonus Decimal @default(0) @db.Decimal(18, 2)
+  shiftIncentive  Decimal @default(0) @db.Decimal(18, 2)
+  otWeeklyInc     Decimal @default(0) @db.Decimal(18, 2)
+  employeeR       Decimal @default(0) @db.Decimal(18, 2)
+
+  // draft | process | hold | complete
+  status  String  @default("draft") @db.NVarChar(20)
+  remarks String? @db.NVarChar(500)
+
+  createdByUserId Int?
+  updatedByUserId Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, year, month])
+  @@index([companyId, year, month])
+  @@index([status])
+  @@map("DoubleMachineIncentive")
 }
 
 model EmployeeSalaryRevision {

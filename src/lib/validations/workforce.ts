@@ -98,11 +98,57 @@ export const permissionRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
 
-export const pmsIncentiveCreateSchema = z.object({
+export const pmsIncentiveConfigSchema = z
+  .object({
+    financialYear: z.string().regex(/^\d{4}-\d{2}$/, 'Expected format YYYY-YY'),
+    effectiveFrom: z.coerce.date(),
+    effectiveTo: z.coerce.date(),
+    calculationBasis: z.enum(['basic', 'gross', 'ctc', 'target_incentive', 'component']),
+    salaryComponentId: z.number().int().positive().nullable().optional(),
+    incentiveType: z.enum(['percentage', 'fixed']).default('percentage'),
+    companyPercent: z.coerce.number().min(0).max(50).default(0),
+    companyValue: z.coerce.number().min(0).nullable().optional(),
+    targetIncentiveAmount: z.coerce.number().min(0).nullable().optional(),
+    remarks: z.string().max(500).nullable().optional(),
+    status: z.enum(['draft', 'active', 'finalized']).default('active'),
+  })
+  .refine((v) => v.effectiveTo >= v.effectiveFrom, {
+    message: 'Effective To must be on or after Effective From',
+    path: ['effectiveTo'],
+  })
+  .refine((v) => v.calculationBasis !== 'component' || Boolean(v.salaryComponentId), {
+    message: 'Select a salary component when the calculation basis is Other',
+    path: ['salaryComponentId'],
+  })
+  .refine((v) => v.incentiveType !== 'percentage' || v.companyPercent <= 50, {
+    message: 'Company Incentive cannot exceed 50%.',
+    path: ['companyPercent'],
+  });
+
+export const pmsIncentiveUpsertSchema = z.object({
   employeeId: z.number().int().positive(),
-  year: z.number().int().min(2000).max(2100),
-  month: z.number().int().min(1).max(12),
-  managerPercent: z.coerce.number().min(0).max(50),
+  financialYear: z.string().regex(/^\d{4}-\d{2}$/, 'Expected format YYYY-YY'),
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  companyPercent: z.coerce.number().min(0).max(50).nullable().optional(),
+  companyValue: z.coerce.number().min(0).nullable().optional(),
+  individualPercent: z.coerce.number().min(0).max(50).nullable().optional(),
+  individualValue: z.coerce.number().min(0).nullable().optional(),
+  remarks: z.string().max(500).nullable().optional(),
+  submit: z.boolean().optional(),
+});
+
+export const pmsIncentiveUpdateSchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  financialYear: z.string().regex(/^\d{4}-\d{2}$/, 'Expected format YYYY-YY').optional(),
+  individualPercent: z.coerce.number().min(0).max(50).nullable().optional(),
+  individualValue: z.coerce.number().min(0).nullable().optional(),
+  companyPercent: z.coerce.number().min(0).max(50).nullable().optional(),
+  companyValue: z.coerce.number().min(0).nullable().optional(),
+  remarks: z.string().max(500).nullable().optional(),
+  submit: z.boolean().optional(),
+  reason: z.string().max(500).nullable().optional(),
 });
 
 export const pmsRejectSchema = z.object({

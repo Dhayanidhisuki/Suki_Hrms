@@ -14,6 +14,36 @@ export const adhocComponentSchema = z.object({
   amount: z.number(), // sign follows the component's own earning/deduction type
 });
 
+const nonNegAmount = z.coerce.number().min(0).default(0);
+
+export const doubleMachineUpsertSchema = z.object({
+  employeeId: z.number().int().positive(),
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  doubleMachine: nonNegAmount,
+  attendanceBonus: nonNegAmount,
+  shiftIncentive: nonNegAmount,
+  otWeeklyInc: nonNegAmount,
+  employeeR: nonNegAmount,
+  status: z.enum(['draft', 'process', 'hold', 'complete']).optional(),
+  remarks: z.string().max(500).nullable().optional(),
+});
+
+export const doubleMachineBulkSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  rows: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      doubleMachine: nonNegAmount,
+      attendanceBonus: nonNegAmount,
+      shiftIncentive: nonNegAmount,
+      otWeeklyInc: nonNegAmount,
+      employeeR: nonNegAmount,
+    })
+  ).min(1),
+});
+
 // ─── Salary Revision & Arrear — Phase 1 ────────────────────────────────────
 
 export const createSalaryRevisionRequestSchema = z

@@ -269,7 +269,7 @@ export const navigation: NavModule[] = [
           { label: "Canteen Token", href: "/masters/benefit-rates", ready: true },
           { label: "Petrol Allowance", href: "/masters/benefit-rates", ready: true },
           { label: "Performance Incentive", href: "/payroll/processing/pms-incentive", ready: true },
-          { label: "Double Machine & Other Incentive", short: "Other Incentives", href: "/payroll/processing/salary", ready: true },
+          { label: "Double Machine Incentive", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
     ],
@@ -291,7 +291,7 @@ export const navigation: NavModule[] = [
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
           { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final" },
-          { label: "Other Incentives", href: "/payroll/processing/other-incentives" },
+          { label: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
       {
