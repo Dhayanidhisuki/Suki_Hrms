@@ -162,6 +162,13 @@ export const shiftMasterSchema = z.object({
   snacksAllowed: z.boolean().default(false),
   mealsAllowed: z.boolean().default(false),
   snacksMealsDurationMinutes: optionalNumber(z.coerce.number().int().min(0)),
+  // Phase 2A.6 (2026-09-11): configurable break time and allowance amounts.
+  breakMinutes: z.preprocess((v) => (v === '' ? 0 : v), z.coerce.number().int().min(0)).default(0),
+  nightAllowanceAmount: optionalNumber(z.coerce.number().min(0)),
+  nightAllowanceFromHour: optionalNumber(z.coerce.number().int().min(0).max(23)),
+  snacksAllowanceAmount: optionalNumber(z.coerce.number().min(0)),
+  foodAllowanceAmount: optionalNumber(z.coerce.number().min(0)),
+  mealsAllowanceAmount: optionalNumber(z.coerce.number().min(0)),
   description: z.string().max(500).optional().nullable(),
   isActive: z.boolean().default(true),
 });
@@ -172,11 +179,19 @@ export const otPlanSchema = z.object({
   code: z.string().min(1).max(20),
   name: z.string().min(1).max(100),
   otRateMultiplier: z.coerce.number().positive().max(10),
+  otCalculationBasis: z.enum(['GROSS', 'BASIC', 'BASIC_DA', 'BASIC_DA_HRA', 'FIXED']).default('GROSS'),
   applicableAfterMinutes: z.number().int().min(0).default(0),
   maxOtHoursPerDay: z.number().int().positive().optional().nullable(),
   // KUN BRD review (2026-09-10): which SalaryComponent the calculated OT
   // amount pays through.
   payComponentId: optionalNumber(z.coerce.number().int().positive()),
+  // Phase 2B.1 (2026-09-11): day-type multipliers, weekly/monthly caps, settlement.
+  weekdayFactor: z.coerce.number().min(0).max(10).default(1),
+  weeklyOffFactor: z.coerce.number().min(0).max(10).default(1.5),
+  holidayFactor: z.coerce.number().min(0).max(10).default(2),
+  maxOtHoursPerWeek: optionalNumber(z.coerce.number().int().positive()),
+  maxOtHoursPerMonth: optionalNumber(z.coerce.number().int().positive()),
+  weeklyOffSettlement: z.enum(['COMP_OFF', 'PAYMENT', 'CHOICE']).default('PAYMENT'),
   description: z.string().max(500).optional().nullable(),
   isActive: z.boolean().default(true),
 });
@@ -361,3 +376,250 @@ export function validateSlabOverlap(
   }
   return null;
 }
+
+// ─── Dynamic Payroll Config (Phase 2A) — company-scoped single-row ───────────
+
+export const lomConfigSchema = z.object({
+  calculationBasis: z.enum(['GROSS', 'BASIC']).default('GROSS'),
+  multiplier: z.coerce.number().min(0.01).max(10).default(1),
+  shiftDurationSource: z.enum(['FIXED_8', 'SHIFT_MASTER']).default('FIXED_8'),
+  payrollDaysDenominator: z.enum(['CALENDAR', 'FIXED_26']).default('CALENDAR'),
+  graceMinutesExempt: z.coerce.number().int().min(0).default(0),
+  dailyLomCap: optionalNumber(z.coerce.number().int().min(0)),
+  isActive: z.boolean().default(true),
+});
+
+export const roundingConfigSchema = z.object({
+  roundingMode: z.enum(['NONE', 'NEAREST_1', 'NEAREST_5', 'NEAREST_10', 'NEAREST_100']).default('NEAREST_1'),
+  applyTo: z.enum(['NET_ONLY', 'ALL_COMPONENTS']).default('NET_ONLY'),
+  showRoundOff: z.boolean().default(true),
+});
+
+export const payrollValidationConfigSchema = z.object({
+  allowNegativeNet: z.boolean().default(false),
+  minNetPercentOfGross: z.coerce.number().min(0).max(100).default(0),
+  requireApprovalIfNegative: z.boolean().default(true),
+  maxDeductionPercent: z.coerce.number().min(0).max(100).default(100),
+  statutoryIncludedInLimit: z.boolean().default(true),
+});
+
+export const payrollWorkflowConfigSchema = z.object({
+  enableValidatedStage: z.boolean().default(false),
+  enableSubmittedStage: z.boolean().default(false),
+  enablePostedStage: z.boolean().default(false),
+  approvalStages: z.enum(['HR', 'MANAGER_HR', 'HR_FINANCE', 'MANAGER_HR_FINANCE']).default('HR'),
+  cutoffDayOfMonth: optionalNumber(z.coerce.number().int().min(1).max(31)),
+  allowReopenAfterLock: z.boolean().default(true),
+  reopenRequiresReason: z.boolean().default(true),
+});
+
+export const payrollDisplayConfigSchema = z.object({
+  showDeductionPercent: z.boolean().default(true),
+  decimalPlaces: z.coerce.number().int().min(0).max(4).default(2),
+  showYTD: z.boolean().default(false),
+  showLeaveBalance: z.boolean().default(false),
+  showTaxBreakdown: z.boolean().default(false),
+});
+
+// ─── Time Office Config (Phase 2B) ───────────────────────────────────────────
+
+export const compOffPolicySchema = z.object({
+  minQualifyingHours: z.coerce.number().int().min(0).default(4),
+  qualifyingDayTypes: z.string().max(100).default('WEEKLY_OFF,HOLIDAY'),
+  requiresApproval: z.boolean().default(true),
+  expiryMonths: z.coerce.number().int().min(0).default(3),
+  allowEncashment: z.boolean().default(false),
+  encashmentRatePerDay: optionalNumber(z.coerce.number().min(0)),
+  autoCreditOnApproval: z.boolean().default(true),
+  isActive: z.boolean().default(true),
+});
+
+export const otIncentiveSlabSchema = z.object({
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
+  minOtHours: z.coerce.number().min(0),
+  maxOtHours: optionalNumber(z.coerce.number().min(0)),
+  incentiveMultiplier: z.coerce.number().min(0.01).max(10),
+  effectiveFrom: z.coerce.date(),
+  effectiveTo: optionalNumber(z.coerce.date()),
+  isActive: z.boolean().default(true),
+});
+
+export const attendanceBonusConfigSchema = z.object({
+  bonusAmount: z.coerce.number().min(0).default(0),
+  requiresZeroLop: z.boolean().default(true),
+  requiresZeroLate: z.boolean().default(false),
+  requiresZeroEarlyOut: z.boolean().default(false),
+  prorateByPayableDays: z.boolean().default(false),
+  minPayableDaysPercent: z.coerce.number().min(0).max(100).default(100),
+  isActive: z.boolean().default(true),
+});
+
+// ─── Statutory Config (Phase 2C) ─────────────────────────────────────────────
+
+export const lwfRateSchema = z.object({
+  code: z.string().min(1).max(20),
+  state: z.string().min(1).max(50),
+  employeeRate: z.coerce.number().min(0),
+  employerRate: z.coerce.number().min(0),
+  rateType: z.enum(['FLAT', 'PERCENT']).default('FLAT'),
+  frequency: z.enum(['MONTHLY', 'HALF_YEARLY', 'YEARLY']).default('MONTHLY'),
+  deductionMonth: z.coerce.number().int().min(1).max(12).default(1),
+  effectiveFrom: z.coerce.date(),
+  effectiveTo: optionalNumber(z.coerce.date()),
+  isActive: z.boolean().default(true),
+});
+
+export const statePtConfigSchema = z.object({
+  code: z.string().min(1).max(20),
+  state: z.string().min(1).max(50),
+  slabCode: z.string().min(1).max(20),
+  effectiveFrom: z.coerce.date(),
+  effectiveTo: optionalNumber(z.coerce.date()),
+  isActive: z.boolean().default(true),
+});
+
+export const tdsRegimeConfigSchema = z.object({
+  defaultRegime: z.enum(['OLD', 'NEW']).default('NEW'),
+  financialYearStart: z.coerce.number().int().min(1).max(12).default(4),
+  cessRate: z.coerce.number().min(0).max(100).default(4),
+  surchargeThreshold: z.coerce.number().min(0).default(5000000),
+  surchargeRate: z.coerce.number().min(0).max(100).default(10),
+  rebateUptoIncome: z.coerce.number().min(0).default(500000),
+  rebateAmount: z.coerce.number().min(0).default(12500),
+  standardDeduction: z.coerce.number().min(0).default(50000),
+  isActive: z.boolean().default(true),
+});
+
+export const healthInsuranceConfigSchema = z.object({
+  employeeContributionRate: z.coerce.number().min(0).max(100).default(0),
+  employerContributionRate: z.coerce.number().min(0).max(100).default(0),
+  monthlyPremium: z.coerce.number().min(0).default(0),
+  applyToAllEmployees: z.boolean().default(true),
+  isActive: z.boolean().default(true),
+});
+
+// ─── Phase 2D — Leave Encashment, FnF, Bank File ──────────────────────────────
+
+export const leaveEncashmentConfigSchema = z.object({
+  calculationBasis: z.enum(['GROSS', 'BASIC', 'BASIC_DA']).default('GROSS'),
+  denominator: z.coerce.number().int().min(1).max(31).default(26),
+  minServiceMonths: z.coerce.number().int().min(0).default(0),
+  maxEncashableDays: z.coerce.number().int().min(0).default(45),
+  includeEarnedOnly: z.boolean().default(true),
+  prorateByLop: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export const fullAndFinalConfigSchema = z.object({
+  includeUnpaidSalary: z.boolean().default(true),
+  includeLeaveEncashment: z.boolean().default(true),
+  includeGratuity: z.boolean().default(true),
+  includeBonusProportion: z.boolean().default(false),
+  includeNoticePay: z.boolean().default(true),
+  noticePeriodDays: z.coerce.number().int().min(0).default(30),
+  includeLoanRecovery: z.boolean().default(true),
+  includeAssetRecovery: z.boolean().default(true),
+  approvalStages: z.enum(['HR', 'HR_FINANCE', 'MANAGER_HR_FINANCE']).default('HR_FINANCE'),
+  isActive: z.boolean().default(true),
+});
+
+export const bankFileTemplateSchema = z.object({
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
+  bankName: z.string().min(1).max(100),
+  fileFormat: z.enum(['CSV', 'XLSX', 'TXT', 'FIXED_WIDTH']).default('CSV'),
+  delimiter: z.string().max(5).default(','),
+  columnMapping: z.string().min(1).max(2000),
+  headerRow: z.boolean().default(true),
+  footerRow: z.boolean().default(false),
+  footerTemplate: z.string().max(500).optional().nullable(),
+  isActive: z.boolean().default(true),
+});
+
+// ─── Phase 4 — TDS Investment Declarations & Proofs ──────────────────────────
+
+export const tdsInvestmentDeclarationSchema = z.object({
+  financialYear: z.coerce.number().int().min(2000).max(2100),
+  regime: z.enum(['OLD', 'NEW']).default('NEW'),
+  section80C: z.coerce.number().min(0).max(150000).default(0),
+  section80D: z.coerce.number().min(0).max(100000).default(0),
+  section80CCD: z.coerce.number().min(0).max(50000).default(0),
+  section80G: z.coerce.number().min(0).default(0),
+  section80E: z.coerce.number().min(0).default(0),
+  section80TTA: z.coerce.number().min(0).max(10000).default(0),
+  otherDeductions: z.coerce.number().min(0).default(0),
+  hraExemption: z.coerce.number().min(0).default(0),
+  otherIncome: z.coerce.number().min(0).default(0),
+  remarks: z.string().max(500).optional().nullable(),
+});
+
+export const tdsInvestmentProofSchema = z.object({
+  section: z.enum(['80C', '80D', '80CCD', '80G', '80E', '80TTA', 'OTHER', 'HRA']),
+  amount: z.coerce.number().min(0),
+  description: z.string().max(500).optional().nullable(),
+  documentUrl: z.string().max(500).optional().nullable(),
+});
+
+// ─── Phase 6 — Loans and Advances ────────────────────────────────────────────
+
+export const loanSchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  loanTypeId: z.coerce.number().int().positive(),
+  code: z.string().min(1).max(20),
+  principal: z.coerce.number().min(0.01),
+  interestRate: z.coerce.number().min(0).max(100).default(0),
+  tenureMonths: z.coerce.number().int().min(1),
+  installmentAmount: z.coerce.number().min(0.01),
+  disbursementDate: z.coerce.date(),
+  firstDeductionMonth: z.coerce.number().int().min(1).max(12).optional().nullable(),
+  firstDeductionYear: z.coerce.number().int().optional().nullable(),
+  remarks: z.string().max(500).optional().nullable(),
+});
+
+// ─── Phase 9 — Incentives & Allowances ───────────────────────────────────────
+
+export const incentivePolicySchema = z.object({
+  type: z.enum(['ATTENDANCE_BONUS', 'SHIFT_BONUS', 'PRODUCTION', 'SPECIAL', 'OTHER']),
+  name: z.string().min(1).max(100),
+  amount: z.coerce.number().min(0),
+  calculationType: z.enum(['FLAT', 'FORMULA']).default('FLAT'),
+  formula: z.string().max(500).optional().nullable(),
+  eligibility: z.string().max(500).optional().nullable(),
+  eligibleShiftCodes: z.string().max(200).optional().nullable(),
+  isActive: z.boolean().default(true),
+});
+
+export const doubleMachineEntrySchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  date: z.coerce.date(),
+  machine1: z.string().max(50).optional().nullable(),
+  machine2: z.string().max(50).optional().nullable(),
+  numMachines: z.coerce.number().int().min(1).max(10).default(1),
+  workingHours: z.coerce.number().min(0).max(24),
+  incentiveRate: z.coerce.number().min(0),
+  hrRemarks: z.string().max(500).optional().nullable(),
+});
+
+export const canteenTokenSchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  date: z.coerce.date(),
+  tokensUsed: z.coerce.number().int().min(0),
+  ratePerToken: z.coerce.number().min(0),
+  companyContribution: z.coerce.number().min(0).default(0),
+});
+
+export const petrolAllowanceEntrySchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  travelDate: z.coerce.date(),
+  km: z.coerce.number().min(0),
+  ratePerKm: z.coerce.number().min(0),
+});
+
+export const allowanceConfigSchema = z.object({
+  componentCode: z.string().min(1).max(30),
+  amount: z.coerce.number().min(0),
+  eligibilityType: z.enum(['ALL', 'DESIGNATION', 'DEPARTMENT', 'SHIFT']).default('ALL'),
+  eligibilityValue: z.string().max(200).optional().nullable(),
+  isActive: z.boolean().default(true),
+});

@@ -55,5 +55,19 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Phase 15 — Auto-recalculate monthly summaries after reopen so the
+  // refreshed DailyAttendance data flows into the summary immediately.
+  // This ensures payroll sees the latest attendance data when it recalculates.
+  if (result.count > 0) {
+    const { refreshMonthlySummary } = await import('@/lib/biometricConversion');
+    const affectedSummaries = await prisma.monthlyAttendanceSummary.findMany({
+      where: { year, month, employee: { companyId: scope.companyId, deletedAt: null } },
+      select: { employeeId: true },
+    });
+    await Promise.all(
+      affectedSummaries.map((s) => refreshMonthlySummary(s.employeeId, year, month))
+    );
+  }
+
   return NextResponse.json({ message: `Reopened ${result.count} record(s)` });
 }

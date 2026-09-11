@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // Generic function to count active/inactive for simple masters
 async function countSimpleMaster(model: string) {
@@ -35,6 +33,15 @@ export async function GET(
         const active = await prisma.employee.count({ where: { isActive: true } });
         const inactive = await prisma.employee.count({ where: { isActive: false } });
         stats = { total, active, inactive, pending: 0, approved: 0, rejected: 0 };
+        break;
+      }
+
+      case 'jd-master': {
+        const total = await prisma.jobDescription.count({ where: { deletedAt: null } });
+        const withFile = await prisma.jobDescription.count({
+          where: { deletedAt: null, jdFileUrl: { not: null } },
+        });
+        stats = { total, active: withFile, inactive: 0, pending: 0, approved: 0, rejected: 0 };
         break;
       }
 
