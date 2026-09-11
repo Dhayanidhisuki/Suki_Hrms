@@ -539,6 +539,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const employeeTypeId = jobInfo?.employeeTypeId;
     const applicableBenefitRates = employeeTypeId ? benefitRatesByType.get(employeeTypeId) ?? [] : [];
     for (const rate of applicableBenefitRates) {
+      if (!rate.salaryComponent || !rate.salaryComponentId) continue;
       const isDeduction = rate.salaryComponent.type === 'deduction';
       const factor = isDeduction ? lopFactor : 1;
       const amount = round(Number(rate.amount) * factor);
@@ -626,6 +627,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     let autoEarningsTotal = 0;
     let autoDeductionsTotal = 0;
     for (const rate of applicableBenefitRates) {
+      if (!rate.salaryComponent) continue;
       const isDeduction = rate.salaryComponent.type === 'deduction';
       const factor = isDeduction ? lopFactor : 1;
       const amount = round(Number(rate.amount) * factor);

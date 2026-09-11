@@ -156,15 +156,11 @@ export default function MonthlyAttendancePage() {
   const [busy, setBusy] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   // Phase 18 — grid filters.
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-
   const [search, setSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [designationFilter, setDesignationFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-
   const [departments, setDepartments] = useState<MasterOption[]>([]);
   const [designations, setDesignations] = useState<MasterOption[]>([]);
   const [employeeTypes, setEmployeeTypes] = useState<MasterOption[]>([]);
@@ -278,16 +274,6 @@ export default function MonthlyAttendancePage() {
 
   const reopenFields: FieldDef[] = [{ name: 'reason', label: 'Reopen Reason', type: 'textarea', required: true }];
 
-  // Phase 18 — client-side filter.
-  const filteredData = data.filter((e) => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (!e.employeeCode.toLowerCase().includes(q) && !e.name.toLowerCase().includes(q)) return false;
-    }
-    if (statusFilter && e.summary?.status !== statusFilter) return false;
-    return true;
-  });
-
   const handleExport = () => {
     window.open(`/api/biometric/export?year=${year}&month=${month}`, '_blank');
   };
@@ -336,8 +322,8 @@ export default function MonthlyAttendancePage() {
           <input
             type="text"
             placeholder="Search employee…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-40 rounded-lg border px-3 py-2 text-sm"
             style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
           />
