@@ -371,6 +371,33 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     where: { employeeId, date: { gte: monthStart, lt: monthEnd } },
   });
 
+  // Permission excess → LOP: approved PermissionRequests with excessHours
+  // beyond the company's free allowance are converted to LOP days. The
+  // PermissionPolicy.freeHoursPerMonth defines the free quota; any excess
+  // hours above that are converted to LOP days at 8 hours = 1 day.
+  const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
+  const permissionPolicy = employee
+    ? await prisma.permissionPolicy.findUnique({ where: { companyId: employee.companyId } })
+    : null;
+  const freeHoursPerMonth = Number(permissionPolicy?.freeHoursPerMonth ?? 2);
+
+  const permissionRequests = await prisma.permissionRequest.findMany({
+    where: {
+      employeeId,
+      date: { gte: monthStart, lt: monthEnd },
+      status: 'approved',
+      exceedsAllowance: true,
+    },
+  });
+
+  // Sum all approved permission hours for the month, then subtract the free
+  // allowance to get excess hours. Convert excess to LOP days (8 hrs = 1 day).
+  const totalPermissionHours = permissionRequests.reduce(
+    (sum, p) => sum + Number(p.hours), 0
+  );
+  const excessHours = Math.max(0, totalPermissionHours - freeHoursPerMonth);
+  const permissionLopDays = excessHours / 8; // 8 hours = 1 LOP day
+
   let presentDays = 0;
   let absentDays = 0;
   let leaveDays = 0;
@@ -381,6 +408,7 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
   let otMinutesApprovedTotal = 0;
   let lateMinutesTotal = 0;
   let earlyOutMinutesTotal = 0;
+  let holidayWorkedDays = 0;
 
   for (const d of days) {
     if (d.status === 'Present' || d.status === 'OnDuty') {
@@ -400,6 +428,9 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
       holidayDays += 1;
     }
 
+    // Phase 12 — count holiday/weekly-off worked days.
+    if (d.isHolidayWorked) holidayWorkedDays += 1;
+
     // Only HR-approved OT with settlementType === 'OT' is paid out in payroll
     if (d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT' && d.otMinutesApproved) {
       otMinutesApprovedTotal += d.otMinutesApproved;
@@ -408,9 +439,38 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     earlyOutMinutesTotal += d.earlyOutMinutes;
   }
 
+  // Phase 12 — leave-type breakdown from approved LeaveApplications.
+  const leaveApps = await prisma.leaveApplication.findMany({
+    where: {
+      employeeId,
+      status: 'approved',
+      fromDate: { lt: monthEnd },
+      toDate: { gte: monthStart },
+    },
+    include: { leaveMaster: { select: { code: true } } },
+  });
+
+  let elDays = 0, clDays = 0, slDays = 0, mlDays = 0, plDays = 0, compOffDays = 0, otherLeaveDays = 0;
+  for (const app of leaveApps) {
+    // Prorate leave days that span across month boundaries.
+    const from = app.fromDate < monthStart ? monthStart : app.fromDate;
+    const to = app.toDate > monthEnd ? monthEnd : app.toDate;
+    const daysInThisMonth = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+    const code = app.leaveMaster?.code ?? '';
+    if (code === 'EL') elDays += daysInThisMonth;
+    else if (code === 'CL') clDays += daysInThisMonth;
+    else if (code === 'SL') slDays += daysInThisMonth;
+    else if (code === 'ML') mlDays += daysInThisMonth;
+    else if (code === 'PL') plDays += daysInThisMonth;
+    else if (code === 'CO' || code === 'COMP_OFF') compOffDays += daysInThisMonth;
+    else otherLeaveDays += daysInThisMonth;
+  }
+
   const totalCalendarDays = daysInMonth(year, month);
   const totalAbsentDays = absentDays + halfDays * 0.5;
-  const payableDays = Math.max(0, totalCalendarDays - totalAbsentDays - lopDays);
+  // Add permission excess LOP days to the total LOP count.
+  const totalLopDays = lopDays + permissionLopDays;
+  const payableDays = Math.max(0, totalCalendarDays - totalAbsentDays - totalLopDays);
 
   const counts = {
     totalWorkingDays: totalCalendarDays,
@@ -418,10 +478,20 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     presentDays,
     absentDays: totalAbsentDays,
     leaveDays,
-    lopDays,
+    lopDays: totalLopDays,
     otMinutesTotal: otMinutesApprovedTotal,
     lateMinutesTotal,
     earlyOutMinutesTotal,
+    elDays,
+    clDays,
+    slDays,
+    mlDays,
+    plDays,
+    compOffDays,
+    otherLeaveDays,
+    holidayWorkedDays,
+    permissionHours: totalPermissionHours,
+    permissionExcessHours: excessHours,
   };
 
   await prisma.monthlyAttendanceSummary.upsert({

@@ -55,7 +55,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/workforce/') ||
     pathname.startsWith('/payroll/') ||
     pathname.startsWith('/reports/') ||
-    pathname.startsWith('/manager/');
+    pathname.startsWith('/manager/') ||
+    pathname.startsWith('/dashboard/');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();

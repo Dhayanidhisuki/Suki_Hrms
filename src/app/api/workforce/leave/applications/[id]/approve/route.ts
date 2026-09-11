@@ -20,6 +20,7 @@ import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManage
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { debitCompOff } from '@/lib/compOffTransactions';
 
 function datesBetween(from: Date, to: Date): Date[] {
   const dates: Date[] = [];
@@ -44,6 +45,7 @@ export async function POST(
 
   const application = await prisma.leaveApplication.findFirst({
     where: { id: applicationId, employee: { companyId: scope.companyId, deletedAt: null } },
+    include: { leaveMaster: { select: { code: true } } },
   });
   if (!application) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -130,6 +132,20 @@ export async function POST(
     for (const key of touchedMonths) {
       const [y, m] = key.split('-').map(Number);
       await refreshMonthlySummary(application.employeeId, y, m);
+    }
+
+    // If this is a comp-off leave, also debit the CompOffBalance audit trail.
+    // The LeaveBalance ledger is the source of truth for availability; this
+    // layer tracks individual transactions with policy-driven expiry.
+    if (application.leaveMaster.code === 'COMPOFF') {
+      await debitCompOff(
+        application.employeeId,
+        numberOfDays,
+        application.fromDate,
+        'LEAVE',
+        applicationId,
+        `Comp-off leave approved (${numberOfDays} day(s))`
+      );
     }
 
     return NextResponse.json(updated);

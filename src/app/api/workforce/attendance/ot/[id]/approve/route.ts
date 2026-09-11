@@ -28,6 +28,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { grantCompOff } from '@/lib/leaveAccrual';
+import { creditCompOff } from '@/lib/compOffTransactions';
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (settlementType === 'COMP_OFF') {
       await grantCompOff(record.employeeId, record.date);
+      await creditCompOff(record.employeeId, 1, record.date, 'OT_APPROVAL', attendanceId, `OT approved as comp-off on ${record.date.toISOString().slice(0, 10)}`);
       await upsertDailyAttendanceWithHistory(
         prisma,
         record.employeeId,

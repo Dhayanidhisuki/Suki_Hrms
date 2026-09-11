@@ -27,6 +27,9 @@ interface BonusRow {
   currentBasic: string;
   bonusPercent: string | null;
   bonusAmount: string | null;
+  bonusType: string | null;
+  totalPaid: string | null;
+  balanceDue: string | null;
   eligibilityStatus: string;
   eligibilityReason: string | null;
   calculationType: string;
@@ -425,6 +428,9 @@ export default function BonusPage() {
     { key: 'calculationType', label: 'Type', render: (r) => (r.calculationType === 'ACTUAL_NET_PAY' ? 'Actual Net Pay' : 'Basic Projection') },
     { key: 'bonusPercent', label: 'Bonus %', render: (r) => r.bonusPercent ?? '—' },
     { key: 'bonusAmount', label: 'Bonus Amount', className: 'font-medium', render: (r) => r.bonusAmount ?? '—' },
+    { key: 'bonusType', label: 'Type', render: (r) => r.bonusType ?? 'ANNUAL' },
+    { key: 'totalPaid', label: 'Paid', render: (r) => r.totalPaid ?? '0' },
+    { key: 'balanceDue', label: 'Balance', render: (r) => r.balanceDue ?? '0' },
     {
       key: 'status',
       label: 'Status',

@@ -120,6 +120,9 @@ export default function MonthlyAttendancePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  // Phase 18 — grid filters.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const numDays = daysInMonth(year, month);
   const dayList = useMemo(() => Array.from({ length: numDays }, (_, i) => i + 1), [numDays]);
@@ -171,6 +174,20 @@ export default function MonthlyAttendancePage() {
 
   const reopenFields: FieldDef[] = [{ name: 'reason', label: 'Reopen Reason', type: 'textarea', required: true }];
 
+  // Phase 18 — client-side filter.
+  const filteredData = data.filter((e) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!e.employeeCode.toLowerCase().includes(q) && !e.name.toLowerCase().includes(q)) return false;
+    }
+    if (statusFilter && e.summary?.status !== statusFilter) return false;
+    return true;
+  });
+
+  const handleExport = () => {
+    window.open(`/api/biometric/export?year=${year}&month=${month}`, '_blank');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -206,6 +223,34 @@ export default function MonthlyAttendancePage() {
           >
             {monthStatus === 'FROZEN' ? '🔒 Frozen' : monthStatus}
           </span>
+          {/* Phase 18 — filter and export controls */}
+          <input
+            type="text"
+            placeholder="Search employee…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-40 rounded-lg border px-3 py-2 text-sm"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          >
+            <option value="">All Statuses</option>
+            <option value="OPEN">Open</option>
+            <option value="FINALIZED">Finalized</option>
+            <option value="FROZEN">Frozen</option>
+            <option value="READY_FOR_PAYROLL">Ready for Payroll</option>
+          </select>
+          <button
+            onClick={handleExport}
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-white"
+            style={{ backgroundColor: 'var(--primary)' }}
+          >
+            Export CSV
+          </button>
           {monthStatus === 'OPEN' && (
             <button
               disabled={busy}
@@ -296,8 +341,14 @@ export default function MonthlyAttendancePage() {
                   No employees found.
                 </td>
               </tr>
+            ) : filteredData.length === 0 ? (
+              <tr>
+                <td colSpan={numDays + 4} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
+                  No employees match the current filters.
+                </td>
+              </tr>
             ) : (
-              data.map((emp) => {
+              filteredData.map((emp) => {
                 const byDate = new Map(emp.days.map((d) => [d.date.slice(0, 10), d]));
                 let totalMinutes = 0;
                 let lateMinutes = 0;

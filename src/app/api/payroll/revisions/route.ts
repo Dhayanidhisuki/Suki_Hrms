@@ -91,12 +91,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // When the client didn't provide component-level revisions, auto-fill
+  // using the company's active GrossSplitRule rows (Masters > Gross Split
+  // Rules). Each rule's percentOfGross is applied to revisedGross to
+  // derive the revised component amount. The client can still override
+  // individual components by passing them explicitly.
   const currentByComponent = new Map(currentRevision.components.map((c) => [c.salaryComponentId, Number(c.amount)]));
-  const components = data.components.map((c) => ({
+  let componentsToCreate = data.components.map((c) => ({
     salaryComponentId: c.salaryComponentId,
     currentAmount: currentByComponent.get(c.salaryComponentId) ?? 0,
     revisedAmount: c.revisedAmount,
   }));
+  if (data.components.length === 0) {
+    const splitRules = await prisma.grossSplitRule.findMany({
+      where: { companyId: scope.companyId, isActive: true },
+      include: { salaryComponent: { select: { id: true, type: true } } },
+    });
+    componentsToCreate = splitRules.map((rule) => ({
+      salaryComponentId: rule.salaryComponentId,
+      currentAmount: currentByComponent.get(rule.salaryComponentId) ?? 0,
+      revisedAmount: Math.round(revisedGross * (Number(rule.percentOfGross) / 100)),
+    }));
+  }
 
   const created = await prisma.salaryRevisionRequest.create({
     data: {
@@ -112,7 +128,7 @@ export async function POST(request: NextRequest) {
       remarks: data.remarks ?? null,
       status: data.submit ? 'SUBMITTED' : 'DRAFT',
       createdByUserId: performedByUserId,
-      components: { create: components },
+      components: { create: componentsToCreate },
     },
     include: { components: true },
   });
