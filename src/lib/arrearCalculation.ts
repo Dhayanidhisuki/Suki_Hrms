@@ -16,6 +16,14 @@
  * applied to the employee that month. No PT/TDS arrear (not in the BRD's
  * own arrear formula either).
  *
+ * NOTE (2026-09-11): payrollCalculation.ts now uses includeInPf/includeInEsi
+ * flags for the wage base when any component is flagged. This arrear
+ * calculation still uses gross for the wage base because it reads from
+ * the historical PayrollLine.grossEarnings (which was computed under
+ * whatever rules were active that month). Phase 2 will add component-level
+ * arrear PF/ESI when the full LomConfig and component-level revision data
+ * are available.
+ *
  * If no month qualifies (the revision is fully forward-dated), no
  * SalaryArrear is created at all (BR-07).
  */
