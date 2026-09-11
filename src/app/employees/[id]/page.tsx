@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Field, DataTable, FormModal, ConfirmDialog, type FieldDef, type Column } from '@/components/ui';
@@ -679,30 +679,131 @@ function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
  * Reveals the real PAN/Aadhaar values for the KYC tab, gated server-side by
  * employee.kyc.reveal — a permission distinct from employee.kyc.view (the
  * base tab only ever sees masked values). Every reveal is server-logged.
+ *
+ * Also doubles as a document upload center for signature and government
+ * documents (PDF/images), stored as EmployeeDocument rows and served through
+ * the permission-gated /api/uploads/[...path] route.
  */
+
+interface EmployeeDoc {
+  id: number;
+  docType: string;
+  docNumber: string | null;
+  fileName: string | null;
+  filePath: string | null;
+  issuedDate: string | null;
+  expiryDate: string | null;
+  isExpired?: boolean;
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  aadhaar: 'Aadhaar',
+  pan: 'PAN',
+  passport: 'Passport',
+  driving_license: 'Driving Licence',
+  kpi: 'KPI',
+  jd: 'Job Description',
+  signature: 'Signature',
+  government: 'Government Document',
+  other: 'Other',
+};
+
 function KycRevealPanel({ employeeId }: { employeeId: string }) {
   const [revealed, setRevealed] = useState<{ panNumber: string | null; aadhaarNumber: string | null } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [revealLoading, setRevealLoading] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  const [docs, setDocs] = useState<EmployeeDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState('government');
+  const [docNumber, setDocNumber] = useState('');
+  const [issuedDate, setIssuedDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+
+  const fetchDocs = useCallback(async () => {
+    setDocsLoading(true);
+    setDocsError(null);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/documents`);
+      const json = (await res.json()) as { data: EmployeeDoc[] };
+      setDocs(json.data ?? []);
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : 'Failed to load documents');
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchDocs();
+  }, [fetchDocs]);
 
   const handleReveal = async () => {
-    setLoading(true);
-    setError(null);
+    setRevealLoading(true);
+    setRevealError(null);
     try {
       const res = await fetch(`/api/employees/${employeeId}/kyc/reveal`, { method: 'POST' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to reveal');
       setRevealed(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reveal');
+      setRevealError(err instanceof Error ? err.message : 'Failed to reveal');
     } finally {
-      setLoading(false);
+      setRevealLoading(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    setUploadError(null);
+    if (!selectedFile) {
+      setUploadError('Choose a file first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('docType', docType);
+      if (docNumber.trim()) formData.append('docNumber', docNumber.trim());
+      if (issuedDate) formData.append('issuedDate', issuedDate);
+      if (expiryDate) formData.append('expiryDate', expiryDate);
+      const res = await fetch(`/api/employees/${employeeId}/documents`, { method: 'POST', body: formData });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Upload failed');
+      setSelectedFile(null);
+      setDocNumber('');
+      setIssuedDate('');
+      setExpiryDate('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await fetchDocs();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (docId: number) => {
+    if (!window.confirm('Delete this document?')) return;
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/documents/${docId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Delete failed');
+      await fetchDocs();
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : 'Delete failed');
     }
   };
 
   return (
     <SectionCard
-      title="Sensitive Fields"
+      title="Document Upload Center"
       icon={<SectionIcon.Shield />}
       action={
         revealed ? (
@@ -711,43 +812,180 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
             className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
             style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
           >
-            Hide
+            Hide PAN / Aadhaar
           </button>
         ) : (
           <button
             onClick={handleReveal}
-            disabled={loading}
+            disabled={revealLoading}
             className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
             style={{ backgroundColor: 'var(--accent)' }}
           >
-            {loading ? 'Revealing...' : 'Reveal PAN / Aadhaar'}
+            {revealLoading ? 'Revealing...' : 'Reveal PAN / Aadhaar'}
           </button>
         )
       }
     >
-      <div className="space-y-3">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-      {revealed && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>PAN Number</div>
-            <div style={{ color: 'var(--foreground)' }}>{revealed.panNumber ?? '—'}</div>
+      <div className="space-y-5">
+        {revealError && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+            {revealError}
           </div>
-          <div>
-            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Aadhaar Number</div>
-            <div style={{ color: 'var(--foreground)' }}>{revealed.aadhaarNumber ?? '—'}</div>
+        )}
+        {revealed && (
+          <div className="grid grid-cols-1 gap-4 rounded-lg border p-4 md:grid-cols-2 text-sm" style={{ borderColor: 'var(--border)' }}>
+            <div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>PAN Number</div>
+              <div style={{ color: 'var(--foreground)' }}>{revealed.panNumber ?? '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Aadhaar Number</div>
+              <div style={{ color: 'var(--foreground)' }}>{revealed.aadhaarNumber ?? '—'}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+            Upload a new document
+          </h4>
+          {uploadError && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {uploadError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Document type
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                >
+                  <option value="signature">Signature</option>
+                  <option value="government">Government Document</option>
+                  <option value="aadhaar">Aadhaar</option>
+                  <option value="pan">PAN</option>
+                  <option value="passport">Passport</option>
+                  <option value="driving_license">Driving Licence</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Document number
+                <input
+                  type="text"
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  placeholder="e.g. PAN / Aadhaar number"
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Issued on
+                <input
+                  type="date"
+                  value={issuedDate}
+                  onChange={(e) => setIssuedDate(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Expires on
+                <input
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                File (PDF or image, max 5 MB)
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-[var(--accent)] file:px-2 file:py-1 file:text-xs file:text-white"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <button
+                onClick={handleUpload}
+                disabled={uploading || !selectedFile}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                {uploading ? 'Uploading...' : 'Upload'}
+              </button>
+            </div>
           </div>
         </div>
-      )}
-      {!revealed && !error && (
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          PAN and Aadhaar are masked above. Revealing them is permission-gated and logged.
-        </p>
-      )}
+
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+            Uploaded documents
+          </h4>
+          {docsLoading ? (
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading documents...</p>
+          ) : docsError ? (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {docsError}
+            </div>
+          ) : docs.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No documents uploaded yet.</p>
+          ) : (
+            <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              {docs.map((d) => (
+                <div key={d.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium" style={{ color: 'var(--foreground)' }}>
+                        {DOC_TYPE_LABELS[d.docType] ?? d.docType}
+                      </span>
+                      {d.isExpired && (
+                        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+                          Expired
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {d.fileName ?? '—'}
+                      {d.docNumber ? ` · ${d.docNumber}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {d.filePath && (
+                      <a
+                        href={d.filePath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:opacity-80"
+                        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      >
+                        View
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleDelete(d.id)}
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90"
+                      style={{ backgroundColor: 'var(--danger)' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </SectionCard>
   );
