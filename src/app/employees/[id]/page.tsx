@@ -56,7 +56,7 @@ interface ActivityRow { id: number; activityAt: string; module: string; activity
  */
 type TabKey =
   | 'basic' | 'personal' | 'job_profile' | 'salary' | 'education'
-  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity';
+  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity' | 'benefits';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'basic', label: 'Basic Details' },
@@ -66,6 +66,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'education', label: 'Education & Experience' },
   { key: 'passport', label: 'Passport' },
   { key: 'dependents', label: 'Dependents' },
+  { key: 'benefits', label: 'Benefits' },
   { key: 'assets', label: 'Assets' },
   { key: 'skills', label: 'Skill Matrix' },
   { key: 'kyc', label: 'KYC & Statutory' },
@@ -648,6 +649,135 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   );
 }
 
+interface EmployeeBenefitRow {
+  id: number;
+  code: string;
+  name: string;
+  employeeType: string;
+  amount: number;
+}
+
+/** Benefits tab — shows available benefit components and allows toggling enrollment. */
+function EmployeeBenefitsTab({
+  employeeId,
+  onDirtyChange,
+}: {
+  employeeId: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const [available, setAvailable] = useState<EmployeeBenefitRow[]>([]);
+  const [selected, setSelected] = useState<EmployeeBenefitRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchBenefits = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/benefits`);
+      if (!res.ok) throw new Error('Failed to fetch benefits');
+      const json = await res.json();
+      setAvailable(json.available ?? []);
+      setSelected(json.selected ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchBenefits();
+  }, [fetchBenefits]);
+
+  const selectedIds = new Set(selected.map((s) => s.id));
+
+  const toggle = (benefit: EmployeeBenefitRow) => {
+    const exists = selected.some((s) => s.id === benefit.id);
+    const next = exists ? selected.filter((s) => s.id !== benefit.id) : [...selected, benefit];
+    setSelected(next);
+    onDirtyChange?.(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/benefits`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ benefitRateIds: selected.map((s) => s.id) }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const json = await res.json();
+      setSelected(json.selected ?? []);
+      onDirtyChange?.(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Benefits" icon={<SectionIcon.Gift />}>
+      <div className="space-y-3">
+        {error && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</p>
+        ) : available.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No benefit components configured yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {available.map((b) => {
+              const checked = selectedIds.has(b.id);
+              return (
+                <label
+                  key={b.id}
+                  className="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer transition hover:opacity-80"
+                  style={{ borderColor: checked ? 'var(--accent)' : 'var(--border)', backgroundColor: checked ? 'var(--accent-soft)' : 'transparent' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(b)}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{b.name}</span>
+                    <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {b.code} · {b.employeeType} · ₹{b.amount.toFixed(2)}/mo
+                    </span>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && available.length > 0 && (
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              {saving ? 'Saving…' : 'Save Benefits'}
+            </button>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 /** Per-profile Activity tab — reuses the global activity API, filtered to this employee. */
 function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
   const [items, setItems] = useState<ActivityRow[]>([]);
@@ -709,10 +839,6 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 function KycRevealPanel({ employeeId }: { employeeId: string }) {
-  const [revealed, setRevealed] = useState<{ panNumber: string | null; aadhaarNumber: string | null } | null>(null);
-  const [revealLoading, setRevealLoading] = useState(false);
-  const [revealError, setRevealError] = useState<string | null>(null);
-
   const [docs, setDocs] = useState<EmployeeDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -725,6 +851,7 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
   const [docNumber, setDocNumber] = useState('');
   const [issuedDate, setIssuedDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDoc | null>(null);
 
   const fetchDocs = useCallback(async () => {
     setDocsLoading(true);
@@ -743,21 +870,6 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
   useEffect(() => {
     fetchDocs();
   }, [fetchDocs]);
-
-  const handleReveal = async () => {
-    setRevealLoading(true);
-    setRevealError(null);
-    try {
-      const res = await fetch(`/api/employees/${employeeId}/kyc/reveal`, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Failed to reveal');
-      setRevealed(json);
-    } catch (err) {
-      setRevealError(err instanceof Error ? err.message : 'Failed to reveal');
-    } finally {
-      setRevealLoading(false);
-    }
-  };
 
   const handleUpload = async () => {
     setUploadError(null);
@@ -805,46 +917,8 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
     <SectionCard
       title="Document Upload Center"
       icon={<SectionIcon.Shield />}
-      action={
-        revealed ? (
-          <button
-            onClick={() => setRevealed(null)}
-            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          >
-            Hide PAN / Aadhaar
-          </button>
-        ) : (
-          <button
-            onClick={handleReveal}
-            disabled={revealLoading}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            {revealLoading ? 'Revealing...' : 'Reveal PAN / Aadhaar'}
-          </button>
-        )
-      }
     >
       <div className="space-y-5">
-        {revealError && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-            {revealError}
-          </div>
-        )}
-        {revealed && (
-          <div className="grid grid-cols-1 gap-4 rounded-lg border p-4 md:grid-cols-2 text-sm" style={{ borderColor: 'var(--border)' }}>
-            <div>
-              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>PAN Number</div>
-              <div style={{ color: 'var(--foreground)' }}>{revealed.panNumber ?? '—'}</div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Aadhaar Number</div>
-              <div style={{ color: 'var(--foreground)' }}>{revealed.aadhaarNumber ?? '—'}</div>
-            </div>
-          </div>
-        )}
-
         <div className="space-y-3">
           <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
             Upload a new document
@@ -963,15 +1037,13 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
                   </div>
                   <div className="flex items-center gap-2">
                     {d.filePath && (
-                      <a
-                        href={d.filePath}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        onClick={() => setPreviewDoc(d)}
                         className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:opacity-80"
                         style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
                       >
                         View
-                      </a>
+                      </button>
                     )}
                     <button
                       onClick={() => handleDelete(d.id)}
@@ -987,6 +1059,50 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
           )}
         </div>
       </div>
+
+      {previewDoc && previewDoc.filePath && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl shadow-2xl"
+            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+                {previewDoc.fileName ?? DOC_TYPE_LABELS[previewDoc.docType] ?? 'Document'}
+              </h3>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:opacity-80"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-2">
+              {previewDoc.filePath.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={previewDoc.filePath}
+                  title={previewDoc.fileName ?? 'Document'}
+                  className="h-[70vh] w-full rounded-lg"
+                  style={{ border: '1px solid var(--border)' }}
+                />
+              ) : (
+                <img
+                  src={previewDoc.filePath}
+                  alt={previewDoc.fileName ?? 'Document'}
+                  className="mx-auto max-h-[70vh] max-w-full rounded-lg"
+                  style={{ border: '1px solid var(--border)' }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </SectionCard>
   );
 }
@@ -1470,6 +1586,9 @@ export default function EmployeeProfilePage() {
             { key: 'isDependent', label: 'Is Dependent', render: (r) => (r.isDependent ? 'Yes' : 'No') },
           ]}
         />
+      )}
+      {activeTab === 'benefits' && (
+        <EmployeeBenefitsTab employeeId={employeeId} onDirtyChange={setActiveTabDirty} />
       )}
       {activeTab === 'skills' && (
         <RepeatableListTab<SkillRow>

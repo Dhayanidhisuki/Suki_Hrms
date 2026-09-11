@@ -355,6 +355,7 @@ export const employeeCreateSchema = basicDetailsSchema.extend({
   dependents: z.array(dependentSchema).optional(),
   experiences: z.array(experienceSchema).optional(),
   educations: z.array(educationSchema).optional(),
+  benefitRateIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const employeeUpdateSchema = z.object({

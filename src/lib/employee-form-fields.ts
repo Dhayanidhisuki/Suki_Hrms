@@ -114,7 +114,7 @@ export function buildBasicFields(
       label: 'Reference Code',
       type: 'text',
       disabled: true,
-      helpText: 'Automatically generated on save (e.g. EMP001) — not editable',
+      helpText: 'Automatically generated on save (e.g. RC001) — not editable',
     },
     { name: 'oldEmployeeCode', label: 'Employee Code', type: 'text' },
     { name: 'companyId', label: 'Company', type: 'select', required: true, options: toOptions(opts.companies) },

@@ -369,9 +369,28 @@ model EsiRate {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  components EsiRateComponent[]
+
   @@index([effectiveFrom, effectiveTo])
   @@index([code])
   @@map("EsiRate")
+}
+
+model EsiRateComponent {
+  id                Int     @id @default(autoincrement())
+  esiRateId         Int
+  salaryComponentId Int
+  calculationType   String  @db.NVarChar(10) // percentage | inr
+  value             Decimal @db.Decimal(10, 4)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  esiRate         EsiRate         @relation(fields: [esiRateId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction)
+
+  @@index([esiRateId])
+  @@index([salaryComponentId])
+  @@map("EsiRateComponent")
 }
 
 // Q2: Drafted as two separate tables (EsiRate, PfRate).
@@ -388,9 +407,28 @@ model PfRate {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  components PfRateComponent[]
+
   @@index([effectiveFrom, effectiveTo])
   @@index([code])
   @@map("PfRate")
+}
+
+model PfRateComponent {
+  id                Int     @id @default(autoincrement())
+  pfRateId          Int
+  salaryComponentId Int
+  calculationType   String  @db.NVarChar(10) // percentage | inr
+  value             Decimal @db.Decimal(10, 4)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  pfRate          PfRate          @relation(fields: [pfRateId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction)
+
+  @@index([pfRateId])
+  @@index([salaryComponentId])
+  @@map("PfRateComponent")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -776,6 +814,7 @@ model Employee {
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
   dailyAttendanceHistory     DailyAttendanceHistory[]
+  employeeBenefits           EmployeeBenefit[]
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
@@ -1336,9 +1375,11 @@ model SalaryComponent {
   employeeComponents  EmployeeSalaryComponent[]
   payrollLineItems    PayrollLineComponent[]
   salaryRevisionItems SalaryRevisionComponent[]
-  benefitRates        BenefitRateByEmployeeType[]
   grossSplitRule      GrossSplitRule?
   otPlansPayingHere   OTPlan[]
+  esiRateComponents   EsiRateComponent[]
+  pfRateComponents    PfRateComponent[]
+  benefitRates        BenefitRateByEmployeeType[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
@@ -1379,19 +1420,39 @@ model GrossSplitRule {
 model BenefitRateByEmployeeType {
   id                Int      @id @default(autoincrement())
   companyId         Int
-  salaryComponentId Int
+  code              String   @db.NVarChar(20)
+  name              String   @db.NVarChar(100)
   employeeTypeId    Int
+  salaryComponentId Int?
   amount            Decimal  @db.Decimal(18, 2)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  company         Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   employeeType    EmployeeType    @relation(fields: [employeeTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent? @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employeeBenefits EmployeeBenefit[]
 
-  @@unique([companyId, salaryComponentId, employeeTypeId])
+  @@unique([companyId, code])
   @@map("BenefitRateByEmployeeType")
+}
+
+model EmployeeBenefit {
+  id              Int     @id @default(autoincrement())
+  employeeId      Int
+  benefitRateId   Int
+  isActive        Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee       Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  benefitRate    BenefitRateByEmployeeType @relation(fields: [benefitRateId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, benefitRateId])
+  @@index([employeeId])
+  @@index([benefitRateId])
+  @@map("EmployeeBenefit")
 }
 
 // PMS Incentive — BRD: monthly % entered jointly (50% company contribution,

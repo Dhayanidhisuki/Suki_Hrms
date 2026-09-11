@@ -82,13 +82,21 @@ export async function GET(
         stats = await countSimpleMaster('bonusRate');
         break;
 
-      case 'esi-rates':
-        stats = await countSimpleMaster('esiRate');
+      case 'esi-rates': {
+        const total = await prisma.esiRate.count();
+        const active = await prisma.esiRate.count({ where: { isActive: true } });
+        const inactive = await prisma.esiRate.count({ where: { isActive: false } });
+        stats = { total, active, inactive, pending: 0, approved: 0, rejected: 0 };
         break;
+      }
 
-      case 'pf-rates':
-        stats = await countSimpleMaster('pfRate');
+      case 'pf-rates': {
+        const total = await prisma.pfRate.count();
+        const active = await prisma.pfRate.count({ where: { isActive: true } });
+        const inactive = await prisma.pfRate.count({ where: { isActive: false } });
+        stats = { total, active, inactive, pending: 0, approved: 0, rejected: 0 };
         break;
+      }
 
       case 'tds-slabs':
         stats = await countSimpleMaster('tdsSlabs');

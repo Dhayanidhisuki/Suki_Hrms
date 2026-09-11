@@ -103,21 +103,21 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Employee Code is system-generated, not typed by the admin — EMP001,
- * EMP002, ... scoped per company (matches the @@unique([companyId,
+ * Employee Code is system-generated, not typed by the admin — RC001,
+ * RC002, ... scoped per company (matches the @@unique([companyId,
  * employeeCode]) constraint, so each company has its own sequence).
  */
 async function generateEmployeeCode(companyId: number): Promise<string> {
   const existing = await prisma.employee.findMany({
-    where: { companyId, employeeCode: { startsWith: 'EMP' } },
+    where: { companyId, employeeCode: { startsWith: 'RC' } },
     select: { employeeCode: true },
   });
   let max = 0;
   for (const e of existing) {
-    const m = e.employeeCode.match(/^EMP(\d+)$/);
+    const m = e.employeeCode.match(/^RC(\d+)$/);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
-  return `EMP${String(max + 1).padStart(3, '0')}`;
+  return `RC${String(max + 1).padStart(3, '0')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -223,6 +223,9 @@ export async function POST(request: NextRequest) {
           dependents: data.dependents ? { create: data.dependents } : undefined,
           experiences: data.experiences ? { create: data.experiences } : undefined,
           educations: data.educations ? { create: data.educations } : undefined,
+          employeeBenefits: data.benefitRateIds?.length
+            ? { create: data.benefitRateIds.map((benefitRateId) => ({ benefitRateId })) }
+            : undefined,
         },
         include: {
           company: true,

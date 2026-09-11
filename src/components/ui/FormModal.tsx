@@ -11,6 +11,7 @@ interface FormModalProps {
   onClose: () => void;
   onSubmit: (values: Record<string, string | number | boolean>) => Promise<void>;
   submitLabel?: string;
+  children?: React.ReactNode;
 }
 
 export default function FormModal({
@@ -21,6 +22,7 @@ export default function FormModal({
   onClose,
   onSubmit,
   submitLabel = 'Save',
+  children,
 }: FormModalProps) {
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -112,6 +114,8 @@ export default function FormModal({
               onChange={(v) => handleChange(f.name, v)}
             />
           ))}
+
+          {children}
 
           {submitError && (
             <div

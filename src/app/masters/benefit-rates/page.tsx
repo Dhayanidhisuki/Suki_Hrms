@@ -1,9 +1,7 @@
 /**
- * Benefit Rates — per-Employee-Type monthly amount for Canteen Deduction /
- * Petrol Allowance (or any other component an admin wants to rate this
- * way). Pattern B: simple master + 2 FKs (salaryComponentId, employeeTypeId)
- * + companyId, mirrors units/page.tsx. Applied to a payroll run via the
- * "Apply Canteen/Petrol" action on Salary Processing.
+ * Benefit Components — standalone monthly-amount per Employee Type.
+ * Admin creates benefit components (e.g. Canteen Token, Petrol Allowance)
+ * directly here; employees are enrolled on their profile or during creation.
  */
 
 'use client';
@@ -11,25 +9,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
-interface BenefitRate {
+interface BenefitComponent {
   id: number;
   companyId: number;
-  salaryComponentId: number;
+  code: string;
+  name: string;
   employeeTypeId: number;
+  salaryComponentId: number | null;
   amount: number;
   isActive: boolean;
   company: { id: number; name: string } | null;
-  salaryComponent: { id: number; code: string; name: string } | null;
   employeeType: { id: number; name: string } | null;
+  salaryComponent: { id: number; code: string; name: string } | null;
+  employeeCount?: number;
 }
 
 interface ApiResponse {
-  data: BenefitRate[];
+  data: BenefitComponent[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export default function BenefitRatesPage() {
-  const [records, setRecords] = useState<BenefitRate[]>([]);
+  const [records, setRecords] = useState<BenefitComponent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -39,28 +40,30 @@ export default function BenefitRatesPage() {
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [companyOptions, setCompanyOptions] = useState<FieldOption[]>([]);
-  const [componentOptions, setComponentOptions] = useState<FieldOption[]>([]);
   const [employeeTypeOptions, setEmployeeTypeOptions] = useState<FieldOption[]>([]);
+  const [salaryComponentOptions, setSalaryComponentOptions] = useState<FieldOption[]>([]);
 
   useEffect(() => {
     fetch('/api/masters/companies?limit=100')
       .then((r) => r.json())
       .then((json: { data: { id: number; name: string }[] }) => setCompanyOptions(json.data.map((c) => ({ label: c.name, value: c.id }))));
-    fetch('/api/masters/salary-components?limit=500')
-      .then((r) => r.json())
-      .then((json: { data: { id: number; code: string; name: string; type: string }[] }) =>
-        setComponentOptions(json.data.filter((c) => c.type === 'earning' || c.type === 'deduction').map((c) => ({ label: `${c.name} (${c.code})`, value: c.id })))
-      );
     fetch('/api/masters/employee-types?limit=100')
       .then((r) => r.json())
       .then((json: { data: { id: number; name: string }[] }) => setEmployeeTypeOptions(json.data.map((t) => ({ label: t.name, value: t.id }))));
+    fetch('/api/masters/salary-components?limit=500')
+      .then((r) => r.json())
+      .then((json: { data: { id: number; code: string; name: string; type: string }[] }) =>
+        setSalaryComponentOptions(json.data.filter((c) => c.type === 'earning' || c.type === 'deduction').map((c) => ({ label: `${c.name} (${c.code})`, value: c.id })))
+      );
   }, []);
 
   const fields: FieldDef[] = [
     { name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions },
+    { name: 'code', label: 'Benefit Code', type: 'text', required: true, placeholder: 'e.g. CANTEEN' },
+    { name: 'name', label: 'Benefit Name', type: 'text', required: true, placeholder: 'e.g. Canteen Token' },
     { name: 'employeeTypeId', label: 'Employee Type', type: 'select', required: true, options: employeeTypeOptions },
-    { name: 'salaryComponentId', label: 'Benefit Component', type: 'select', required: true, options: componentOptions },
-    { name: 'amount', label: 'Monthly Amount', type: 'number', required: true },
+    { name: 'amount', label: 'Monthly Amount (₹)', type: 'number', required: true, step: '0.01', min: 0 },
+    { name: 'salaryComponentId', label: 'Payroll Salary Component (optional)', type: 'select', options: salaryComponentOptions, helpText: 'Optional: links this benefit to a salary component for payroll processing' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
   ];
 
@@ -91,12 +94,14 @@ export default function BenefitRatesPage() {
     setModalOpen(true);
   };
 
-  const handleEdit = (row: BenefitRate) => {
+  const handleEdit = (row: BenefitComponent) => {
     setEditingId(row.id);
     setInitialValues({
       companyId: row.companyId,
+      code: row.code,
+      name: row.name,
       employeeTypeId: row.employeeTypeId,
-      salaryComponentId: row.salaryComponentId,
+      salaryComponentId: row.salaryComponentId ?? '',
       amount: row.amount,
       isActive: row.isActive,
     });
@@ -124,11 +129,17 @@ export default function BenefitRatesPage() {
     fetchData();
   };
 
-  const columns: Column<BenefitRate>[] = [
+  const columns: Column<BenefitComponent>[] = [
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
+    { key: 'code', label: 'Code', className: 'font-medium' },
+    { key: 'name', label: 'Benefit Name' },
     { key: 'employeeType', label: 'Employee Type', render: (row) => row.employeeType?.name ?? '—' },
-    { key: 'salaryComponent', label: 'Benefit', render: (row) => row.salaryComponent?.name ?? '—' },
     { key: 'amount', label: 'Monthly Amount', render: (row) => Number(row.amount).toFixed(2) },
+    {
+      key: 'employeeCount',
+      label: 'Employees',
+      render: (row) => row.employeeCount ?? 0,
+    },
     {
       key: 'isActive',
       label: 'Status',
@@ -148,11 +159,11 @@ export default function BenefitRatesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-            Benefit Rates
+            Benefit Components
           </h1>
           <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Monthly Canteen Deduction / Petrol Allowance amount per Employee Type — applied to payroll via Salary
-            Processing&apos;s &ldquo;Apply Canteen/Petrol&rdquo; action.
+            Create benefit components (e.g. Canteen Token, Petrol Allowance) with a monthly amount per Employee Type.
+            Employees are enrolled on their profile or during creation.
           </p>
         </div>
         <button
@@ -160,7 +171,7 @@ export default function BenefitRatesPage() {
           className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
-          + Add Rate
+          + Add Component
         </button>
       </div>
 
@@ -173,7 +184,7 @@ export default function BenefitRatesPage() {
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading} onPageChange={setPage} onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />
 
       <FormModal
-        title={editingId ? 'Edit Benefit Rate' : 'Add Benefit Rate'}
+        title={editingId ? 'Edit Benefit Component' : 'Add Benefit Component'}
         fields={fields}
         initialValues={initialValues}
         isOpen={modalOpen}
@@ -183,8 +194,8 @@ export default function BenefitRatesPage() {
       />
 
       <ConfirmDialog
-        title="Delete Benefit Rate"
-        message="Are you sure you want to delete this rate?"
+        title="Delete Benefit Component"
+        message="Are you sure you want to delete this component?"
         isOpen={deleteId !== null}
         onConfirm={() => deleteId && handleDelete(deleteId)}
         onClose={() => setDeleteId(null)}

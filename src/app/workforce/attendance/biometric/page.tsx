@@ -644,12 +644,14 @@ export default function BiometricAttendancePage() {
             : !sync.configured
               ? 'Device API is not configured on the server.'
               : sync.scheduler
-                ? `Automatic every ${sync.scheduler.intervalHours} h from ${sync.apiUrl}. ` +
-                  (sync.scheduler.running
-                    ? 'A run is in progress.'
-                    : sync.scheduler.nextRunAt
-                      ? `Next run ${new Date(sync.scheduler.nextRunAt).toLocaleString()}.`
-                      : '')
+                ? (sync.scheduler.running
+                  ? 'A sync is in progress. '
+                  : latestRun?.startedAt
+                    ? `Last sync: ${new Date(latestRun.finishedAt ?? latestRun.startedAt).toLocaleString()}. `
+                    : 'No sync has run yet. ') +
+                  (sync.scheduler.nextRunAt
+                    ? `Next sync: ${new Date(sync.scheduler.nextRunAt).toLocaleString()}.`
+                    : '')
                 : `Device API ${sync.apiUrl} configured; scheduler starts with the server.`
         }
         action={
@@ -836,7 +838,7 @@ export default function BiometricAttendancePage() {
       {/* ── Bulk Upload ─────────────────────────────────────────────────── */}
       <Card
         title="Bulk Upload"
-        subtitle="Use this when the automated device push isn't working: download the template, fill in one row per employee per day (EMP_ID, Name, Date, In-Time, Out-Time), and upload it back below. Working hours and overtime are calculated automatically from the in/out times."
+        subtitle="Download the template, fill in attendance details (EMP_ID, Name, Date, In-Time, Out-Time) one row per employee per day, then upload it back. Working hours and overtime are calculated automatically. Use this for manual entries when the automated device sync is not available."
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {/* Step 1 */}
@@ -948,17 +950,17 @@ export default function BiometricAttendancePage() {
         )}
       </Card>
 
-      {/* ── Uploaded Attendance Records ─────────────────────────────────── */}
+      {/* ── Latest Updated Attendance Details ─────────────────────────────── */}
       <Card
-        title="Uploaded Attendance Records"
-        subtitle="Preview of parsed data from the uploaded file."
+        title="Latest Updated Attendance Details"
+        subtitle="Overview of the latest attendance from automated biometric sync and manual bulk uploads. New syncs or uploads replace the previous values for the same employee and period."
         action={<Pill tone="success">{rows.length} records Found</Pill>}
       >
         <DataTable
           columns={sNoColumns}
           data={rows.map((r, i) => ({ ...r, sNo: i + 1 }))}
           loading={loading}
-          emptyMessage="No biometric data imported for this date."
+          emptyMessage="No attendance data available for this date. Sync the device or upload a file."
         />
       </Card>
 

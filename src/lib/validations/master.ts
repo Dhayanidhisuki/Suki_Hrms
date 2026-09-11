@@ -132,10 +132,18 @@ export const holidayMasterSchema = z.object({
 
 // Per-Employee-Type monthly rate for a benefit salary component (Canteen
 // Deduction / Petrol Allowance) — see BenefitRateByEmployeeType in schema.prisma.
+export const rateComponentSchema = z.object({
+  salaryComponentId: z.coerce.number().int().positive(),
+  calculationType: z.enum(['percentage', 'inr']),
+  value: z.coerce.number().nonnegative(),
+});
+
 export const benefitRateSchema = z.object({
   companyId: z.number().int().positive(),
-  salaryComponentId: z.number().int().positive(),
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
   employeeTypeId: z.number().int().positive(),
+  salaryComponentId: z.number().int().positive().optional().nullable(),
   amount: z.coerce.number().min(0),
   isActive: z.boolean().default(true),
 });
@@ -236,6 +244,7 @@ export const esiRateSchema = z.object({
   effectiveFrom: z.coerce.date(),
   effectiveTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().default(true),
+  components: z.array(rateComponentSchema).optional().default([]),
 });
 
 export const pfRateSchema = z.object({
@@ -247,6 +256,7 @@ export const pfRateSchema = z.object({
   effectiveFrom: z.coerce.date(),
   effectiveTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().default(true),
+  components: z.array(rateComponentSchema).optional().default([]),
 });
 
 // Company-scoped since migration 000013 (companyId comes from the session,

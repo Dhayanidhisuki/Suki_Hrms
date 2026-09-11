@@ -55,6 +55,11 @@ const WIZARD_STEPS: { key: string; label: string; fieldNames: string[] }[] = [
     label: 'Employment Terms',
     fieldNames: ['status', 'joinDate', 'probationPeriodMonths', 'probationEndDate', 'confirmationDate', 'shiftAssignmentType', 'shiftMasterId', 'shiftRotationPlanId'],
   },
+  {
+    key: 'benefits',
+    label: 'Benefits',
+    fieldNames: [],
+  },
 ];
 
 export default function NewEmployeePage() {
@@ -82,6 +87,11 @@ export default function NewEmployeePage() {
   const [shiftMasters, setShiftMasters] = useState<OptionList>([]);
   const [shiftRotationPlans, setShiftRotationPlans] = useState<OptionList>([]);
   const [reportingManagers, setReportingManagers] = useState<EmployeeRef[]>([]);
+
+  // Benefits available for selection (BenefitRateByEmployeeType rows for the chosen company)
+  interface BenefitOption { id: number; code: string; name: string; employeeType: string; amount: number; }
+  const [benefitOptions, setBenefitOptions] = useState<BenefitOption[]>([]);
+  const [selectedBenefitIds, setSelectedBenefitIds] = useState<number[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -116,6 +126,18 @@ export default function NewEmployeePage() {
         setValues((v) => ({ ...v, companyId: co[0].id }));
       }
     });
+
+    // Fetch benefit components for the checkbox list
+    fetch('/api/masters/benefit-rates?limit=500')
+      .then((r) => r.json())
+      .then((json: { data: Array<{ id: number; code: string; name: string; employeeType: { name: string } | null; amount: number; isActive: boolean }> }) => {
+        setBenefitOptions(
+          json.data
+            .filter((b) => b.isActive)
+            .map((b) => ({ id: b.id, code: b.code, name: b.name, employeeType: b.employeeType?.name ?? 'All', amount: Number(b.amount) }))
+        );
+      })
+      .catch(() => { /* optional */ });
   }, []);
 
   // `values` is passed so the Level select narrows to the chosen Grade.
@@ -208,10 +230,11 @@ export default function NewEmployeePage() {
     setError(null);
 
     try {
+      const payload = { ...values, benefitRateIds: selectedBenefitIds };
       const res = await fetch('/api/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -329,6 +352,47 @@ export default function NewEmployeePage() {
             <Field key={f.name} def={f} value={values[f.name]} onChange={(v) => handleChange(f.name, v)} />
           ))}
         </div>
+
+        {currentStep.key === 'benefits' && (
+          <div className="mt-2 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+            <p className="mb-3 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              Select the benefits this employee is eligible for. These are configured in Masters → Benefit Components.
+            </p>
+            {benefitOptions.length === 0 ? (
+              <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No benefit components configured yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {benefitOptions.map((b) => {
+                  const checked = selectedBenefitIds.includes(b.id);
+                  return (
+                    <label
+                      key={b.id}
+                      className="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer transition hover:opacity-80"
+                      style={{ borderColor: checked ? 'var(--accent)' : 'var(--border)', backgroundColor: checked ? 'var(--accent-soft)' : 'transparent' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedBenefitIds((prev) =>
+                            e.target.checked ? [...prev, b.id] : prev.filter((id) => id !== b.id)
+                          );
+                        }}
+                        className="mt-0.5"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{b.name}</span>
+                        <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                          {b.code} · {b.employeeType} · ₹{b.amount.toFixed(2)}/mo
+                        </span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </form>
   );
