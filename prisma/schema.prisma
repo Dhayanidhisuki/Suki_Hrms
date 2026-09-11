@@ -177,6 +177,8 @@ model Company {
   permissionPolicy           PermissionPolicy?
   holidayMasters              HolidayMaster[]
   benefitRates               BenefitRateByEmployeeType[]
+  visitorGatePasses          VisitorGatePass[]
+  gnrRecords                 GateNumberRegister[]
 
   @@map("Company")
 }
@@ -684,6 +686,7 @@ model Employee {
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
   dailyAttendanceHistory     DailyAttendanceHistory[]
+  visitorGatePasses          VisitorGatePass[]
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
@@ -2327,4 +2330,229 @@ model GratuityRecord {
 
   @@index([companyId, status])
   @@map("GratuityRecord")
+}
+
+// -----------------------------------------------------------------------------
+// 19. VISITOR MANAGEMENT - GATE PASS
+//     Scope: visitor entry scheduling + gate movement (check-in/check-out) +
+//     QR-validated gate pass + PDF downloads. Type is a hard enum
+//     (GATE_PASS | WORK_PERMIT); Visitor Type / Purpose / Food Category /
+//     Food Type / Gadgets are DropdownMaster categories (visitor_*), so HR
+//     can add new options without a deploy. Person To Meet is a live FK to
+//     Employee. QR validity is a per-pass field set at creation time.
+// -----------------------------------------------------------------------------
+
+model VisitorGatePass {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  gatePassNo        String    @unique @db.NVarChar(50)   // GPN/<TYPE>/<seq>
+  passType          String    @db.NVarChar(20)           // GATE_PASS | WORK_PERMIT
+  status            String    @default("DRAFT") @db.NVarChar(20)
+                        // DRAFT | PENDING_APPROVAL | APPROVED | CHECKED_IN | CHECKED_OUT | COMPLETED
+                        // REJECTED | CANCELLED | EXPIRED
+
+  // visitor
+  visitorName       String    @db.NVarChar(100)
+  mobileNo          String    @db.NVarChar(15)
+  mobilePrefix      String    @default("+91") @db.NVarChar(5)
+  visitorTypeValue  String?   @db.NVarChar(100)  // DropdownMaster value
+  partyName         String?   @db.NVarChar(200)
+  email             String?   @db.NVarChar(200)
+  address           String?   @db.NVarChar(500)
+  identityProofType   String? @db.NVarChar(50)
+  identityProofNumber String? @db.NVarChar(100)
+
+  // schedule - validity window, not a single date
+  visitDate         DateTime  @db.Date
+  validFrom         DateTime
+  validTo           DateTime
+  plannedInTime     String?   @db.NVarChar(5)  // "HH:mm"
+  plannedOutTime    String?   @db.NVarChar(5)
+
+  // host
+  personToMeetId    Int
+  noOfPersons       Int       @default(1)
+  purposeValue      String?   @db.NVarChar(100)  // DropdownMaster value
+  remarks           String?   @db.NVarChar(500)
+
+  // vehicle / driver
+  vehicleNumber     String?   @db.NVarChar(20)
+  vehicleType       String?   @db.NVarChar(50)
+  driverName        String?   @db.NVarChar(100)
+  driverMobile      String?   @db.NVarChar(15)
+
+  // logistics
+  foodRequired      Boolean   @default(false)
+  foodCategory      String?   @db.NVarChar(50)
+  foodType          String?   @db.NVarChar(50)
+  gadgets           String?   @db.NVarChar(50)
+
+  // approval
+  approvedBy        Int?
+  approvedAt        DateTime?
+  approvalComments  String?   @db.NVarChar(500)
+  rejectionReason   String?   @db.NVarChar(500)
+
+  // gate movement
+  checkInBy         Int?
+  checkInTime       DateTime?
+  checkInGate       String?   @db.NVarChar(50)
+  checkOutBy        Int?
+  checkOutTime      DateTime?
+  checkOutGate      String?   @db.NVarChar(50)
+
+  // QR - random token + per-pass validity in minutes
+  qrToken           String    @unique @db.NVarChar(64)
+  qrValidMinutes    Int       @default(1440)
+
+  createdBy         Int?
+  createdAt         DateTime  @default(now())
+  updatedBy         Int?
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  personToMeet Employee @relation(fields: [personToMeetId], references: [id])
+
+  @@index([companyId, status])
+  @@index([companyId, visitDate])
+  @@map("VisitorGatePass")
+}
+
+// -----------------------------------------------------------------------------
+// 19b. MATERIAL GATE / GNR (Gate Number Register)
+//      Linked to a Delivery Challan (DC) number, tracks material inward/outward
+//      and returnable/non-returnable movements through the gate.
+// -----------------------------------------------------------------------------
+
+model GateNumberRegister {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+
+  gnrNo             String    @unique @db.NVarChar(50) // GNR/<TYPE>/<seq>
+  dcNo              String    @db.NVarChar(100)
+  dcDate            DateTime? @db.Date
+  movementType      String    @db.NVarChar(50)
+                        // MATERIAL_INWARD | MATERIAL_OUTWARD | RETURNABLE | NON_RETURNABLE | SERVICE_REPAIR
+
+  status            String    @default("DRAFT") @db.NVarChar(30)
+                        // DRAFT | DC_CAPTURED | GNR_CREATED | AWAITING_AUTHORIZATION | AUTHORIZED |
+                        // INWARD_RECORDED | OUTWARD_RECORDED | ACKNOWLEDGED | PARTIALLY_RECEIVED |
+                        // COMPLETED | CANCELLED | REJECTED | EXCEPTION_PENDING
+
+  // counterparty
+  counterpartyType  String?   @db.NVarChar(20) // SUPPLIER | CUSTOMER | TRANSPORTER
+  counterpartyName  String?   @db.NVarChar(200)
+  transporterName   String?   @db.NVarChar(200)
+  sourceLocation    String?   @db.NVarChar(200)
+  destinationLocation String? @db.NVarChar(200)
+  contactName       String?   @db.NVarChar(100)
+  contactMobile     String?   @db.NVarChar(15)
+
+  // references
+  purchaseOrderRef  String?   @db.NVarChar(100)
+  workOrderRef      String?   @db.NVarChar(100)
+  authorizationRef  String?   @db.NVarChar(100)
+
+  // vehicle / driver
+  vehicleNumber     String?   @db.NVarChar(20)
+  vehicleType       String?   @db.NVarChar(50)
+  driverName        String?   @db.NVarChar(100)
+  driverMobile      String?   @db.NVarChar(15)
+  driverId          String?   @db.NVarChar(50)
+
+  // gate transaction
+  gateId            String?   @db.NVarChar(50)
+  inwardBy          Int?
+  inwardTime        DateTime?
+  inwardRemarks     String?   @db.NVarChar(500)
+  outwardBy         Int?
+  outwardTime       DateTime?
+  outwardRemarks    String?   @db.NVarChar(500)
+
+  // authorization / control
+  authorizedBy      Int?
+  authorizedAt      DateTime?
+  exceptionReason   String?   @db.NVarChar(500)
+  rejectionReason   String?   @db.NVarChar(500)
+
+  // documents (placeholders - real file storage integration later)
+  dcDocumentUrl     String?   @db.NVarChar(500)
+  supportingDocumentUrl String? @db.NVarChar(500)
+  remarks           String?   @db.NVarChar(500)
+
+  createdBy         Int?
+  createdAt         DateTime  @default(now())
+  updatedBy         Int?
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineItems         GNRLineItem[]
+
+  @@index([companyId, status])
+  @@index([companyId, dcNo])
+  @@index([companyId, movementType])
+  @@map("GateNumberRegister")
+}
+
+model GNRLineItem {
+  id                Int       @id @default(autoincrement())
+  gnrId             Int
+
+  materialDescription String  @db.NVarChar(500)
+  itemCode          String?   @db.NVarChar(100)
+  quantity          Decimal?  @db.Decimal(18, 4)
+  unit              String?   @db.NVarChar(30)
+  packageCount      Int?
+  returnable        Boolean   @default(false)
+  receivedQuantity  Decimal?  @db.Decimal(18, 4)
+  remarks           String?   @db.NVarChar(500)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  gnr               GateNumberRegister @relation(fields: [gnrId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([gnrId])
+  @@map("GNRLineItem")
+}
+
+// -----------------------------------------------------------------------------
+// 19c. VISITOR NOTIFICATION LOG
+//      Captures notification events for the visitor / gate module. Actual
+//      delivery (email/WhatsApp/SMS) is delegated to company-configured
+//      channels in a later integration step.
+// -----------------------------------------------------------------------------
+
+model VisitorNotificationLog {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+
+  event       String    @db.NVarChar(50)
+                        // VISITOR_SUBMITTED | VISITOR_APPROVED | VISITOR_REJECTED |
+                        // VISITOR_CHECKED_IN | VISITOR_CHECKED_OUT | VISITOR_OVERDUE |
+                        // GNR_CREATED | GNR_AUTHORIZED | GNR_INWARD | GNR_OUTWARD
+
+  channel     String    @default("IN_APP") @db.NVarChar(20)
+                        // IN_APP | EMAIL | SMS | WHATSAPP
+  recipient   String    @db.NVarChar(200) // email/mobile/userId
+  subject     String?   @db.NVarChar(200)
+  body        String?   @db.NVarChar(1000)
+  status      String    @default("PENDING") @db.NVarChar(20)
+                        // PENDING | SENT | FAILED | READ
+
+  // relates to either a visitor pass or a GNR
+  visitorGatePassId Int?
+  gnrId             Int?
+
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  readAt      DateTime?
+  error       String?   @db.NVarChar(500)
+
+  @@index([companyId, event])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("VisitorNotificationLog")
 }

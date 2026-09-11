@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { verifyTokenNode } from "@/lib/jwt";
 import StatCard from "@/components/dashboard/StatCard";
+import SecurityDashboardKpi from "@/components/dashboard/SecurityDashboardKpi";
 import AttendanceChart from "@/components/dashboard/AttendanceChart";
 import LeaveApplications from "@/components/dashboard/LeaveApplications";
 import NoticeBoard from "@/components/dashboard/NoticeBoard";
@@ -33,6 +34,10 @@ export default async function Home() {
         {stats.map((stat) => (
           <StatCard key={stat.label} {...stat} />
         ))}
+      </section>
+
+      <section>
+        <SecurityDashboardKpi />
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">

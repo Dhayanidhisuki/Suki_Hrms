@@ -15,6 +15,8 @@ export type NavLeaf = {
   short?: string;
   href: string;
   ready?: boolean;
+  /** Restrict to a specific role code (e.g. 'company-admin'). */
+  requiredRole?: string;
 };
 
 export type NavGroup = {
@@ -53,6 +55,10 @@ export const navigation: NavModule[] = [
       {
         label: "Overview",
         items: [{ label: "My Dashboard", href: "/", ready: true }],
+      },
+      {
+        label: "Security",
+        items: [{ label: "Security Dashboard", short: "Security", href: "/dashboard/security", ready: true }],
       },
       {
         label: "HR",
@@ -359,8 +365,17 @@ export const navigation: NavModule[] = [
         ],
       },
       {
+        label: "Material",
+        items: [
+          { label: "GNR Register", href: "/visitor/gnr" },
+        ],
+      },
+      {
         label: "Visitor",
-        items: [{ label: "Visitor Pass", href: "/visitor/pass" }],
+        items: [
+          { label: "Vendor", href: "/visitor/vendor", requiredRole: "company-admin" },
+          { label: "Visitor Pass", href: "/visitor/pass" },
+        ],
       },
     ],
   },
@@ -432,7 +447,7 @@ export const navigation: NavModule[] = [
       },
       {
         label: "Visitor",
-        items: [{ label: "Visitor Pass Approval", short: "Visitor Pass", href: "/approvals/visitor/pass" }],
+        items: [{ label: "Visitor Pass Approval", short: "Visitor Pass", href: "/approvals/visitor/pass", ready: true }],
       },
     ],
   },
@@ -535,6 +550,14 @@ export const navigation: NavModule[] = [
           { label: "Professional Tax Report", short: "Professional Tax", href: "/reports/statutory/professional-tax", ready: true },
           { label: "Labour Welfare Fund Report", short: "LWF", href: "/reports/statutory/lwf" },
           { label: "ESI Return Report", short: "ESI Return", href: "/reports/statutory/esi-return" },
+        ],
+      },
+      {
+        label: "Visitor",
+        items: [
+          { label: "Visitor Register", short: "Visitor Register", href: "/reports/visitor/visitor-register", ready: true },
+          { label: "Current Inside", short: "Current Inside", href: "/reports/visitor/current-inside", ready: true },
+          { label: "GNR Register", short: "GNR Register", href: "/reports/visitor/gnr-register", ready: true },
         ],
       },
       {
