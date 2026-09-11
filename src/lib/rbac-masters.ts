@@ -43,6 +43,9 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/holidays': 'definition',
   '/api/masters/loan-types': 'definition',
   '/api/masters/asset-masters': 'definition',
+  '/api/jd-master': 'org',
+  '/api/masters/jd-master': 'org',
+  '/api/recruitment/job-postings': 'org',
 };
 
 /**

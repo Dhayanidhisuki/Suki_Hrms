@@ -135,7 +135,7 @@ export const navigation: NavModule[] = [
         label: "HR Masters",
         items: [
           { label: "Interview Criteria", href: "/masters/interview-criteria" },
-          { label: "JD Master", href: "/masters/jd-master" },
+          { label: "JD Master", href: "/masters/jd-master", ready: true },
         ],
       },
       {
@@ -159,6 +159,7 @@ export const navigation: NavModule[] = [
       {
         label: "Hiring",
         items: [
+          { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
           { label: "Offer Letter", href: "/recruitment/offer-letter" },
           { label: "Appointment Order", href: "/recruitment/appointment-order" },
           { label: "Internship", href: "/recruitment/internship" },
