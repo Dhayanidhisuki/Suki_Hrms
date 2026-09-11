@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { verifyTokenNode } from "@/lib/jwt";
 import DashboardStats from "@/components/dashboard/DashboardStats";
+import SecurityDashboardKpi from "@/components/dashboard/SecurityDashboardKpi";
 import AttendanceChart from "@/components/dashboard/AttendanceChart";
 import LeaveApplications from "@/components/dashboard/LeaveApplications";
 import NoticeBoard from "@/components/dashboard/NoticeBoard";
@@ -29,6 +30,10 @@ export default async function Home() {
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
       <section>
         <DashboardStats />
+      </section>
+
+      <section>
+        <SecurityDashboardKpi />
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">

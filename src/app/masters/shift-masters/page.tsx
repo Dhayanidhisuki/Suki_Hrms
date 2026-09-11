@@ -11,6 +11,12 @@ interface ShiftMaster {
   snacksAllowed: boolean;
   mealsAllowed: boolean;
   snacksMealsDurationMinutes: number | null;
+  breakMinutes: number;
+  nightAllowanceAmount: number | null;
+  nightAllowanceFromHour: number | null;
+  snacksAllowanceAmount: number | null;
+  foodAllowanceAmount: number | null;
+  mealsAllowanceAmount: number | null;
   description: string | null; isActive: boolean; deletedAt: string | null;
 }
 
@@ -23,9 +29,15 @@ const fields: FieldDef[] = [
   { name: 'endTime', label: 'End Time', type: 'text', required: true, placeholder: '18:00', helpText: 'HH:mm format' },
   { name: 'graceMinutes', label: 'Grace Minutes', type: 'number', defaultValue: 0, min: 0 },
   { name: 'bufferMinutes', label: 'Buffer Minutes', type: 'number', defaultValue: 0, min: 0, helpText: 'Extra minutes tolerated beyond the shift window.' },
+  { name: 'breakMinutes', label: 'Break Minutes', type: 'number', defaultValue: 0, min: 0, helpText: 'Lunch/tea break deducted from working duration.' },
   { name: 'nightAllowed', label: 'Night Allowed', type: 'checkbox', defaultValue: false, helpText: 'This shift qualifies for night-shift allowance.' },
+  { name: 'nightAllowanceAmount', label: 'Night Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when night allowance applies.' },
+  { name: 'nightAllowanceFromHour', label: 'Night Allowance From Hour', type: 'number', min: 0, max: 23, helpText: 'Hour after which night allowance applies (e.g. 22 = 10 PM).' },
   { name: 'snacksAllowed', label: 'Snacks Allowed', type: 'checkbox', defaultValue: false },
+  { name: 'snacksAllowanceAmount', label: 'Snacks Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when snacks allowance applies.' },
   { name: 'mealsAllowed', label: 'Meals Allowed', type: 'checkbox', defaultValue: false },
+  { name: 'mealsAllowanceAmount', label: 'Meals Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when meals allowance applies.' },
+  { name: 'foodAllowanceAmount', label: 'Food Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day for food allowance.' },
   { name: 'snacksMealsDurationMinutes', label: 'Snacks/Meals Duration (min)', type: 'number', min: 0, placeholder: 'e.g. 30' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
@@ -57,7 +69,7 @@ export default function ShiftMastersPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true, graceMinutes: 0 }); setModalOpen(true); };
+  const handleAdd = () => { setEditingId(null); setInitialValues({ isActive: true, graceMinutes: 0, breakMinutes: 0 }); setModalOpen(true); };
   const handleEdit = (row: ShiftMaster) => {
     setEditingId(row.id);
     setInitialValues({
@@ -67,9 +79,15 @@ export default function ShiftMastersPage() {
       endTime: row.endTime,
       graceMinutes: row.graceMinutes,
       bufferMinutes: row.bufferMinutes,
+      breakMinutes: row.breakMinutes,
       nightAllowed: row.nightAllowed,
+      nightAllowanceAmount: row.nightAllowanceAmount ?? '',
+      nightAllowanceFromHour: row.nightAllowanceFromHour ?? '',
       snacksAllowed: row.snacksAllowed,
+      snacksAllowanceAmount: row.snacksAllowanceAmount ?? '',
       mealsAllowed: row.mealsAllowed,
+      mealsAllowanceAmount: row.mealsAllowanceAmount ?? '',
+      foodAllowanceAmount: row.foodAllowanceAmount ?? '',
       snacksMealsDurationMinutes: row.snacksMealsDurationMinutes ?? '',
       description: row.description ?? '',
       isActive: row.isActive,

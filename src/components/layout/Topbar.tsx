@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Icon from "./NavIcons";
+import NotificationDropdown from "./NotificationDropdown";
 import ThemeToggle from "./ThemeToggle";
 
 interface TopbarProps {
@@ -94,23 +95,16 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         <div className="ml-auto flex items-center gap-2 md:gap-3">
           <ThemeToggle />
 
-          {(["bell", "message"] as const).map((name) => (
-            <button
-              key={name}
-              type="button"
-              aria-label={name === "bell" ? "Notifications" : "Messages"}
-              className="relative hidden h-11 w-11 place-items-center rounded-full border transition hover:bg-[color:var(--surface-hover)] sm:grid"
-              style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
-            >
-              <Icon name={name} size={18} />
-              {name === "bell" && (
-                <span
-                  className="absolute right-3 top-3 h-2 w-2 rounded-full ring-2"
-                  style={{ background: "var(--danger)", ["--tw-ring-color" as string]: "var(--surface)" }}
-                />
-              )}
-            </button>
-          ))}
+          <NotificationDropdown />
+
+          <button
+            type="button"
+            aria-label="Messages"
+            className="relative hidden h-11 w-11 place-items-center rounded-full border transition hover:bg-[color:var(--surface-hover)] sm:grid"
+            style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+          >
+            <Icon name="message" size={18} />
+          </button>
 
           <div
             className="flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-2 md:pr-3"

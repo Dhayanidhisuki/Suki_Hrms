@@ -16,6 +16,7 @@ interface SidebarProps {
 interface CurrentUser {
   isSuperAdmin: boolean;
   hasAdminAccess: boolean;
+  roleCode: string | null;
 }
 
 const readyCount = allNavLeaves.filter((leaf) => leaf.ready).length;
@@ -32,7 +33,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess });
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode });
       })
       .catch(() => {});
     return () => {
@@ -81,6 +82,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     if (!term) return [];
     return allNavLeaves
       .filter((leaf) => visibleModuleLabels.has(leaf.module))
+      .filter((leaf) => !leaf.requiredRole || me?.roleCode === leaf.requiredRole || me?.isSuperAdmin)
       .filter(
         (leaf) =>
           leaf.label.toLowerCase().includes(term) ||
@@ -164,7 +166,9 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
                   {group.label}
                 </p>
                 <div className="space-y-0.5">
-                  {group.items.map((item) => {
+                  {group.items
+                    .filter((item) => !item.requiredRole || me?.roleCode === item.requiredRole || me?.isSuperAdmin)
+                    .map((item) => {
                     const itemActive = isLeafActive(item.href);
                     return (
                       <Link
