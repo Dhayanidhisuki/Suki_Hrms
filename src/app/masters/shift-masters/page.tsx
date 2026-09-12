@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
 
 interface ShiftMaster {
@@ -22,8 +22,7 @@ interface ShiftMaster {
 
 interface ApiResponse { data: ShiftMaster[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
 
-const fields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. GEN' },
+const baseFields: FieldDef[] = [
   { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. General Shift' },
   { name: 'startTime', label: 'Start Time', type: 'text', required: true, placeholder: '09:00', helpText: 'HH:mm format' },
   { name: 'endTime', label: 'End Time', type: 'text', required: true, placeholder: '18:00', helpText: 'HH:mm format' },
@@ -32,13 +31,10 @@ const fields: FieldDef[] = [
   { name: 'breakMinutes', label: 'Break Minutes', type: 'number', defaultValue: 0, min: 0, helpText: 'Lunch/tea break deducted from working duration.' },
   { name: 'nightAllowed', label: 'Night Allowed', type: 'checkbox', defaultValue: false, helpText: 'This shift qualifies for night-shift allowance.' },
   { name: 'nightAllowanceAmount', label: 'Night Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when night allowance applies.' },
-  { name: 'nightAllowanceFromHour', label: 'Night Allowance From Hour', type: 'number', min: 0, max: 23, helpText: 'Hour after which night allowance applies (e.g. 22 = 10 PM).' },
   { name: 'snacksAllowed', label: 'Snacks Allowed', type: 'checkbox', defaultValue: false },
   { name: 'snacksAllowanceAmount', label: 'Snacks Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when snacks allowance applies.' },
   { name: 'mealsAllowed', label: 'Meals Allowed', type: 'checkbox', defaultValue: false },
   { name: 'mealsAllowanceAmount', label: 'Meals Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day when meals allowance applies.' },
-  { name: 'foodAllowanceAmount', label: 'Food Allowance Amount', type: 'number', min: 0, step: '0.01', helpText: 'Flat amount per day for food allowance.' },
-  { name: 'snacksMealsDurationMinutes', label: 'Snacks/Meals Duration (min)', type: 'number', min: 0, placeholder: 'e.g. 30' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
 ];
@@ -54,6 +50,13 @@ export default function ShiftMastersPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const fields: FieldDef[] = useMemo(() => {
+    if (editingId) {
+      return [{ name: 'code', label: 'Shift Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef, ...baseFields];
+    }
+    return baseFields;
+  }, [editingId]);
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null);
@@ -111,10 +114,39 @@ export default function ShiftMastersPage() {
   };
 
   const columns: Column<ShiftMaster>[] = [
-    { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
+    { key: 'code', label: 'Shift Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'startTime', label: 'Start' },
     { key: 'endTime', label: 'End' },
+    {
+      key: 'duration',
+      label: 'Shift Hours',
+      render: (row) => {
+        const parseTime = (t: string) => {
+          const [h, m] = t.split(':');
+          const hours = Number(h || 0);
+          const mins = m ? Number(m) : 0;
+          return { hours, mins, isNaN: Number.isNaN(hours) || Number.isNaN(mins) };
+        };
+        const start = parseTime(row.startTime);
+        const end = parseTime(row.endTime);
+        if (start.isNaN || end.isNaN) {
+          return <span style={{ color: 'var(--foreground-muted)' }}>—</span>;
+        }
+        let startMinutes = start.hours * 60 + start.mins;
+        let endMinutes = end.hours * 60 + end.mins;
+        if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+        const totalMinutes = endMinutes - startMinutes;
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        const decimals = (totalMinutes / 60).toFixed(2);
+        return (
+          <span title={`${totalMinutes} minutes`}>
+            {h}h {m}m <span style={{ color: 'var(--foreground-muted)' }}>({decimals} hrs)</span>
+          </span>
+        );
+      },
+    },
     { key: 'graceMinutes', label: 'Grace (min)' },
     { key: 'bufferMinutes', label: 'Buffer (min)' },
     {

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { siteSchema } from '@/lib/validations/master';
+import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -45,9 +46,11 @@ export async function POST(request: NextRequest) {
   const parsed = siteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.site.findUnique({ where: { code: parsed.data.code } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  // Code is server-generated as SITE001, SITE002... — ignore whatever the client sent.
+  const siblings = await prisma.site.findMany({ select: { code: true } });
+  const code = nextSequentialCode(siblings.map((s) => s.code), 'SITE');
 
-  const record = await prisma.site.create({ data: parsed.data, include: { company: { select: { id: true, name: true } } } });
+  const { code: _ignored, ...rest } = parsed.data;
+  const record = await prisma.site.create({ data: { ...rest, code }, include: { company: { select: { id: true, name: true } } } });
   return NextResponse.json(record, { status: 201 });
 }

@@ -28,13 +28,8 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-const codeField: FieldDef = { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. MGR' };
-const autoCodeField: FieldDef = { name: 'code', label: 'Code', type: 'text', disabled: true, helpText: 'Generated automatically' };
-const nameField: FieldDef = { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Manager' };
 const descriptionField: FieldDef = { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' };
 const activeField: FieldDef = { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true };
-
-const simpleFields: FieldDef[] = [codeField, nameField, descriptionField, activeField];
 
 interface SimpleMasterPageProps {
   title: string;
@@ -58,6 +53,10 @@ interface SimpleMasterPageProps {
   autoCode?: boolean;
   /** Module name for KPI stats (e.g., 'departments', 'designations'). If provided, KPI cards are shown. */
   statsModule?: string;
+  /** Custom label for the Code column/field. Defaults to "Code". */
+  codeLabel?: string;
+  /** Custom label for the Name column/field. Defaults to "Name". */
+  nameLabel?: string;
 }
 
 export default function SimpleMasterPage({
@@ -70,6 +69,8 @@ export default function SimpleMasterPage({
   extraInitialValues,
   autoCode = false,
   statsModule,
+  codeLabel = 'Code',
+  nameLabel = 'Name',
 }: SimpleMasterPageProps) {
   const [records, setRecords] = useState<SimpleMaster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +78,10 @@ export default function SimpleMasterPage({
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+
+  const codeField: FieldDef = { name: 'code', label: codeLabel, type: 'text', required: true, placeholder: 'e.g. MGR' };
+  const autoCodeField: FieldDef = { name: 'code', label: codeLabel, type: 'text', disabled: true, helpText: 'Generated automatically' };
+  const nameField: FieldDef = { name: 'name', label: nameLabel, type: 'text', required: true, placeholder: 'e.g. Manager' };
 
   const { stats } = useModuleStats(statsModule || '');
 
@@ -147,8 +152,8 @@ export default function SimpleMasterPage({
   };
 
   const columns: Column<SimpleMaster>[] = [
-    { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
-    { key: 'name', label: 'Name' },
+    { key: 'code', label: codeLabel, sortable: true, className: 'font-medium' },
+    { key: 'name', label: nameLabel },
     ...extraColumns,
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
@@ -225,8 +230,8 @@ export default function SimpleMasterPage({
         title={editingId ? `Edit ${title.replace(/s$/, '')}` : `Add ${title.replace(/s$/, '')}`}
         fields={
           autoCode
-            ? [...extraFields, ...(editingId ? [autoCodeField] : []), nameField, descriptionField, activeField]
-            : [...extraFields, ...simpleFields]
+            ? [...(editingId ? [autoCodeField] : []), nameField, descriptionField, ...extraFields, activeField]
+            : [...extraFields, codeField, nameField, descriptionField, activeField]
         }
         initialValues={initialValues}
         isOpen={modalOpen}

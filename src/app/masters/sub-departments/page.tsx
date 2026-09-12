@@ -60,14 +60,10 @@ function SubDepartmentsPageInner() {
       .then((json: ApiResponse) => setDeptOptions(json.data.map((d) => ({ label: d.name, value: d.id }))));
   }, []);
 
-  // Sub-Code is server-generated per department ("<DeptCode>-001"...) — no
-  // field on Add; shown disabled (for reference) on Edit.
   const fields: FieldDef[] = [
     { name: 'departmentId', label: 'Department', type: 'select', required: true, options: deptOptions },
-    ...(editingId
-      ? [{ name: 'code', label: 'Sub-Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef]
-      : []),
-    { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. IT Support' },
+    { name: 'code', label: 'Sub-Code', type: 'text', required: true, placeholder: 'e.g. IT-SUPP' },
+    { name: 'name', label: 'Sub Name', type: 'text', required: true, placeholder: 'e.g. IT Support' },
     { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 10', helpText: 'Approved/budgeted staffing count for this sub-department.' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
@@ -136,12 +132,46 @@ function SubDepartmentsPageInner() {
 
   const columns: Column<SubDepartment>[] = [
     { key: 'code', label: 'Sub-Code', sortable: true, className: 'font-medium' },
-    { key: 'name', label: 'Name' },
+    { key: 'name', label: 'Sub Name' },
     { key: 'department', label: 'Department', render: (row) => row.department?.name ?? '—' },
     {
       key: 'headcount',
-      label: 'Headcount (Sanctioned / Current)',
-      render: (row) => `${row.sanctionedHeadcount ?? '—'} / ${row.currentHeadcount}`,
+      label: 'Headcount (Current / Sanctioned)',
+      render: (row) => {
+        const { sanctionedHeadcount: sanctioned, currentHeadcount: current } = row;
+        if (sanctioned == null) {
+          return <span style={{ color: 'var(--foreground)' }}>{current} / —</span>;
+        }
+        const shortBy = sanctioned - current;
+        return (
+          <div className="flex items-center gap-2">
+            <span style={{ color: 'var(--foreground)' }}>
+              {current} / {sanctioned}
+            </span>
+            {shortBy > 0 ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
+                title={`${shortBy} position${shortBy === 1 ? '' : 's'} still open against the sanctioned headcount`}
+              >
+                {shortBy} short
+              </span>
+            ) : shortBy < 0 ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}
+                title="Currently staffed above the sanctioned headcount"
+              >
+                {-shortBy} over
+              </span>
+            ) : (
+              <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+                Full
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {

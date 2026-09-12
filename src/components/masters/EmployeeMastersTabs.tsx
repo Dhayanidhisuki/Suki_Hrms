@@ -13,7 +13,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import SimpleMasterPage from '@/components/SimpleMasterPage';
 import type { FieldOption } from '@/components/ui';
 import { EMPLOYEE_MASTER_TABS, EMPLOYEE_MASTERS_PATH, type EmployeeMasterTabKey } from './employeeMasterTabs';
@@ -57,15 +56,7 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
             Designation and grade masters used across the employee profile.
           </p>
         </div>
-        {active === 'designations' && (
-          <Link
-            href="/masters/designations/jd-upload"
-            className="shrink-0 rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
-            style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
-          >
-            JD Upload
-          </Link>
-        )}
+
       </div>
 
       <div className="card overflow-x-auto p-2">
@@ -118,29 +109,52 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
           title={tab.title}
           apiPath={tab.apiPath}
           statsModule="designations"
+          autoCode
           extraFields={[
             { name: 'qualification', label: 'Qualification', type: 'text', placeholder: 'e.g. B.E / B.Tech' },
             { name: 'experienceYears', label: 'Experience (years)', type: 'number', min: 0, max: 60, step: '0.5', placeholder: 'e.g. 2' },
             { name: 'budget', label: 'Budget', type: 'number', min: 0, placeholder: 'Monthly budget for this designation' },
             { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 5' },
-            {
-              name: 'reportsToId',
-              label: 'Reports To (Designation)',
-              type: 'select',
-              options: designationOptions,
-              helpText: 'Reporting Structure — the default org-chart template, not a per-employee assignment.',
-            },
           ]}
           extraColumns={[
             {
               key: 'headcount',
-              label: 'Headcount (Sanctioned / Current)',
-              render: (row) => `${(row.sanctionedHeadcount as number | null) ?? '—'} / ${(row.currentHeadcount as number | undefined) ?? 0}`,
-            },
-            {
-              key: 'reportsTo',
-              label: 'Reports To',
-              render: (row) => (row.reportsTo as { name: string } | null | undefined)?.name ?? '—',
+              label: 'Headcount (Current / Sanctioned)',
+              render: (row) => {
+                const { sanctionedHeadcount: sanctioned, currentHeadcount: current } = row as unknown as { sanctionedHeadcount: number | null; currentHeadcount: number };
+                if (sanctioned == null) {
+                  return <span style={{ color: 'var(--foreground)' }}>{current} / —</span>;
+                }
+                const shortBy = sanctioned - current;
+                return (
+                  <div className="flex items-center gap-2">
+                    <span style={{ color: 'var(--foreground)' }}>
+                      {current} / {sanctioned}
+                    </span>
+                    {shortBy > 0 ? (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: '#fef3c7', color: '#92400e' }}
+                        title={`${shortBy} position${shortBy === 1 ? '' : 's'} still open against the sanctioned headcount`}
+                      >
+                        {shortBy} short
+                      </span>
+                    ) : shortBy < 0 ? (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}
+                        title="Currently staffed above the sanctioned headcount"
+                      >
+                        {-shortBy} over
+                      </span>
+                    ) : (
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+                        Full
+                      </span>
+                    )}
+                  </div>
+                );
+              },
             },
             {
               key: 'jobDescription',
@@ -160,7 +174,6 @@ export default function EmployeeMastersTabs({ initialTab }: { initialTab: Employ
             experienceYears: (row.experienceYears as number | null | undefined) ?? '',
             budget: (row.budget as number | null | undefined) ?? '',
             sanctionedHeadcount: (row.sanctionedHeadcount as number | null | undefined) ?? '',
-            reportsToId: (row.reportsToId as number | null | undefined) ?? '',
           })}
         />
       )}

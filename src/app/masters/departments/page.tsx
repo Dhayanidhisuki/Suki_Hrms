@@ -32,8 +32,8 @@ interface ApiResponse {
 }
 
 const fields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. IT' },
-  { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Information Technology' },
+  { name: 'code', label: 'Dept Code', type: 'text', required: true, placeholder: 'e.g. IT' },
+  { name: 'name', label: 'Dept Name', type: 'text', required: true, placeholder: 'e.g. Information Technology' },
   { name: 'sanctionedHeadcount', label: 'Sanctioned Headcount', type: 'number', min: 0, placeholder: 'e.g. 25', helpText: 'Approved/budgeted staffing count for this department.' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
@@ -133,8 +133,8 @@ export default function DepartmentPage() {
   };
 
   const columns: Column<Department>[] = [
-    { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
-    { key: 'name', label: 'Name' },
+    { key: 'code', label: 'Dept Code', sortable: true, className: 'font-medium' },
+    { key: 'name', label: 'Dept Name' },
     {
       key: 'headcount',
       label: 'Headcount (Current / Sanctioned)',

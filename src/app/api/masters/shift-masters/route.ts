@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { shiftMasterSchema } from '@/lib/validations/master';
+import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -31,9 +32,14 @@ export async function POST(request: NextRequest) {
   const parsed = shiftMasterSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.shiftMaster.findUnique({ where: { code: parsed.data.code } });
+  const existing = await prisma.shiftMaster.findUnique({ where: { code: parsed.data.code ?? '' } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.shiftMaster.create({ data: parsed.data });
+  // Code is server-generated as SHF001, SHF002... — ignore whatever the client sent.
+  const siblings = await prisma.shiftMaster.findMany({ select: { code: true } });
+  const code = nextSequentialCode(siblings.map((s) => s.code), 'SHF');
+
+  const { code: _ignored, ...rest } = parsed.data;
+  const record = await prisma.shiftMaster.create({ data: { ...rest, code } });
   return NextResponse.json(record, { status: 201 });
 }
