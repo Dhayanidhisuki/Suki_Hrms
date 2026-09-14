@@ -1,0 +1,37 @@
+﻿=== ALL Shift Masters ===
+  id=1 GEN General Shift (09:00-17:30) nightAllowed=false allowance=null
+  id=2 GENERAL General Shift (09:00-17:30) nightAllowed=false allowance=0
+  id=3 MORNING Morning Shift (06:00-14:00) nightAllowed=false allowance=null
+  id=4 EVENING Evening Shift (14:00-22:00) nightAllowed=false allowance=null
+  id=5 NIGHT Night Shift (22:00-06:00) nightAllowed=true allowance=300
+  id=6 001 shift_3 (13.00-21.00) nightAllowed=true allowance=500
+  id=7 SHF001 gfd (09-18) nightAllowed=false allowance=null
+
+=== Divya Daily Attendance shiftMasterId ===
+  2026-07-01 shiftMasterId=3 status=Present
+  2026-07-03 shiftMasterId=3 status=HalfDay
+  2026-07-06 shiftMasterId=3 status=Present
+  2026-07-07 shiftMasterId=3 status=Present
+  2026-07-08 shiftMasterId=4 status=Present
+  2026-07-09 shiftMasterId=4 status=Present
+  2026-07-10 shiftMasterId=4 status=Present
+  2026-07-11 shiftMasterId=4 status=Present
+  2026-07-16 shiftMasterId=5 status=Present
+  2026-07-17 shiftMasterId=5 status=Present
+  2026-07-18 shiftMasterId=5 status=Present
+  2026-07-20 shiftMasterId=5 status=Present
+  2026-07-22 shiftMasterId=3 status=Present
+  2026-07-23 shiftMasterId=3 status=HalfDay
+  2026-07-24 shiftMasterId=3 status=Present
+  2026-07-25 shiftMasterId=3 status=Present
+  2026-07-26 shiftMasterId=3 status=Present
+  2026-07-27 shiftMasterId=3 status=Present
+  2026-07-28 shiftMasterId=3 status=Present
+  2026-07-29 shiftMasterId=4 status=Present
+  2026-07-30 shiftMasterId=4 status=Present
+  2026-07-31 shiftMasterId=4 status=Present
+
+=== Divya Salary Revision Components ===
+  BASIC Basic Salary earning = 15000
+  HRA HRA earning = 7000
+  CONVEYANCE Conv.Allow earning = 3000

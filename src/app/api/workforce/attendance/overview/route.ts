@@ -25,6 +25,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveEmployeeShiftConfig, resolveDailyShift } from '@/lib/biometricConversion';
+import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -106,12 +107,19 @@ export async function GET(request: NextRequest) {
     return { date, iso, rec, shift, shiftMasterId };
   });
 
-  const shiftNames = new Map(
+  const shiftMasters = new Map(
     (shiftIds.size
-      ? await prisma.shiftMaster.findMany({ where: { id: { in: Array.from(shiftIds) } }, select: { id: true, name: true, code: true } })
+      ? await prisma.shiftMaster.findMany({ where: { id: { in: Array.from(shiftIds) } }, select: { id: true, name: true, code: true, startTime: true, endTime: true, graceMinutes: true } })
       : []
-    ).map((s) => [s.id, s.name || s.code])
+    ).map((s) => [s.id, s])
   );
+
+  const [otPlan, lomConfig] = await Promise.all([
+    prisma.oTPlan.findFirst({ where: { isActive: true, deletedAt: null } }),
+    prisma.lomConfig.findUnique({ where: { companyId: scope.companyId } }),
+  ]);
+  const lomCfg = lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null;
+  const otCfg = otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null;
 
   const today = new Date();
   const todayIso = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString().slice(0, 10);
@@ -147,6 +155,13 @@ export async function GET(request: NextRequest) {
     const inferredWeeklyOff = !inferredHoliday && isSunday && noPunchDayOff;
     const status = inferredHoliday ? 'Holiday' : inferredWeeklyOff ? 'WeeklyOff' : storedStatus ?? (iso > todayIso ? 'Upcoming' : 'NoRecord');
 
+    const shiftMaster = shiftMasterId ? shiftMasters.get(shiftMasterId) ?? null : null;
+    const shiftMasterForCalc = shiftMaster
+      ? { startTime: shiftMaster.startTime, endTime: shiftMaster.endTime, graceMinutes: shiftMaster.graceMinutes }
+      : null;
+    const lomMinutes = computeLomMinutes(rec?.lateMinutes ?? 0, rec?.earlyOutMinutes ?? 0, shiftMasterForCalc, lomCfg);
+    const otPayableMinutes = computeOtPayableMinutes(rec?.otMinutesCalculated ?? 0, otCfg);
+
     return {
       date: iso,
       day: date.getUTCDate(),
@@ -159,7 +174,7 @@ export async function GET(request: NextRequest) {
       inTime: rec?.inTime ?? null,
       outTime: rec?.outTime ?? null,
       punchPairInvalid,
-      shiftName: shiftMasterId ? shiftNames.get(shiftMasterId) ?? null : null,
+      shiftName: shiftMaster ? shiftMaster.name || shiftMaster.code : null,
       shiftMinutes: rec || shiftStart !== null ? shift.standardMinutes : 0,
       shiftStartMinutes: shiftStart,
       workingMinutes: rec?.workingMinutes ?? 0,
@@ -168,6 +183,8 @@ export async function GET(request: NextRequest) {
       preExtraMinutes,
       postExtraMinutes,
       otMinutesCalculated: rec?.otMinutesCalculated ?? 0,
+      otPayableMinutes,
+      lomMinutes,
       otMinutesApproved: rec?.otMinutesApproved ?? null,
       otApprovalStatus: rec?.otApprovalStatus ?? null,
       source: rec?.source ?? null,

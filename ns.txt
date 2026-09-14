@@ -1,0 +1,60 @@
+﻿NIGHT_ALLOWANCE component: id=163 type=earning
+
+NIGHT_ALLOWANCE payroll line components for Divya: 1
+  id=585 amount=800 isAdhoc=false lineId=83
+node : ERROR: 
+At line:1 char:13
++ cd D:\HRMS; node check-night-source.js 2>&1 | Out-File -Encoding utf8 ...
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR: :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Invalid `p.shiftMaster.findMany()` invocation in
+D:\HRMS\check-night-source.js:22:45
+
+  19 plcs.forEach(c => console.log('  id=' + c.id + ' amount=' + c.amount + ' isAdhoc=' + c.isAdhoc + ' lineId=' + 
+c.payrollLineId));
+  20 
+  21 // Check all shift masters with nightAllowed
+ΓåÆ 22 const nightShifts = await p.shiftMaster.findMany({
+       where: {
+         nightAllowed: true
+       },
+       select: {
+         id: true,
+         shiftName: true,
+         ~~~~~~~~~
+         startTime: true,
+         endTime: true,
+         nightAllowed: true,
+         nightAllowanceAmount: true,
+     ?   code?: true,
+     ?   name?: true,
+     ?   graceMinutes?: true,
+     ?   bufferMinutes?: true,
+     ?   snacksAllowed?: true,
+     ?   mealsAllowed?: true,
+     ?   snacksMealsDurationMinutes?: true,
+     ?   breakMinutes?: true,
+     ?   nightAllowanceFromHour?: true,
+     ?   snacksAllowanceAmount?: true,
+     ?   foodAllowanceAmount?: true,
+     ?   mealsAllowanceAmount?: true,
+     ?   description?: true,
+     ?   isActive?: true,
+     ?   deletedAt?: true,
+     ?   createdAt?: true,
+     ?   updatedAt?: true,
+     ?   jobInfos?: true,
+     ?   dailyAttendances?: true,
+     ?   shiftRotationSlots?: true,
+     ?   shiftAssignmentOverrides?: true,
+     ?   shiftChangeRequestsCurrent?: true,
+     ?   shiftChangeRequestsRequested?: true,
+     ?   shiftChangeNotificationsOld?: true,
+     ?   shiftChangeNotificationsNew?: true,
+     ?   _count?: true
+       }
+     })
+
+Unknown field `shiftName` for select statement on model `ShiftMaster`. Available options are marked with ?.

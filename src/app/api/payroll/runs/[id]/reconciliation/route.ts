@@ -56,6 +56,7 @@ export async function GET(
   }> = [];
 
   let totalGross = 0;
+  let totalOtherEarnings = 0;
   let totalNet = 0;
   let totalDeductions = 0;
   let componentEarningsSum = 0;
@@ -63,6 +64,7 @@ export async function GET(
 
   for (const line of lines) {
     totalGross += Number(line.grossEarnings);
+    totalOtherEarnings += Number(line.otherEarningsTotal);
     totalNet += Number(line.netSalary);
     totalDeductions += Number(line.otherDeductionsTotal);
 
@@ -108,30 +110,36 @@ export async function GET(
       });
     }
 
-    // Check: gross mismatch (component earnings sum vs PayrollLine.grossEarnings).
-    // Allow 1 rupee rounding tolerance.
-    const grossDiff = Math.abs(Number(line.grossEarnings) - earningsSum);
+    // Check: gross mismatch (recurring + ad-hoc earnings vs component earnings sum).
+    // grossEarnings holds LOP-adjusted recurring earnings only; ad-hoc earnings
+    // land in otherEarningsTotal. Their sum should equal the total of all
+    // earning PayrollLineComponent rows. Allow 1 rupee rounding tolerance.
+    const totalEarnings = Number(line.grossEarnings) + Number(line.otherEarningsTotal);
+    const grossDiff = Math.abs(totalEarnings - earningsSum);
     if (grossDiff > 1) {
       discrepancies.push({
         employeeCode: line.employee.employeeCode,
         name: empName,
         type: 'GROSS_MISMATCH',
-        detail: `Gross (${Number(line.grossEarnings).toFixed(2)}) vs component sum (${earningsSum.toFixed(2)}) differ by ${grossDiff.toFixed(2)}`,
+        detail: `Gross+OtherEarnings (${totalEarnings.toFixed(2)}) vs component sum (${earningsSum.toFixed(2)}) differ by ${grossDiff.toFixed(2)}`,
       });
     }
   }
 
   // Summary totals.
+  const totalEarningsAll = totalGross + totalOtherEarnings;
   const summary = {
     headcount: lines.length,
     okCount: lines.filter((l) => l.status === 'OK').length,
     holdCount: lines.filter((l) => l.status === 'HOLD').length,
     totalGross: totalGross.toFixed(2),
+    totalOtherEarnings: totalOtherEarnings.toFixed(2),
+    totalEarnings: totalEarningsAll.toFixed(2),
     totalNet: totalNet.toFixed(2),
     totalDeductions: totalDeductions.toFixed(2),
     componentEarningsSum: componentEarningsSum.toFixed(2),
     componentDeductionsSum: componentDeductionsSum.toFixed(2),
-    grossReconciled: Math.abs(totalGross - componentEarningsSum) <= lines.length, // 1 rupee tolerance per line
+    grossReconciled: Math.abs(totalEarningsAll - componentEarningsSum) <= lines.length, // 1 rupee tolerance per line
   };
 
   return NextResponse.json({

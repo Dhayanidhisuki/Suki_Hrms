@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -79,6 +80,36 @@ export async function GET(request: NextRequest) {
   const otPlan = await prisma.oTPlan.findFirst({ where: { isActive: true, deletedAt: null } });
   const weeklyCapHours = otPlan?.maxOtHoursPerWeek ?? null;
 
+  // Load LOM config for fallback grace + daily cap.
+  const lomConfig = await prisma.lomConfig.findUnique({ where: { companyId: scope.companyId } });
+
+  // Load all daily attendance rows for this month (with shift master grace)
+  // so we can compute per-employee LOM minutes (after shift grace) and OT
+  // payable minutes (after OT plan threshold) — matching payroll exactly.
+  const dailyRows = await prisma.dailyAttendance.findMany({
+    where: {
+      employeeId: { in: employees.map((e) => e.id) },
+      date: { gte: monthStart, lt: monthEnd },
+      shiftMaster: { isNot: null },
+    },
+    include: {
+      shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } },
+    },
+  });
+
+  const lomByEmp = new Map<number, number>();
+  const otPayableByEmp = new Map<number, number>();
+  for (const d of dailyRows) {
+    if (!['Present', 'HalfDay', 'OnDuty'].includes(d.status)) continue;
+    const shift = d.shiftMaster
+      ? { startTime: d.shiftMaster.startTime, endTime: d.shiftMaster.endTime, graceMinutes: d.shiftMaster.graceMinutes }
+      : null;
+    const lom = computeLomMinutes(d.lateMinutes, d.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null);
+    lomByEmp.set(d.employeeId, (lomByEmp.get(d.employeeId) ?? 0) + lom);
+    const otPay = computeOtPayableMinutes(d.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
+    otPayableByEmp.set(d.employeeId, (otPayableByEmp.get(d.employeeId) ?? 0) + otPay);
+  }
+
   // Build the report rows.
   const rows = employees.map((emp) => {
     const summary = summaryMap.get(emp.id);
@@ -86,6 +117,9 @@ export async function GET(request: NextRequest) {
     const permission = permissionByEmp.get(emp.id);
     const otMinutes = summary?.otMinutesTotal ?? 0;
     const otHours = otMinutes / 60;
+    const lomMinutes = lomByEmp.get(emp.id) ?? 0;
+    const otPayableMinutes = otPayableByEmp.get(emp.id) ?? 0;
+    const otPayableHours = otPayableMinutes / 60;
     return {
       id: emp.id,
       employeeId: emp.id,
@@ -98,6 +132,8 @@ export async function GET(request: NextRequest) {
       leaveDays: summary?.leaveDays ?? 0,
       lopDays: summary?.lopDays ?? 0,
       otHours: Number(otHours.toFixed(2)),
+      otPayableHours: Number(otPayableHours.toFixed(2)),
+      lomMinutes,
       lateMinutes: summary?.lateMinutesTotal ?? 0,
       earlyOutMinutes: summary?.earlyOutMinutesTotal ?? 0,
       permissionHours: permission ? Number(permission.totalHours.toFixed(2)) : 0,

@@ -1,0 +1,14 @@
+﻿RC027: payable=11.5 lop=19.5 late=176 ot=685
+RC028: payable=21 lop=10 late=349 ot=1362
+RC029: payable=3.5 lop=27.5 late=69 ot=79
+RC030: payable=19 lop=12 late=295 ot=1164
+RC031: payable=23.5 lop=7.5 late=247 ot=2471
+RC032: payable=13.5 lop=17.5 late=152 ot=562
+RC033: payable=16 lop=15 late=243 ot=705
+RC034: payable=25 lop=6 late=345 ot=2282
+RC035: payable=21.5 lop=9.5 late=313 ot=1534
+RC036: payable=16.5 lop=14.5 late=322 ot=1044
+RC037: payable=23.5 lop=7.5 late=107 ot=1660
+RC114: payable=19 lop=12 late=357 ot=907
+
+Monthly summaries regenerated.

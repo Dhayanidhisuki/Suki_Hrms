@@ -32,6 +32,9 @@ export interface DailyAttendanceValues {
   otManagerActionAt?: Date | null;
   otHrActionByUserId?: number | null;
   otHrActionAt?: Date | null;
+  lomApprovalStatus?: string | null;
+  isWeeklyOffWorked?: boolean;
+  isHolidayWorked?: boolean;
   source?: string;
   remarks?: string | null;
   shiftMasterId?: number | null;
@@ -58,6 +61,9 @@ function isUnchanged(
     otMinutesCalculated: number;
     otMinutesApproved: number | null;
     otApprovalStatus: string | null;
+    lomApprovalStatus: string | null;
+    isWeeklyOffWorked: boolean;
+    isHolidayWorked: boolean;
     source: string;
     remarks: string | null;
     shiftMasterId: number | null;
@@ -73,6 +79,9 @@ function isUnchanged(
   if (next.otMinutesCalculated !== undefined && next.otMinutesCalculated !== current.otMinutesCalculated) return false;
   if (next.otMinutesApproved !== undefined && next.otMinutesApproved !== current.otMinutesApproved) return false;
   if (next.otApprovalStatus !== undefined && next.otApprovalStatus !== current.otApprovalStatus) return false;
+  if (next.lomApprovalStatus !== undefined && next.lomApprovalStatus !== current.lomApprovalStatus) return false;
+  if (next.isWeeklyOffWorked !== undefined && next.isWeeklyOffWorked !== current.isWeeklyOffWorked) return false;
+  if (next.isHolidayWorked !== undefined && next.isHolidayWorked !== current.isHolidayWorked) return false;
   if (next.source !== undefined && next.source !== current.source) return false;
   if (next.remarks !== undefined && next.remarks !== current.remarks) return false;
   if (next.shiftMasterId !== undefined && next.shiftMasterId !== current.shiftMasterId) return false;
@@ -119,6 +128,17 @@ export async function upsertDailyAttendanceWithHistory(
     resolvedValues = { ...values, otApprovalStatus: otEligible ? 'pending_manager' : null, otMinutesApproved: null };
   }
 
+  // Auto-queue LOM for approval when late/early-out minutes are written.
+  // The LOM Approval workflow reads lomApprovalStatus='pending' as its
+  // queue. Only queue when the writer doesn't explicitly set
+  // lomApprovalStatus (the LOM approval route sets it explicitly).
+  // Only queue when there are actual LOM minutes (late + early-out > 0
+  // after the shift's grace period, which is applied at approval time).
+  if (resolvedValues.lomApprovalStatus === undefined) {
+    const lomMinutes = (resolvedValues.lateMinutes ?? 0) + (resolvedValues.earlyOutMinutes ?? 0);
+    resolvedValues = { ...resolvedValues, lomApprovalStatus: lomMinutes > 0 ? 'pending' : null };
+  }
+
   const existing = await db.dailyAttendance.findUnique({
     where: { employeeId_date: { employeeId, date } },
   });
@@ -137,6 +157,9 @@ export async function upsertDailyAttendanceWithHistory(
         otMinutesCalculated: resolvedValues.otMinutesCalculated ?? 0,
         otMinutesApproved: resolvedValues.otMinutesApproved ?? null,
         otApprovalStatus: resolvedValues.otApprovalStatus ?? null,
+        lomApprovalStatus: resolvedValues.lomApprovalStatus ?? null,
+        isWeeklyOffWorked: resolvedValues.isWeeklyOffWorked ?? false,
+        isHolidayWorked: resolvedValues.isHolidayWorked ?? false,
         source: resolvedValues.source ?? 'manual',
         remarks: resolvedValues.remarks ?? null,
         shiftMasterId: resolvedValues.shiftMasterId ?? null,
@@ -163,6 +186,8 @@ export async function upsertDailyAttendanceWithHistory(
       otMinutesCalculated: existing.otMinutesCalculated,
       otMinutesApproved: existing.otMinutesApproved,
       otApprovalStatus: existing.otApprovalStatus,
+      isWeeklyOffWorked: existing.isWeeklyOffWorked,
+      isHolidayWorked: existing.isHolidayWorked,
       source: existing.source,
       remarks: existing.remarks,
       changedByUserId: actor.userId,

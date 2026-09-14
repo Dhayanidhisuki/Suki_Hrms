@@ -149,6 +149,7 @@ export const navigation: NavModule[] = [
           { label: "Health Insurance Config", short: "Health Ins", href: "/masters/health-insurance-config", ready: true },
           { label: "LWF Rates", href: "/masters/lwf-rates", ready: true },
           { label: "LOM Config", href: "/masters/lom-config", ready: true },
+          { label: "Approval Chain Config", short: "Approval Chain", href: "/masters/approval-chain", ready: true },
           { label: "Rounding Config", href: "/masters/rounding-config", ready: true },
           { label: "Payroll Validation Config", short: "Validation", href: "/masters/payroll-validation-config", ready: true },
           { label: "Payroll Workflow Config", short: "Workflow", href: "/masters/payroll-workflow-config", ready: true },
@@ -262,6 +263,11 @@ export const navigation: NavModule[] = [
           { label: "Attendance Overview", short: "Overview", href: "/workforce/attendance/overview", ready: true },
           { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric", ready: true },
           { label: "Time Office Final", href: "/workforce/attendance/time-office-final" },
+          { label: "Shift Plan", href: "/workforce/shift-plan", ready: true },
+          { label: "Shift Change Request", short: "Shift Change", href: "/workforce/shift-change-request", ready: true },
+          { label: "Shift Notifications", short: "Notifications", href: "/workforce/shift-notifications", ready: true },
+          { label: "Bulk Shift Upload", short: "Bulk Upload", href: "/workforce/bulk-shift-upload", ready: true },
+          { label: "Comp-off Request", short: "Comp-off", href: "/workforce/comp-off-request", ready: true },
         ],
       },
       {
@@ -309,6 +315,7 @@ export const navigation: NavModule[] = [
         label: "Processing",
         items: [
           { label: "Salary Processing", href: "/payroll/processing/salary", ready: true },
+          { label: "Additions & Deductions", href: "/payroll/processing/additions-deductions", ready: true },
           { label: "Salary Revision", href: "/payroll/processing/revision", ready: true },
           { label: "Arrears", href: "/payroll/processing/arrears", ready: true },
           { label: "Manual Arrears", href: "/payroll/processing/manual-arrears", ready: true },
@@ -456,6 +463,7 @@ export const navigation: NavModule[] = [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
           { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
+          { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
           // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
           // spent as a normal leave application against the "Compensatory Off"

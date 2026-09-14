@@ -1,0 +1,47 @@
+﻿=== LOM Config ===
+  grace (legacy) = 15
+  cap = 240
+  basis = GROSS
+  multiplier = 1
+
+=== OT Plan ===
+  threshold = 30 min
+  max per day = 3 hours
+  multiplier = 1.5
+
+=== Divya (RC028) LOM & OT day-by-day ===
+  2026-07-01 MORNING late=8 early=0 grace=10 LOM=0 otCalc=23 otAppr=52 rawOt=52 -> OT(after 30min thresh, 180min cap)=22
+  2026-07-03 MORNING late=15 early=240 grace=10 LOM=240 otCalc=0 otAppr=0 rawOt=0 -> OT(after 30min thresh, 180min cap)=0
+  2026-07-06 MORNING late=8 early=27 grace=10 LOM=25 otCalc=0 otAppr=54 rawOt=54 -> OT(after 30min thresh, 180min cap)=24
+  2026-07-07 MORNING late=0 early=0 grace=10 LOM=0 otCalc=0 otAppr=55 rawOt=55 -> OT(after 30min thresh, 180min cap)=25
+  2026-07-08 EVENING late=30 early=0 grace=10 LOM=20 otCalc=71 otAppr=97 rawOt=97 -> OT(after 30min thresh, 180min cap)=67
+  2026-07-09 EVENING late=0 early=0 grace=10 LOM=0 otCalc=0 otAppr=116 rawOt=116 -> OT(after 30min thresh, 180min cap)=86
+  2026-07-10 EVENING late=0 early=0 grace=10 LOM=0 otCalc=0 otAppr=56 rawOt=56 -> OT(after 30min thresh, 180min cap)=26
+  2026-07-11 EVENING late=13 early=0 grace=10 LOM=3 otCalc=0 otAppr=96 rawOt=96 -> OT(after 30min thresh, 180min cap)=66
+  2026-07-16 NIGHT late=31 early=0 grace=10 LOM=21 otCalc=73 otAppr=58 rawOt=58 -> OT(after 30min thresh, 180min cap)=28
+  2026-07-17 NIGHT late=0 early=0 grace=10 LOM=0 otCalc=0 otAppr=50 rawOt=50 -> OT(after 30min thresh, 180min cap)=20
+  2026-07-18 NIGHT late=0 early=23 grace=10 LOM=13 otCalc=0 otAppr=52 rawOt=52 -> OT(after 30min thresh, 180min cap)=22
+  2026-07-20 NIGHT late=21 early=0 grace=10 LOM=11 otCalc=51 otAppr=51 rawOt=51 -> OT(after 30min thresh, 180min cap)=21
+  2026-07-22 MORNING late=0 early=29 grace=10 LOM=19 otCalc=0 otAppr=52 rawOt=52 -> OT(after 30min thresh, 180min cap)=22
+  2026-07-23 MORNING late=0 early=240 grace=10 LOM=230 otCalc=0 otAppr=0 rawOt=0 -> OT(after 30min thresh, 180min cap)=0
+  2026-07-24 MORNING late=53 early=22 grace=10 LOM=65 otCalc=116 otAppr=82 rawOt=82 -> OT(after 30min thresh, 180min cap)=52
+  2026-07-25 MORNING late=46 early=0 grace=10 LOM=36 otCalc=102 otAppr=48 rawOt=48 -> OT(after 30min thresh, 180min cap)=18
+  2026-07-26 MORNING late=13 early=0 grace=10 LOM=3 otCalc=33 otAppr=40 rawOt=40 -> OT(after 30min thresh, 180min cap)=10
+  2026-07-27 MORNING late=13 early=23 grace=10 LOM=26 otCalc=0 otAppr=81 rawOt=81 -> OT(after 30min thresh, 180min cap)=51
+  2026-07-28 MORNING late=20 early=29 grace=10 LOM=39 otCalc=0 otAppr=53 rawOt=53 -> OT(after 30min thresh, 180min cap)=23
+  2026-07-29 EVENING late=24 early=24 grace=10 LOM=38 otCalc=59 otAppr=104 rawOt=104 -> OT(after 30min thresh, 180min cap)=74
+  2026-07-30 EVENING late=48 early=0 grace=10 LOM=38 otCalc=106 otAppr=109 rawOt=109 -> OT(after 30min thresh, 180min cap)=79
+  2026-07-31 EVENING late=6 early=28 grace=10 LOM=24 otCalc=17 otAppr=56 rawOt=56 -> OT(after 30min thresh, 180min cap)=26
+
+Total LOM minutes = 851
+Total OT minutes = 762
+
+=== Payroll Line RC028 ===
+  gross=16935 otAmount=1933 otherEarn=3133 otherDed=1308 lom=969 net=16960
+
+=== Components ===
+  BASIC (earning) = 10161
+  HRA (earning) = 4742
+  CONVEYANCE (earning) = 2032
+  NIGHT_ALLOWANCE (earning) = 1200
+  PF (deduction) = 1800

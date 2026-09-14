@@ -1,0 +1,44 @@
+﻿RC028 employeeId=373
+
+=== Shift Overrides (July 2026) ===
+count=0
+
+JobInfo shift: undefined night=undefined
+employeeTypeId=5
+
+=== Daily Attendance (July 2026) ===
+count=22
+  2026-07-01 shift=undefined in=09:38 out=18:30 ot=52 late=208 status=Present
+  2026-07-03 shift=undefined in=09:31 out=16:09 ot=0 late=201 status=HalfDay
+  2026-07-06 shift=undefined in=09:36 out=18:30 ot=54 late=206 status=Present
+  2026-07-07 shift=undefined in=09:35 out=18:30 ot=55 late=205 status=Present
+  2026-07-08 shift=undefined in=09:38 out=19:15 ot=97 late=0 status=Present
+  2026-07-09 shift=undefined in=09:38 out=19:34 ot=116 late=0 status=Present
+  2026-07-10 shift=undefined in=09:34 out=18:30 ot=56 late=0 status=Present
+  2026-07-11 shift=undefined in=09:32 out=19:08 ot=96 late=0 status=Present
+  2026-07-16 shift=undefined in=09:32 out=18:30 ot=58 late=0 status=Present
+  2026-07-17 shift=undefined in=09:40 out=18:30 ot=50 late=0 status=Present
+  2026-07-18 shift=undefined in=09:38 out=18:30 ot=52 late=0 status=Present
+  2026-07-20 shift=undefined in=09:39 out=18:30 ot=51 late=0 status=Present
+  2026-07-22 shift=undefined in=09:38 out=18:30 ot=52 late=208 status=Present
+  2026-07-23 shift=undefined in=15:10 out=18:30 ot=0 late=540 status=HalfDay
+  2026-07-24 shift=undefined in=09:31 out=18:53 ot=82 late=201 status=Present
+  2026-07-25 shift=undefined in=09:42 out=18:30 ot=48 late=212 status=Present
+  2026-07-26 shift=undefined in=09:50 out=18:30 ot=40 late=220 status=Present
+  2026-07-27 shift=undefined in=09:38 out=18:59 ot=81 late=208 status=Present
+  2026-07-28 shift=undefined in=09:37 out=18:30 ot=53 late=207 status=Present
+  2026-07-29 shift=undefined in=09:39 out=19:23 ot=104 late=0 status=Present
+  2026-07-30 shift=undefined in=09:38 out=19:27 ot=109 late=0 status=Present
+  2026-07-31 shift=undefined in=09:34 out=18:30 ot=56 late=0 status=Present
+
+=== Benefit Rates ===
+  undefined undefined undefined = 500
+  undefined undefined undefined = 500
+  undefined undefined undefined = 5000
+
+=== Payroll Line Components (Run 36) ===
+  BASIC (earning) = 14516 isAdhoc=false
+  HRA (earning) = 6774 isAdhoc=false
+  CONVEYANCE (earning) = 2903 isAdhoc=false
+  NIGHT_ALLOWANCE (earning) = 800 isAdhoc=false
+  PF (deduction) = 1800 isAdhoc=false

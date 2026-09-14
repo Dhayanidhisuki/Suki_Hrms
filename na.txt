@@ -1,0 +1,10 @@
+﻿=== Divya Night Shift Days (matching payroll query) ===
+count=4
+  2026-07-16 shift=NIGHT Night Shift allowance=300 status=Present
+  2026-07-17 shift=NIGHT Night Shift allowance=300 status=Present
+  2026-07-18 shift=NIGHT Night Shift allowance=300 status=Present
+  2026-07-20 shift=NIGHT Night Shift allowance=300 status=Present
+Total night allowance should be: 1200
+
+=== Divya Shift id=6 days ===
+count=0

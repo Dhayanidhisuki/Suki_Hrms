@@ -33,17 +33,33 @@ interface PayrollLineDetail {
   grossEarnings: string;
   otAmount: string;
   pfEmployee: string;
+  pfEmployer: string;
+  epsEmployer: string;
   esiEmployee: string;
+  esiEmployer: string;
   professionalTax: string;
   tds: string;
   otherEarningsTotal: string;
   otherDeductionsTotal: string;
+  lomAmount: string;
+  lwfAmount: string;
+  healthInsurance: string;
+  licAmount: string;
+  attendanceBonus: string;
+  petrolAllowance: string;
+  doubleMachineIncentive: string;
+  shiftIncentive: string;
   netSalary: string;
   status: string;
   holdReason: string | null;
   employee: { employeeCode: string; firstName: string; lastName: string };
   payrollRun: { year: number; month: number; status: string };
   components: LineComponent[];
+}
+
+function fmt(n: string | number) {
+  const v = Number(n ?? 0);
+  return v.toLocaleString('en-IN');
 }
 
 function PayslipContent() {
@@ -118,8 +134,71 @@ function PayslipContent() {
   }
 
   const editable = line.payrollRun.status === 'DRAFT' || line.payrollRun.status === 'CALCULATED';
-  const earnings = line.components.filter((c) => c.salaryComponent.type === 'earning');
-  const deductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
+  const rawEarnings = line.components.filter((c) => c.salaryComponent.type === 'earning');
+  const rawDeductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
+
+  // Earnings rows (+ green)
+  const earnings: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = rawEarnings.map((c) => ({
+    label: c.salaryComponent.name,
+    amount: Number(c.amount),
+    isAdhoc: c.isAdhoc,
+    id: c.id,
+  }));
+
+  // Auto-earnings (not already in components)
+  if (Number(line.otAmount) > 0) earnings.push({ label: 'Overtime', amount: Number(line.otAmount), isAdhoc: false });
+  if (Number(line.attendanceBonus) > 0) earnings.push({ label: 'Attendance Bonus', amount: Number(line.attendanceBonus), isAdhoc: false });
+  if (Number(line.petrolAllowance) > 0) earnings.push({ label: 'Petrol Allowance', amount: Number(line.petrolAllowance), isAdhoc: false });
+  if (Number(line.doubleMachineIncentive) > 0) earnings.push({ label: 'Double Machine Incentive', amount: Number(line.doubleMachineIncentive), isAdhoc: false });
+  if (Number(line.shiftIncentive) > 0) earnings.push({ label: 'Shift Incentive', amount: Number(line.shiftIncentive), isAdhoc: false });
+
+  // Catch-all for other earnings stored in otherEarningsTotal but not
+  // already shown as a component or auto-earning line above.
+  const displayedEarnings = earnings.reduce((s, r) => s + r.amount, 0);
+  const otherAutoEarnings = Number(line.otherEarningsTotal) - Number(line.otAmount) - Number(line.attendanceBonus) - Number(line.petrolAllowance) - Number(line.doubleMachineIncentive) - Number(line.shiftIncentive);
+  // Subtract earning components that are NOT part of grossEarnings (e.g. NIGHT_ALLOWANCE)
+  const nonGrossEarningComponents = rawEarnings
+    .filter((c) => !['BASIC', 'HRA', 'CONVEYANCE', 'DA', 'SPECIAL_ALLOWANCE', 'BASIC_HRA'].includes(c.salaryComponent.code.toUpperCase()))
+    .reduce((s, c) => s + Number(c.amount), 0);
+  const otherEarningsCatchall = otherAutoEarnings - nonGrossEarningComponents;
+  if (otherEarningsCatchall > 0) {
+    earnings.push({ label: 'Other Earnings', amount: otherEarningsCatchall, isAdhoc: false });
+  }
+
+  // Standard statutory + auto deductions (always show for PDF-like overview)
+  const otherAutoDeductions =
+    Number(line.otherDeductionsTotal) -
+    Number(line.lomAmount) -
+    Number(line.lwfAmount) -
+    Number(line.healthInsurance) -
+    Number(line.licAmount);
+
+  const deductions: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = [
+    { label: 'Provident Fund (PF)', amount: Number(line.pfEmployee), isAdhoc: false },
+    { label: 'Employee State Insurance (ESI)', amount: Number(line.esiEmployee), isAdhoc: false },
+    { label: 'Professional Tax', amount: Number(line.professionalTax), isAdhoc: false },
+    { label: 'Tax Deducted at Source (TDS)', amount: Number(line.tds), isAdhoc: false },
+    { label: 'LOM (Loss of Minutes)', amount: Number(line.lomAmount), isAdhoc: false },
+    { label: 'Labour Welfare Fund (LWF)', amount: Number(line.lwfAmount), isAdhoc: false },
+    { label: 'Health Insurance', amount: Number(line.healthInsurance), isAdhoc: false },
+    { label: 'LIC', amount: Number(line.licAmount), isAdhoc: false },
+    ...(otherAutoDeductions > 0 ? [{ label: 'Other Auto Deductions', amount: otherAutoDeductions, isAdhoc: false }] : []),
+  ];
+
+  // Add custom/ad-hoc deduction components that are not already in the standard list
+  rawDeductions.forEach((c) => {
+    const isPf = c.salaryComponent.code.toLowerCase().includes('pf') || c.salaryComponent.name.toLowerCase().includes('pf');
+    const isEsi = c.salaryComponent.code.toLowerCase().includes('esi') || c.salaryComponent.name.toLowerCase().includes('esi');
+    if (!isPf && !isEsi) {
+      deductions.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id });
+    }
+  });
+
+  // Use the actual stored totals (not sum of displayed rows) so the
+  // sub-values always reconcile to the net salary exactly.
+  const totalEarnings = Number(line.grossEarnings) + Number(line.otherEarningsTotal);
+  const totalDeductions = Number(line.pfEmployee) + Number(line.esiEmployee) + Number(line.professionalTax) + Number(line.tds) + Number(line.otherDeductionsTotal);
+  const net = Number(line.netSalary);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -172,21 +251,23 @@ function PayslipContent() {
 
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--foreground-muted)' }}>
+            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--success, #22b573)' }}>
               Earnings
             </h2>
             <table className="w-full text-sm">
               <tbody>
-                {earnings.map((c) => (
-                  <tr key={c.id}>
+                {earnings.map((c, idx) => (
+                  <tr key={`e-${idx}`}>
                     <td className="py-1" style={{ color: 'var(--foreground)' }}>
-                      {c.salaryComponent.name}
+                      {c.label}
                       {c.isAdhoc && <span className="ml-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>(ad-hoc)</span>}
                     </td>
-                    <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                    <td className="py-1 pl-2 text-right print:hidden">
-                      {editable && c.isAdhoc && (
-                        <button onClick={() => handleRemoveAdhoc(c.id)} className="text-xs hover:underline" style={{ color: '#991b1b' }}>
+                    <td className="py-1 pr-1 text-right" style={{ color: 'var(--success, #22b573)', fontWeight: 500 }}>
+                      +{fmt(c.amount)}
+                    </td>
+                    <td className="py-1 pl-1 text-right print:hidden">
+                      {editable && c.isAdhoc && c.id && (
+                        <button onClick={() => handleRemoveAdhoc(c.id!)} className="text-xs hover:underline" style={{ color: '#991b1b' }}>
                           ×
                         </button>
                       )}
@@ -194,8 +275,8 @@ function PayslipContent() {
                   </tr>
                 ))}
                 <tr style={{ borderTop: '1px solid var(--border)' }}>
-                  <td className="py-1 font-medium" style={{ color: 'var(--foreground)' }}>Overtime</td>
-                  <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>{line.otAmount}</td>
+                  <td className="py-1.5 text-xs font-semibold" style={{ color: 'var(--foreground)' }}>Total Earnings</td>
+                  <td className="py-1.5 pr-1 text-right font-semibold" style={{ color: 'var(--success, #22b573)' }}>+{fmt(totalEarnings)}</td>
                   <td />
                 </tr>
               </tbody>
@@ -203,35 +284,32 @@ function PayslipContent() {
           </div>
 
           <div>
-            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--foreground-muted)' }}>
+            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--warning, #f0b429)' }}>
               Deductions
             </h2>
             <table className="w-full text-sm">
               <tbody>
-                {deductions.map((c) => (
-                  <tr key={c.id}>
-                    <td className="py-1" style={{ color: 'var(--foreground)' }}>
-                      {c.salaryComponent.name}
+                {deductions.map((c, idx) => (
+                  <tr key={`d-${idx}`}>
+                    <td className="py-1" style={{ color: 'var(--foreground)', opacity: c.amount > 0 ? 1 : 0.5 }}>
+                      {c.label}
                       {c.isAdhoc && <span className="ml-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>(ad-hoc)</span>}
                     </td>
-                    <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                    <td className="py-1 pl-2 text-right print:hidden">
-                      {editable && c.isAdhoc && (
-                        <button onClick={() => handleRemoveAdhoc(c.id)} className="text-xs hover:underline" style={{ color: '#991b1b' }}>
+                    <td className="py-1 pr-1 text-right" style={{ color: c.amount > 0 ? 'var(--warning, #f0b429)' : 'var(--foreground-muted)', fontWeight: c.amount > 0 ? 500 : 400 }}>
+                      {c.amount > 0 ? `-${fmt(c.amount)}` : '—'}
+                    </td>
+                    <td className="py-1 pl-1 text-right print:hidden">
+                      {editable && c.isAdhoc && c.id && c.amount > 0 && (
+                        <button onClick={() => handleRemoveAdhoc(c.id!)} className="text-xs hover:underline" style={{ color: '#991b1b' }}>
                           ×
                         </button>
                       )}
                     </td>
                   </tr>
                 ))}
-                <tr>
-                  <td className="py-1" style={{ color: 'var(--foreground)' }}>Professional Tax</td>
-                  <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>{line.professionalTax}</td>
-                  <td />
-                </tr>
-                <tr>
-                  <td className="py-1" style={{ color: 'var(--foreground)' }}>TDS</td>
-                  <td className="py-1 text-right" style={{ color: 'var(--foreground)' }}>{line.tds}</td>
+                <tr style={{ borderTop: '1px solid var(--border)' }}>
+                  <td className="py-1.5 text-xs font-semibold" style={{ color: 'var(--foreground)' }}>Total Deductions</td>
+                  <td className="py-1.5 pr-1 text-right font-semibold" style={{ color: 'var(--warning, #f0b429)' }}>-{fmt(totalDeductions)}</td>
                   <td />
                 </tr>
               </tbody>
@@ -240,8 +318,11 @@ function PayslipContent() {
         </div>
 
         <div className="mt-5 flex items-center justify-between rounded-lg px-4 py-3" style={{ backgroundColor: 'var(--surface-hover)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Net Salary</span>
-          <span className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>₹{line.netSalary}</span>
+          <div className="space-y-1">
+            <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>{fmt(totalEarnings)} − {fmt(totalDeductions)}</p>
+            <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Net Salary</span>
+          </div>
+          <span className="text-lg font-bold" style={{ color: 'var(--foreground)' }}>₹{fmt(net)}</span>
         </div>
       </div>
 

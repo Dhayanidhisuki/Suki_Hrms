@@ -29,6 +29,7 @@ import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManag
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { grantCompOff } from '@/lib/leaveAccrual';
 import { creditCompOff } from '@/lib/compOffTransactions';
+import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from '@/lib/weeklyOff';
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
@@ -84,14 +85,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const isSunday = record.date.getUTCDay() === 0;
+    // COMP_OFF is allowed when the day is a weekly off (per department config)
+    // or a declared holiday / yearly leave. BRD: "work on weekly off means
+    // consider as Comp-off & OT". Any other day is always settled as OT.
+    const isWeeklyOff = await isWeeklyOffForEmployee(record.employeeId, record.date);
     const employee = await prisma.employee.findUnique({ where: { id: record.employeeId }, select: { companyId: true } });
     const isHoliday = employee
-      ? await prisma.holidayMaster.findFirst({
-          where: { companyId: employee.companyId, date: record.date, isActive: true, deletedAt: null },
-        })
-      : null;
-    const settlementType = isSunday || isHoliday ? parsed.data.settlementType : 'OT';
+      ? await isHolidayOrYearlyLeave(employee.companyId, record.date)
+      : false;
+    const settlementType = isWeeklyOff || isHoliday ? parsed.data.settlementType : 'OT';
 
     if (settlementType === 'COMP_OFF') {
       await grantCompOff(record.employeeId, record.date);

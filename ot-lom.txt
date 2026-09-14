@@ -1,0 +1,32 @@
+﻿=== OT Plans ===
+  id=1 name=Standard Overtime threshold=30 maxDay=3 maxMonth=null rate=1.5 weekday=1 holiday=2
+
+=== LOM Config ===
+  grace=15 cap=240 basis=GROSS multiplier=1 denom=CALENDAR shiftSource=SHIFT_MASTER
+
+=== RC028 Divya Daily Attendance (LOM/OT) ===
+  2026-07-01 shift=MORNING in=06:08 out=14:23 late=8 early=0 otCalc=23 otAppr=52 otStatus=approved settle=OT work=495 (shift grace=10)
+  2026-07-03 shift=MORNING in=06:15 out=10:00 late=15 early=240 otCalc=0 otAppr=null otStatus=null settle=null work=240 (shift grace=10)
+  2026-07-06 shift=MORNING in=06:08 out=13:33 late=8 early=27 otCalc=0 otAppr=54 otStatus=approved settle=OT work=445 (shift grace=10)
+  2026-07-07 shift=MORNING in=06:00 out=14:00 late=0 early=0 otCalc=0 otAppr=55 otStatus=approved settle=OT work=480 (shift grace=10)
+  2026-07-08 shift=EVENING in=14:30 out=23:11 late=30 early=0 otCalc=71 otAppr=97 otStatus=approved settle=OT work=521 (shift grace=10)
+  2026-07-09 shift=EVENING in=14:00 out=22:00 late=0 early=0 otCalc=0 otAppr=116 otStatus=approved settle=OT work=480 (shift grace=10)
+  2026-07-10 shift=EVENING in=14:00 out=22:00 late=0 early=0 otCalc=0 otAppr=56 otStatus=approved settle=OT work=480 (shift grace=10)
+  2026-07-11 shift=EVENING in=14:13 out=22:00 late=13 early=0 otCalc=0 otAppr=96 otStatus=approved settle=OT work=467 (shift grace=10)
+  2026-07-16 shift=NIGHT in=22:31 out=07:13 late=31 early=0 otCalc=73 otAppr=58 otStatus=approved settle=OT work=553 (shift grace=10)
+  2026-07-17 shift=NIGHT in=22:00 out=06:00 late=0 early=0 otCalc=0 otAppr=50 otStatus=approved settle=OT work=480 (shift grace=10)
+  2026-07-18 shift=NIGHT in=22:00 out=05:37 late=0 early=23 otCalc=0 otAppr=52 otStatus=approved settle=OT work=457 (shift grace=10)
+  2026-07-20 shift=NIGHT in=22:21 out=06:51 late=21 early=0 otCalc=51 otAppr=51 otStatus=approved settle=OT work=531 (shift grace=10)
+  2026-07-22 shift=MORNING in=06:00 out=13:31 late=0 early=29 otCalc=0 otAppr=52 otStatus=approved settle=OT work=451 (shift grace=10)
+  2026-07-23 shift=MORNING in=06:00 out=10:00 late=0 early=240 otCalc=0 otAppr=null otStatus=null settle=null work=240 (shift grace=10)
+  2026-07-24 shift=MORNING in=06:53 out=15:34 late=53 early=22 otCalc=116 otAppr=82 otStatus=approved settle=OT work=521 (shift grace=10)
+  2026-07-25 shift=MORNING in=06:46 out=15:42 late=46 early=0 otCalc=102 otAppr=48 otStatus=approved settle=OT work=536 (shift grace=10)
+  2026-07-26 shift=MORNING in=06:13 out=14:33 late=13 early=0 otCalc=33 otAppr=40 otStatus=approved settle=OT work=500 (shift grace=10)
+  2026-07-27 shift=MORNING in=06:13 out=13:37 late=13 early=23 otCalc=0 otAppr=81 otStatus=approved settle=OT work=444 (shift grace=10)
+  2026-07-28 shift=MORNING in=06:20 out=13:31 late=20 early=29 otCalc=0 otAppr=53 otStatus=approved settle=OT work=431 (shift grace=10)
+  2026-07-29 shift=EVENING in=14:24 out=22:35 late=24 early=24 otCalc=59 otAppr=104 otStatus=approved settle=OT work=491 (shift grace=10)
+  2026-07-30 shift=EVENING in=14:48 out=23:46 late=48 early=0 otCalc=106 otAppr=109 otStatus=approved settle=OT work=538 (shift grace=10)
+  2026-07-31 shift=EVENING in=14:06 out=21:49 late=6 early=28 otCalc=17 otAppr=56 otStatus=approved settle=OT work=463 (shift grace=10)
+
+=== Monthly Summary RC028 ===
+  payable=21 late=349 early=685 ot=1362
