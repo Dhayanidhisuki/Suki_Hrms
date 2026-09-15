@@ -24,6 +24,18 @@ interface LeaveBalance {
   closing: number;
 }
 
+interface AttendanceSummary {
+  presentDays: number;
+  absentDays: number;
+  leaveDays: number;
+  lopDays: number;
+  clDays: number;
+  slDays: number;
+  elDays: number;
+  compOffDays: number;
+  otherLeaveDays: number;
+}
+
 interface PayrollLineDetail {
   id: number;
   employeeId: number;
@@ -54,6 +66,7 @@ interface PayrollLineDetail {
 
 interface PayrollDetailData {
   line: PayrollLineDetail;
+  attendance: AttendanceSummary | null;
   leaveBalances: LeaveBalance[];
 }
 
@@ -79,15 +92,18 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     setError(null);
     Promise.all([
       fetch(`/api/payroll/runs/${runId}/lines/${lineId}`),
-      fetch(`/api/reports/leave?year=${new Date().getFullYear()}&month=${new Date().getMonth() + 1}`),
+      fetch(`/api/workforce/attendance/monthly?year=2026&month=7`),
+      fetch(`/api/reports/leave?year=2026&month=7`),
     ])
-      .then(async ([lineRes, balRes]) => {
+      .then(async ([lineRes, attRes, balRes]) => {
         if (!lineRes.ok) throw new Error('Failed to fetch payroll line');
         const line = await lineRes.json();
+        const attJson = await attRes.json();
+        const att = (attJson.data ?? []).find((r: any) => r.employeeId === line.employeeId);
         const balJson = await balRes.json();
         const balances: LeaveBalance[] = (balJson.balances ?? []).filter((b: any) => b.employeeCode === line.employee.employeeCode);
         if (!cancelled) {
-          setData({ line, leaveBalances: balances });
+          setData({ line, attendance: att?.summary ?? null, leaveBalances: balances });
         }
       })
       .catch((err) => {
@@ -149,6 +165,7 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
 
   const { line } = data;
   const monthName = new Date(2000, line.payrollRun.month - 1, 1).toLocaleString('default', { month: 'long' });
+  const att = data.attendance;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
@@ -183,6 +200,17 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         </div>
 
         <div className="overflow-y-auto p-5" style={{ maxHeight: 'calc(90vh - 64px)' }}>
+          {att && (
+            <div className="mb-4 grid grid-cols-6 gap-3 rounded-lg border p-3 text-center" style={{ borderColor: 'var(--border)' }}>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Present</p><p className="font-semibold tabular-nums" style={{ color: 'var(--success, #22b573)' }}>{fmt(att.presentDays)}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Absent</p><p className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{fmt(att.absentDays)}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Leave</p><p className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{fmt(att.leaveDays)}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>CL</p><p className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{fmt(att.clDays)}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>LOP</p><p className="font-semibold tabular-nums" style={{ color: 'var(--warning, #f0b429)' }}>{fmt(att.lopDays)}</p></div>
+              <div><p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>EL / SL</p><p className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{fmt(att.elDays)}/{fmt(att.slDays)}</p></div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-4">
             {/* Earnings */}
             <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
