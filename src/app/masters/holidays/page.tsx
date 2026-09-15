@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid,
-  type Column, type FieldDef, type FieldOption,
+  type Column, type FieldDef,
 } from '@/components/ui';
 
 // ─── Shared types ───────────────────────────────────────────────────────
@@ -102,16 +102,10 @@ function DeclaredHolidaysTab() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [companyOptions, setCompanyOptions] = useState<FieldOption[]>([]);
 
-  useEffect(() => {
-    fetch('/api/masters/companies?limit=100')
-      .then((r) => r.json())
-      .then((json: { data: { id: number; name: string }[] }) => setCompanyOptions(json.data.map((c) => ({ label: c.name, value: c.id }))));
-  }, []);
-
+  // Holidays are scoped to the signed-in company by the API; there is no
+  // company picker because a user must never write another company's calendar.
   const fields: FieldDef[] = [
-    { name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions },
     { name: 'date', label: 'Date', type: 'date', required: true },
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Diwali' },
     { name: 'holidayType', label: 'Holiday Type', type: 'select', required: true, options: HOLIDAY_TYPE_OPTIONS, defaultValue: 'OTHER' },
@@ -151,7 +145,6 @@ function DeclaredHolidaysTab() {
       name: row.name,
       holidayType: row.holidayType,
       description: row.description ?? '',
-      companyId: row.companyId,
       isActive: row.isActive,
     });
     setModalOpen(true);

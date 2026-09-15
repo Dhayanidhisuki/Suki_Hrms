@@ -88,11 +88,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // COMP_OFF is allowed when the day is a weekly off (per department config)
     // or a declared holiday / yearly leave. BRD: "work on weekly off means
     // consider as Comp-off & OT". Any other day is always settled as OT.
-    const isWeeklyOff = await isWeeklyOffForEmployee(record.employeeId, record.date);
     const employee = await prisma.employee.findUnique({ where: { id: record.employeeId }, select: { companyId: true } });
-    const isHoliday = employee
-      ? await isHolidayOrYearlyLeave(employee.companyId, record.date)
-      : false;
+    if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+    const isWeeklyOff = await isWeeklyOffForEmployee(employee.companyId, record.employeeId, record.date);
+    const isHoliday = await isHolidayOrYearlyLeave(employee.companyId, record.date);
     const settlementType = isWeeklyOff || isHoliday ? parsed.data.settlementType : 'OT';
 
     if (settlementType === 'COMP_OFF') {

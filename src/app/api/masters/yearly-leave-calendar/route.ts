@@ -100,6 +100,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'masters.definition.edit');
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
 
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
@@ -107,9 +109,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 });
   }
 
-  await prisma.yearlyLeaveCalendar.update({
-    where: { id },
+  const { count } = await prisma.yearlyLeaveCalendar.updateMany({
+    where: { id, companyId: scope.companyId, deletedAt: null },
     data: { deletedAt: new Date(), isActive: false },
   });
+  if (count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ deleted: id });
 }

@@ -1,82 +1,86 @@
 /**
- * Phase TimeOffice — helpers for department-wise weekly off detection.
+ * Department-wise weekly-off resolution.
  *
- * The admin configures which day(s) of the week are weekly off for each
- * department via DepartmentWeeklyOff. These helpers resolve that config
- * for a given employee/date, replacing the old hardcoded Sunday check.
+ * The admin configures which weekday(s) are off for each department via
+ * DepartmentWeeklyOff. Department is a global master, so every lookup here
+ * is company-scoped — without companyId, one company's configuration
+ * silently applies to every other company's employees.
+ *
+ * Fallback: an employee whose department has no configuration at all, or
+ * who has no department, is off on Sunday (day 0). This preserves the
+ * behaviour from before the master existed.
+ *
+ * Callers that iterate employees × days must use buildWeeklyOffResolver —
+ * it makes two queries total instead of three per (employee, day).
  */
 
 import { prisma } from './prisma';
 
-/**
- * Returns true if the given date is a weekly off day for the employee's
- * department. Falls back to Sunday (day 0) when no DepartmentWeeklyOff
- * config exists for the employee's department — preserves backward
- * compatibility.
- */
-export async function isWeeklyOffForEmployee(employeeId: number, date: Date): Promise<boolean> {
-  const dayOfWeek = date.getUTCDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+const SUNDAY = 0;
 
-  // Find the employee's current department via JobInfo
-  const jobInfo = await prisma.jobInfo.findFirst({
-    where: { employeeId, effectiveTo: null },
-    select: { departmentId: true },
-  });
+export type WeeklyOffResolver = {
+  isWeeklyOff(employeeId: number, date: Date): boolean;
+};
 
-  if (!jobInfo?.departmentId) {
-    // No department assigned — fall back to Sunday
-    return dayOfWeek === 0;
+export async function buildWeeklyOffResolver(companyId: number, employeeIds: number[]): Promise<WeeklyOffResolver> {
+  const departmentByEmployee = new Map<number, number | null>();
+  const offDaysByDepartment = new Map<number, Set<number>>();
+
+  if (employeeIds.length > 0) {
+    const [jobInfos, configs] = await Promise.all([
+      prisma.jobInfo.findMany({
+        where: { employeeId: { in: employeeIds }, effectiveTo: null },
+        select: { employeeId: true, departmentId: true },
+      }),
+      prisma.departmentWeeklyOff.findMany({
+        where: { companyId },
+        select: { departmentId: true, weekOffDay: true },
+      }),
+    ]);
+    for (const j of jobInfos) departmentByEmployee.set(j.employeeId, j.departmentId ?? null);
+    for (const c of configs) {
+      let days = offDaysByDepartment.get(c.departmentId);
+      if (!days) offDaysByDepartment.set(c.departmentId, (days = new Set()));
+      days.add(c.weekOffDay);
+    }
   }
 
-  // Check if this day is configured as a weekly off for the department
-  const weeklyOff = await prisma.departmentWeeklyOff.findUnique({
-    where: {
-      departmentId_weekOffDay: {
-        departmentId: jobInfo.departmentId,
-        weekOffDay: dayOfWeek,
-      },
+  return {
+    isWeeklyOff(employeeId, date) {
+      const dayOfWeek = date.getUTCDay();
+      const departmentId = departmentByEmployee.get(employeeId) ?? null;
+      const configured = departmentId === null ? undefined : offDaysByDepartment.get(departmentId);
+      if (!configured || configured.size === 0) return dayOfWeek === SUNDAY;
+      return configured.has(dayOfWeek);
     },
-  });
-
-  if (weeklyOff) {
-    return true;
-  }
-
-  // If the department has ANY weekly off configured, use only those days.
-  // If the department has NO weekly off configured, fall back to Sunday.
-  const anyConfig = await prisma.departmentWeeklyOff.findFirst({
-    where: { departmentId: jobInfo.departmentId },
-  });
-
-  return !anyConfig && dayOfWeek === 0;
+  };
 }
 
-/**
- * Returns the configured weekly off days (0-6) for a department.
- * Empty array means no config — caller should fall back to Sunday.
- */
-export async function getDepartmentWeeklyOffDays(departmentId: number): Promise<number[]> {
+export async function isWeeklyOffForEmployee(companyId: number, employeeId: number, date: Date): Promise<boolean> {
+  const resolver = await buildWeeklyOffResolver(companyId, [employeeId]);
+  return resolver.isWeeklyOff(employeeId, date);
+}
+
+/** Configured weekly-off weekdays (0–6) for a department. Empty = no config, caller falls back to Sunday. */
+export async function getDepartmentWeeklyOffDays(companyId: number, departmentId: number): Promise<number[]> {
   const configs = await prisma.departmentWeeklyOff.findMany({
-    where: { departmentId },
+    where: { companyId, departmentId },
     select: { weekOffDay: true },
   });
   return configs.map((c) => c.weekOffDay);
 }
 
-/**
- * Returns true if the given date is a declared holiday (HolidayMaster)
- * OR a yearly leave calendar entry for the employee's company.
- */
+/** True if the date is a declared holiday or a yearly leave calendar entry for the company. */
 export async function isHolidayOrYearlyLeave(companyId: number, date: Date): Promise<boolean> {
   const holiday = await prisma.holidayMaster.findFirst({
     where: { companyId, date, isActive: true, deletedAt: null },
+    select: { id: true },
   });
   if (holiday) return true;
 
   const yearlyLeave = await prisma.yearlyLeaveCalendar.findFirst({
     where: { companyId, date, isActive: true, deletedAt: null },
+    select: { id: true },
   });
-  if (yearlyLeave) return true;
-
-  return false;
+  return yearlyLeave !== null;
 }

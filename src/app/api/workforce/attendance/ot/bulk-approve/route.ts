@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const isWeeklyOff = await isWeeklyOffForEmployee(record.employeeId, record.date);
+        const isWeeklyOff = await isWeeklyOffForEmployee(record.employee.companyId, record.employeeId, record.date);
         const isHoliday = await isHolidayOrYearlyLeave(record.employee.companyId, record.date);
         const settlementType = isWeeklyOff || isHoliday ? requestedSettlement : 'OT';
 

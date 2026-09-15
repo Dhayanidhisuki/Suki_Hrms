@@ -54,10 +54,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Upsert: if [departmentId, weekOffDay] exists, update isFrozen; otherwise create.
+  // Upsert: if [companyId, departmentId, weekOffDay] exists, update isFrozen; otherwise create.
   const existing = await prisma.departmentWeeklyOff.findUnique({
     where: {
-      departmentId_weekOffDay: {
+      companyId_departmentId_weekOffDay: {
+        companyId: scope.companyId,
         departmentId: parsed.data.departmentId,
         weekOffDay: parsed.data.weekOffDay,
       },
@@ -91,6 +92,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'masters.definition.edit');
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
 
   const body = await request.json().catch(() => null);
   const id = Number(body?.id);
@@ -98,6 +101,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 });
   }
 
-  await prisma.departmentWeeklyOff.delete({ where: { id } });
+  const { count } = await prisma.departmentWeeklyOff.deleteMany({ where: { id, companyId: scope.companyId } });
+  if (count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ deleted: id });
 }

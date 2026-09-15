@@ -293,13 +293,17 @@ export function deriveStatusAndMinutes(
     let otMinutes = excessMinutes >= otThresholdMinutes ? excessMinutes : 0;
     if (maxOtMinutesPerDay !== null) otMinutes = Math.min(otMinutes, maxOtMinutesPerDay);
 
-    // Late = punch-in time of day minus (shift start + grace) — only
-    // computable when a real shift is assigned; the flat 8-hour fallback
-    // has no defined start time to be late against.
+    // Late = RAW punch-in time of day minus shift start — only computable
+    // when a real shift is assigned; the flat 8-hour fallback has no
+    // defined start time to be late against. Grace is deliberately NOT
+    // subtracted here: every consumer (computeLomMinutes on the attendance
+    // screens, the LOM approval routes, payroll's fallback) applies the
+    // shift grace itself, and computeAttendanceMetrics (manual entry)
+    // stores raw late too. Pre-graced storage double-applied it.
     let lateMinutes = 0;
     if (shift.startMinutes !== null) {
       const inTimeOfDay = effectiveInTime.getUTCHours() * 60 + effectiveInTime.getUTCMinutes();
-      lateMinutes = Math.max(0, inTimeOfDay - (shift.startMinutes + shift.graceMinutes));
+      lateMinutes = Math.max(0, inTimeOfDay - shift.startMinutes);
     }
 
     // ── Early checkout calculation ────────────────────────────────────
@@ -397,29 +401,17 @@ export async function convertImportToDailyAttendance(
     const effectiveInTime = snappedInTime ?? inTime;
 
     // ── Auto-detect weekly-off/holiday worked ──────────────────────
-    // If the employee has punches on a day that is their department's
-    // weekly off or a declared holiday/yearly leave, mark the flags
-    // so OT approval can offer comp-off settlement.
+    // If the employee has at least one punch on a day that is their
+    // weekly off or a declared holiday/yearly leave, and the day is not
+    // Absent, mark the flags so OT approval can offer comp-off settlement.
+    // Gated on "any punch", not "both punches": a Sunday worked with a
+    // missing OUT punch must still be offered comp-off. companyId comes
+    // from the import row — no per-day employee lookup needed.
     let isWeeklyOffWorked = false;
     let isHolidayWorked = false;
-    if (inTime && outTime) {
-      const emp = await prisma.employee.findUnique({
-        where: { id: employeeId },
-        select: { companyId: true },
-      });
-      if (emp) {
-        isWeeklyOffWorked = await isWeeklyOffForEmployee(employeeId, date);
-        // Only mark as worked if they actually have punches (present)
-        if (isWeeklyOffWorked && status !== 'Absent') {
-          // already set — keep it
-        } else {
-          isWeeklyOffWorked = false;
-        }
-        isHolidayWorked = await isHolidayOrYearlyLeave(emp.companyId, date);
-        if (isHolidayWorked && status === 'Absent') {
-          isHolidayWorked = false;
-        }
-      }
+    if ((inTime || outTime) && status !== 'Absent') {
+      isWeeklyOffWorked = await isWeeklyOffForEmployee(row.companyId, employeeId, date);
+      isHolidayWorked = await isHolidayOrYearlyLeave(row.companyId, date);
     }
 
     // Goes through the history-recording helper, never a bare upsert — an

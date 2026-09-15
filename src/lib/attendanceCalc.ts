@@ -140,3 +140,24 @@ export function computeOtPayableMinutes(
   if (capMin > 0) return Math.min(otMinutesCalculated || 0, capMin);
   return otMinutesCalculated || 0;
 }
+
+/**
+ * Apply a monthly OT hours cap to an already-summed (hours, amount) pair.
+ * When the cap bites, the amount is scaled by cappedHours / uncappedHours so
+ * the payout shrinks in step with the hours — never clamp hours alone.
+ * A null/undefined cap means no cap.
+ */
+export function applyMonthlyOtCap(
+  totalOtHours: number,
+  totalOtAmount: number,
+  maxOtHoursPerMonth: number | null | undefined
+): { totalOtHours: number; totalOtAmount: number } {
+  if (maxOtHoursPerMonth == null || totalOtHours <= maxOtHoursPerMonth || totalOtHours <= 0) {
+    return { totalOtHours, totalOtAmount };
+  }
+  const cappedHours = Math.max(0, maxOtHoursPerMonth);
+  return {
+    totalOtHours: cappedHours,
+    totalOtAmount: totalOtAmount * (cappedHours / totalOtHours),
+  };
+}

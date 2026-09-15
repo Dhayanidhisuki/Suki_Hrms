@@ -671,8 +671,12 @@ model DepartmentWeeklyOff {
   company    Company    @relation(fields: [companyId], references: [id])
   department Department @relation(fields: [departmentId], references: [id])
 
-  @@unique([departmentId, weekOffDay])
-  @@index([departmentId])
+  // Department is a global master, so the unique key must carry companyId —
+  // otherwise two companies cannot both configure Saturday off for
+  // PRODUCTION, and a lookup by (departmentId, weekOffDay) alone returns
+  // whichever company inserted first.
+  @@unique([companyId, departmentId, weekOffDay])
+  @@index([companyId, departmentId])
   @@map("DepartmentWeeklyOff")
 }
 

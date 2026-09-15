@@ -1,7 +1,8 @@
 /**
  * POST /api/workforce/attendance/lom/bulk-approve
- *   — bulk-approves LOM entries. Approved minutes default to
- *     late + early-out - shift grace per row.
+ *   — bulk-approves LOM entries. Approved minutes per row come from the
+ *     canonical computeLomMinutes (shift grace on late only, then the
+ *     company's daily LOM cap).
  *     RBAC-gated on workforce.ot.approve (HR/Admin).
  * Body: { ids: number[] }
  */
@@ -11,6 +12,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { computeLomMinutes, type LomConfigLite } from '@/lib/attendanceCalc';
 
 const bodySchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, 'At least one ID required'),
@@ -34,8 +36,18 @@ export async function POST(request: NextRequest) {
 
   const records = await prisma.dailyAttendance.findMany({
     where: { id: { in: ids }, lomApprovalStatus: 'pending' },
-    include: { shiftMaster: { select: { graceMinutes: true } } },
+    include: {
+      shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } },
+      employee: { select: { companyId: true } },
+    },
   });
+
+  // One LomConfig fetch per company touched by the batch (normally one).
+  const companyIds = Array.from(new Set(records.map((r) => r.employee.companyId)));
+  const lomConfigs = await prisma.lomConfig.findMany({ where: { companyId: { in: companyIds } } });
+  const lomConfigByCompany = new Map<number, LomConfigLite>(
+    lomConfigs.map((c) => [c.companyId, { graceMinutesExempt: c.graceMinutesExempt, dailyLomCap: c.dailyLomCap }])
+  );
 
   const results: { id: number; status: 'ok' | 'skipped' | 'error'; message?: string }[] = [];
   let approved = 0;
@@ -43,9 +55,12 @@ export async function POST(request: NextRequest) {
 
   for (const record of records) {
     try {
-      const grace = record.shiftMaster?.graceMinutes ?? 0;
-      const totalLomMinutes = record.lateMinutes + record.earlyOutMinutes;
-      const approvedMinutes = Math.max(0, totalLomMinutes - grace);
+      const approvedMinutes = computeLomMinutes(
+        record.lateMinutes,
+        record.earlyOutMinutes,
+        record.shiftMaster,
+        lomConfigByCompany.get(record.employee.companyId) ?? null
+      );
 
       await prisma.dailyAttendance.update({
         where: { id: record.id },

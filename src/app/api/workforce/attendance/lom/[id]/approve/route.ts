@@ -1,8 +1,9 @@
 /**
  * POST /api/workforce/attendance/lom/[id]/approve
  *   — approves a single LOM entry. The approved minutes default to the
- *     total LOM minutes (late + early-out) minus the shift's grace period.
- *     Body may override with { approvedMinutes: number }.
+ *     canonical LOM figure from computeLomMinutes: shift grace applied to
+ *     late minutes only (never to early-out), then the company's daily LOM
+ *     cap. Body may override with { approvedMinutes: number }.
  *     RBAC-gated on workforce.ot.approve (HR/Admin).
  */
 
@@ -12,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { computeLomMinutes } from '@/lib/attendanceCalc';
 
 const bodySchema = z.object({
   approvedMinutes: z.number().int().min(0).optional(),
@@ -30,7 +32,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const attendanceId = Number(id);
   const record = await prisma.dailyAttendance.findUnique({
     where: { id: attendanceId },
-    include: { shiftMaster: { select: { graceMinutes: true } } },
+    include: {
+      shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } },
+      employee: { select: { companyId: true } },
+    },
   });
   if (!record) {
     return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 });
@@ -48,10 +53,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Default approved minutes = late + early-out - grace
-  const grace = record.shiftMaster?.graceMinutes ?? 0;
-  const totalLomMinutes = record.lateMinutes + record.earlyOutMinutes;
-  const defaultApproved = Math.max(0, totalLomMinutes - grace);
+  // Default approved minutes = canonical LOM (grace on late only, daily cap).
+  const lomConfig = await prisma.lomConfig.findUnique({ where: { companyId: record.employee.companyId } });
+  const defaultApproved = computeLomMinutes(
+    record.lateMinutes,
+    record.earlyOutMinutes,
+    record.shiftMaster,
+    lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null
+  );
   const approvedMinutes = parsed.data.approvedMinutes ?? defaultApproved;
 
   const updated = await prisma.dailyAttendance.update({

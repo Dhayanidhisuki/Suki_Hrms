@@ -20,7 +20,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
-import { isWeeklyOffForEmployee } from '@/lib/weeklyOff';
+import { buildWeeklyOffResolver } from '@/lib/weeklyOff';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
 
   // Auto-generate attendance rows for missing days via the history helper
   // so every insert has a proper audit trail.
+  const weeklyOff = await buildWeeklyOffResolver(scope.companyId, employees.map((e) => e.id));
   for (const emp of employees) {
     const existingDates = new Set(emp.dailyAttendances.map((d) => d.date.toISOString().slice(0, 10)));
     const joinDate = emp.jobInfos[0]?.joinDate ? new Date(emp.jobInfos[0].joinDate) : null;
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
       if (existingDates.has(dateStr)) continue;
 
       // Determine the correct status for the missing day
-      const isWeeklyOff = await isWeeklyOffForEmployee(emp.id, date);
+      const isWeeklyOff = weeklyOff.isWeeklyOff(emp.id, date);
       let status: string;
       if (isWeeklyOff) {
         status = 'WeeklyOff';

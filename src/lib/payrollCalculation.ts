@@ -47,6 +47,7 @@
 
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
+import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes } from './attendanceCalc';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -297,14 +298,25 @@ export async function calculatePayrollRun(payrollRunId: number) {
     recurringDeductions = round(recurringDeductions);
 
     let otAmount = 0;
-    if (jobInfo?.overtimeAllowed && summary.otMinutesTotal > 0) {
+    // Gate on the per-employee eligibility flag only. summary.otMinutesTotal
+    // is written as approved-only (monthly/finalize, refreshMonthlySummary),
+    // so gating on it zeroed OT for sites with no OT approval workflow.
+    // The row query below decides whether there is anything to pay.
+    if (jobInfo?.overtimeAllowed) {
       const otPlan = otPlans.find((p) => p.isActive) ?? null;
-      const thresholdMinutes = otPlan?.applicableAfterMinutes ?? 0;
+      const otPlanLite = otPlan
+        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay }
+        : null;
 
       // Phase 13 — per-day OT calculation with day-type factors.
-      // Calculate OT from the actual in/out times (otMinutesCalculated) and
-      // apply the OTPlan threshold and daily cap. Fall back to approved OT
-      // minutes when the approval workflow is in use.
+      // Two kinds of row are payable in cash:
+      //   1. approved-as-OT rows → otMinutesApproved;
+      //   2. rows with NO approval decision at all (otApprovalStatus null)
+      //      → otMinutesCalculated (sites without the approval workflow).
+      // Rejected rows and COMP_OFF settlements are never paid in cash — the
+      // comp-off route credits a comp-off day and nulls otMinutesApproved
+      // but leaves otMinutesCalculated untouched, so it must not be a
+      // fallback here. Pending rows are paid once decided.
       const monthStart = new Date(Date.UTC(year, month - 1, 1));
       const monthEnd = new Date(Date.UTC(year, month, 1));
       const dailyOtRows = await prisma.dailyAttendance.findMany({
@@ -314,7 +326,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
           status: { in: ['Present', 'HalfDay', 'OnDuty'] },
           OR: [
             { otMinutesApproved: { gt: 0 }, otApprovalStatus: 'approved', otSettlementType: 'OT' },
-            { otMinutesCalculated: { gt: 0 } },
+            { otApprovalStatus: null, otMinutesCalculated: { gt: 0 } },
           ],
         },
       });
@@ -351,16 +363,19 @@ export async function calculatePayrollRun(payrollRunId: number) {
       // Group OT hours by ISO week (Monday-Sunday).
       const weeklyOtHours = new Map<string, number>();
       for (const d of dailyOtRows) {
-        // Prefer approved minutes if available; otherwise compute from actual working time.
-        const rawOtMinutes = d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT'
+        const isApprovedOt = d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT';
+        // Mirror the query: approved-as-OT → approved minutes; undecided →
+        // calculated minutes; any other decision (rejected, COMP_OFF,
+        // pending) → nothing in cash.
+        if (!isApprovedOt && d.otApprovalStatus !== null) continue;
+        const rawOtMinutes = isApprovedOt
           ? Number(d.otMinutesApproved ?? 0)
           : Number(d.otMinutesCalculated ?? 0);
-        // applicableAfterMinutes is a qualification threshold, not a deduction.
-        // If the raw OT does not reach the threshold, no OT is payable for the day.
-        if (rawOtMinutes < thresholdMinutes) continue;
-        // Apply per-day cap (maxOtHoursPerDay from OTPlan, default 3h = 180m if unset).
-        const dailyOtCapMinutes = otPlan?.maxOtHoursPerDay != null ? Number(otPlan.maxOtHoursPerDay) * 60 : 180;
-        const dayOtMinutes = Math.min(rawOtMinutes, dailyOtCapMinutes);
+        // Threshold (qualification, not deduction) + daily cap. A null
+        // maxOtHoursPerDay means no cap — one implementation, shared with
+        // the attendance screens.
+        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite);
+        if (dayOtMinutes <= 0) continue;
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;
         if (d.isHolidayWorked && otPlan?.holidayFactor) {
@@ -400,17 +415,11 @@ export async function calculatePayrollRun(payrollRunId: number) {
         }
       }
 
-      // Apply daily cap (maxOtHoursPerDay × totalWorkingDays as monthly ceiling).
-      const maxMonthlyHours = otPlan?.maxOtHoursPerDay != null
-        ? otPlan.maxOtHoursPerDay * totalDays
-        : null;
-      if (maxMonthlyHours != null) {
-        totalOtHours = Math.min(totalOtHours, maxMonthlyHours);
-      }
-      // Apply monthly cap from OTPlan when set.
-      if (otPlan?.maxOtHoursPerMonth != null) {
-        totalOtHours = Math.min(totalOtHours, otPlan.maxOtHoursPerMonth);
-      }
+      // Apply monthly cap from OTPlan when set — scales the amount in step
+      // with the hours, exactly like the weekly cap above. (The daily cap
+      // is already applied per row; there is no "daily cap × calendar
+      // days" monthly ceiling.)
+      ({ totalOtHours, totalOtAmount } = applyMonthlyOtCap(totalOtHours, totalOtAmount, otPlan?.maxOtHoursPerMonth));
 
       otAmount = totalOtAmount;
 
@@ -673,27 +682,29 @@ export async function calculatePayrollRun(payrollRunId: number) {
       lomMinutes = approvedLomRows.reduce((sum, r) => sum + (r.lomApprovedMinutes ?? 0), 0);
     } else {
       // Backward compat: auto-deduct late + early-out minutes.
-      // Grace and daily cap are applied PER DAY, not once to the monthly total.
-      // Use the shift-specific grace from ShiftMaster when a shift is linked.
-      const dailyCap = lomConfig?.dailyLomCap ?? 0;
+      // Grace and daily cap are applied PER DAY via the canonical
+      // computeLomMinutes (grace on late only, daily cap) — the same
+      // function the attendance screens and the LOM approval routes use.
+      // Rows explicitly rejected by HR are never deducted.
+      const lomCfgLite = lomConfig
+        ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap }
+        : null;
       const lomDays = await prisma.dailyAttendance.findMany({
         where: {
           employeeId: emp.id,
           date: { gte: lomMonthStart, lt: lomMonthEnd },
+          NOT: { lomApprovalStatus: 'rejected' },
         },
-        include: { shiftMaster: { select: { graceMinutes: true } } },
+        include: { shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } } },
       });
       lomMinutes = 0;
       for (const d of lomDays) {
-        const dayLate = Number(d.lateMinutes ?? 0);
-        const dayEarly = Number(d.earlyOutMinutes ?? 0);
-        // Per-shift grace applies to late minutes only, not early-out minutes.
-        const shiftGrace = d.shiftMaster?.graceMinutes ?? lomConfig?.graceMinutesExempt ?? 0;
-        const lateAfterGrace = Math.max(0, dayLate - shiftGrace);
-        let dayLom = lateAfterGrace + dayEarly;
-        // Apply per-day cap (0 = no cap)
-        if (dailyCap > 0 && dayLom > dailyCap) dayLom = dailyCap;
-        lomMinutes += dayLom;
+        lomMinutes += computeLomMinutes(
+          Number(d.lateMinutes ?? 0),
+          Number(d.earlyOutMinutes ?? 0),
+          d.shiftMaster,
+          lomCfgLite
+        );
       }
     }
     if (lomMinutes > 0 && grossEarnings > 0 && totalDays > 0) {

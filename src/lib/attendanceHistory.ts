@@ -131,10 +131,16 @@ export async function upsertDailyAttendanceWithHistory(
   // Auto-queue LOM for approval when late/early-out minutes are written.
   // The LOM Approval workflow reads lomApprovalStatus='pending' as its
   // queue. Only queue when the writer doesn't explicitly set
-  // lomApprovalStatus (the LOM approval route sets it explicitly).
-  // Only queue when there are actual LOM minutes (late + early-out > 0
-  // after the shift's grace period, which is applied at approval time).
-  if (resolvedValues.lomApprovalStatus === undefined) {
+  // lomApprovalStatus (the LOM approval route sets it explicitly) AND the
+  // patch actually carries late/early-out minutes. Writers that touch
+  // other fields only (OT approve, mispunch approve, leave cancel) must
+  // leave the key absent so HR's existing approved/rejected decision in
+  // the DB persists — previously they got 0 + 0 = 0 → status reset to
+  // null, and payroll's fallback then deducted rejected minutes.
+  // (The OT block above already has the equivalent guard via
+  // `values.otMinutesCalculated !== undefined`.)
+  const carriesLomMinutes = 'lateMinutes' in values || 'earlyOutMinutes' in values;
+  if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes) {
     const lomMinutes = (resolvedValues.lateMinutes ?? 0) + (resolvedValues.earlyOutMinutes ?? 0);
     resolvedValues = { ...resolvedValues, lomApprovalStatus: lomMinutes > 0 ? 'pending' : null };
   }
