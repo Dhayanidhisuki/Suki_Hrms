@@ -131,14 +131,48 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     const list = data?.line.components
       .filter((c) => c.salaryComponent.type === 'deduction')
       .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
-    if (Number(data?.line.pfEmployee ?? 0) > 0) list.push({ label: 'Provident Fund (PF)', amount: Number(data?.line.pfEmployee) });
-    if (Number(data?.line.esiEmployee ?? 0) > 0) list.push({ label: 'Employee State Insurance (ESI)', amount: Number(data?.line.esiEmployee) });
-    if (Number(data?.line.professionalTax ?? 0) > 0) list.push({ label: 'Professional Tax', amount: Number(data?.line.professionalTax) });
-    if (Number(data?.line.tds ?? 0) > 0) list.push({ label: 'Tax Deducted at Source (TDS)', amount: Number(data?.line.tds) });
-    if (Number(data?.line.lomAmount ?? 0) > 0) list.push({ label: 'LOM (Loss of Minutes)', amount: Number(data?.line.lomAmount) });
-    if (Number(data?.line.lwfAmount ?? 0) > 0) list.push({ label: 'Labour Welfare Fund (LWF)', amount: Number(data?.line.lwfAmount) });
-    if (Number(data?.line.healthInsurance ?? 0) > 0) list.push({ label: 'Health Insurance', amount: Number(data?.line.healthInsurance) });
-    if (Number(data?.line.licAmount ?? 0) > 0) list.push({ label: 'LIC', amount: Number(data?.line.licAmount) });
+
+    const has = (code: string) => data?.line.components.some((c) => c.salaryComponent.code.toUpperCase() === code);
+
+    if (Number(data?.line.pfEmployee ?? 0) > 0 && !has('PF') && !has('PROVIDENT_FUND')) {
+      list.push({ label: 'Provident Fund (PF)', amount: Number(data?.line.pfEmployee) });
+    }
+    if (Number(data?.line.esiEmployee ?? 0) > 0 && !has('ESI')) {
+      list.push({ label: 'Employee State Insurance (ESI)', amount: Number(data?.line.esiEmployee) });
+    }
+    if (Number(data?.line.professionalTax ?? 0) > 0 && !has('PT') && !has('PROFESSIONAL_TAX')) {
+      list.push({ label: 'Professional Tax', amount: Number(data?.line.professionalTax) });
+    }
+    if (Number(data?.line.tds ?? 0) > 0 && !has('TDS')) {
+      list.push({ label: 'Tax Deducted at Source (TDS)', amount: Number(data?.line.tds) });
+    }
+    if (Number(data?.line.lomAmount ?? 0) > 0) {
+      list.push({ label: 'LOM (Loss of Minutes)', amount: Number(data?.line.lomAmount) });
+    }
+    if (Number(data?.line.lwfAmount ?? 0) > 0) {
+      list.push({ label: 'Labour Welfare Fund (LWF)', amount: Number(data?.line.lwfAmount) });
+    }
+    if (Number(data?.line.healthInsurance ?? 0) > 0) {
+      list.push({ label: 'Health Insurance', amount: Number(data?.line.healthInsurance) });
+    }
+    if (Number(data?.line.licAmount ?? 0) > 0) {
+      list.push({ label: 'LIC', amount: Number(data?.line.licAmount) });
+    }
+
+    // Show any remaining auto-deductions (e.g. Canteen, benefit rates) that
+    // are not already displayed as explicit components or lines above.
+    const displayed = list.reduce((s, r) => s + r.amount, 0);
+    const pfEsiPtTds =
+      Number(data?.line.pfEmployee ?? 0) +
+      Number(data?.line.esiEmployee ?? 0) +
+      Number(data?.line.professionalTax ?? 0) +
+      Number(data?.line.tds ?? 0);
+    const expectedOtherDeductions = Number(data?.line.otherDeductionsTotal ?? 0);
+    const otherAuto = expectedOtherDeductions - (displayed - pfEsiPtTds);
+    if (otherAuto > 0) {
+      list.push({ label: 'Other Auto Deductions', amount: otherAuto });
+    }
+
     return list;
   }, [data]);
 
