@@ -289,18 +289,30 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
             {/* Leave */}
             <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
               <h3 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>
-                Leave Details
+                Leave Details (Remaining)
               </h3>
               <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="py-1 text-left text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Type</th>
+                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Opng</th>
+                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Accrd</th>
+                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Used</th>
+                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Rem</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {data.leaveBalances.map((b, idx) => (
                     <tr key={idx}>
                       <td className="py-1" style={{ color: 'var(--foreground)' }}>{b.leaveType}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.closing)}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.opening)}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.accrued)}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--warning, #f0b429)' }}>{fmt(b.availed)}</td>
+                      <td className="py-1 text-right tabular-nums font-medium" style={{ color: 'var(--success, #22b573)' }}>{fmt(b.closing)}</td>
                     </tr>
                   ))}
                   {data.leaveBalances.length === 0 && (
-                    <tr><td colSpan={2} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
+                    <tr><td colSpan={5} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
                   )}
                 </tbody>
               </table>
