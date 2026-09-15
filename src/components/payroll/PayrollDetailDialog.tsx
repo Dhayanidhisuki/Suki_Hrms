@@ -17,8 +17,7 @@ interface LineComponent {
 }
 
 interface LeaveBalance {
-  code: string;
-  name: string;
+  leaveType: string;
   opening: number;
   accrued: number;
   availed: number;
@@ -55,7 +54,6 @@ interface PayrollLineDetail {
 
 interface PayrollDetailData {
   line: PayrollLineDetail;
-  salaryComponents: SalaryComponent[];
   leaveBalances: LeaveBalance[];
 }
 
@@ -81,18 +79,15 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     setError(null);
     Promise.all([
       fetch(`/api/payroll/runs/${runId}/lines/${lineId}`),
-      fetch('/api/masters/salary-components?limit=1000'),
       fetch(`/api/reports/leave?year=${new Date().getFullYear()}&month=${new Date().getMonth() + 1}`),
     ])
-      .then(async ([lineRes, compRes, balRes]) => {
+      .then(async ([lineRes, balRes]) => {
         if (!lineRes.ok) throw new Error('Failed to fetch payroll line');
         const line = await lineRes.json();
-        const compJson = await compRes.json();
         const balJson = await balRes.json();
-        const allComponents: SalaryComponent[] = compJson.data ?? [];
         const balances: LeaveBalance[] = (balJson.balances ?? []).filter((b: any) => b.employeeCode === line.employee.employeeCode);
         if (!cancelled) {
-          setData({ line, salaryComponents: allComponents, leaveBalances: balances });
+          setData({ line, leaveBalances: balances });
         }
       })
       .catch((err) => {
@@ -104,23 +99,32 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     return () => { cancelled = true; };
   }, [runId, lineId]);
 
-  const componentAmounts = useMemo(() => {
-    const map = new Map<number, number>();
-    data?.line.components.forEach((c) => map.set(c.salaryComponent.id, Number(c.amount)));
-    return map;
+  const earnings = useMemo(() => {
+    const list = data?.line.components
+      .filter((c) => c.salaryComponent.type === 'earning')
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+    if (Number(data?.line.otAmount ?? 0) > 0) list.push({ label: 'Overtime', amount: Number(data?.line.otAmount) });
+    if (Number(data?.line.attendanceBonus ?? 0) > 0) list.push({ label: 'Attendance Bonus', amount: Number(data?.line.attendanceBonus) });
+    if (Number(data?.line.petrolAllowance ?? 0) > 0) list.push({ label: 'Petrol Allowance', amount: Number(data?.line.petrolAllowance) });
+    if (Number(data?.line.doubleMachineIncentive ?? 0) > 0) list.push({ label: 'Double Machine Incentive', amount: Number(data?.line.doubleMachineIncentive) });
+    if (Number(data?.line.shiftIncentive ?? 0) > 0) list.push({ label: 'Shift Incentive', amount: Number(data?.line.shiftIncentive) });
+    return list;
   }, [data]);
 
-  const earnings = useMemo(() => {
-    return (data?.salaryComponents ?? [])
-      .filter((c) => c.type === 'earning')
-      .map((c) => ({ ...c, amount: componentAmounts.get(c.id) ?? 0 }));
-  }, [data, componentAmounts]);
-
   const deductions = useMemo(() => {
-    return (data?.salaryComponents ?? [])
-      .filter((c) => c.type === 'deduction')
-      .map((c) => ({ ...c, amount: componentAmounts.get(c.id) ?? 0 }));
-  }, [data, componentAmounts]);
+    const list = data?.line.components
+      .filter((c) => c.salaryComponent.type === 'deduction')
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+    if (Number(data?.line.pfEmployee ?? 0) > 0) list.push({ label: 'Provident Fund (PF)', amount: Number(data?.line.pfEmployee) });
+    if (Number(data?.line.esiEmployee ?? 0) > 0) list.push({ label: 'Employee State Insurance (ESI)', amount: Number(data?.line.esiEmployee) });
+    if (Number(data?.line.professionalTax ?? 0) > 0) list.push({ label: 'Professional Tax', amount: Number(data?.line.professionalTax) });
+    if (Number(data?.line.tds ?? 0) > 0) list.push({ label: 'Tax Deducted at Source (TDS)', amount: Number(data?.line.tds) });
+    if (Number(data?.line.lomAmount ?? 0) > 0) list.push({ label: 'LOM (Loss of Minutes)', amount: Number(data?.line.lomAmount) });
+    if (Number(data?.line.lwfAmount ?? 0) > 0) list.push({ label: 'Labour Welfare Fund (LWF)', amount: Number(data?.line.lwfAmount) });
+    if (Number(data?.line.healthInsurance ?? 0) > 0) list.push({ label: 'Health Insurance', amount: Number(data?.line.healthInsurance) });
+    if (Number(data?.line.licAmount ?? 0) > 0) list.push({ label: 'LIC', amount: Number(data?.line.licAmount) });
+    return list;
+  }, [data]);
 
   if (loading) {
     return (
@@ -156,7 +160,7 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
           <div>
             <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
-              Salary Details — {line.employee.employeeCode} {line.employee.firstName} {line.employee.lastName}
+              Salary Details — {line.employee.employeeCode} {line.employee.firstName} {line.employee.lastName} -
             </h2>
             <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
               {monthName} {line.payrollRun.year} · Payable {line.payableDays}/{line.totalWorkingDays} days (LOP {line.lopDays})
@@ -187,9 +191,9 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
               </h3>
               <table className="w-full text-sm">
                 <tbody>
-                  {earnings.map((c) => (
-                    <tr key={c.id}>
-                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.name}</td>
+                  {earnings.map((c, idx) => (
+                    <tr key={idx}>
+                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.label}</td>
                       <td className="py-1 text-right tabular-nums" style={{ color: 'var(--success, #22b573)' }}>{fmt(c.amount)}</td>
                     </tr>
                   ))}
@@ -207,9 +211,9 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
               </h3>
               <table className="w-full text-sm">
                 <tbody>
-                  {deductions.map((c) => (
-                    <tr key={c.id}>
-                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.name}</td>
+                  {deductions.map((c, idx) => (
+                    <tr key={idx}>
+                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.label}</td>
                       <td className="py-1 text-right tabular-nums" style={{ color: 'var(--warning, #f0b429)' }}>{fmt(c.amount)}</td>
                     </tr>
                   ))}
@@ -229,8 +233,8 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
                 <tbody>
                   {data.leaveBalances.map((b, idx) => (
                     <tr key={idx}>
-                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{b.name}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{b.closing}</td>
+                      <td className="py-1" style={{ color: 'var(--foreground)' }}>{b.leaveType}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.closing)}</td>
                     </tr>
                   ))}
                   {data.leaveBalances.length === 0 && (
