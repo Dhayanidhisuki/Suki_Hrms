@@ -36,8 +36,27 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# local env files
-.env*.local
+# env files — never commit; contain DB, JWT, encryption and biometric secrets
+.env
+.env.*
+!.env.example
+
+# ERP data extracts — may contain employee PII/credentials, never commit
+scripts/erp-extract/out/
+
+# Employee uploads (ID documents, photos) — served through the permission-gated
+# /api/uploads/[...path] route, never committed. See src/lib/file-storage.ts.
+/uploads/
+/public/uploads/
+
+# local scratch / debug artefacts at repo root
+/test-*.js
+/test-*.mjs
+/test-*.csv
+/trace-*.js
+/verify-*.js
+/verify-*.txt
+/summaries-*.txt
 
 # vercel
 .vercel
