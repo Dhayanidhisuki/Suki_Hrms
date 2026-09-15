@@ -103,7 +103,17 @@ function PayslipContent() {
     if (!runId || !lineId) return;
     const res = await fetch(`/api/payroll/runs/${runId}/lines/${lineId}/adhoc?componentId=${componentRowId}`, { method: 'DELETE' });
     if (!res.ok) {
-      const err = await res.json();
+      const contentType = res.headers.get('content-type') ?? '';
+      let err: { error?: string } = { error: 'Remove failed' };
+      if (contentType.includes('application/json')) {
+        try {
+          err = await res.json();
+        } catch {
+          err = { error: `Remove failed (${res.status})` };
+        }
+      } else {
+        err = { error: `Remove failed (${res.status})` };
+      }
       setError(err.error ?? 'Remove failed');
       return;
     }
@@ -339,8 +349,16 @@ function PayslipContent() {
             body: JSON.stringify({ salaryComponentId: Number(values.salaryComponentId), amount: Number(values.amount) }),
           });
           if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Add failed');
+            const contentType = res.headers.get('content-type') ?? '';
+            let err: { error?: string } = { error: `Add failed (${res.status})` };
+            if (contentType.includes('application/json')) {
+              try {
+                err = await res.json();
+              } catch {
+                // leave default
+              }
+            }
+            throw new Error(err.error ?? `Add failed (${res.status})`);
           }
           fetchLine();
         }}

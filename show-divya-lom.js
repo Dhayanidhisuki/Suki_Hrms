@@ -8,33 +8,39 @@ const p = new PrismaClient();
       p.payrollLine.findFirst({ where: { employeeId: 373, payrollRunId: 36 } }),
       p.dailyAttendance.findMany({
         where: { employeeId: 373, date: { gte: new Date('2026-07-01'), lt: new Date('2026-08-01') } },
-        include: { shiftMaster: { select: { code: true, startTime: true, endTime: true, graceMinutes: true } } },
+        include: { shiftMaster: { select: { code: true, graceMinutes: true } } },
         orderBy: { date: 'asc' },
       }),
     ]);
 
-    console.log('=== Divya (RC028) July 2026 LOM Breakdown ===\n');
-    console.log(`Gross Salary: ${line?.grossEarnings}`);
-    console.log(`LOM Deduction Amount: ${line?.lomAmount}`);
-    console.log(`LOM Config: grace=${lomConfig?.graceMinutesExempt} min, cap=${lomConfig?.dailyLomCap} min, basis=${lomConfig?.calculationBasis}, multiplier=${lomConfig?.multiplier}`);
-    console.log('');
+    console.log('=== How Divya (RC028) LOM for July 2026 is calculated ===\n');
+    console.log(`Gross: ${line?.grossEarnings}`);
+    console.log(`Total days in July: 31`);
+    console.log(`Shift duration: 8 hours`);
+    console.log(`LOM config: cap=${lomConfig?.dailyLomCap} min, basis=${lomConfig?.calculationBasis}, multiplier=${lomConfig?.multiplier}`);
+    console.log(`\nFormula:`);
+    console.log(`  dailyLOM = max(0, late − shiftGrace) + earlyOut`);
+    console.log(`  (capped at ${lomConfig?.dailyLomCap} min/day)`);
+    console.log(`  perMinuteRate = gross / 31 / 8 / 60`);
+    console.log(`  LOM amount = perMinuteRate × totalLOMminutes × multiplier\n`);
 
-    console.log('Day-by-day LOM minutes:');
-    console.log('Date       | Shift     | Late | Early | Grace | Raw  | LOM');
-    console.log('-----------|-----------|------|-------|-------|------|------');
+    console.log('Date       | Shift     | Late | Early | Grace | Late after grace | Early | Daily LOM');
+    console.log('-----------|-----------|------|-------|-------|------------------|-------|----------');
     let totalLom = 0;
     for (const d of att) {
       if (!['Present', 'HalfDay', 'OnDuty'].includes(d.status)) continue;
-      // LOM formula: grace applies only to late, not early out
       const grace = d.shiftMaster?.graceMinutes ?? lomConfig?.graceMinutesExempt ?? 0;
       const lateAfterGrace = Math.max(0, (d.lateMinutes || 0) - grace);
-      const raw = lateAfterGrace + (d.earlyOutMinutes || 0);
-      const lom = Math.min(raw, lomConfig?.dailyLomCap || 240);
+      const lom = Math.min(lateAfterGrace + (d.earlyOutMinutes || 0), lomConfig?.dailyLomCap || 240);
       totalLom += lom;
-      console.log(`${d.date.toISOString().slice(0,10)} | ${(d.shiftMaster?.code || '—').padEnd(9)} | ${String(d.lateMinutes || 0).padStart(4)} | ${String(d.earlyOutMinutes || 0).padStart(5)} | ${String(grace).padStart(5)} | ${String(raw).padStart(4)} | ${String(lom).padStart(4)}`);
+      console.log(`${d.date.toISOString().slice(0,10)} | ${(d.shiftMaster?.code || '—').padEnd(9)} | ${String(d.lateMinutes || 0).padStart(4)} | ${String(d.earlyOutMinutes || 0).padStart(5)} | ${String(grace).padStart(5)} | ${String(lateAfterGrace).padStart(16)} | ${String(d.earlyOutMinutes || 0).padStart(5)} | ${String(lom).padStart(9)}`);
     }
-    console.log(`\nTotal LOM minutes in July: ${totalLom}`);
-    console.log(`LOM Amount deducted: ${line?.lomAmount}`);
+
+    const perMinuteRate = Number(line?.grossEarnings) / 31 / 8 / 60;
+    console.log(`\nTotal LOM minutes = ${totalLom}`);
+    console.log(`perMinuteRate = ${line?.grossEarnings} / 31 / 8 / 60 = ${perMinuteRate.toFixed(4)}`);
+    console.log(`LOM amount = ${perMinuteRate.toFixed(4)} × ${totalLom} × 1 = ${(perMinuteRate * totalLom).toFixed(2)}`);
+    console.log(`Stored LOM amount = ${line?.lomAmount}`);
   } catch (e) {
     console.error('ERROR:', e.message);
   }

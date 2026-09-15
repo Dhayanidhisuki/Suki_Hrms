@@ -13,10 +13,11 @@
  *   Falls back to full gross when no component is flagged (preserves the
  *   Phase 1 behavior for catalogs that haven't been configured yet).
  * - ESI wage base: same convention using includeInEsi.
- * - OT threshold: OTPlan.applicableAfterMinutes is subtracted before
- *   computing OT hours; OTPlan.maxOtHoursPerDay caps daily OT (monthly
- *   total is the sum of daily-capped hours). OTPlan.payComponentId, when
- *   set, replaces the default "OT Pay" catalog component on the payslip.
+ * - OT threshold: OTPlan.applicableAfterMinutes is the minimum daily OT
+ *   minutes that must be worked before any OT is payable. Once reached,
+ *   the full raw OT minutes are paid, capped by OTPlan.maxOtHoursPerDay.
+ *   OTPlan.payComponentId, when set, replaces the default "OT Pay" catalog
+ *   component on the payslip.
  * - Canteen / benefit rates: BenefitRateByEmployeeType rows for the
  *   employee's current EmployeeType are auto-applied as system-generated
  *   (isAdhoc: false) PayrollLineComponent rows, prorated for deductions by
@@ -354,11 +355,12 @@ export async function calculatePayrollRun(payrollRunId: number) {
         const rawOtMinutes = d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT'
           ? Number(d.otMinutesApproved ?? 0)
           : Number(d.otMinutesCalculated ?? 0);
-        let dayOtMinutes = Math.max(0, rawOtMinutes - thresholdMinutes);
-        if (dayOtMinutes <= 0) continue;
+        // applicableAfterMinutes is a qualification threshold, not a deduction.
+        // If the raw OT does not reach the threshold, no OT is payable for the day.
+        if (rawOtMinutes < thresholdMinutes) continue;
         // Apply per-day cap (maxOtHoursPerDay from OTPlan, default 3h = 180m if unset).
         const dailyOtCapMinutes = otPlan?.maxOtHoursPerDay != null ? Number(otPlan.maxOtHoursPerDay) * 60 : 180;
-        dayOtMinutes = Math.min(dayOtMinutes, dailyOtCapMinutes);
+        const dayOtMinutes = Math.min(rawOtMinutes, dailyOtCapMinutes);
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;
         if (d.isHolidayWorked && otPlan?.holidayFactor) {

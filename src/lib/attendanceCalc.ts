@@ -123,18 +123,20 @@ export function computeLomMinutes(
 
 /**
  * Compute payable OT minutes for a single attendance day, applying the OT
- * plan's threshold (first N minutes are not paid) and the daily cap.
+ * plan's threshold as a qualification condition and the daily cap.
  *
- *   payable = max(0, otMinutesCalculated - applicableAfterMinutes)
- *   capped = maxDailyCap > 0 ? min(payable, maxDailyCap) : payable
+ *   if otMinutesCalculated < applicableAfterMinutes:
+ *     payable = 0
+ *   else:
+ *     payable = min(otMinutesCalculated, maxDailyCapMinutes)
  */
 export function computeOtPayableMinutes(
   otMinutesCalculated: number,
   otPlan: OtPlanLite | null
 ): number {
   const threshold = otPlan?.applicableAfterMinutes ?? 0;
-  let payable = Math.max(0, (otMinutesCalculated || 0) - threshold);
+  if ((otMinutesCalculated || 0) < threshold) return 0;
   const capMin = otPlan?.maxOtHoursPerDay ? otPlan.maxOtHoursPerDay * 60 : 0;
-  if (capMin > 0 && payable > capMin) payable = capMin;
-  return payable;
+  if (capMin > 0) return Math.min(otMinutesCalculated || 0, capMin);
+  return otMinutesCalculated || 0;
 }
