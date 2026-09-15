@@ -6,6 +6,10 @@
 *.fuse_hidden*
 .commit-msg.txt
 
+# Diagnostic / test scripts with hardcoded credentials
+test-api.js
+check-user21.js
+
 # dependencies
 /node_modules
 /.pnp
@@ -37,7 +41,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
+.env
 .env*.local
+.env.production
+.env.staging
 
 # vercel
 .vercel
