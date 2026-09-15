@@ -98,6 +98,7 @@ export default function PayrollSalaryPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [dialogLine, setDialogLine] = useState<{ runId: number; lineId: number } | null>(null);
 
   const fetchRun = useCallback(async () => {
     setLoading(true);
@@ -278,9 +279,13 @@ export default function PayrollSalaryPage() {
       label: 'Payslip',
       render: (r) => (
         <div className="flex items-center gap-2">
-          <Link href={`/payroll/outputs/payslip?runId=${run?.id}&lineId=${r.id}`} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+          <button
+            onClick={() => setDialogLine({ runId: run?.id ?? 0, lineId: r.id })}
+            className="text-xs font-medium hover:underline"
+            style={{ color: 'var(--accent)' }}
+          >
             View
-          </Link>
+          </button>
           <Link
             href={`/payroll/outputs/payslip?runId=${run?.id}&lineId=${r.id}`}
             target="_blank"
@@ -432,6 +437,53 @@ export default function PayrollSalaryPage() {
           }
           emptyMessage="No employees calculated yet — click Calculate."
         />
+      )}
+
+      {dialogLine && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setDialogLine(null)}
+        >
+          <div
+            className="w-full max-w-3xl rounded-xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '90vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-3 border-b"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                Payslip
+              </h2>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/payroll/outputs/payslip?runId=${dialogLine.runId}&lineId=${dialogLine.lineId}`}
+                  target="_blank"
+                  className="text-xs font-medium hover:underline"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  Open full page
+                </Link>
+                <button
+                  onClick={() => setDialogLine(null)}
+                  className="text-lg leading-none hover:opacity-70"
+                  style={{ color: 'var(--foreground-muted)' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="p-0" style={{ height: '70vh' }}>
+              <iframe
+                src={`/payroll/outputs/payslip?runId=${dialogLine.runId}&lineId=${dialogLine.lineId}`}
+                className="h-full w-full border-0"
+                title="Payslip"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

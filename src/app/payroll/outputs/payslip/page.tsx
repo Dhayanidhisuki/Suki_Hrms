@@ -146,14 +146,24 @@ function PayslipContent() {
   const editable = line.payrollRun.status === 'DRAFT' || line.payrollRun.status === 'CALCULATED';
   const rawEarnings = line.components.filter((c) => c.salaryComponent.type === 'earning');
   const rawDeductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
+  const grossCodes = ['BASIC', 'HRA', 'CONVEYANCE', 'DA', 'SPECIAL_ALLOWANCE', 'BASIC_HRA'];
 
   // Earnings rows (+ green)
-  const earnings: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = rawEarnings.map((c) => ({
-    label: c.salaryComponent.name,
-    amount: Number(c.amount),
-    isAdhoc: c.isAdhoc,
-    id: c.id,
-  }));
+  const rawGrossComponents = rawEarnings.filter((c) => grossCodes.includes(c.salaryComponent.code.toUpperCase()));
+  const rawNonGrossComponents = rawEarnings.filter((c) => !grossCodes.includes(c.salaryComponent.code.toUpperCase()));
+  const grossFromComponents = rawGrossComponents.reduce((s, c) => s + Number(c.amount), 0);
+
+  const earnings: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = [];
+
+  if (grossFromComponents > 0) {
+    // Show itemized salary components when they are stored.
+    rawGrossComponents.forEach((c) => earnings.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id }));
+  } else {
+    // Fallback: show the gross total as one line when components were not itemized.
+    earnings.push({ label: 'Gross Salary', amount: Number(line.grossEarnings), isAdhoc: false });
+  }
+
+  rawNonGrossComponents.forEach((c) => earnings.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id }));
 
   // Auto-earnings (not already in components)
   if (Number(line.otAmount) > 0) earnings.push({ label: 'Overtime', amount: Number(line.otAmount), isAdhoc: false });
@@ -166,10 +176,7 @@ function PayslipContent() {
   // already shown as a component or auto-earning line above.
   const displayedEarnings = earnings.reduce((s, r) => s + r.amount, 0);
   const otherAutoEarnings = Number(line.otherEarningsTotal) - Number(line.otAmount) - Number(line.attendanceBonus) - Number(line.petrolAllowance) - Number(line.doubleMachineIncentive) - Number(line.shiftIncentive);
-  // Subtract earning components that are NOT part of grossEarnings (e.g. NIGHT_ALLOWANCE)
-  const nonGrossEarningComponents = rawEarnings
-    .filter((c) => !['BASIC', 'HRA', 'CONVEYANCE', 'DA', 'SPECIAL_ALLOWANCE', 'BASIC_HRA'].includes(c.salaryComponent.code.toUpperCase()))
-    .reduce((s, c) => s + Number(c.amount), 0);
+  const nonGrossEarningComponents = rawNonGrossComponents.reduce((s, c) => s + Number(c.amount), 0);
   const otherEarningsCatchall = otherAutoEarnings - nonGrossEarningComponents;
   if (otherEarningsCatchall > 0) {
     earnings.push({ label: 'Other Earnings', amount: otherEarningsCatchall, isAdhoc: false });
