@@ -69,6 +69,7 @@ export const basicDetailsSchema = z.object({
   lastName: z.string().min(1).max(100),
   employeeCode: z.string().min(1).max(20),
   oldEmployeeCode: z.string().max(20).optional().nullable(),
+  officeEmail: z.string().email().max(100).optional().nullable(),
   status: z.string().max(20).default('active'),
   reportingManagerId: z.number().int().positive().optional().nullable(),
   secondReportingManagerId: z.number().int().positive().optional().nullable(),

@@ -109,6 +109,7 @@ export function buildBasicFields(
     { name: 'firstName', label: 'First Name', type: 'text', required: true },
     { name: 'middleName', label: 'Middle Name', type: 'text' },
     { name: 'lastName', label: 'Last Name', type: 'text', required: true },
+    { name: 'officeEmail', label: 'Office Email ID', type: 'email', helpText: 'Used for salary processed / payslip notifications. Falls back to personal email if empty.' },
     {
       name: 'employeeCode',
       label: 'Reference Code',

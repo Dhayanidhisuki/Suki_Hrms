@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
           lastName: data.lastName,
           employeeCode: data.employeeCode,
           oldEmployeeCode: data.oldEmployeeCode,
+          officeEmail: data.officeEmail,
           status: data.status,
           reportingManagerId: data.reportingManagerId,
           secondReportingManagerId: data.secondReportingManagerId,

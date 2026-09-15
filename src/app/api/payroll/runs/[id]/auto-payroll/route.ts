@@ -49,7 +49,20 @@ export async function POST(
   // Step 3: Mark all OK lines as PROCESSED
   const lines = await prisma.payrollLine.findMany({
     where: { payrollRunId: runId },
-    select: { id: true, status: true, employee: { select: { employeeCode: true, firstName: true, lastName: true } } },
+    select: {
+      id: true,
+      status: true,
+      employeeId: true,
+      employee: {
+        select: {
+          employeeCode: true,
+          firstName: true,
+          lastName: true,
+          officeEmail: true,
+          personalDetails: { select: { personalEmail: true } },
+        },
+      },
+    },
   });
 
   const okLineIds = lines.filter((l) => l.status === 'OK').map((l) => l.id);
@@ -64,11 +77,32 @@ export async function POST(
   const processedCount = okLineIds.length;
   const holdCount = holdLines.length;
 
+  // Resolve notification email for each processed employee:
+  // officeEmail → personalEmail fallback. Email sending is not yet wired
+  // (per user request — skip email for now), but we return the resolved
+  // addresses so the frontend can display them and future email wiring
+  // has the data ready.
+  const processedEmployees = lines
+    .filter((l) => l.status === 'PROCESSED' || okLineIds.includes(l.id))
+    .map((l) => {
+      const officeEmail = l.employee.officeEmail;
+      const personalEmail = l.employee.personalDetails?.personalEmail ?? null;
+      const notificationEmail = officeEmail ?? personalEmail ?? null;
+      return {
+        employeeCode: l.employee.employeeCode,
+        name: `${l.employee.firstName} ${l.employee.lastName}`.trim(),
+        officeEmail,
+        personalEmail,
+        notificationEmail,
+      };
+    });
+
   return NextResponse.json({
     message: `Auto-payroll complete: ${processedCount} processed, ${holdCount} on hold`,
     calculated: calcResult?.calculated ?? 0,
     onHold: holdCount,
     processed: processedCount,
+    processedEmployees,
     holdEmployees: holdLines.map((l) => ({
       employeeCode: l.employee.employeeCode,
       name: `${l.employee.firstName} ${l.employee.lastName}`.trim(),

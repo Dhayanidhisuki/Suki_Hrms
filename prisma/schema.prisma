@@ -900,6 +900,7 @@ model Employee {
   userId             Int?    @unique // optional linked login account (Job Profile tab)
   employeeCode       String  @db.NVarChar(20)
   oldEmployeeCode    String? @db.NVarChar(20)
+  officeEmail        String? @db.NVarChar(100) // office email for salary/payslip notifications
   title              String? @db.NVarChar(10) // Mr/Mrs/Ms/Dr — via DropdownMaster
   firstName          String  @db.NVarChar(100)
   middleName         String? @db.NVarChar(100)
