@@ -1,18 +1,13 @@
 /**
- * Monthly Attendance — the employee × date workbench (BRD §4). No existing
- * shared component renders this shape (DataTable assumes a modest static
- * column set), so this is a purpose-built grid on a plain <table>, not
- * DataTable. Color thresholds and column set are the Phase 1 subset of the
- * BRD's spec — biometric sync, the full column selector, and per-cell
- * correction-in-place are deferred; correction happens on the Daily
- * Attendance page.
+ * Monthly Attendance — employee × date grid with status badges, KPI summary
+ * cards, and filters (search, department, designation, employee type, status).
  */
 
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { FormModal, type FieldDef } from '@/components/ui';
+import { FormModal, type FieldDef, KPICard } from '@/components/ui';
 
 interface DayRecord {
   id: number;
@@ -31,7 +26,11 @@ interface DayRecord {
 interface EmployeeMonth {
   employeeId: number;
   employeeCode: string;
+  oldEmployeeCode: string | null;
   name: string;
+  department?: string | null;
+  designation?: string | null;
+  employeeType?: string | null;
   days: DayRecord[];
   summary: {
     status: 'OPEN' | 'FINALIZED' | 'FROZEN';
@@ -47,6 +46,11 @@ interface GridResponse {
   month: number;
 }
 
+interface MasterOption {
+  id: number | string;
+  name: string;
+}
+
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
@@ -55,37 +59,8 @@ function isoDate(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function cellColor(day: DayRecord | undefined): string {
-  if (!day) return 'transparent';
-  if (day.status === 'WeeklyOff' || day.status === 'Holiday') return '#dbeafe';
-  if (day.status === 'Leave') return '#e9d5ff';
-  if (day.status === 'Permission') return '#fde68a';
-  const hours = day.workingMinutes / 60;
-  if (hours === 0) return '#fecaca';
-  if (hours < 4) return '#fed7aa';
-  if (hours < 6) return '#fef08a';
-  if (hours < 8) return '#bbf7d0';
-  return '#4ade80';
-}
-
-function cellLabel(day: DayRecord | undefined): string {
-  if (!day) return '';
-  if (day.status === 'WeeklyOff') return 'WO';
-  if (day.status === 'Holiday') return 'HO';
-  if (day.status === 'Leave') return 'LV';
-  if (day.status === 'Absent') return 'A';
-  if (day.status === 'MissingPunch') return 'MP';
-  const h = Math.floor(day.workingMinutes / 60);
-  const m = day.workingMinutes % 60;
-  return `${h}:${String(m).padStart(2, '0')}`;
-}
-
-// inTime/outTime are stored via setUTCHours as a neutral wall-clock value
-// ("09:10" means 9:10am at the workplace) by every write path — must read
-// back with getUTCHours/getUTCMinutes, never toLocaleTimeString, which
-// would re-project through the viewer's browser timezone.
-function formatWallClockTime(iso: string | null): string {
-  if (!iso) return '--';
+function formatTime(iso: string | null): string {
+  if (!iso) return '--:--';
   const d = new Date(iso);
   const hour = d.getUTCHours();
   const minute = d.getUTCMinutes();
@@ -94,19 +69,79 @@ function formatWallClockTime(iso: string | null): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
+function dayStatus(day: DayRecord | undefined): 'none' | 'present' | 'absent' | 'leave' | 'overtime' | 'early-out' | 'weekly-off' | 'holiday' | 'permission' | 'missing-punch' {
+  if (!day) return 'none';
+  if (day.status === 'WeeklyOff') return 'weekly-off';
+  if (day.status === 'Holiday') return 'holiday';
+  if (day.status === 'Leave') return 'leave';
+  if (day.status === 'Permission') return 'permission';
+  if (day.status === 'Absent' || day.workingMinutes === 0) return 'absent';
+  if (day.status === 'MissingPunch') return 'missing-punch';
+  if ((day.otMinutesApproved ?? day.otMinutesCalculated) > 0) return 'overtime';
+  if (day.earlyOutMinutes > 0) return 'early-out';
+  return 'present';
+}
+
+const statusConfig: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
+  present: { label: 'Present', bg: '#dcfce7', fg: '#166534', icon: '✓' },
+  absent: { label: 'Absent', bg: '#fee2e2', fg: '#991b1b', icon: '✕' },
+  leave: { label: 'Leave', bg: '#f3e8ff', fg: '#7e22ce', icon: 'L' },
+  overtime: { label: 'Overtime', bg: '#e0e7ff', fg: '#3730a3', icon: 'OT' },
+  'early-out': { label: 'Early Out', bg: '#ffedd5', fg: '#9a3412', icon: 'EO' },
+  'weekly-off': { label: 'Weekly Off', bg: '#dbeafe', fg: '#1e40af', icon: 'WO' },
+  holiday: { label: 'Holiday', bg: '#dbeafe', fg: '#1e40af', icon: 'HO' },
+  permission: { label: 'Permission', bg: '#fef9c3', fg: '#854d0e', icon: 'P' },
+  'missing-punch': { label: 'Missing Punch', bg: '#fee2e2', fg: '#991b1b', icon: 'MP' },
+  none: { label: '—', bg: 'transparent', fg: 'var(--foreground-muted)', icon: '' },
+};
+
+function cellContent(status: ReturnType<typeof dayStatus>): { bg: string; fg: string; text: string } {
+  const cfg = statusConfig[status];
+  const s = dayShort(status);
+  return { bg: cfg.bg, fg: cfg.fg, text: s };
+}
+
+function dayShort(status: string): string {
+  switch (status) {
+    case 'present':
+      return 'P';
+    case 'absent':
+      return 'A';
+    case 'leave':
+      return 'L';
+    case 'overtime':
+      return 'OT';
+    case 'early-out':
+      return 'EO';
+    case 'weekly-off':
+      return 'WO';
+    case 'holiday':
+      return 'HO';
+    case 'permission':
+      return 'P';
+    case 'missing-punch':
+      return 'MP';
+    default:
+      return '';
+  }
+}
+
 function cellTooltip(day: DayRecord | undefined, dateLabel: string): string {
   if (!day) return dateLabel;
-  const fmt = formatWallClockTime;
   return [
     dateLabel,
     `Status: ${day.status}`,
-    `In: ${fmt(day.inTime)}  Out: ${fmt(day.outTime)}`,
+    `In: ${formatTime(day.inTime)}  Out: ${formatTime(day.outTime)}`,
     `Late: ${day.lateMinutes}m  Early-Out: ${day.earlyOutMinutes}m`,
     `OT: ${day.otMinutesApproved ?? day.otMinutesCalculated}m`,
     day.remarks ? `Remarks: ${day.remarks}` : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function classNames(...c: (string | false | undefined)[]) {
+  return c.filter(Boolean).join(' ');
 }
 
 const now = new Date();
@@ -121,8 +156,14 @@ export default function MonthlyAttendancePage() {
   const [busy, setBusy] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   // Phase 18 — grid filters.
-  const [searchQuery, setSearchQuery] = useState('');
+  const [search, setSearch] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const [designationFilter, setDesignationFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [departments, setDepartments] = useState<MasterOption[]>([]);
+  const [designations, setDesignations] = useState<MasterOption[]>([]);
+  const [employeeTypes, setEmployeeTypes] = useState<MasterOption[]>([]);
 
   const numDays = daysInMonth(year, month);
   const dayList = useMemo(() => Array.from({ length: numDays }, (_, i) => i + 1), [numDays]);
@@ -142,18 +183,77 @@ export default function MonthlyAttendancePage() {
     }
   }, [year, month]);
 
+  const fetchMasters = useCallback(async () => {
+    try {
+      const [dRes, des, tRes] = await Promise.all([
+        fetch('/api/masters/departments?limit=500'),
+        fetch('/api/masters/designations?limit=500'),
+        fetch('/api/masters/employee-types?limit=500'),
+      ]);
+      if (dRes.ok) {
+        const dJson = await dRes.json();
+        setDepartments((dJson.data ?? dJson.items ?? dJson ?? []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name })));
+      }
+      if (des.ok) {
+        const desJson = await des.json();
+        setDesignations((desJson.data ?? desJson.items ?? desJson ?? []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name })));
+      }
+      if (tRes.ok) {
+        const tJson = await tRes.json();
+        setEmployeeTypes((tJson.data ?? tJson.items ?? tJson ?? []).map((x: { id: number; name: string }) => ({ id: x.id, name: x.name })));
+      }
+    } catch {
+      // master filters are optional
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchMasters();
+  }, [fetchData, fetchMasters]);
 
-  // Every employee shares the same month's freeze status in this Phase 1
-  // model (finalize/freeze act on the whole company at once) — take the
-  // first row's status as representative, defaulting to OPEN before any
-  // finalize has run.
+  const filteredData = useMemo(() => {
+    return data.filter((emp) => {
+      const term = search.trim().toLowerCase();
+      if (term && !emp.employeeCode.toLowerCase().includes(term) && !emp.name.toLowerCase().includes(term) && !(emp.oldEmployeeCode ?? '').toLowerCase().includes(term)) return false;
+      if (departmentFilter && emp.department !== departmentFilter) return false;
+      if (designationFilter && emp.designation !== designationFilter) return false;
+      if (typeFilter && emp.employeeType !== typeFilter) return false;
+      if (statusFilter) {
+        const match = emp.days.some((d) => dayStatus(d) === statusFilter);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [data, search, departmentFilter, designationFilter, typeFilter, statusFilter]);
+
+  const stats = useMemo(() => {
+    let present = 0;
+    let absent = 0;
+    let earlyOut = 0;
+    let overtime = 0;
+    let leave = 0;
+    for (const emp of filteredData) {
+      for (const d of emp.days) {
+        const s = dayStatus(d);
+        if (s === 'present') present++;
+        else if (s === 'absent') absent++;
+        else if (s === 'early-out') earlyOut++;
+        else if (s === 'overtime') overtime++;
+        else if (s === 'leave') leave++;
+      }
+    }
+    return {
+      totalEmployees: filteredData.length,
+      present,
+      absent,
+      earlyOut,
+      overtime,
+      leave,
+    };
+  }, [filteredData]);
+
   const monthStatus = data[0]?.summary?.status ?? 'OPEN';
-  // Reopen is a whole-month action (same as Finalize/Freeze), so every
-  // employee's summary carries the same reopen info — take the first
-  // non-null one as representative, same convention as monthStatus above.
   const reopenInfo = data.find((e) => e.summary?.reopenedAt)?.summary ?? null;
 
   const runAction = async (url: string, body: Record<string, unknown>, successMsg: string) => {
@@ -174,16 +274,6 @@ export default function MonthlyAttendancePage() {
 
   const reopenFields: FieldDef[] = [{ name: 'reason', label: 'Reopen Reason', type: 'textarea', required: true }];
 
-  // Phase 18 — client-side filter.
-  const filteredData = data.filter((e) => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (!e.employeeCode.toLowerCase().includes(q) && !e.name.toLowerCase().includes(q)) return false;
-    }
-    if (statusFilter && e.summary?.status !== statusFilter) return false;
-    return true;
-  });
-
   const handleExport = () => {
     window.open(`/api/biometric/export?year=${year}&month=${month}`, '_blank');
   };
@@ -191,9 +281,14 @@ export default function MonthlyAttendancePage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Monthly Attendance
-        </h1>
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            Monthly Attendance
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+            Track and manage employee attendance records
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={month}
@@ -227,8 +322,8 @@ export default function MonthlyAttendancePage() {
           <input
             type="text"
             placeholder="Search employee…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-40 rounded-lg border px-3 py-2 text-sm"
             style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
           />
@@ -284,6 +379,16 @@ export default function MonthlyAttendancePage() {
         </div>
       </div>
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <KPICard label="Total Employees" value={stats.totalEmployees} tone="info" icon={<Icon.Users />} />
+        <KPICard label="Present" value={stats.present} tone="success" icon={<Icon.Check />} />
+        <KPICard label="Absent" value={stats.absent} tone="danger" icon={<Icon.X />} />
+        <KPICard label="Early Out" value={stats.earlyOut} tone="warning" icon={<Icon.Clock />} />
+        <KPICard label="Overtime" value={stats.overtime} tone="info" icon={<Icon.Briefcase />} />
+        <KPICard label="Leave" value={stats.leave} tone="danger" icon={<Icon.Calendar />} />
+      </div>
+
       {reopenInfo?.reopenedAt && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
           Reopened by <strong>{reopenInfo.reopenedByName ?? 'Unknown'}</strong> on {new Date(reopenInfo.reopenedAt).toLocaleString()}
@@ -305,39 +410,81 @@ export default function MonthlyAttendancePage() {
         </div>
       )}
 
+      {/* Filters */}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+        <div className="flex-1 min-w-[200px]">
+          <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+            Search by code or name…
+          </label>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search"
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          />
+        </div>
+        <FilterSelect label="Department" value={departmentFilter} onChange={setDepartmentFilter} options={departments} />
+        <FilterSelect label="Designation" value={designationFilter} onChange={setDesignationFilter} options={designations} />
+        <FilterSelect label="Type" value={typeFilter} onChange={setTypeFilter} options={employeeTypes} />
+        <div>
+          <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+            Status
+          </label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-40 rounded-lg border px-3 py-2 text-sm"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          >
+            <option value="">All Status</option>
+            <option value="present">Present</option>
+            <option value="absent">Absent</option>
+            <option value="leave">Leave</option>
+            <option value="overtime">Overtime</option>
+            <option value="early-out">Early Out</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Grid */}
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <table className="text-xs">
           <thead>
             <tr style={{ backgroundColor: 'var(--surface-hover)' }}>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                S.No
+              </th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                Employee Code
+              </th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                Ref Code
+              </th>
               <th className="sticky left-0 z-10 px-3 py-2 text-left font-medium" style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
-                Employee
+                Employee Name
+              </th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                Department
               </th>
               {dayList.map((d) => (
-                <th key={d} className="px-2 py-2 text-center font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                <th key={d} className="px-2 py-2 text-center font-medium" style={{ color: 'var(--foreground-muted)', minWidth: 34 }}>
                   {d}
                 </th>
               ))}
-              <th className="px-3 py-2 text-center font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                Late (m)
-              </th>
-              <th className="px-3 py-2 text-center font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                Total (h)
-              </th>
-              <th className="px-3 py-2 text-center font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                OT (h)
-              </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={numDays + 4} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
+                <td colSpan={numDays + 5} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
                   Loading...
                 </td>
               </tr>
-            ) : data.length === 0 ? (
+            ) : filteredData.length === 0 ? (
               <tr>
-                <td colSpan={numDays + 4} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
+                <td colSpan={numDays + 5} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
                   No employees found.
                 </td>
               </tr>
@@ -348,56 +495,68 @@ export default function MonthlyAttendancePage() {
                 </td>
               </tr>
             ) : (
-              filteredData.map((emp) => {
+              filteredData.map((emp, idx) => {
                 const byDate = new Map(emp.days.map((d) => [d.date.slice(0, 10), d]));
-                let totalMinutes = 0;
-                let lateMinutes = 0;
-                let otMinutes = 0;
-                for (const d of emp.days) {
-                  totalMinutes += d.workingMinutes;
-                  lateMinutes += d.lateMinutes;
-                  otMinutes += d.otMinutesApproved ?? d.otMinutesCalculated;
-                }
                 return (
                   <tr key={emp.employeeId} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
+                      {idx + 1}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground)' }}>
+                      {emp.oldEmployeeCode ?? emp.employeeCode}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
+                      {emp.employeeCode}
+                    </td>
                     <td className="sticky left-0 z-10 whitespace-nowrap px-3 py-1.5" style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}>
                       <Link
                         href={`/workforce/attendance/overview?employeeId=${emp.employeeId}&year=${year}&month=${month}`}
                         title="Open day-by-day overview"
                         className="hover:underline"
                       >
-                        {emp.employeeCode} — {emp.name}
+                        {emp.name}
                       </Link>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
+                      {emp.department ?? '—'}
                     </td>
                     {dayList.map((d) => {
                       const iso = isoDate(year, month, d);
                       const day = byDate.get(iso);
+                      const status = dayStatus(day);
+                      const { bg, fg, text } = cellContent(status);
                       return (
                         <td
                           key={d}
                           title={cellTooltip(day, iso)}
                           className="px-1 py-1.5 text-center"
-                          style={{ backgroundColor: cellColor(day), color: '#1f2937', minWidth: 40 }}
+                          style={{ backgroundColor: bg, color: fg, minWidth: 34 }}
                         >
-                          {cellLabel(day)}
+                          {text}
                         </td>
                       );
                     })}
-                    <td className="px-3 py-1.5 text-center" style={{ color: 'var(--foreground)' }}>
-                      {lateMinutes}
-                    </td>
-                    <td className="px-3 py-1.5 text-center" style={{ color: 'var(--foreground)' }}>
-                      {(totalMinutes / 60).toFixed(1)}
-                    </td>
-                    <td className="px-3 py-1.5 text-center" style={{ color: 'var(--foreground)' }}>
-                      {(otMinutes / 60).toFixed(1)}
-                    </td>
                   </tr>
                 );
               })
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+        <span className="font-medium" style={{ color: 'var(--foreground)' }}>Legend:</span>
+        {Object.entries(statusConfig)
+          .filter(([key]) => key !== 'none')
+          .map(([key, cfg]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold" style={{ backgroundColor: cfg.bg, color: cfg.fg }}>
+                {cfg.icon}
+              </span>
+              <span style={{ color: 'var(--foreground-muted)' }}>{cfg.label}</span>
+            </div>
+          ))}
       </div>
 
       <FormModal
@@ -414,3 +573,50 @@ export default function MonthlyAttendancePage() {
     </div>
   );
 }
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: MasterOption[];
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-40 rounded-lg border px-3 py-2 text-sm"
+        style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+      >
+        <option value="">All {label}s</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.name}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// Minimal inline icon set used by KPICard
+function IconBox({ children }: { children: React.ReactNode }) {
+  return <span className="inline-flex h-5 w-5 items-center justify-center">{children}</span>;
+}
+
+const Icon = {
+  Users: () => <IconBox>👥</IconBox>,
+  Check: () => <IconBox>✓</IconBox>,
+  X: () => <IconBox>✕</IconBox>,
+  Clock: () => <IconBox>⏰</IconBox>,
+  Briefcase: () => <IconBox>💼</IconBox>,
+  Calendar: () => <IconBox>📅</IconBox>,
+};

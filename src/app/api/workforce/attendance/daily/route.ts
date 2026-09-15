@@ -16,6 +16,7 @@ import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
+import { computeLomMinutes, computeOtPayableMinutes, computeAttendanceMetrics } from '@/lib/attendanceCalc';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -43,12 +44,32 @@ export async function GET(request: NextRequest) {
     },
     include: {
       employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-      shiftMaster: { select: { id: true, code: true, name: true } },
+      shiftMaster: { select: { id: true, code: true, name: true, startTime: true, endTime: true, graceMinutes: true } },
     },
     orderBy: { employeeId: 'asc' },
   });
 
-  return NextResponse.json({ data: records });
+  // Load OT plan + LOM config so the API can return computed LOM (after shift
+  // grace) and OT payable (after threshold) for each row — matching payroll.
+  const [otPlan, lomConfig] = await Promise.all([
+    prisma.oTPlan.findFirst({ where: { isActive: true, deletedAt: null } }),
+    prisma.lomConfig.findUnique({ where: { companyId: scope.companyId } }),
+  ]);
+
+  const data = records.map((r) => {
+    const shift = r.shiftMaster
+      ? { startTime: r.shiftMaster.startTime, endTime: r.shiftMaster.endTime, graceMinutes: r.shiftMaster.graceMinutes }
+      : null;
+    const lomMinutes = computeLomMinutes(r.lateMinutes, r.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null);
+    const otPayableMinutes = computeOtPayableMinutes(r.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
+    return { ...r, lomMinutes, otPayableMinutes };
+  });
+
+  return NextResponse.json({
+    data,
+    otPlan: otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null,
+    lomConfig: lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -76,6 +97,48 @@ export async function POST(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
   const { employeeId, date, ...rest } = parsed.data;
 
+  // Auto-calculate late/early/OT/working from in/out times + assigned shift
+  // master, so manual entry doesn't require HR to compute these by hand.
+  // If a shiftMasterId is provided (or one is already assigned to the row),
+  // load it and recompute. This keeps the stored values consistent with the
+  // shift's start/end/grace — the same source payroll uses.
+  let shiftMasterId = rest.shiftMasterId ?? null;
+  let computed = {
+    workingMinutes: rest.workingMinutes ?? 0,
+    lateMinutes: rest.lateMinutes ?? 0,
+    earlyOutMinutes: rest.earlyOutMinutes ?? 0,
+    otMinutesCalculated: rest.otMinutesCalculated ?? 0,
+  };
+
+  if (rest.inTime && rest.outTime) {
+    // If no shiftMasterId in payload, check the existing row
+    if (!shiftMasterId) {
+      const existing = await prisma.dailyAttendance.findUnique({
+        where: { employeeId_date: { employeeId, date } },
+        select: { shiftMasterId: true },
+      });
+      shiftMasterId = existing?.shiftMasterId ?? null;
+    }
+    if (shiftMasterId) {
+      const sm = await prisma.shiftMaster.findUnique({
+        where: { id: shiftMasterId },
+        select: { startTime: true, endTime: true, graceMinutes: true },
+      });
+      if (sm) {
+        computed = computeAttendanceMetrics(rest.inTime, rest.outTime, sm);
+      }
+    }
+  }
+
+  const dataToSave = {
+    ...rest,
+    shiftMasterId,
+    workingMinutes: computed.workingMinutes,
+    lateMinutes: computed.lateMinutes,
+    earlyOutMinutes: computed.earlyOutMinutes,
+    otMinutesCalculated: computed.otMinutesCalculated,
+  };
+
   // Snapshots the superseded values into DailyAttendanceHistory when this
   // corrects an existing day, so a correction never loses what was there
   // before (and neither does a later biometric import overwriting this).
@@ -83,7 +146,7 @@ export async function POST(request: NextRequest) {
     prisma,
     employeeId,
     date,
-    rest,
+    dataToSave,
     { userId: userId || null, changedBySource: 'manual' }
   );
 

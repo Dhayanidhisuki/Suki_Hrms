@@ -21,6 +21,8 @@ interface TimeOfficeRow {
   leaveDays: number;
   lopDays: number;
   otHours: number;
+  otPayableHours: number;
+  lomMinutes: number;
   lateMinutes: number;
   earlyOutMinutes: number;
   permissionHours: number;
@@ -37,7 +39,9 @@ const columns: Column<TimeOfficeRow>[] = [
   { key: 'name', label: 'Name', sortable: true },
   { key: 'payableDays', label: 'Payable', sortable: true },
   { key: 'lopDays', label: 'LOP', sortable: true },
-  { key: 'otHours', label: 'OT Hrs', sortable: true },
+  { key: 'otHours', label: 'OT Hrs (raw)', sortable: true },
+  { key: 'otPayableHours', label: 'OT Pay Hrs', sortable: true },
+  { key: 'lomMinutes', label: 'LOM (min)', sortable: true },
   { key: 'lateMinutes', label: 'Late (min)', sortable: true },
   { key: 'earlyOutMinutes', label: 'Early (min)', sortable: true },
   { key: 'permissionHours', label: 'Perm (hrs)', sortable: true },

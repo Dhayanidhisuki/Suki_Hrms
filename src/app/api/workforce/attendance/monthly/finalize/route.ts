@@ -20,6 +20,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { isWeeklyOffForEmployee } from '@/lib/weeklyOff';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -101,7 +102,6 @@ export async function POST(request: NextRequest) {
     for (let day = 1; day <= totalCalendarDays; day++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const date = new Date(Date.UTC(year, month - 1, day));
-      const dayOfWeek = date.getUTCDay();
 
       // Skip dates before joining or after exit (not employed)
       if (joinDate && date < joinDate) continue;
@@ -111,8 +111,9 @@ export async function POST(request: NextRequest) {
       if (existingDates.has(dateStr)) continue;
 
       // Determine the correct status for the missing day
+      const isWeeklyOff = await isWeeklyOffForEmployee(emp.id, date);
       let status: string;
-      if (dayOfWeek === 0) {
+      if (isWeeklyOff) {
         status = 'WeeklyOff';
       } else if (holidayDates.has(dateStr)) {
         status = 'Holiday';

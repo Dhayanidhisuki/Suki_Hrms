@@ -29,8 +29,12 @@ export async function PUT(
   const parsed = designationSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.designation.findFirst({ where: { code: parsed.data.code, NOT: { id: designationId, deletedAt: null } } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  const existing = await prisma.designation.findFirst({ where: { id: designationId } });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Code is server-generated and never changes after creation — write only
+  // the editable fields, ignoring whatever (if anything) the client sent for code.
+  const { code: _ignored, ...rest } = parsed.data;
 
   if (parsed.data.reportsToId) {
     if (parsed.data.reportsToId === designationId) {
@@ -42,7 +46,7 @@ export async function PUT(
 
   const record = await prisma.designation.update({
     where: { id: designationId },
-    data: parsed.data,
+    data: rest,
     include: { reportsTo: { select: { id: true, name: true } } },
   });
   return NextResponse.json(record);

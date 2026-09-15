@@ -1,0 +1,251 @@
+﻿
+=== RC027 Suresh (12 days) ===
+  2026-07-03 GENERAL HalfDay in=09:14 out=13:15 late=14 early=255 ot=0 work=255
+  2026-07-07 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-08 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-09 GENERAL Present in=09:18 out=18:14 late=18 early=0 ot=44 work=536
+  2026-07-10 GENERAL Present in=09:06 out=17:47 late=6 early=0 ot=17 work=521
+  2026-07-11 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-23 GENERAL Present in=09:39 out=18:06 late=39 early=0 ot=36 work=507
+  2026-07-26 GENERAL Present in=09:13 out=17:03 late=13 early=27 ot=0 work=470
+  2026-07-27 GENERAL Present in=09:23 out=17:30 late=23 early=0 ot=0 work=487
+  2026-07-28 GENERAL Present in=09:39 out=18:30 late=39 early=29 ot=89 work=531
+  2026-07-29 GENERAL Present in=09:24 out=17:30 late=24 early=0 ot=0 work=486
+  2026-07-31 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+
+=== RC028 Divya (22 days) ===
+  2026-07-01 MORNING Present in=06:08 out=14:23 late=8 early=0 ot=23 work=495
+  2026-07-03 MORNING HalfDay in=06:15 out=10:00 late=15 early=240 ot=0 work=240
+  2026-07-06 MORNING Present in=06:08 out=13:33 late=8 early=27 ot=0 work=445
+  2026-07-07 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-08 EVENING Present in=14:30 out=23:11 late=30 early=0 ot=71 work=521
+  2026-07-09 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-11 EVENING Present in=14:13 out=22:00 late=13 early=0 ot=0 work=467
+  2026-07-16 NIGHT Present in=22:31 out=07:13 late=31 early=0 ot=73 work=553
+  2026-07-17 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-18 NIGHT Present in=22:00 out=05:37 late=0 early=23 ot=0 work=457
+  2026-07-20 NIGHT Present in=22:21 out=06:51 late=21 early=0 ot=51 work=531
+  2026-07-22 MORNING Present in=06:00 out=13:31 late=0 early=29 ot=0 work=451
+  2026-07-23 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-24 MORNING Present in=06:53 out=15:34 late=53 early=22 ot=116 work=521
+  2026-07-25 MORNING Present in=06:46 out=15:42 late=46 early=0 ot=102 work=536
+  2026-07-26 MORNING Present in=06:13 out=14:33 late=13 early=0 ot=33 work=500
+  2026-07-27 MORNING Present in=06:13 out=13:37 late=13 early=23 ot=0 work=444
+  2026-07-28 MORNING Present in=06:20 out=13:31 late=20 early=29 ot=0 work=431
+  2026-07-29 EVENING Present in=14:24 out=22:35 late=24 early=24 ot=59 work=491
+  2026-07-30 EVENING Present in=14:48 out=23:46 late=48 early=0 ot=106 work=538
+  2026-07-31 EVENING Present in=14:06 out=21:49 late=6 early=28 ot=17 work=463
+
+=== RC029 Vinothkumar (4 days) ===
+  2026-07-02 MORNING HalfDay in=06:05 out=10:00 late=5 early=240 ot=0 work=240
+  2026-07-03 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-09 EVENING Present in=14:24 out=22:59 late=24 early=0 ot=59 work=515
+  2026-07-16 NIGHT Present in=22:40 out=07:30 late=40 early=0 ot=90 work=570
+
+=== RC030 Bhuvana (21 days) ===
+  2026-07-01 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-02 MORNING Present in=06:33 out=14:48 late=33 early=28 ot=76 work=495
+  2026-07-03 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-06 MORNING Present in=06:52 out=15:54 late=52 early=0 ot=114 work=542
+  2026-07-08 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-09 EVENING Present in=14:00 out=21:37 late=0 early=23 ot=0 work=457
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-11 EVENING Present in=14:07 out=21:55 late=7 early=25 ot=20 work=468
+  2026-07-13 EVENING Present in=14:48 out=22:24 late=48 early=26 ot=50 work=456
+  2026-07-15 NIGHT Present in=22:25 out=06:36 late=25 early=24 ot=60 work=516
+  2026-07-16 NIGHT HalfDay in=22:00 out=02:00 late=0 early=240 ot=0 work=240
+  2026-07-17 NIGHT Present in=22:11 out=06:29 late=11 early=0 ot=29 work=509
+  2026-07-18 NIGHT Present in=22:00 out=05:31 late=0 early=29 ot=0 work=451
+  2026-07-20 NIGHT Present in=22:49 out=07:49 late=49 early=0 ot=109 work=589
+  2026-07-22 MORNING Present in=06:17 out=14:21 late=17 early=22 ot=43 work=484
+  2026-07-26 MORNING HalfDay in=06:15 out=10:00 late=15 early=240 ot=0 work=240
+  2026-07-27 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-28 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-29 EVENING Present in=14:15 out=22:38 late=15 early=0 ot=38 work=503
+  2026-07-30 EVENING Present in=14:18 out=22:44 late=18 early=0 ot=44 work=506
+  2026-07-31 EVENING Present in=14:05 out=22:16 late=5 early=0 ot=16 work=491
+
+=== RC031 Thenpandi (24 days) ===
+  2026-07-03 MORNING Present in=06:15 out=14:38 late=15 early=0 ot=38 work=503
+  2026-07-06 MORNING Present in=06:00 out=13:31 late=0 early=29 ot=0 work=451
+  2026-07-07 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-08 EVENING Present in=14:31 out=23:12 late=31 early=0 ot=72 work=521
+  2026-07-09 EVENING Present in=14:00 out=21:37 late=0 early=23 ot=0 work=457
+  2026-07-10 EVENING Present in=14:19 out=22:48 late=19 early=0 ot=48 work=509
+  2026-07-11 EVENING Present in=14:05 out=21:49 late=5 early=27 ot=16 work=464
+  2026-07-13 EVENING Present in=14:53 out=23:57 late=53 early=0 ot=117 work=544
+  2026-07-14 EVENING Present in=14:45 out=23:41 late=45 early=0 ot=101 work=536
+  2026-07-15 NIGHT Present in=22:06 out=05:54 late=6 early=23 ot=17 work=474
+  2026-07-16 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-17 NIGHT Present in=22:17 out=06:42 late=17 early=0 ot=42 work=522
+  2026-07-18 NIGHT Present in=22:06 out=06:17 late=6 early=0 ot=17 work=497
+  2026-07-20 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-22 MORNING Present in=06:15 out=13:36 late=15 early=24 ot=0 work=441
+  2026-07-23 MORNING HalfDay in=06:15 out=10:00 late=15 early=240 ot=0 work=240
+  2026-07-24 MORNING Present in=06:08 out=14:23 late=8 early=0 ot=23 work=495
+  2026-07-25 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-26 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-27 MORNING Present in=06:12 out=14:30 late=12 early=0 ot=30 work=498
+  2026-07-28 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-29 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-30 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-31 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+
+=== RC032 Sandhiya (15 days) ===
+  2026-07-03 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-06 MORNING Present in=06:27 out=14:36 late=27 early=28 ot=64 work=489
+  2026-07-07 MORNING Present in=06:00 out=13:33 late=0 early=27 ot=0 work=453
+  2026-07-10 EVENING Present in=14:12 out=22:06 late=12 early=25 ot=31 work=474
+  2026-07-11 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-16 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-17 NIGHT HalfDay in=22:13 out=02:00 late=13 early=240 ot=0 work=240
+  2026-07-20 NIGHT Present in=22:52 out=06:56 late=52 early=0 ot=56 work=536
+  2026-07-23 MORNING Present in=06:05 out=14:00 late=5 early=0 ot=0 work=475
+  2026-07-24 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-26 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-28 MORNING Present in=06:18 out=14:00 late=18 early=0 ot=0 work=462
+  2026-07-29 EVENING Present in=14:18 out=22:45 late=18 early=0 ot=45 work=507
+  2026-07-30 EVENING Present in=14:07 out=22:19 late=7 early=0 ot=19 work=492
+  2026-07-31 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+
+=== RC033 Roshini (19 days) ===
+  2026-07-01 MORNING Present in=06:06 out=13:48 late=6 early=29 ot=17 work=462
+  2026-07-02 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-03 MORNING Present in=06:35 out=15:21 late=35 early=0 ot=81 work=526
+  2026-07-06 MORNING Present in=06:00 out=13:36 late=0 early=24 ot=0 work=456
+  2026-07-07 MORNING Present in=06:48 out=14:26 late=48 early=24 ot=50 work=458
+  2026-07-08 EVENING Present in=14:20 out=22:49 late=20 early=0 ot=49 work=509
+  2026-07-09 EVENING HalfDay in=14:09 out=18:00 late=9 early=240 ot=0 work=240
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-11 EVENING HalfDay in=14:00 out=18:00 late=0 early=240 ot=0 work=240
+  2026-07-13 EVENING HalfDay in=14:00 out=18:00 late=0 early=240 ot=0 work=240
+  2026-07-16 NIGHT Present in=22:22 out=06:54 late=22 early=0 ot=54 work=534
+  2026-07-17 NIGHT Present in=22:35 out=06:54 late=35 early=26 ot=80 work=534
+  2026-07-18 NIGHT HalfDay in=22:00 out=02:00 late=0 early=240 ot=0 work=240
+  2026-07-23 MORNING Present in=06:38 out=14:34 late=38 early=0 ot=34 work=476
+  2026-07-25 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-27 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-28 MORNING HalfDay in=06:15 out=10:00 late=15 early=240 ot=0 work=240
+  2026-07-29 EVENING HalfDay in=14:15 out=18:00 late=15 early=240 ot=0 work=240
+  2026-07-31 EVENING Present in=14:00 out=21:38 late=0 early=22 ot=0 work=458
+
+=== RC034 Gokul (25 days) ===
+  2026-07-01 MORNING Present in=06:46 out=15:43 late=46 early=0 ot=103 work=537
+  2026-07-02 MORNING Present in=06:15 out=14:38 late=15 early=0 ot=38 work=503
+  2026-07-03 MORNING Present in=06:14 out=14:36 late=14 early=0 ot=36 work=502
+  2026-07-06 MORNING Present in=06:00 out=13:33 late=0 early=27 ot=0 work=453
+  2026-07-07 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-08 EVENING Present in=14:38 out=23:26 late=38 early=0 ot=86 work=528
+  2026-07-09 EVENING Present in=14:09 out=22:00 late=9 early=0 ot=0 work=471
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-11 EVENING Present in=14:15 out=22:37 late=15 early=0 ot=37 work=502
+  2026-07-13 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-14 EVENING Present in=14:17 out=21:37 late=17 early=23 ot=0 work=440
+  2026-07-15 NIGHT Present in=22:19 out=06:48 late=19 early=0 ot=48 work=528
+  2026-07-16 NIGHT Present in=22:08 out=06:23 late=8 early=0 ot=23 work=503
+  2026-07-17 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-18 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-20 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-22 MORNING Present in=06:21 out=14:53 late=21 early=0 ot=53 work=512
+  2026-07-23 MORNING Present in=06:39 out=14:36 late=39 early=0 ot=36 work=477
+  2026-07-24 MORNING Present in=06:05 out=13:33 late=5 early=27 ot=0 work=448
+  2026-07-25 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-26 MORNING Present in=06:33 out=14:52 late=33 early=25 ot=77 work=499
+  2026-07-27 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-28 MORNING Present in=06:39 out=14:36 late=39 early=0 ot=36 work=477
+  2026-07-29 EVENING Present in=14:16 out=22:00 late=16 early=0 ot=0 work=464
+  2026-07-30 EVENING Present in=14:11 out=22:28 late=11 early=0 ot=28 work=497
+
+=== RC035 Lingu (22 days) ===
+  2026-07-01 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-02 MORNING Present in=06:38 out=15:01 late=38 early=25 ot=86 work=503
+  2026-07-03 MORNING Present in=06:21 out=13:35 late=21 early=25 ot=0 work=434
+  2026-07-06 MORNING Present in=06:13 out=14:35 late=13 early=0 ot=35 work=502
+  2026-07-07 MORNING HalfDay in=06:15 out=10:00 late=15 early=240 ot=0 work=240
+  2026-07-08 EVENING Present in=14:09 out=22:25 late=9 early=0 ot=25 work=496
+  2026-07-09 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-11 EVENING Present in=14:00 out=21:31 late=0 early=29 ot=0 work=451
+  2026-07-13 EVENING Present in=14:29 out=23:09 late=29 early=0 ot=69 work=520
+  2026-07-15 NIGHT Present in=22:24 out=06:00 late=24 early=0 ot=0 work=480
+  2026-07-16 NIGHT Present in=22:31 out=07:13 late=31 early=0 ot=73 work=553
+  2026-07-17 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-18 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-20 NIGHT Present in=22:00 out=05:37 late=0 early=23 ot=0 work=457
+  2026-07-22 MORNING Present in=06:11 out=14:29 late=11 early=0 ot=29 work=498
+  2026-07-23 MORNING Present in=06:00 out=13:35 late=0 early=25 ot=0 work=455
+  2026-07-27 MORNING Present in=06:44 out=15:38 late=44 early=0 ot=98 work=534
+  2026-07-28 MORNING Present in=06:10 out=14:27 late=10 early=0 ot=27 work=497
+  2026-07-29 EVENING Present in=14:00 out=21:34 late=0 early=26 ot=0 work=454
+  2026-07-30 EVENING Present in=14:22 out=22:31 late=22 early=23 ot=54 work=489
+  2026-07-31 EVENING Present in=14:46 out=23:43 late=46 early=0 ot=103 work=537
+
+=== RC036 Naveen (17 days) ===
+  2026-07-03 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-07 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-08 EVENING Present in=14:17 out=22:15 late=17 early=27 ot=42 work=478
+  2026-07-09 EVENING Present in=14:23 out=22:31 late=23 early=25 ot=56 work=488
+  2026-07-10 EVENING Present in=14:49 out=23:48 late=49 early=0 ot=108 work=539
+  2026-07-11 EVENING Present in=14:44 out=22:16 late=44 early=27 ot=43 work=452
+  2026-07-14 EVENING Present in=14:47 out=23:20 late=47 early=24 ot=104 work=513
+  2026-07-20 NIGHT Present in=22:08 out=06:23 late=8 early=0 ot=23 work=503
+  2026-07-23 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-24 MORNING HalfDay in=06:00 out=10:00 late=0 early=240 ot=0 work=240
+  2026-07-25 MORNING Present in=06:24 out=14:59 late=24 early=0 ot=59 work=515
+  2026-07-26 MORNING Present in=06:38 out=15:27 late=38 early=0 ot=87 work=529
+  2026-07-27 MORNING Present in=06:13 out=14:00 late=13 early=0 ot=0 work=467
+  2026-07-28 MORNING Present in=06:10 out=13:34 late=10 early=26 ot=0 work=444
+  2026-07-29 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-30 EVENING Present in=14:40 out=22:38 late=40 early=0 ot=38 work=478
+  2026-07-31 EVENING Present in=14:09 out=22:24 late=9 early=0 ot=24 work=495
+
+=== RC037 Dhayanidhi (24 days) ===
+  2026-07-01 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-02 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-06 MORNING Present in=06:07 out=13:56 late=7 early=24 ot=20 work=469
+  2026-07-07 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-08 EVENING Present in=14:06 out=22:18 late=6 early=0 ot=18 work=492
+  2026-07-09 EVENING Present in=14:00 out=21:36 late=0 early=24 ot=0 work=456
+  2026-07-10 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-13 EVENING Present in=14:12 out=22:06 late=12 early=25 ot=31 work=474
+  2026-07-14 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-15 NIGHT Present in=22:26 out=06:17 late=26 early=0 ot=17 work=497
+  2026-07-16 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-17 NIGHT Present in=22:00 out=06:00 late=0 early=0 ot=0 work=480
+  2026-07-18 NIGHT HalfDay in=22:08 out=02:00 late=8 early=240 ot=0 work=240
+  2026-07-20 NIGHT Present in=22:00 out=05:38 late=0 early=22 ot=0 work=458
+  2026-07-22 MORNING Present in=06:11 out=14:29 late=11 early=0 ot=29 work=498
+  2026-07-23 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-24 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-25 MORNING Present in=06:08 out=14:01 late=8 early=22 ot=23 work=473
+  2026-07-26 MORNING Present in=06:00 out=14:00 late=0 early=0 ot=0 work=480
+  2026-07-27 MORNING Present in=06:15 out=14:39 late=15 early=0 ot=39 work=504
+  2026-07-28 MORNING Present in=06:09 out=14:24 late=9 early=0 ot=24 work=495
+  2026-07-29 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+  2026-07-30 EVENING Present in=14:05 out=22:00 late=5 early=0 ot=0 work=475
+  2026-07-31 EVENING Present in=14:00 out=22:00 late=0 early=0 ot=0 work=480
+
+=== RC114 MUNIAMMAL (20 days) ===
+  2026-07-09 GENERAL HalfDay in=09:00 out=13:15 late=0 early=255 ot=0 work=255
+  2026-07-10 GENERAL Present in=09:34 out=18:49 late=34 early=0 ot=79 work=555
+  2026-07-11 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-13 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-14 GENERAL Present in=09:40 out=19:01 late=40 early=0 ot=91 work=561
+  2026-07-15 GENERAL Present in=09:18 out=18:14 late=18 early=0 ot=44 work=536
+  2026-07-16 GENERAL Present in=09:18 out=17:47 late=18 early=27 ot=44 work=509
+  2026-07-17 GENERAL Present in=09:23 out=17:59 late=23 early=26 ot=55 work=516
+  2026-07-18 GENERAL Present in=09:50 out=18:53 late=50 early=28 ot=111 work=543
+  2026-07-20 GENERAL Present in=09:54 out=19:28 late=54 early=0 ot=118 work=574
+  2026-07-21 GENERAL Present in=09:30 out=18:41 late=30 early=0 ot=71 work=551
+  2026-07-22 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-23 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-24 GENERAL Present in=09:00 out=17:30 late=0 early=0 ot=0 work=510
+  2026-07-25 GENERAL Present in=09:05 out=17:45 late=5 early=0 ot=15 work=520
+  2026-07-27 GENERAL Present in=09:11 out=17:59 late=11 early=0 ot=29 work=528
+  2026-07-28 GENERAL HalfDay in=09:00 out=13:15 late=0 early=255 ot=0 work=255
+  2026-07-29 GENERAL Present in=09:24 out=18:28 late=24 early=0 ot=58 work=544
+  2026-07-30 GENERAL Present in=09:39 out=18:59 late=39 early=0 ot=89 work=560
+  2026-07-31 GENERAL Present in=09:11 out=17:30 late=11 early=0 ot=0 work=499
+
+=== DONE: 225 records updated ===

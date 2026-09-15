@@ -355,6 +355,7 @@ export const employeeCreateSchema = basicDetailsSchema.extend({
   dependents: z.array(dependentSchema).optional(),
   experiences: z.array(experienceSchema).optional(),
   educations: z.array(educationSchema).optional(),
+  benefitRateIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const employeeUpdateSchema = z.object({
@@ -370,7 +371,7 @@ export const employeeUpdateSchema = z.object({
 // ─── EmployeeDocument ─────────────────────────────────────────────────────────
 
 export const documentCreateSchema = z.object({
-  docType: z.enum(['aadhaar', 'pan', 'passport', 'driving_license', 'kpi', 'jd', 'other']),
+  docType: z.enum(['aadhaar', 'pan', 'passport', 'driving_license', 'kpi', 'jd', 'signature', 'government', 'other']),
   docNumber: z.string().max(50).optional().nullable(),
   fileName: z.string().max(200).optional().nullable(),
   filePath: z.string().max(500).optional().nullable(),

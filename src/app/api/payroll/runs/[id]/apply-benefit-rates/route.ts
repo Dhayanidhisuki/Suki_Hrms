@@ -12,6 +12,7 @@
  * proration rule for those. Skips a component already applied ad-hoc to a
  * line this run (idempotent — safe to click again after adding a new rate
  * without double-crediting employees already done).
+ * Benefit components without a linked salary component are ignored by payroll.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -36,11 +37,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (editableErr) return editableErr;
 
   const rates = await prisma.benefitRateByEmployeeType.findMany({
-    where: { companyId: scope.companyId, isActive: true },
+    where: { companyId: scope.companyId, isActive: true, salaryComponentId: { not: null } },
     include: { salaryComponent: { select: { id: true, type: true, code: true } } },
   });
   if (rates.length === 0) {
-    return NextResponse.json({ error: 'No active benefit rates configured — set them up under Masters > Benefit Rates first' }, { status: 400 });
+    return NextResponse.json({ error: 'No active benefit components with a payroll salary component configured — set them up under Masters > Benefit Components first' }, { status: 400 });
   }
   const ratesByEmployeeType = new Map<number, typeof rates>();
   for (const r of rates) {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let applied = 0;
   let skippedNoRate = 0;
   let skippedAlreadyApplied = 0;
+  let skippedNoSalaryComponent = 0;
 
   for (const line of lines) {
     const employeeTypeId = line.employee.jobInfos[0]?.employeeTypeId;
@@ -71,6 +73,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const alreadyApplied = new Set(line.components.map((c) => c.salaryComponentId));
 
     for (const rate of applicableRates) {
+      if (!rate.salaryComponentId || !rate.salaryComponent) {
+        skippedNoSalaryComponent++;
+        continue;
+      }
       if (alreadyApplied.has(rate.salaryComponentId)) {
         skippedAlreadyApplied++;
         continue;
@@ -87,7 +93,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     applied,
     skippedNoRate,
     skippedAlreadyApplied,
+    skippedNoSalaryComponent,
     totalLines: lines.length,
-    message: `Applied ${applied} benefit line(s) across ${lines.length} employee(s) — ${skippedNoRate} had no matching rate, ${skippedAlreadyApplied} already had it applied.`,
+    message: `Applied ${applied} benefit line(s) across ${lines.length} employee(s) — ${skippedNoRate} had no matching rate, ${skippedAlreadyApplied} already had it applied, ${skippedNoSalaryComponent} had no payroll salary component.`,
   });
 }

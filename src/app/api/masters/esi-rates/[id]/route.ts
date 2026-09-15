@@ -10,7 +10,10 @@ export async function GET(
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
   const { id } = await params;
-  const record = await prisma.esiRate.findFirst({ where: { id: parseInt(id) } });
+  const record = await prisma.esiRate.findFirst({
+    where: { id: parseInt(id) },
+    include: { components: { include: { salaryComponent: { select: { id: true, code: true, name: true } } } } },
+  });
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(record);
 }
@@ -28,7 +31,22 @@ export async function PUT(
   const existing = await prisma.esiRate.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id) } } });
   if (existing) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.esiRate.update({ where: { id: parseInt(id) }, data: parsed.data });
+  const { components, ...rateFields } = parsed.data;
+  const rateId = parseInt(id);
+
+  // Replace components atomically: delete existing, then create new
+  await prisma.esiRateComponent.deleteMany({ where: { esiRateId: rateId } });
+
+  const record = await prisma.esiRate.update({
+    where: { id: rateId },
+    data: {
+      ...rateFields,
+      components: components?.length
+        ? { create: components.map((c) => ({ salaryComponentId: c.salaryComponentId, calculationType: c.calculationType, value: c.value })) }
+        : undefined,
+    },
+    include: { components: { include: { salaryComponent: { select: { id: true, code: true, name: true } } } } },
+  });
   return NextResponse.json(record);
 }
 

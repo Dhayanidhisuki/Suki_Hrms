@@ -1,0 +1,12 @@
+﻿=== Benefit Rates for employeeTypeId=5 ===
+  id=1 componentId=null code=undefined name=undefined type=undefined amount=500
+  id=2 componentId=null code=undefined name=undefined type=undefined amount=500
+  id=3 componentId=null code=undefined name=undefined type=undefined amount=5000
+
+=== ALL Benefit Rates ===
+  employeeTypeId=5 componentId=null code=undefined name=undefined type=undefined amount=500
+  employeeTypeId=5 componentId=null code=undefined name=undefined type=undefined amount=500
+  employeeTypeId=5 componentId=null code=undefined name=undefined type=undefined amount=5000
+
+NIGHT_ALLOWANCE component: id=163 type=earning
+NIGHT_ALLOWANCE benefit rates: 0

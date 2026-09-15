@@ -48,6 +48,7 @@
 import { prisma } from './prisma';
 import { checkMonthNotFrozen } from './attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from './attendanceHistory';
+import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from './weeklyOff';
 import type { BiometricAttendanceImport } from '@prisma/client';
 
 const HALF_DAY_THRESHOLD_HOURS = 7; // documented guess — see plan; only used when no in/out punch exists
@@ -56,6 +57,7 @@ const FALLBACK_STANDARD_SHIFT_MINUTES = 8 * 60; // used only when the employee h
 interface ShiftInfo {
   id: number;
   startMinutes: number; // minutes since midnight
+  endMinutes: number;   // minutes since midnight (may be < startMinutes for overnight shifts)
   standardMinutes: number; // shift duration, overnight-aware
   graceMinutes: number;
 }
@@ -74,6 +76,7 @@ export interface EmployeeShiftConfig {
 export interface DailyShift {
   shiftMasterId: number | null;
   startMinutes: number | null;
+  endMinutes: number | null;
   standardMinutes: number;
   graceMinutes: number;
 }
@@ -90,6 +93,7 @@ function toShiftInfo(shift: { id: number; startTime: string; endTime: string; gr
   return {
     id: shift.id,
     startMinutes: start,
+    endMinutes: end,
     standardMinutes: end > start ? end - start : 24 * 60 - start + end, // overnight shift, e.g. 22:00-06:00
     graceMinutes: shift.graceMinutes,
   };
@@ -165,7 +169,7 @@ export async function resolveEmployeeShiftConfig(employeeId: number): Promise<Em
  * then back to slot 0.
  */
 export function resolveDailyShift(config: EmployeeShiftConfig, date: Date): DailyShift {
-  const flatFallback: DailyShift = { shiftMasterId: null, startMinutes: null, standardMinutes: FALLBACK_STANDARD_SHIFT_MINUTES, graceMinutes: 0 };
+  const flatFallback: DailyShift = { shiftMasterId: null, startMinutes: null, endMinutes: null, standardMinutes: FALLBACK_STANDARD_SHIFT_MINUTES, graceMinutes: 0 };
 
   if (config.assignmentType === 'ROTATIONAL' && config.rotationSlots && config.rotationAnchorDate) {
     const msSinceAnchor = date.getTime() - config.rotationAnchorDate.getTime();
@@ -173,15 +177,38 @@ export function resolveDailyShift(config: EmployeeShiftConfig, date: Date): Dail
     const slotCount = config.rotationSlots.length;
     const slotIndex = ((weeksSinceAnchor % slotCount) + slotCount) % slotCount; // proper modulo for dates before the anchor too
     const shift = config.rotationSlots[slotIndex];
-    return { shiftMasterId: shift.id, startMinutes: shift.startMinutes, standardMinutes: shift.standardMinutes, graceMinutes: shift.graceMinutes };
+    return { shiftMasterId: shift.id, startMinutes: shift.startMinutes, endMinutes: shift.endMinutes, standardMinutes: shift.standardMinutes, graceMinutes: shift.graceMinutes };
   }
 
   if (config.generalShift) {
     const shift = config.generalShift;
-    return { shiftMasterId: shift.id, startMinutes: shift.startMinutes, standardMinutes: shift.standardMinutes, graceMinutes: shift.graceMinutes };
+    return { shiftMasterId: shift.id, startMinutes: shift.startMinutes, endMinutes: shift.endMinutes, standardMinutes: shift.standardMinutes, graceMinutes: shift.graceMinutes };
   }
 
   return flatFallback;
+}
+
+/**
+ * Phase TimeOffice — resolve the shift for a specific employee/date,
+ * checking manual overrides first, then falling back to the rotation plan.
+ * Returns the override shift if one exists for this date, otherwise the
+ * automatic rotation/general shift.
+ */
+export async function resolveDailyShiftWithOverride(
+  employeeId: number,
+  date: Date,
+  config: EmployeeShiftConfig
+): Promise<DailyShift> {
+  // Check for a manual override on this date.
+  const override = await prisma.shiftAssignmentOverride.findUnique({
+    where: { employeeId_date: { employeeId, date } },
+    include: { shiftMaster: true },
+  });
+  if (override) {
+    const shift = toShiftInfo(override.shiftMaster);
+    return { shiftMasterId: shift.id, startMinutes: shift.startMinutes, endMinutes: shift.endMinutes, standardMinutes: shift.standardMinutes, graceMinutes: shift.graceMinutes };
+  }
+  return resolveDailyShift(config, date);
 }
 
 export interface ConversionResult {
@@ -221,6 +248,12 @@ function combineDateAndTime(date: Date, time: { hour: number; minute: number }):
   return d;
 }
 
+// Phase TimeOffice — early check-in snap buffer. If an employee checks in
+// within this many minutes BEFORE the shift start, the inTime is normalized
+// (snapped) to the shift start. This prevents treating reasonable early
+// arrival as excessive early attendance. 120 minutes = 2 hours.
+const EARLY_CHECKIN_SNAP_MINUTES = 120;
+
 export function deriveStatusAndMinutes(
   hours: number | null,
   inTime: Date | null,
@@ -228,9 +261,26 @@ export function deriveStatusAndMinutes(
   shift: DailyShift,
   otThresholdMinutes: number,
   maxOtMinutesPerDay: number | null
-): { status: 'Present' | 'HalfDay' | 'Absent'; workingMinutes: number; otMinutes: number; lateMinutes: number } {
+): { status: 'Present' | 'HalfDay' | 'Absent'; workingMinutes: number; otMinutes: number; lateMinutes: number; earlyOutMinutes: number; snappedInTime: Date | null } {
   if (inTime && outTime) {
-    let minutes = Math.round((outTime.getTime() - inTime.getTime()) / 60000);
+    // ── Early check-in snapping ──────────────────────────────────────
+    // If the employee checks in within EARLY_CHECKIN_SNAP_MINUTES before
+    // the shift start, normalize the inTime to the shift start time.
+    // This prevents treating reasonable early arrival as excessive early
+    // attendance and avoids inflating working minutes / OT.
+    let effectiveInTime = inTime;
+    if (shift.startMinutes !== null) {
+      const inTimeOfDay = inTime.getUTCHours() * 60 + inTime.getUTCMinutes();
+      const minutesBeforeShift = shift.startMinutes - inTimeOfDay;
+      if (minutesBeforeShift > 0 && minutesBeforeShift <= EARLY_CHECKIN_SNAP_MINUTES) {
+        // Snap inTime to shift start
+        const snapped = new Date(inTime);
+        snapped.setUTCHours(Math.floor(shift.startMinutes / 60), shift.startMinutes % 60, 0, 0);
+        effectiveInTime = snapped;
+      }
+    }
+
+    let minutes = Math.round((outTime.getTime() - effectiveInTime.getTime()) / 60000);
     if (minutes < 0) minutes += 24 * 60; // overnight shift crossing midnight
     const workingMinutes = Math.max(minutes, 0);
 
@@ -248,8 +298,30 @@ export function deriveStatusAndMinutes(
     // has no defined start time to be late against.
     let lateMinutes = 0;
     if (shift.startMinutes !== null) {
-      const inTimeOfDay = inTime.getUTCHours() * 60 + inTime.getUTCMinutes();
+      const inTimeOfDay = effectiveInTime.getUTCHours() * 60 + effectiveInTime.getUTCMinutes();
       lateMinutes = Math.max(0, inTimeOfDay - (shift.startMinutes + shift.graceMinutes));
+    }
+
+    // ── Early checkout calculation ────────────────────────────────────
+    // Early-out = shift end minus punch-out time of day — only when the
+    // employee leaves BEFORE the shift end. For overnight shifts where
+    // endMinutes < startMinutes, the end is on the next day.
+    let earlyOutMinutes = 0;
+    if (shift.endMinutes !== null) {
+      const outTimeOfDay = outTime.getUTCHours() * 60 + outTime.getUTCMinutes();
+      if (shift.endMinutes > shift.startMinutes!) {
+        // Same-day shift (e.g. 09:00-17:30)
+        earlyOutMinutes = Math.max(0, shift.endMinutes - outTimeOfDay);
+      } else {
+        // Overnight shift (e.g. 22:00-06:00) — end is next morning
+        // If outTime is after midnight and before endMinutes, it's early
+        if (outTimeOfDay < shift.endMinutes) {
+          earlyOutMinutes = Math.max(0, shift.endMinutes - outTimeOfDay);
+        } else if (outTimeOfDay > shift.startMinutes!) {
+          // Out before midnight — left very early, count from shift end
+          earlyOutMinutes = Math.max(0, shift.endMinutes + (24 * 60 - outTimeOfDay));
+        }
+      }
     }
 
     return {
@@ -257,6 +329,8 @@ export function deriveStatusAndMinutes(
       workingMinutes,
       otMinutes,
       lateMinutes,
+      earlyOutMinutes,
+      snappedInTime: effectiveInTime !== inTime ? effectiveInTime : null,
     };
   }
   const h = hours ?? 0;
@@ -265,6 +339,8 @@ export function deriveStatusAndMinutes(
     workingMinutes: Math.round(h * 60),
     otMinutes: 0,
     lateMinutes: 0,
+    earlyOutMinutes: 0,
+    snappedInTime: null,
   };
 }
 
@@ -312,10 +388,39 @@ export async function convertImportToDailyAttendance(
 
     const inTime = parsedIn ? combineDateAndTime(date, parsedIn) : null;
     const outTime = parsedOut ? combineDateAndTime(date, parsedOut) : null;
-    const dailyShift = resolveDailyShift(shiftConfig, date);
-    const { status, workingMinutes, otMinutes, lateMinutes } = deriveStatusAndMinutes(
+    const dailyShift = await resolveDailyShiftWithOverride(employeeId, date, shiftConfig);
+    const { status, workingMinutes, otMinutes, lateMinutes, earlyOutMinutes, snappedInTime } = deriveStatusAndMinutes(
       hours, inTime, outTime, dailyShift, shiftConfig.otThresholdMinutes, shiftConfig.maxOtMinutesPerDay
     );
+
+    // Use snapped inTime if early check-in was normalized
+    const effectiveInTime = snappedInTime ?? inTime;
+
+    // ── Auto-detect weekly-off/holiday worked ──────────────────────
+    // If the employee has punches on a day that is their department's
+    // weekly off or a declared holiday/yearly leave, mark the flags
+    // so OT approval can offer comp-off settlement.
+    let isWeeklyOffWorked = false;
+    let isHolidayWorked = false;
+    if (inTime && outTime) {
+      const emp = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { companyId: true },
+      });
+      if (emp) {
+        isWeeklyOffWorked = await isWeeklyOffForEmployee(employeeId, date);
+        // Only mark as worked if they actually have punches (present)
+        if (isWeeklyOffWorked && status !== 'Absent') {
+          // already set — keep it
+        } else {
+          isWeeklyOffWorked = false;
+        }
+        isHolidayWorked = await isHolidayOrYearlyLeave(emp.companyId, date);
+        if (isHolidayWorked && status === 'Absent') {
+          isHolidayWorked = false;
+        }
+      }
+    }
 
     // Goes through the history-recording helper, never a bare upsert — an
     // import must never silently destroy a day someone already corrected;
@@ -326,13 +431,16 @@ export async function convertImportToDailyAttendance(
       date,
       {
         status,
-        inTime,
+        inTime: effectiveInTime,
         outTime,
         workingMinutes,
         otMinutesCalculated: otMinutes,
         lateMinutes,
+        earlyOutMinutes,
         source: row.fromWhere === 'BIOMETRIC' ? 'biometric' : 'manual',
         shiftMasterId: dailyShift.shiftMasterId,
+        isWeeklyOffWorked: isWeeklyOffWorked || undefined,
+        isHolidayWorked: isHolidayWorked || undefined,
       },
       { userId: triggeredByUserId ?? null, changedBySource: 'biometric' }
     );

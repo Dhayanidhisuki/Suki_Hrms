@@ -1,5 +1,5 @@
 /**
- * GET /api/workforce/attendance/monthly?year=2026&month=9[&departmentId=][&unitId=]
+ * GET /api/workforce/attendance/monthly?year=2026&month=9[&departmentId=][&designationId=][&employeeTypeId=][&unitId=]
  *
  * The Monthly Attendance grid's data source: every active employee in the
  * caller's company (optionally filtered), each with their full month of
@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
   const year = Number(searchParams.get('year'));
   const month = Number(searchParams.get('month'));
   const departmentId = searchParams.get('departmentId');
+  const designationId = searchParams.get('designationId');
+  const employeeTypeId = searchParams.get('employeeTypeId');
   const unitId = searchParams.get('unitId');
 
   if (!year || !month || month < 1 || month > 12) {
@@ -32,26 +34,25 @@ export async function GET(request: NextRequest) {
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 1)); // exclusive
 
+  // Build job-info filter; jobInfos with effectiveTo == null are current.
+  const jobInfoWhere: Record<string, unknown> = { effectiveTo: null };
+  if (departmentId) jobInfoWhere.departmentId = Number(departmentId);
+  if (designationId) jobInfoWhere.designationId = Number(designationId);
+  if (employeeTypeId) jobInfoWhere.employeeTypeId = Number(employeeTypeId);
+  if (unitId) jobInfoWhere.unitId = Number(unitId);
+  const hasJobFilter = departmentId || designationId || employeeTypeId || unitId;
+
   const employees = await prisma.employee.findMany({
     where: {
       companyId: scope.companyId,
       deletedAt: null,
       isActive: true,
-      ...(departmentId || unitId
-        ? {
-            jobInfos: {
-              some: {
-                effectiveTo: null,
-                ...(departmentId ? { departmentId: Number(departmentId) } : {}),
-                ...(unitId ? { unitId: Number(unitId) } : {}),
-              },
-            },
-          }
-        : {}),
+      ...(hasJobFilter ? { jobInfos: { some: jobInfoWhere } } : {}),
     },
     select: {
       id: true,
       employeeCode: true,
+      oldEmployeeCode: true,
       firstName: true,
       lastName: true,
       dailyAttendances: {
@@ -61,6 +62,16 @@ export async function GET(request: NextRequest) {
       monthlyAttendance: {
         where: { year, month },
         take: 1,
+      },
+      jobInfos: {
+        where: { effectiveTo: null },
+        take: 1,
+        orderBy: { effectiveFrom: 'desc' },
+        select: {
+          department: { select: { name: true } },
+          designation: { select: { name: true } },
+          employeeType: { select: { name: true } },
+        },
       },
     },
     orderBy: { employeeCode: 'asc' },
@@ -84,10 +95,15 @@ export async function GET(request: NextRequest) {
 
   const data = employees.map((e) => {
     const summary = e.monthlyAttendance[0] ?? null;
+    const job = e.jobInfos[0];
     return {
       employeeId: e.id,
       employeeCode: e.employeeCode,
+      oldEmployeeCode: e.oldEmployeeCode,
       name: `${e.firstName} ${e.lastName}`.trim(),
+      department: job?.department?.name ?? null,
+      designation: job?.designation?.name ?? null,
+      employeeType: job?.employeeType?.name ?? null,
       days: e.dailyAttendances,
       summary: summary
         ? { ...summary, reopenedByName: summary.reopenedByUserId ? reopenerNames.get(summary.reopenedByUserId) ?? null : null }

@@ -7,8 +7,19 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+
+interface AuthMe {
+  userId: number;
+  email: string;
+  isSuperAdmin: boolean;
+  roleId: number | null;
+  roleCode: string | null;
+  companyId: number | null;
+  companyName: string | null;
+  hasAdminAccess: boolean;
+}
 
 interface Site {
   id: number;
@@ -29,6 +40,15 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
+interface Unit {
+  id: number;
+  code: string;
+  name: string;
+  address: string | null;
+  state: string | null;
+  companyId: number;
+}
+
 export default function SitesPage() {
   const [records, setRecords] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,25 +61,56 @@ export default function SitesPage() {
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [companyOptions, setCompanyOptions] = useState<FieldOption[]>([]);
+  const [unitOptions, setUnitOptions] = useState<FieldOption[]>([]);
+  const [auth, setAuth] = useState<AuthMe | null>(null);
 
   useEffect(() => {
-    fetch('/api/masters/companies?limit=100')
-      .then((r) => r.json())
-      .then((json: { data: { id: number; name: string }[] }) =>
-        setCompanyOptions(json.data.map((c) => ({ label: c.name, value: c.id })))
-      );
+    fetch('/api/auth/me')
+      .then(async (r) => (r.ok ? r.json() : null))
+      .then((me: AuthMe | null) => {
+        if (!me) return;
+        setAuth(me);
+        if (me.isSuperAdmin) {
+          fetch('/api/masters/companies?limit=100')
+            .then(async (r) => (r.ok ? r.json() : { data: [] }))
+            .then((json: { data: { id: number; name: string }[] }) =>
+              setCompanyOptions(json.data.map((c) => ({ label: c.name, value: c.id })))
+            );
+          fetch('/api/masters/units?limit=500')
+            .then(async (r) => (r.ok ? r.json() : { data: [] }))
+            .then((json: { data: Unit[] }) => setUnitOptions(json.data.map((u) => ({ label: u.name, value: u.name }))));
+        } else if (me.companyId) {
+          setCompanyOptions([{ label: me.companyName ?? `Company #${me.companyId}`, value: me.companyId }]);
+          fetch('/api/masters/units?limit=500')
+            .then(async (r) => (r.ok ? r.json() : { data: [] }))
+            .then((json: { data: Unit[] }) =>
+              setUnitOptions(json.data.filter((u) => u.companyId === me.companyId).map((u) => ({ label: u.name, value: u.name })))
+            );
+        }
+      });
   }, []);
 
-  const fields: FieldDef[] = [
-    { name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions },
-    { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. SITE1' },
-    { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Chennai — Block A' },
-    { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Optional' },
-    { name: 'city', label: 'City', type: 'text', placeholder: 'Optional' },
-    { name: 'state', label: 'State', type: 'text', placeholder: 'Optional' },
-    { name: 'pinCode', label: 'PIN Code', type: 'text', placeholder: 'Optional' },
-    { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
-  ];
+  const fields: FieldDef[] = useMemo(() => {
+    const list: FieldDef[] = [];
+    // Company is pre-filled for company admins; superadmins can choose.
+    if (auth?.isSuperAdmin) {
+      list.push({ name: 'companyId', label: 'Company', type: 'select', required: true, options: companyOptions });
+    }
+    if (editingId) {
+      list.push({ name: 'code', label: 'Site Code', type: 'text', disabled: true, helpText: 'Generated automatically' });
+    }
+    list.push(
+      editingId
+        ? { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Chennai — Block A' }
+        : { name: 'name', label: 'Name', type: 'select', required: true, options: unitOptions, helpText: 'Select from the Branch / Unit list' },
+      { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Optional' },
+      { name: 'city', label: 'City', type: 'text', placeholder: 'Optional' },
+      { name: 'state', label: 'State', type: 'text', placeholder: 'Optional' },
+      { name: 'pinCode', label: 'PIN Code', type: 'text', placeholder: 'Optional' },
+      { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true }
+    );
+    return list;
+  }, [auth, companyOptions, unitOptions, editingId]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -84,7 +135,11 @@ export default function SitesPage() {
 
   const handleAdd = () => {
     setEditingId(null);
-    setInitialValues({ isActive: true });
+    const defaults: Record<string, string | number | boolean | undefined> = { isActive: true };
+    if (!auth?.isSuperAdmin && auth?.companyId) {
+      defaults.companyId = auth.companyId;
+    }
+    setInitialValues(defaults);
     setModalOpen(true);
   };
 
@@ -104,13 +159,16 @@ export default function SitesPage() {
   };
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const payload = {
+    const payload: Record<string, string | number | boolean | null> = {
       ...values,
       address: values.address || null,
       city: values.city || null,
       state: values.state || null,
       pinCode: values.pinCode || null,
     };
+    if (!auth?.isSuperAdmin && auth?.companyId) {
+      payload.companyId = auth.companyId;
+    }
     const url = editingId ? `/api/masters/sites/${editingId}` : '/api/masters/sites';
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -132,7 +190,7 @@ export default function SitesPage() {
   };
 
   const columns: Column<Site>[] = [
-    { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
+    { key: 'code', label: 'Site Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
     {

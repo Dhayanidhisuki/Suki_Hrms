@@ -1,0 +1,2 @@
+﻿RC028 29-Jul fixed: in=14:08 out=00:08 late=8 early=0 work=600 ot=128
+All working minutes fixed.

@@ -16,6 +16,15 @@ interface EmployeeOption {
   lastName: string;
 }
 
+interface ShiftMasterOption {
+  id: number;
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+}
+
 interface AttendanceRow {
   id: number;
   employeeId: number;
@@ -27,8 +36,11 @@ interface AttendanceRow {
   lateMinutes: number;
   earlyOutMinutes: number;
   otMinutesCalculated: number;
+  lomMinutes: number;
+  otPayableMinutes: number;
   remarks: string | null;
   employee: { id: number; employeeCode: string; firstName: string; lastName: string };
+  shiftMaster: { id: number; code: string; name: string; startTime: string; endTime: string; graceMinutes: number } | null;
 }
 
 const STATUS_OPTIONS = [
@@ -77,6 +89,7 @@ export default function DailyAttendancePage() {
   }, []);
   const [records, setRecords] = useState<AttendanceRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [shiftMasters, setShiftMasters] = useState<ShiftMasterOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +101,10 @@ export default function DailyAttendancePage() {
     fetch('/api/employees?limit=200')
       .then((r) => r.json())
       .then((json: { data: EmployeeOption[] }) => setEmployees(json.data ?? []))
+      .catch(() => {});
+    fetch('/api/masters/shift-masters?limit=100')
+      .then((r) => r.json())
+      .then((json: { data: ShiftMasterOption[] }) => setShiftMasters(json.data ?? []))
       .catch(() => {});
   }, []);
 
@@ -115,15 +132,21 @@ export default function DailyAttendancePage() {
     value: e.id,
   }));
 
+  const shiftOptions = shiftMasters.map((s) => ({
+    label: `${s.code} — ${s.name} (${s.startTime}–${s.endTime}, grace ${s.graceMinutes}m)`,
+    value: s.id,
+  }));
+
   const fields: FieldDef[] = [
     { name: 'employeeId', label: 'Employee', type: 'select', required: true, options: employeeOptions, disabled: !!editingRow },
+    { name: 'shiftMasterId', label: 'Shift', type: 'select', options: shiftOptions, helpText: 'Used to auto-calculate late/early/OT/LOM' },
     { name: 'status', label: 'Status', type: 'select', required: true, options: STATUS_OPTIONS },
     { name: 'inTime', label: 'In Time', type: 'text', placeholder: 'e.g. 2026-09-05T08:30' },
     { name: 'outTime', label: 'Out Time', type: 'text', placeholder: 'e.g. 2026-09-05T17:30' },
-    { name: 'workingMinutes', label: 'Working Minutes', type: 'number' },
-    { name: 'lateMinutes', label: 'Late Minutes', type: 'number' },
-    { name: 'earlyOutMinutes', label: 'Early-Out Minutes', type: 'number' },
-    { name: 'otMinutesCalculated', label: 'OT Minutes', type: 'number' },
+    { name: 'workingMinutes', label: 'Working Minutes', type: 'number', helpText: 'Auto-calculated from in/out + shift' },
+    { name: 'lateMinutes', label: 'Late Minutes', type: 'number', helpText: 'Auto-calculated from in/out + shift' },
+    { name: 'earlyOutMinutes', label: 'Early-Out Minutes', type: 'number', helpText: 'Auto-calculated from in/out + shift' },
+    { name: 'otMinutesCalculated', label: 'OT Minutes (raw)', type: 'number', helpText: 'Auto-calculated from in/out + shift' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', required: !!editingRow, helpText: editingRow ? 'Required when correcting a record' : undefined },
   ];
 
@@ -137,6 +160,7 @@ export default function DailyAttendancePage() {
     setEditingRow(row);
     setInitialValues({
       employeeId: row.employeeId,
+      shiftMasterId: row.shiftMaster?.id ?? '',
       status: row.status,
       inTime: row.inTime ?? '',
       outTime: row.outTime ?? '',
@@ -153,6 +177,7 @@ export default function DailyAttendancePage() {
     const payload = {
       employeeId: Number(values.employeeId),
       date,
+      shiftMasterId: values.shiftMasterId ? Number(values.shiftMasterId) : null,
       status: values.status,
       inTime: values.inTime || null,
       outTime: values.outTime || null,
@@ -180,12 +205,16 @@ export default function DailyAttendancePage() {
 
   const columns: Column<AttendanceRow>[] = [
     { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'shiftMaster', label: 'Shift', render: (r) => r.shiftMaster?.code ?? '—' },
     { key: 'status', label: 'Status' },
     { key: 'inTime', label: 'In', render: (r) => formatWallClockTime(r.inTime) },
     { key: 'outTime', label: 'Out', render: (r) => formatWallClockTime(r.outTime) },
-    { key: 'workingMinutes', label: 'Working (min)' },
+    { key: 'workingMinutes', label: 'Work (min)' },
     { key: 'lateMinutes', label: 'Late (min)' },
-    { key: 'otMinutesCalculated', label: 'OT (min)' },
+    { key: 'earlyOutMinutes', label: 'Early (min)' },
+    { key: 'otMinutesCalculated', label: 'OT Raw (min)' },
+    { key: 'otPayableMinutes', label: 'OT Pay (min)' },
+    { key: 'lomMinutes', label: 'LOM (min)' },
     { key: 'remarks', label: 'Remarks', render: (r) => r.remarks ?? '—' },
   ];
 

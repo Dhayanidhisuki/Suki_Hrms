@@ -15,6 +15,7 @@ import { dailyAttendanceSchema } from '@/lib/validations/workforce';
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { computeAttendanceMetrics } from '@/lib/attendanceCalc';
 
 export async function PUT(
   request: NextRequest,
@@ -52,19 +53,41 @@ export async function PUT(
 
   const userId = Number(request.headers.get('x-user-id'));
 
+  // Auto-calculate late/early/OT/working from in/out times + shift master,
+  // same as POST. If in/out are provided and a shift is assigned (either in
+  // the payload or already on the row), recompute the derived metrics so the
+  // stored values stay consistent with the shift's start/end/grace.
+  let shiftMasterId = parsed.data.shiftMasterId ?? existing.shiftMasterId ?? null;
+  let computed = {
+    workingMinutes: parsed.data.workingMinutes ?? 0,
+    lateMinutes: parsed.data.lateMinutes ?? 0,
+    earlyOutMinutes: parsed.data.earlyOutMinutes ?? 0,
+    otMinutesCalculated: parsed.data.otMinutesCalculated ?? 0,
+  };
+
+  if (parsed.data.inTime && parsed.data.outTime && shiftMasterId) {
+    const sm = await prisma.shiftMaster.findUnique({
+      where: { id: shiftMasterId },
+      select: { startTime: true, endTime: true, graceMinutes: true },
+    });
+    if (sm) {
+      computed = computeAttendanceMetrics(parsed.data.inTime, parsed.data.outTime, sm);
+    }
+  }
+
   await upsertDailyAttendanceWithHistory(
     prisma,
     existing.employeeId,
     existing.date,
     {
-      shiftMasterId: parsed.data.shiftMasterId,
+      shiftMasterId,
       status: parsed.data.status,
       inTime: parsed.data.inTime,
       outTime: parsed.data.outTime,
-      workingMinutes: parsed.data.workingMinutes,
-      lateMinutes: parsed.data.lateMinutes,
-      earlyOutMinutes: parsed.data.earlyOutMinutes,
-      otMinutesCalculated: parsed.data.otMinutesCalculated,
+      workingMinutes: computed.workingMinutes,
+      lateMinutes: computed.lateMinutes,
+      earlyOutMinutes: computed.earlyOutMinutes,
+      otMinutesCalculated: computed.otMinutesCalculated,
       remarks: parsed.data.remarks,
       source: 'manual',
     },

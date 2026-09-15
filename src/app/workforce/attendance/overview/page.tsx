@@ -40,9 +40,9 @@ interface DayRow {
   workingMinutes: number;
   lateMinutes: number;
   earlyOutMinutes: number;
-  preExtraMinutes: number;
-  postExtraMinutes: number;
   otMinutesCalculated: number;
+  otPayableMinutes: number;
+  lomMinutes: number;
   otMinutesApproved: number | null;
   otApprovalStatus: string | null;
   source: string | null;
@@ -396,10 +396,10 @@ function OverviewInner() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
-                  {['#', 'Date', 'Day', 'In', 'Out', 'Late', 'Early', 'Shift', 'Shift hrs', 'Pre ET', 'Post ET', 'ET', 'Payable ET', 'Total', 'Status', 'Src', ''].map((h, i) => (
+                  {['#', 'Date', 'Day', 'Status', 'In', 'Out', 'Work (min)', 'Late (min)', 'Early (min)', 'OT Raw (min)', 'OT Pay (min)', 'LOM (min)', 'Shift', ''].map((h, i) => (
                     <th
                       key={h || i}
-                      className={`whitespace-nowrap px-2 py-2 font-medium ${i >= 3 && i <= 13 ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-2 py-2 font-medium ${i >= 4 && i <= 11 ? 'text-right' : 'text-left'}`}
                     >
                       {h}
                     </th>
@@ -409,14 +409,13 @@ function OverviewInner() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={17} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
+                    <td colSpan={14} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
                       Loading...
                     </td>
                   </tr>
                 ) : (
                   data.days.map((d) => {
                     const upcoming = d.status === 'Upcoming';
-                    const payable = d.otMinutesApproved ?? 0;
                     return (
                       <tr
                         key={d.date}
@@ -429,6 +428,9 @@ function OverviewInner() {
                         <td className="px-2 py-1.5" style={{ color: d.weekday === 'Sunday' ? '#1e40af' : undefined }}>
                           {d.weekday}
                         </td>
+                        <td className="px-2 py-1.5">
+                          <StatusPill row={d} />
+                        </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{wallClock(d.inTime)}</td>
                         <td
                           className="px-2 py-1.5 text-right tabular-nums"
@@ -438,32 +440,26 @@ function OverviewInner() {
                           {wallClock(d.outTime)}
                           {d.punchPairInvalid ? ' ⚠' : ''}
                         </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {d.workingMinutes > 0 ? d.workingMinutes : <span style={{ color: 'var(--foreground-muted)' }}>0</span>}
+                        </td>
                         <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: d.lateMinutes > 0 ? '#b45309' : undefined }}>
                           {minutesCell(d.lateMinutes)}
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: d.earlyOutMinutes > 0 ? '#b45309' : undefined }}>
                           {minutesCell(d.earlyOutMinutes)}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
-                          {d.shiftName ?? '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{d.shiftMinutes ? hm(d.shiftMinutes) : <span style={{ color: 'var(--foreground-muted)' }}>0:00</span>}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{minutesCell(d.preExtraMinutes)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{minutesCell(d.postExtraMinutes)}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums" title={d.otApprovalStatus ? `OT ${d.otApprovalStatus}` : undefined}>
                           {minutesCell(d.otMinutesCalculated)}
                         </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: payable > 0 ? '#166534' : undefined }}>
-                          {minutesCell(payable)}
+                        <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: d.otPayableMinutes > 0 ? '#166534' : undefined }}>
+                          {minutesCell(d.otPayableMinutes)}
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">
-                          {d.workingMinutes > 0 ? hm(d.workingMinutes) : <span style={{ color: 'var(--foreground-muted)' }}>0:00</span>}
+                        <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: d.lomMinutes > 0 ? '#b45309' : undefined }}>
+                          {minutesCell(d.lomMinutes)}
                         </td>
-                        <td className="px-2 py-1.5">
-                          <StatusPill row={d} />
-                        </td>
-                        <td className="px-2 py-1.5" title={d.source ?? undefined} style={{ color: 'var(--foreground-muted)' }}>
-                          {d.source === 'biometric' ? 'B' : d.source === 'manual' ? 'M' : ''}
+                        <td className="whitespace-nowrap px-2 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
+                          {d.shiftName ?? '—'}
                         </td>
                         <td className="px-2 py-1.5 text-right">
                           {!upcoming && (

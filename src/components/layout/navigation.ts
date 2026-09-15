@@ -15,6 +15,8 @@ export type NavLeaf = {
   short?: string;
   href: string;
   ready?: boolean;
+  /** Restrict to a specific role code (e.g. 'company-admin'). */
+  requiredRole?: string;
 };
 
 export type NavGroup = {
@@ -56,6 +58,10 @@ export const navigation: NavModule[] = [
           { label: "My Dashboard", href: "/", ready: true },
           { label: "Manager Dashboard", short: "My Team", href: "/manager/dashboard", ready: true },
         ],
+      },
+      {
+        label: "Security",
+        items: [{ label: "Security Dashboard", short: "Security", href: "/dashboard/security", ready: true }],
       },
       {
         label: "HR",
@@ -131,7 +137,7 @@ export const navigation: NavModule[] = [
           { label: "State PT Configs", href: "/masters/state-pt-configs", ready: true },
           { label: "Income Tax Slabs", href: "/masters/income-tax-slabs" },
           { label: "Salary Components", href: "/masters/salary-components", ready: true },
-          { label: "Benefit Rates", href: "/masters/benefit-rates", ready: true },
+          { label: "Benefit Components", href: "/masters/benefit-rates", ready: true },
           { label: "Bonus Rates", href: "/masters/bonus-rates", ready: true },
           { label: "Attendance Bonus Config", short: "Att Bonus", href: "/masters/attendance-bonus-config", ready: true },
           { label: "Gratuity Policies", href: "/masters/gratuity-policies", ready: true },
@@ -143,6 +149,7 @@ export const navigation: NavModule[] = [
           { label: "Health Insurance Config", short: "Health Ins", href: "/masters/health-insurance-config", ready: true },
           { label: "LWF Rates", href: "/masters/lwf-rates", ready: true },
           { label: "LOM Config", href: "/masters/lom-config", ready: true },
+          { label: "Approval Chain Config", short: "Approval Chain", href: "/masters/approval-chain", ready: true },
           { label: "Rounding Config", href: "/masters/rounding-config", ready: true },
           { label: "Payroll Validation Config", short: "Validation", href: "/masters/payroll-validation-config", ready: true },
           { label: "Payroll Workflow Config", short: "Workflow", href: "/masters/payroll-workflow-config", ready: true },
@@ -155,7 +162,7 @@ export const navigation: NavModule[] = [
         label: "HR Masters",
         items: [
           { label: "Interview Criteria", href: "/masters/interview-criteria" },
-          { label: "JD Master", href: "/masters/jd-master" },
+          { label: "JD Master", href: "/masters/jd-master", ready: true },
         ],
       },
       {
@@ -179,6 +186,7 @@ export const navigation: NavModule[] = [
       {
         label: "Hiring",
         items: [
+          { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
           { label: "Offer Letter", href: "/recruitment/offer-letter" },
           { label: "Appointment Order", href: "/recruitment/appointment-order" },
           { label: "Internship", href: "/recruitment/internship" },
@@ -255,6 +263,11 @@ export const navigation: NavModule[] = [
           { label: "Attendance Overview", short: "Overview", href: "/workforce/attendance/overview", ready: true },
           { label: "Biometric Integration", short: "Biometric", href: "/workforce/attendance/biometric", ready: true },
           { label: "Time Office Final", href: "/workforce/attendance/time-office-final" },
+          { label: "Shift Plan", href: "/workforce/shift-plan", ready: true },
+          { label: "Shift Change Request", short: "Shift Change", href: "/workforce/shift-change-request", ready: true },
+          { label: "Shift Notifications", short: "Notifications", href: "/workforce/shift-notifications", ready: true },
+          { label: "Bulk Shift Upload", short: "Bulk Upload", href: "/workforce/bulk-shift-upload", ready: true },
+          { label: "Comp-off Request", short: "Comp-off", href: "/workforce/comp-off-request", ready: true },
         ],
       },
       {
@@ -282,14 +295,12 @@ export const navigation: NavModule[] = [
       {
         label: "Benefits",
         items: [
-          // Canteen Token/Petrol Allowance are configured once as Benefit
-          // Rates (Masters) then applied per payroll run via Salary
-          // Processing's "Apply Canteen/Petrol" action, not a standalone
-          // page — both nav entries point at the rate master.
-          { label: "Canteen Token", href: "/masters/benefit-rates", ready: true },
-          { label: "Petrol Allowance", href: "/masters/benefit-rates", ready: true },
+          // Benefits Overview shows KPI cards per benefit component and the
+          // enrolled employees per benefit. Benefit components themselves
+          // are configured in Masters → Benefit Components.
+          { label: "Benefits Overview", href: "/workforce/benefits", ready: true },
           { label: "Performance Incentive", href: "/payroll/processing/pms-incentive", ready: true },
-          { label: "Double Machine & Other Incentive", short: "Other Incentives", href: "/payroll/processing/salary", ready: true },
+          { label: "Double Machine Incentive", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
     ],
@@ -304,6 +315,7 @@ export const navigation: NavModule[] = [
         label: "Processing",
         items: [
           { label: "Salary Processing", href: "/payroll/processing/salary", ready: true },
+          { label: "Additions & Deductions", href: "/payroll/processing/additions-deductions", ready: true },
           { label: "Salary Revision", href: "/payroll/processing/revision", ready: true },
           { label: "Arrears", href: "/payroll/processing/arrears", ready: true },
           { label: "Manual Arrears", href: "/payroll/processing/manual-arrears", ready: true },
@@ -312,7 +324,7 @@ export const navigation: NavModule[] = [
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
           { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final" },
-          { label: "Other Incentives", href: "/payroll/processing/other-incentives" },
+          { label: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
       {
@@ -387,8 +399,17 @@ export const navigation: NavModule[] = [
         ],
       },
       {
+        label: "Material",
+        items: [
+          { label: "GNR Register", href: "/visitor/gnr" },
+        ],
+      },
+      {
         label: "Visitor",
-        items: [{ label: "Visitor Pass", href: "/visitor/pass" }],
+        items: [
+          { label: "Vendor", href: "/visitor/vendor", requiredRole: "company-admin" },
+          { label: "Visitor Pass", href: "/visitor/pass" },
+        ],
       },
     ],
   },
@@ -442,6 +463,7 @@ export const navigation: NavModule[] = [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
           { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
+          { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
           // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
           // spent as a normal leave application against the "Compensatory Off"
@@ -460,7 +482,7 @@ export const navigation: NavModule[] = [
       },
       {
         label: "Visitor",
-        items: [{ label: "Visitor Pass Approval", short: "Visitor Pass", href: "/approvals/visitor/pass" }],
+        items: [{ label: "Visitor Pass Approval", short: "Visitor Pass", href: "/approvals/visitor/pass", ready: true }],
       },
     ],
   },
@@ -567,6 +589,14 @@ export const navigation: NavModule[] = [
           { label: "Professional Tax Report", short: "Professional Tax", href: "/reports/statutory/professional-tax", ready: true },
           { label: "Labour Welfare Fund Report", short: "LWF", href: "/reports/statutory/lwf" },
           { label: "ESI Return Report", short: "ESI Return", href: "/reports/statutory/esi-return" },
+        ],
+      },
+      {
+        label: "Visitor",
+        items: [
+          { label: "Visitor Register", short: "Visitor Register", href: "/reports/visitor/visitor-register", ready: true },
+          { label: "Current Inside", short: "Current Inside", href: "/reports/visitor/current-inside", ready: true },
+          { label: "GNR Register", short: "GNR Register", href: "/reports/visitor/gnr-register", ready: true },
         ],
       },
       {

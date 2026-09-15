@@ -25,10 +25,10 @@ export async function PUT(
   const parsed = shiftMasterSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.shiftMaster.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
-
-  const record = await prisma.shiftMaster.update({ where: { id: parseInt(id) }, data: parsed.data });
+  // Code is server-generated and never changes after creation — write only
+  // the editable fields, ignoring whatever (if anything) the client sent for code.
+  const { code: _ignored, ...rest } = parsed.data;
+  const record = await prisma.shiftMaster.update({ where: { id: parseInt(id) }, data: rest });
   return NextResponse.json(record);
 }
 

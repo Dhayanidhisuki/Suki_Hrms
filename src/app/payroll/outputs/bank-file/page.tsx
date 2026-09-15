@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -25,6 +25,14 @@ interface PayrollRun {
 }
 
 export default function BankFilePage() {
+  return (
+    <Suspense fallback={<div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}>
+      <BankFileContent />
+    </Suspense>
+  );
+}
+
+function BankFileContent() {
   const searchParams = useSearchParams();
   const runId = searchParams.get('runId');
   const [runs, setRuns] = useState<PayrollRun[]>([]);

@@ -1,0 +1,15 @@
+﻿Cleared stale OT approvals for 225 attendance rows.
+RC027: payable=11.5 lop=19.5 late=176 early=311 ot=186
+RC028: payable=21 lop=10 late=349 early=685 ot=651
+RC029: payable=3.5 lop=27.5 late=69 early=240 ot=149
+RC030: payable=19 lop=12 late=295 early=1137 ot=599
+RC031: payable=23.5 lop=7.5 late=247 early=366 ot=521
+RC032: payable=13.5 lop=17.5 late=152 early=800 ot=215
+RC033: payable=16 lop=15 late=243 early=1565 ot=365
+RC034: payable=25 lop=6 late=345 early=102 ot=601
+RC035: payable=21.5 lop=9.5 late=313 early=416 ot=599
+RC036: payable=16.5 lop=14.5 late=322 early=369 ot=584
+RC037: payable=23.5 lop=7.5 late=107 early=357 ot=201
+RC114: payable=19 lop=12 late=357 early=591 ot=804
+
+Done.

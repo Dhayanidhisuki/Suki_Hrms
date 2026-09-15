@@ -31,6 +31,8 @@ export default function LevelsPage() {
       statsModule="levels"
       title="Levels"
       apiPath="/api/masters/levels"
+      codeLabel="Level Code"
+      nameLabel="Level Name"
       extraFields={[{ name: 'gradeId', label: 'Grade', type: 'select', required: true, options: gradeOptions }]}
       extraColumns={[
         { key: 'grade', label: 'Grade', render: (row) => (row.grade as { name: string } | null | undefined)?.name ?? '—' },

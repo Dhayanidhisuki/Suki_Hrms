@@ -63,7 +63,16 @@ export async function GET(request: NextRequest) {
     byManager.get(mgrId)!.push(emp);
   }
 
-  function buildNode(managerId: number | null): EmployeeNode[] {
+  const validEmployeeIds = new Set(employees.map((e) => e.id));
+
+  // Root = no manager, or manager is not in the active employee set.
+  const rootEmployees = employees.filter(
+    (e) => e.reportingManagerId == null || !validEmployeeIds.has(e.reportingManagerId)
+  );
+
+  function buildNode(managerId: number | null, visited = new Set<number>()): EmployeeNode[] {
+    if (managerId !== null && visited.has(managerId)) return []; // break cycles
+    if (managerId !== null) visited.add(managerId);
     const children = byManager.get(managerId) ?? [];
     return children.map((emp) => ({
       id: emp.id,
@@ -74,11 +83,22 @@ export async function GET(request: NextRequest) {
       secondReportingManagerId: emp.secondReportingManagerId,
       designation: emp.jobInfos[0]?.designation?.name ?? null,
       department: emp.jobInfos[0]?.department?.name ?? null,
-      directReports: buildNode(emp.id),
+      directReports: buildNode(emp.id, new Set(visited)),
     }));
   }
 
-  const tree = buildNode(null);
+  const tree = rootEmployees.map((emp) => ({
+    id: emp.id,
+    employeeCode: emp.employeeCode,
+    firstName: emp.firstName,
+    lastName: emp.lastName,
+    reportingManagerId: emp.reportingManagerId,
+    secondReportingManagerId: emp.secondReportingManagerId,
+    designation: emp.jobInfos[0]?.designation?.name ?? null,
+    department: emp.jobInfos[0]?.department?.name ?? null,
+    directReports: buildNode(emp.id),
+  }));
+
   const totalEmployees = employees.length;
   const rootCount = tree.length;
   const assignedCount = employees.filter((e) => e.reportingManagerId !== null).length;

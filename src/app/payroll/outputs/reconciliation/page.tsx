@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface ReconData {
@@ -15,6 +15,8 @@ interface ReconData {
     okCount: number;
     holdCount: number;
     totalGross: string;
+    totalOtherEarnings?: string;
+    totalEarnings?: string;
     totalNet: string;
     totalDeductions: string;
     componentEarningsSum: string;
@@ -40,6 +42,14 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function ReconciliationPage() {
+  return (
+    <Suspense fallback={<div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}>
+      <ReconciliationContent />
+    </Suspense>
+  );
+}
+
+function ReconciliationContent() {
   const searchParams = useSearchParams();
   const initialRunId = searchParams.get('runId');
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -136,11 +146,11 @@ export default function ReconciliationPage() {
           <div className={`rounded-xl border p-4 ${recon.summary.grossReconciled ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}>
             <p className="text-sm font-medium">
               {recon.summary.grossReconciled
-                ? '✓ Gross earnings reconciled — PayrollLine totals match component sums'
-                : '✗ Gross mismatch — PayrollLine totals do not match component sums'}
+                ? '✓ Earnings reconciled — PayrollLine totals match component sums'
+                : '✗ Earnings mismatch — PayrollLine totals do not match component sums'}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--foreground-muted)' }}>
-              Line gross: {recon.summary.totalGross} | Component sum: {recon.summary.componentEarningsSum}
+              Gross + Other Earnings: {recon.summary.totalEarnings ?? recon.summary.totalGross} | Component sum: {recon.summary.componentEarningsSum}
             </p>
           </div>
 

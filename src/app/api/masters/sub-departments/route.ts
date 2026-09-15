@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { subDepartmentSchema } from '@/lib/validations/master';
 import { currentHeadcounts } from '@/lib/master-headcount';
-import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -45,16 +44,14 @@ export async function POST(request: NextRequest) {
   const parsed = subDepartmentSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const department = await prisma.department.findFirst({ where: { id: parsed.data.departmentId, deletedAt: null }, select: { code: true } });
+  const department = await prisma.department.findFirst({ where: { id: parsed.data.departmentId, deletedAt: null }, select: { id: true } });
   if (!department) return NextResponse.json({ error: 'Department not found' }, { status: 400 });
 
-  // Code is always server-generated, scoped to the department — "<DeptCode>-001",
-  // "-002"... Ignore whatever (if anything) the client sent. Scans all rows for
-  // this department, deleted included, since (departmentId, code) stays unique
-  // even after a soft delete.
-  const siblings = await prisma.subDepartment.findMany({ where: { departmentId: parsed.data.departmentId }, select: { code: true } });
-  const code = nextSequentialCode(siblings.map((s) => s.code), `${department.code}-`);
+  const existing = await prisma.subDepartment.findFirst({
+    where: { departmentId: parsed.data.departmentId, code: parsed.data.code },
+  });
+  if (existing) return NextResponse.json({ error: 'Sub-Code already exists for this department' }, { status: 409 });
 
-  const record = await prisma.subDepartment.create({ data: { ...parsed.data, code }, include: { department: { select: { id: true, name: true } } } });
+  const record = await prisma.subDepartment.create({ data: parsed.data, include: { department: { select: { id: true, name: true } } } });
   return NextResponse.json(record, { status: 201 });
 }

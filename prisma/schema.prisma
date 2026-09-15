@@ -62,8 +62,11 @@ model Department {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  subDepartments SubDepartment[]
-  jobInfos       JobInfo[]
+  subDepartments   SubDepartment[]
+  jobInfos         JobInfo[]
+  jobDescriptions  JobDescription[]
+  jobPostings      JobPosting[]
+  departmentWeeklyOffs DepartmentWeeklyOff[]
 
   @@map("Department")
 }
@@ -117,10 +120,12 @@ model Designation {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  reportsTo    Designation?  @relation("DesignationReportsTo", fields: [reportsToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  subordinates Designation[] @relation("DesignationReportsTo")
-  jobInfos     JobInfo[]
-  grades       Grade[]
+  reportsTo       Designation?  @relation("DesignationReportsTo", fields: [reportsToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates    Designation[] @relation("DesignationReportsTo")
+  jobInfos        JobInfo[]
+  grades          Grade[]
+  jobDescriptions JobDescription[]
+  jobPostings     JobPosting[]
 
   @@map("Designation")
 }
@@ -210,9 +215,13 @@ model Company {
   permissionPolicy           PermissionPolicy?
   holidayMasters              HolidayMaster[]
   benefitRates               BenefitRateByEmployeeType[]
+  visitorGatePasses          VisitorGatePass[]
+  gnrRecords                 GateNumberRegister[]
   grossSplitRules            GrossSplitRule[]
   sites                      Site[]
   deductionRates             DeductionRate[]
+  pmsIncentiveConfigs        PmsIncentiveConfig[]
+  doubleMachineIncentives    DoubleMachineIncentive[]
   lomConfig                  LomConfig?
   roundingConfig             RoundingConfig?
   payrollValidationConfig    PayrollValidationConfig?
@@ -237,6 +246,10 @@ model Company {
   manualArrears               ManualArrear[]
   licDeductionConfig          LicDeductionConfig?
   attendancePolicy            AttendancePolicy?
+  approvalChainConfigs        ApprovalChainConfig[]
+  departmentWeeklyOffs       DepartmentWeeklyOff[]
+  leaveTypeMasters            LeaveTypeMaster[]
+  yearlyLeaveCalendar        YearlyLeaveCalendar[]
 
   @@map("Company")
 }
@@ -395,9 +408,28 @@ model EsiRate {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  components EsiRateComponent[]
+
   @@index([effectiveFrom, effectiveTo])
   @@index([code])
   @@map("EsiRate")
+}
+
+model EsiRateComponent {
+  id                Int     @id @default(autoincrement())
+  esiRateId         Int
+  salaryComponentId Int
+  calculationType   String  @db.NVarChar(10) // percentage | inr
+  value             Decimal @db.Decimal(10, 4)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  esiRate         EsiRate         @relation(fields: [esiRateId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction)
+
+  @@index([esiRateId])
+  @@index([salaryComponentId])
+  @@map("EsiRateComponent")
 }
 
 // Q2: Drafted as two separate tables (EsiRate, PfRate).
@@ -414,9 +446,28 @@ model PfRate {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  components PfRateComponent[]
+
   @@index([effectiveFrom, effectiveTo])
   @@index([code])
   @@map("PfRate")
+}
+
+model PfRateComponent {
+  id                Int     @id @default(autoincrement())
+  pfRateId          Int
+  salaryComponentId Int
+  calculationType   String  @db.NVarChar(10) // percentage | inr
+  value             Decimal @db.Decimal(10, 4)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  pfRate          PfRate          @relation(fields: [pfRateId], references: [id], onDelete: Cascade)
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction)
+
+  @@index([pfRateId])
+  @@index([salaryComponentId])
+  @@map("PfRateComponent")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +504,11 @@ model ShiftMaster {
   jobInfos           JobInfo[]
   dailyAttendances   DailyAttendance[]
   shiftRotationSlots ShiftRotationSlot[]
+  shiftAssignmentOverrides ShiftAssignmentOverride[]
+  shiftChangeRequestsCurrent   ShiftChangeRequest[] @relation("ShiftChangeRequest_CurrentShift")
+  shiftChangeRequestsRequested ShiftChangeRequest[] @relation("ShiftChangeRequest_RequestedShift")
+  shiftChangeNotificationsOld   ShiftChangeNotification[] @relation("ShiftChangeNotification_OldShift")
+  shiftChangeNotificationsNew   ShiftChangeNotification[] @relation("ShiftChangeNotification_NewShift")
 
   @@map("ShiftMaster")
 }
@@ -597,6 +653,75 @@ model HolidayMaster {
   @@map("HolidayMaster")
 }
 
+// Phase TimeOffice — Department-wise weekly off configuration.
+// Admin sets which day(s) of the week are the weekly off for each department.
+// When frozen, employees in that department who work on the weekly off day
+// get OT calculation. They can request comp-off and claim it via approval.
+// weekOffDay: 0=Sunday, 1=Monday, ..., 6=Saturday.
+model DepartmentWeeklyOff {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  departmentId Int
+  weekOffDay   Int      // 0=Sunday, 1=Monday, ..., 6=Saturday
+  isFrozen     Boolean  @default(false)
+  createdByUserId Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+
+  @@unique([departmentId, weekOffDay])
+  @@index([departmentId])
+  @@map("DepartmentWeeklyOff")
+}
+
+// Phase TimeOffice — Leave type master for yearly leave calendar.
+// Admin defines leave types (e.g. "National Holiday", "Festival Holiday",
+// "Company Off", "Restricted Holiday") with a color for calendar display.
+model LeaveTypeMaster {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  code        String   @db.NVarChar(20)
+  name        String   @db.NVarChar(100)
+  color       String   @db.NVarChar(20)  // hex color, e.g. "#FF5733"
+  description String?  @db.NVarChar(500)
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id])
+  yearlyLeaveCalendar YearlyLeaveCalendar[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("LeaveTypeMaster")
+}
+
+// Phase TimeOffice — Yearly leave calendar.
+// Admin picks dates on a calendar and assigns a leave type to each.
+// Each leave type is highlighted with its configured color on the calendar.
+model YearlyLeaveCalendar {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  date          DateTime @db.Date
+  leaveTypeMasterId Int
+  name          String   @db.NVarChar(100)
+  description   String?  @db.NVarChar(500)
+  isActive      Boolean  @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  leaveTypeMaster LeaveTypeMaster @relation(fields: [leaveTypeMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([companyId, date])
+  @@index([companyId])
+  @@map("YearlyLeaveCalendar")
+}
+
 model LoanType {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.NVarChar(20)
@@ -715,6 +840,10 @@ model User {
   role     Role?     @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   employee Employee?
 
+  jobDescriptionsCreated JobDescription[]        @relation("JdCreatedBy")
+  jobDescriptionEdits    JobDescriptionVersion[] @relation("JdVersionEditedBy")
+  jobPostingsCreated     JobPosting[]            @relation("JobPostingCreatedBy")
+
   @@index([roleId])
   @@index([companyId])
   @@map("User")
@@ -785,14 +914,17 @@ model Employee {
   reportingManagerId       Int?
   // Level 2: skip-level / second reporting manager
   secondReportingManagerId Int?
+  // Optional link to JD Master — used for usageCount (employees referencing a JD).
+  jdId Int?
 
   isActive  Boolean   @default(true)
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user    User?   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user           User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobDescription JobDescription? @relation(fields: [jdId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   // Self-referential relation for reporting manager
   // NoAction required to break cyclic cascade through child tables
@@ -823,12 +955,17 @@ model Employee {
   skills                     EmployeeSkill[]
   activities                 EmployeeActivity[]
   dailyAttendances           DailyAttendance[]
+  shiftAssignmentOverrides    ShiftAssignmentOverride[]
+  shiftChangeRequests         ShiftChangeRequest[]
+  shiftChangeNotifications    ShiftChangeNotification[]
+  compOffRequests             CompOffRequest[]
   monthlyAttendance          MonthlyAttendanceSummary[]
   leaveApplications          LeaveApplication[]
   leaveBalances              LeaveBalance[]
   mispunchCorrections        MispunchCorrection[]
   permissionRequests         PermissionRequest[]
   pmsIncentives              PmsIncentive[]
+  doubleMachineIncentives    DoubleMachineIncentive[]
   payrollLines               PayrollLine[]
   salaryRevisionRequests     SalaryRevisionRequest[]
   salaryArrears              SalaryArrear[]
@@ -836,6 +973,8 @@ model Employee {
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
   dailyAttendanceHistory     DailyAttendanceHistory[]
+  employeeBenefits           EmployeeBenefit[]
+  visitorGatePasses          VisitorGatePass[]
   compOffBalance             CompOffBalance?
   compOffTransactions        CompOffTransaction[]
   tdsInvestmentDeclarations  TdsInvestmentDeclaration[]
@@ -850,6 +989,7 @@ model Employee {
   @@index([reportingManagerId])
   @@index([secondReportingManagerId])
   @@index([status])
+  @@index([jdId])
   @@map("Employee")
 }
 
@@ -1077,6 +1217,136 @@ model ShiftRotationSlot {
   @@unique([shiftRotationPlanId, sequenceOrder])
   @@index([shiftMasterId])
   @@map("ShiftRotationSlot")
+}
+
+// Phase TimeOffice — per-employee, per-date shift overrides.
+// When an admin bulk-uploads or manually changes an employee's shift for
+// a specific date, it's stored here. resolveDailyShift checks overrides
+// first, then falls back to the automatic rotation plan. This allows
+// manual corrections on top of the automated weekly rotation.
+model ShiftAssignmentOverride {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  date         DateTime @db.Date
+  shiftMasterId Int
+  reason       String?  @db.NVarChar(500)
+  createdByUserId Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  shiftMaster ShiftMaster @relation(fields: [shiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+  @@map("ShiftAssignmentOverride")
+}
+
+// Phase TimeOffice — Dynamic approval chain configuration.
+// Admin configures who approvals go to for each module (SHIFT_CHANGE, LOM,
+// OT, etc.). Each stage has an order, an approver type (REPORTING_MANAGER,
+// HR, ROLE, SPECIFIC_USER), and optional role/user reference.
+model ApprovalChainConfig {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  module       String   @db.NVarChar(50)  // SHIFT_CHANGE | LOM | OT | LEAVE etc.
+  stageName    String   @db.NVarChar(50)  // L1 | L2 | HR | FINANCE etc.
+  stageOrder   Int                        // 1, 2, 3...
+  approverType String   @db.NVarChar(20)  // REPORTING_MANAGER | HR | ROLE | SPECIFIC_USER
+  approverRoleId  Int?                    // when approverType = ROLE
+  approverUserId  Int?                    // when approverType = SPECIFIC_USER
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, module, stageOrder])
+  @@index([companyId, module])
+  @@map("ApprovalChainConfig")
+}
+
+// Phase TimeOffice — Employee shift change request.
+// Employee requests a shift change for a specific date. The request flows
+// through the configured approval chain (ApprovalChainConfig for module
+// SHIFT_CHANGE). When all stages approve, a ShiftAssignmentOverride is
+// created automatically.
+model ShiftChangeRequest {
+  id                    Int      @id @default(autoincrement())
+  employeeId            Int
+  requestedDate         DateTime @db.Date  // the date they want to change
+  currentShiftMasterId  Int?                // snapshot of current shift
+  requestedShiftMasterId Int                 // the shift they want
+  reason                String?  @db.NVarChar(500)
+  status                String   @default("pending") @db.NVarChar(20)  // pending | approved | rejected
+  currentStageOrder     Int      @default(1)  // which approval stage we're at
+  approvedByUserId      Int?
+  approvedAt            DateTime?
+  rejectionReason       String?  @db.NVarChar(500)
+  rejectedByUserId      Int?
+  rejectedAt            DateTime?
+  createdByUserId       Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  employee             Employee     @relation(fields: [employeeId], references: [id])
+  currentShiftMaster   ShiftMaster? @relation("ShiftChangeRequest_CurrentShift", fields: [currentShiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requestedShiftMaster ShiftMaster  @relation("ShiftChangeRequest_RequestedShift", fields: [requestedShiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("ShiftChangeRequest")
+}
+
+// Phase TimeOffice — notifications sent to employees when their shift changes.
+// Created when a ShiftAssignmentOverride is created (manual or via shift change
+// request approval). Employees can view their notifications on their dashboard.
+model ShiftChangeNotification {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  date         DateTime @db.Date  // the date the shift changed
+  oldShiftMasterId Int?
+  newShiftMasterId  Int
+  reason       String?  @db.NVarChar(500)
+  isRead       Boolean  @default(false)
+  createdByUserId Int?
+  createdAt    DateTime @default(now())
+
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  oldShiftMaster ShiftMaster? @relation("ShiftChangeNotification_OldShift", fields: [oldShiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  newShiftMaster ShiftMaster  @relation("ShiftChangeNotification_NewShift", fields: [newShiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([isRead])
+  @@map("ShiftChangeNotification")
+}
+
+// Phase TimeOffice — comp-off request from employees.
+// When an employee works on a weekly off or holiday, they can request
+// comp-off (compensatory off) for a specific date. This goes to admin/HR
+// for approval. When approved, a comp-off leave balance is credited.
+model CompOffRequest {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  workedDate      DateTime @db.Date  // the date they worked on weekly off/holiday
+  requestedDate   DateTime @db.Date  // the date they want to take as comp-off
+  reason          String?  @db.NVarChar(500)
+  status          String   @default("pending") @db.NVarChar(20)  // pending | approved | rejected
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectionReason  String?  @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt       DateTime?
+  createdByUserId  Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("CompOffRequest")
 }
 
 // E4: SalaryStructure is versioned — effectiveFrom/effectiveTo.
@@ -1406,9 +1676,13 @@ model SalaryComponent {
   employeeComponents  EmployeeSalaryComponent[]
   payrollLineItems    PayrollLineComponent[]
   salaryRevisionItems SalaryRevisionComponent[]
-  benefitRates        BenefitRateByEmployeeType[]
   grossSplitRule      GrossSplitRule?
   otPlansPayingHere   OTPlan[]
+  esiRateComponents   EsiRateComponent[]
+  pfRateComponents    PfRateComponent[]
+  benefitRates        BenefitRateByEmployeeType[]
+  pmsIncentives       PmsIncentive[]
+  pmsIncentiveConfigs PmsIncentiveConfig[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
@@ -1449,19 +1723,39 @@ model GrossSplitRule {
 model BenefitRateByEmployeeType {
   id                Int      @id @default(autoincrement())
   companyId         Int
-  salaryComponentId Int
+  code              String   @db.NVarChar(20)
+  name              String   @db.NVarChar(100)
   employeeTypeId    Int
+  salaryComponentId Int?
   amount            Decimal  @db.Decimal(18, 2)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  company         Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   employeeType    EmployeeType    @relation(fields: [employeeTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent? @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employeeBenefits EmployeeBenefit[]
 
-  @@unique([companyId, salaryComponentId, employeeTypeId])
+  @@unique([companyId, code])
   @@map("BenefitRateByEmployeeType")
+}
+
+model EmployeeBenefit {
+  id              Int     @id @default(autoincrement())
+  employeeId      Int
+  benefitRateId   Int
+  isActive        Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee       Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  benefitRate    BenefitRateByEmployeeType @relation(fields: [benefitRateId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, benefitRateId])
+  @@index([employeeId])
+  @@index([benefitRateId])
+  @@map("EmployeeBenefit")
 }
 
 // PMS Incentive — BRD: monthly % entered jointly (50% company contribution,
@@ -1473,35 +1767,143 @@ model BenefitRateByEmployeeType {
 // upload (reusing the existing PayrollLineComponent.isAdhoc mechanism) once
 // they know the base, using this record's approved totalPercent as the
 // reference figure.
-model PmsIncentive {
-  id         Int @id @default(autoincrement())
-  employeeId Int
-  year       Int
-  month      Int // 1-12
+model PmsIncentiveConfig {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  financialYear String   @db.NVarChar(10) // e.g. "2026-27"
+  effectiveFrom DateTime
+  effectiveTo   DateTime
 
-  companyPercent Decimal @default(50) @db.Decimal(5, 2)
-  managerPercent Decimal @db.Decimal(5, 2)
-  totalPercent   Decimal @db.Decimal(5, 2)
+  calculationBasis  String @default("basic") @db.NVarChar(30) // basic | gross | ctc | target_incentive | component
+  salaryComponentId Int? // required when calculationBasis = 'component'
+  incentiveType     String @default("percentage") @db.NVarChar(20) // percentage | fixed
 
-  // pending_hr | approved | rejected — single-stage, unlike Mispunch/OT:
-  // the Reporting Manager's own act of submitting managerPercent IS their
-  // contribution (not a review of an employee request), so a row is always
-  // created directly at pending_hr for HR's approval.
-  status String @default("pending_hr") @db.NVarChar(20)
+  companyPercent        Decimal  @default(0) @db.Decimal(5, 2)
+  companyValue          Decimal? @db.Decimal(18, 2) // fixed-value mode
+  targetIncentiveAmount Decimal? @db.Decimal(18, 2) // basis = target_incentive
 
-  managerActionByUserId Int?
-  managerActionAt       DateTime?
-  hrActionByUserId      Int?
-  hrActionAt             DateTime?
-  rejectionReason        String?   @db.NVarChar(500)
+  remarks String? @db.NVarChar(500)
+  status  String  @default("active") @db.NVarChar(20) // draft | active | finalized
+
+  createdByUserId Int?
+  updatedByUserId Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent? @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pmsIncentives   PmsIncentive[]
+
+  @@unique([companyId, financialYear])
+  @@map("PmsIncentiveConfig")
+}
+
+// Performance Incentive — one employee-level row per period. A row starts as
+// a draft while the Reporting Manager keys the individual %, moves to
+// submitted for HR review, then approved / rejected / returned. HR/Admin may
+// override any field; every mutation is mirrored into EmployeeActivity
+// (module = 'pms') for the audit trail the BRD requires.
+model PmsIncentive {
+  id            Int  @id @default(autoincrement())
+  employeeId    Int
+  configId      Int?
+  year          Int // anchor year of the configured effective period
+  month         Int // anchor month (1-12) of the configured effective period
+  financialYear String? @db.NVarChar(10)
+
+  calculationBasis  String? @db.NVarChar(30) // copied from config at save time
+  salaryComponentId Int? // 'component' basis snapshot
+  incentiveType     String  @default("percentage") @db.NVarChar(20) // percentage | fixed
+  basisAmount       Decimal @default(0) @db.Decimal(18, 2)
+
+  companyPercent Decimal  @default(0) @db.Decimal(5, 2)
+  managerPercent Decimal  @default(0) @db.Decimal(5, 2) // "Individual %" in the BRD
+  totalPercent   Decimal  @default(0) @db.Decimal(5, 2)
+
+  companyValue    Decimal? @db.Decimal(18, 2) // fixed-value mode
+  individualValue Decimal? @db.Decimal(18, 2) // fixed-value mode
+  companyAmount   Decimal  @default(0) @db.Decimal(18, 2)
+  individualAmount Decimal @default(0) @db.Decimal(18, 2)
+  overallAmount   Decimal  @default(0) @db.Decimal(18, 2)
+
+  // Attendance-based payout computation, stored at save time (the "fixed"
+  // Performance Incentive salary component is the base, MonthlyAttendance
+  // .presentDays prorates it over the calendar month, PMS % scales it, and
+  // ESI shares split off the earned amount):
+  //   incentiveMoney = performanceIncentive / monthDays * presentDays
+  //   incentiveEarn  = incentiveMoney * totalPercent / 100
+  //   employeeEsi    = incentiveEarn * 0.75 / 100
+  //   employerEsi    = incentiveEarn * 3.25 / 100
+  //   pmsNet         = incentiveEarn - employeeEsi
+  performanceIncentive Decimal @default(0) @db.Decimal(18, 2)
+  monthDays            Int     @default(0)
+  presentDays          Decimal @default(0) @db.Decimal(5, 2)
+  incentiveMoney       Decimal @default(0) @db.Decimal(18, 2)
+  incentiveEarn        Decimal @default(0) @db.Decimal(18, 2)
+  employeeEsi          Decimal @default(0) @db.Decimal(18, 2)
+  employerEsi          Decimal @default(0) @db.Decimal(18, 2)
+  pmsNet               Decimal @default(0) @db.Decimal(18, 2)
+
+  // draft | submitted | under_review | approved | rejected | returned | finalized
+  status String @default("draft") @db.NVarChar(20)
+
+  supportingFileName String? @db.NVarChar(200)
+  supportingFilePath String? @db.NVarChar(500)
+  remarks            String? @db.NVarChar(500)
+  rejectionReason    String? @db.NVarChar(500)
+
+  managerActionByUserId Int? // who entered / submitted the individual incentive
+  managerActionAt       DateTime?
+  hrActionByUserId      Int? // HR approver / rejector / overrider
+  hrActionAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee        Employee            @relation(fields: [employeeId], references: [id])
+  config          PmsIncentiveConfig? @relation(fields: [configId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  salaryComponent SalaryComponent?    @relation(fields: [salaryComponentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([employeeId, year, month])
+  @@index([configId])
+  @@index([status])
   @@map("PmsIncentive")
+}
+
+// Double Machine Incentive — BRD B5/B6 + Suki ERP DOUBLE_MACHINE_INCENTIVE
+// / INCENTIVE_DET_MULTI_MACHINE. Manual HR entry per employee per month
+// (employee, Double Machine, Att.Bonus, Shift Incentive, OT Weekly Inc,
+// Employee R, status). Employee code/name/dept/designation come from
+// Employee + JobInfo, not stored here.
+model DoubleMachineIncentive {
+  id              Int     @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  year            Int
+  month           Int // 1-12
+  doubleMachine   Decimal @default(0) @db.Decimal(18, 2)
+  attendanceBonus Decimal @default(0) @db.Decimal(18, 2)
+  shiftIncentive  Decimal @default(0) @db.Decimal(18, 2)
+  otWeeklyInc     Decimal @default(0) @db.Decimal(18, 2)
+  employeeR       Decimal @default(0) @db.Decimal(18, 2)
+
+  // draft | process | hold | complete
+  status  String  @default("draft") @db.NVarChar(20)
+  remarks String? @db.NVarChar(500)
+
+  createdByUserId Int?
+  updatedByUserId Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, year, month])
+  @@index([companyId, year, month])
+  @@index([status])
+  @@map("DoubleMachineIncentive")
 }
 
 model EmployeeSalaryRevision {
@@ -1645,6 +2047,17 @@ model DailyAttendance {
   otHrActionAt            DateTime?
   otRejectionReason       String?   @db.NVarChar(500)
 
+  // Phase TimeOffice — LOM (Loss of Minutes) approval workflow.
+  // Late arrival (after grace) and early checkout generate LOM minutes.
+  // These are queued for HR/Admin approval before being deducted in payroll.
+  // null = not queued (no LOM minutes or not eligible); pending = awaiting
+  // approval; approved = deduction will apply; rejected = no deduction.
+  lomApprovalStatus  String? @db.NVarChar(20)
+  lomApprovedMinutes  Int?
+  lomActionByUserId  Int?
+  lomActionAt        DateTime?
+  lomRejectionReason String? @db.NVarChar(500)
+
   // manual | biometric — everything is "manual" in Phase 1; the column
   // exists now so a future biometric-sync phase needs no migration.
   source String @default("manual") @db.NVarChar(20)
@@ -1698,6 +2111,8 @@ model DailyAttendanceHistory {
   otMinutesCalculated Int       @default(0)
   otMinutesApproved   Int?
   otApprovalStatus    String?   @db.NVarChar(20)
+  isWeeklyOffWorked   Boolean   @default(false)
+  isHolidayWorked     Boolean   @default(false)
   source              String    @db.NVarChar(20)
   remarks             String?   @db.NVarChar(500)
 
@@ -2891,6 +3306,231 @@ model GratuityRecord {
   @@map("GratuityRecord")
 }
 
+// -----------------------------------------------------------------------------
+// 19. VISITOR MANAGEMENT - GATE PASS
+//     Scope: visitor entry scheduling + gate movement (check-in/check-out) +
+//     QR-validated gate pass + PDF downloads. Type is a hard enum
+//     (GATE_PASS | WORK_PERMIT); Visitor Type / Purpose / Food Category /
+//     Food Type / Gadgets are DropdownMaster categories (visitor_*), so HR
+//     can add new options without a deploy. Person To Meet is a live FK to
+//     Employee. QR validity is a per-pass field set at creation time.
+// -----------------------------------------------------------------------------
+
+model VisitorGatePass {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  gatePassNo        String    @unique @db.NVarChar(50)   // GPN/<TYPE>/<seq>
+  passType          String    @db.NVarChar(20)           // GATE_PASS | WORK_PERMIT
+  status            String    @default("DRAFT") @db.NVarChar(20)
+                        // DRAFT | PENDING_APPROVAL | APPROVED | CHECKED_IN | CHECKED_OUT | COMPLETED
+                        // REJECTED | CANCELLED | EXPIRED
+
+  // visitor
+  visitorName       String    @db.NVarChar(100)
+  mobileNo          String    @db.NVarChar(15)
+  mobilePrefix      String    @default("+91") @db.NVarChar(5)
+  visitorTypeValue  String?   @db.NVarChar(100)  // DropdownMaster value
+  partyName         String?   @db.NVarChar(200)
+  email             String?   @db.NVarChar(200)
+  address           String?   @db.NVarChar(500)
+  identityProofType   String? @db.NVarChar(50)
+  identityProofNumber String? @db.NVarChar(100)
+
+  // schedule - validity window, not a single date
+  visitDate         DateTime  @db.Date
+  validFrom         DateTime
+  validTo           DateTime
+  plannedInTime     String?   @db.NVarChar(5)  // "HH:mm"
+  plannedOutTime    String?   @db.NVarChar(5)
+
+  // host
+  personToMeetId    Int
+  noOfPersons       Int       @default(1)
+  purposeValue      String?   @db.NVarChar(100)  // DropdownMaster value
+  remarks           String?   @db.NVarChar(500)
+
+  // vehicle / driver
+  vehicleNumber     String?   @db.NVarChar(20)
+  vehicleType       String?   @db.NVarChar(50)
+  driverName        String?   @db.NVarChar(100)
+  driverMobile      String?   @db.NVarChar(15)
+
+  // logistics
+  foodRequired      Boolean   @default(false)
+  foodCategory      String?   @db.NVarChar(50)
+  foodType          String?   @db.NVarChar(50)
+  gadgets           String?   @db.NVarChar(50)
+
+  // approval
+  approvedBy        Int?
+  approvedAt        DateTime?
+  approvalComments  String?   @db.NVarChar(500)
+  rejectionReason   String?   @db.NVarChar(500)
+
+  // gate movement
+  checkInBy         Int?
+  checkInTime       DateTime?
+  checkInGate       String?   @db.NVarChar(50)
+  checkOutBy        Int?
+  checkOutTime      DateTime?
+  checkOutGate      String?   @db.NVarChar(50)
+
+  // QR - random token + per-pass validity in minutes
+  qrToken           String    @unique @db.NVarChar(64)
+  qrValidMinutes    Int       @default(1440)
+
+  createdBy         Int?
+  createdAt         DateTime  @default(now())
+  updatedBy         Int?
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  personToMeet Employee @relation(fields: [personToMeetId], references: [id])
+
+  @@index([companyId, status])
+  @@index([companyId, visitDate])
+  @@map("VisitorGatePass")
+}
+
+// -----------------------------------------------------------------------------
+// 19b. MATERIAL GATE / GNR (Gate Number Register)
+//      Linked to a Delivery Challan (DC) number, tracks material inward/outward
+//      and returnable/non-returnable movements through the gate.
+// -----------------------------------------------------------------------------
+
+model GateNumberRegister {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+
+  gnrNo             String    @unique @db.NVarChar(50) // GNR/<TYPE>/<seq>
+  dcNo              String    @db.NVarChar(100)
+  dcDate            DateTime? @db.Date
+  movementType      String    @db.NVarChar(50)
+                        // MATERIAL_INWARD | MATERIAL_OUTWARD | RETURNABLE | NON_RETURNABLE | SERVICE_REPAIR
+
+  status            String    @default("DRAFT") @db.NVarChar(30)
+                        // DRAFT | DC_CAPTURED | GNR_CREATED | AWAITING_AUTHORIZATION | AUTHORIZED |
+                        // INWARD_RECORDED | OUTWARD_RECORDED | ACKNOWLEDGED | PARTIALLY_RECEIVED |
+                        // COMPLETED | CANCELLED | REJECTED | EXCEPTION_PENDING
+
+  // counterparty
+  counterpartyType  String?   @db.NVarChar(20) // SUPPLIER | CUSTOMER | TRANSPORTER
+  counterpartyName  String?   @db.NVarChar(200)
+  transporterName   String?   @db.NVarChar(200)
+  sourceLocation    String?   @db.NVarChar(200)
+  destinationLocation String? @db.NVarChar(200)
+  contactName       String?   @db.NVarChar(100)
+  contactMobile     String?   @db.NVarChar(15)
+
+  // references
+  purchaseOrderRef  String?   @db.NVarChar(100)
+  workOrderRef      String?   @db.NVarChar(100)
+  authorizationRef  String?   @db.NVarChar(100)
+
+  // vehicle / driver
+  vehicleNumber     String?   @db.NVarChar(20)
+  vehicleType       String?   @db.NVarChar(50)
+  driverName        String?   @db.NVarChar(100)
+  driverMobile      String?   @db.NVarChar(15)
+  driverId          String?   @db.NVarChar(50)
+
+  // gate transaction
+  gateId            String?   @db.NVarChar(50)
+  inwardBy          Int?
+  inwardTime        DateTime?
+  inwardRemarks     String?   @db.NVarChar(500)
+  outwardBy         Int?
+  outwardTime       DateTime?
+  outwardRemarks    String?   @db.NVarChar(500)
+
+  // authorization / control
+  authorizedBy      Int?
+  authorizedAt      DateTime?
+  exceptionReason   String?   @db.NVarChar(500)
+  rejectionReason   String?   @db.NVarChar(500)
+
+  // documents (placeholders - real file storage integration later)
+  dcDocumentUrl     String?   @db.NVarChar(500)
+  supportingDocumentUrl String? @db.NVarChar(500)
+  remarks           String?   @db.NVarChar(500)
+
+  createdBy         Int?
+  createdAt         DateTime  @default(now())
+  updatedBy         Int?
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineItems         GNRLineItem[]
+
+  @@index([companyId, status])
+  @@index([companyId, dcNo])
+  @@index([companyId, movementType])
+  @@map("GateNumberRegister")
+}
+
+model GNRLineItem {
+  id                Int       @id @default(autoincrement())
+  gnrId             Int
+
+  materialDescription String  @db.NVarChar(500)
+  itemCode          String?   @db.NVarChar(100)
+  quantity          Decimal?  @db.Decimal(18, 4)
+  unit              String?   @db.NVarChar(30)
+  packageCount      Int?
+  returnable        Boolean   @default(false)
+  receivedQuantity  Decimal?  @db.Decimal(18, 4)
+  remarks           String?   @db.NVarChar(500)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  gnr               GateNumberRegister @relation(fields: [gnrId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([gnrId])
+  @@map("GNRLineItem")
+}
+
+// -----------------------------------------------------------------------------
+// 19c. VISITOR NOTIFICATION LOG
+//      Captures notification events for the visitor / gate module. Actual
+//      delivery (email/WhatsApp/SMS) is delegated to company-configured
+//      channels in a later integration step.
+// -----------------------------------------------------------------------------
+
+model VisitorNotificationLog {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+
+  event       String    @db.NVarChar(50)
+                        // VISITOR_SUBMITTED | VISITOR_APPROVED | VISITOR_REJECTED |
+                        // VISITOR_CHECKED_IN | VISITOR_CHECKED_OUT | VISITOR_OVERDUE |
+                        // GNR_CREATED | GNR_AUTHORIZED | GNR_INWARD | GNR_OUTWARD
+
+  channel     String    @default("IN_APP") @db.NVarChar(20)
+                        // IN_APP | EMAIL | SMS | WHATSAPP
+  recipient   String    @db.NVarChar(200) // email/mobile/userId
+  subject     String?   @db.NVarChar(200)
+  body        String?   @db.NVarChar(1000)
+  status      String    @default("PENDING") @db.NVarChar(20)
+                        // PENDING | SENT | FAILED | READ
+
+  // relates to either a visitor pass or a GNR
+  visitorGatePassId Int?
+  gnrId             Int?
+
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  readAt      DateTime?
+  error       String?   @db.NVarChar(500)
+
+  @@index([companyId, event])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("VisitorNotificationLog")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 2D — Leave Encashment, Full & Final, Bank File Template.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3413,4 +4053,104 @@ model AttendancePolicy {
   company Company @relation(fields: [companyId], references: [id])
 
   @@map("AttendancePolicy")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JD MASTER (HR Masters) + minimal Job Posting linkage for recruitment
+// ─────────────────────────────────────────────────────────────────────────────
+
+model JobDescription {
+  id              Int      @id @default(autoincrement())
+  jdCode          String   @unique @db.NVarChar(40)
+  departmentId    Int
+  designationId   Int
+  title           String   @db.NVarChar(200)
+  description     String   @db.NVarChar(Max)
+  jdFileUrl            String?  @db.NVarChar(500)
+  minExperienceYears   Decimal? @db.Decimal(4, 1)
+  maxExperienceYears   Decimal? @db.Decimal(4, 1)
+  salaryPackage        String?  @db.NVarChar(100)
+  status               String   @default("Draft") @db.NVarChar(20) // Draft | Active | Archived
+  createdByUserId Int?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  department  Department  @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy   User?       @relation("JdCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  versions    JobDescriptionVersion[]
+  tags        JobDescriptionTag[]
+  jobPostings JobPosting[]
+  employees   Employee[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([status])
+  @@index([createdByUserId])
+  @@map("JobDescription")
+}
+
+model JobDescriptionVersion {
+  id               Int      @id @default(autoincrement())
+  jobDescriptionId Int
+  title                String   @db.NVarChar(200)
+  description          String   @db.NVarChar(Max)
+  jdFileUrl            String?  @db.NVarChar(500)
+  minExperienceYears   Decimal? @db.Decimal(4, 1)
+  maxExperienceYears   Decimal? @db.Decimal(4, 1)
+  salaryPackage        String?  @db.NVarChar(100)
+  editedByUserId       Int?
+  editedAt         DateTime @default(now())
+
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  editedBy       User?          @relation("JdVersionEditedBy", fields: [editedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([jobDescriptionId])
+  @@index([editedByUserId])
+  @@map("JobDescriptionVersion")
+}
+
+model JobDescriptionTag {
+  id               Int    @id @default(autoincrement())
+  jobDescriptionId Int
+  tag              String @db.NVarChar(50)
+
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([jobDescriptionId, tag])
+  @@index([tag])
+  @@map("JobDescriptionTag")
+}
+
+// Global sequence for JD0001, JD0002, … (departmentId 0 is the counter row).
+model JobDescriptionSequence {
+  departmentId Int @id
+  lastNumber   Int
+
+  @@map("JobDescriptionSequence")
+}
+
+model JobPosting {
+  id              Int      @id @default(autoincrement())
+  title           String   @db.NVarChar(200)
+  departmentId    Int?
+  designationId   Int?
+  jdId            Int?
+  status          String   @default("Open") @db.NVarChar(20)
+  createdByUserId Int?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  department  Department?     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation?    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobDescription JobDescription? @relation(fields: [jdId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy   User?           @relation("JobPostingCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([jdId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([createdByUserId])
+  @@map("JobPosting")
 }

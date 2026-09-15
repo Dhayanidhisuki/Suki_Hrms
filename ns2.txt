@@ -1,0 +1,52 @@
+﻿node : ERROR: 
+At line:1 char:13
++ cd D:\HRMS; node check-night-source-v2.js 2>&1 | Out-File -Encoding u ...
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR: :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Invalid `p.shiftMaster.findMany()` invocation in
+D:\HRMS\check-night-source-v2.js:7:43
+
+  4 (async () => {
+  5   try {
+  6     // Check all shift masters
+ΓåÆ 7     const allShifts = await p.shiftMaster.findMany({
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            startTime: true,
+            endTime: true,
+            nightAllowed: true,
+            nightAllowanceAmount: true,
+            isNightShift: true,
+            ~~~~~~~~~~~~
+        ?   graceMinutes?: true,
+        ?   bufferMinutes?: true,
+        ?   snacksAllowed?: true,
+        ?   mealsAllowed?: true,
+        ?   snacksMealsDurationMinutes?: true,
+        ?   breakMinutes?: true,
+        ?   nightAllowanceFromHour?: true,
+        ?   snacksAllowanceAmount?: true,
+        ?   foodAllowanceAmount?: true,
+        ?   mealsAllowanceAmount?: true,
+        ?   description?: true,
+        ?   isActive?: true,
+        ?   deletedAt?: true,
+        ?   createdAt?: true,
+        ?   updatedAt?: true,
+        ?   jobInfos?: true,
+        ?   dailyAttendances?: true,
+        ?   shiftRotationSlots?: true,
+        ?   shiftAssignmentOverrides?: true,
+        ?   shiftChangeRequestsCurrent?: true,
+        ?   shiftChangeRequestsRequested?: true,
+        ?   shiftChangeNotificationsOld?: true,
+        ?   shiftChangeNotificationsNew?: true,
+        ?   _count?: true
+          }
+        })
+
+Unknown field `isNightShift` for select statement on model `ShiftMaster`. Available options are marked with ?.

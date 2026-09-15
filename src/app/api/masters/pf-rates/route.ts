@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: [{ code: 'asc' }, { effectiveFrom: 'desc' }],
+      include: { components: { include: { salaryComponent: { select: { id: true, code: true, name: true } } } } },
     }),
     prisma.pfRate.count({ where }),
   ]);
@@ -41,6 +42,15 @@ export async function POST(request: NextRequest) {
   );
   if (overlapError) return NextResponse.json({ error: overlapError }, { status: 409 });
 
-  const record = await prisma.pfRate.create({ data: parsed.data });
+  const { components, ...rateFields } = parsed.data;
+  const record = await prisma.pfRate.create({
+    data: {
+      ...rateFields,
+      components: components?.length
+        ? { create: components.map((c) => ({ salaryComponentId: c.salaryComponentId, calculationType: c.calculationType, value: c.value })) }
+        : undefined,
+    },
+    include: { components: { include: { salaryComponent: { select: { id: true, code: true, name: true } } } } },
+  });
   return NextResponse.json(record, { status: 201 });
 }

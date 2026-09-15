@@ -30,19 +30,21 @@ const sanctionedHeadcountField = optionalNumber(z.coerce.number().int().min(0));
 export const departmentSchema = simpleMasterSchema.extend({
   sanctionedHeadcount: sanctionedHeadcountField,
 });
-export const designationSchema = simpleMasterSchema.extend({
-  budget: optionalNumber(z.coerce.number().min(0)),
-  experienceYears: optionalNumber(z.coerce.number().min(0).max(60)),
-  qualification: z.string().max(200).nullable().optional(),
-  sanctionedHeadcount: sanctionedHeadcountField,
-  // Reporting Structure (KUN BRD review, 2026-09-10).
-  reportsToId: optionalNumber(z.coerce.number().int().positive()),
-});
+export const designationSchema = simpleMasterSchema
+  .extend({
+    budget: optionalNumber(z.coerce.number().min(0)),
+    experienceYears: optionalNumber(z.coerce.number().min(0).max(60)),
+    qualification: z.string().max(200).nullable().optional(),
+    sanctionedHeadcount: sanctionedHeadcountField,
+    // Reporting Structure (KUN BRD review, 2026-09-10).
+    reportsToId: optionalNumber(z.coerce.number().int().positive()),
+  })
+  .extend({ code: z.string().max(20).optional() });
 
 // Site Master (KUN BRD review, 2026-09-10) — company-scoped physical
 // location; Unit is the legal/org entity, kept separate.
 export const siteSchema = z.object({
-  code: z.string().min(1).max(20),
+  code: z.string().max(20).optional(),
   name: z.string().min(1).max(100),
   address: z.string().max(500).optional().nullable(),
   city: z.string().max(100).optional().nullable(),
@@ -95,10 +97,9 @@ export const leaveMasterSchema = simpleMasterSchema
 
 // ─── Pattern B: SubDepartment (code + name + description + departmentId FK) ──
 
-// Code is server-generated per department ("<DeptCode>-001", "-002"...) —
-// the admin never types it (migration 000031).
+// Code is now entered manually per department (e.g. "IT-SUPP").
 export const subDepartmentSchema = z.object({
-  code: z.string().max(20).optional(),
+  code: z.string().min(1).max(20),
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional().nullable(),
   departmentId: z.number().int().positive(),
@@ -132,10 +133,18 @@ export const holidayMasterSchema = z.object({
 
 // Per-Employee-Type monthly rate for a benefit salary component (Canteen
 // Deduction / Petrol Allowance) — see BenefitRateByEmployeeType in schema.prisma.
+export const rateComponentSchema = z.object({
+  salaryComponentId: z.coerce.number().int().positive(),
+  calculationType: z.enum(['percentage', 'inr']),
+  value: z.coerce.number().nonnegative(),
+});
+
 export const benefitRateSchema = z.object({
   companyId: z.number().int().positive(),
-  salaryComponentId: z.number().int().positive(),
+  code: z.string().min(1).max(20),
+  name: z.string().min(1).max(100),
   employeeTypeId: z.number().int().positive(),
+  salaryComponentId: z.number().int().positive().optional().nullable(),
   amount: z.coerce.number().min(0),
   isActive: z.boolean().default(true),
 });
@@ -143,7 +152,7 @@ export const benefitRateSchema = z.object({
 // ─── Pattern C: ShiftMaster (code + name + times + grace) ────────────────────
 
 export const shiftMasterSchema = z.object({
-  code: z.string().min(1).max(20),
+  code: z.string().max(20).optional(),
   name: z.string().min(1).max(100),
   startTime: z.string().min(1).max(8),
   endTime: z.string().min(1).max(8),
@@ -251,6 +260,7 @@ export const esiRateSchema = z.object({
   effectiveFrom: z.coerce.date(),
   effectiveTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().default(true),
+  components: z.array(rateComponentSchema).optional().default([]),
 });
 
 export const pfRateSchema = z.object({
@@ -262,6 +272,7 @@ export const pfRateSchema = z.object({
   effectiveFrom: z.coerce.date(),
   effectiveTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().default(true),
+  components: z.array(rateComponentSchema).optional().default([]),
 });
 
 // Company-scoped since migration 000013 (companyId comes from the session,

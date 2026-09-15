@@ -15,7 +15,7 @@
 
 import { prisma } from '@/lib/prisma';
 
-export type CompOffSourceType = 'OT_APPROVAL' | 'LEAVE' | 'MANUAL' | 'EXPIRY' | 'ENCASHMENT';
+export type CompOffSourceType = 'OT_APPROVAL' | 'LEAVE' | 'MANUAL' | 'EXPIRY' | 'ENCASHMENT' | 'COMP_OFF_REQUEST';
 export type CompOffTxnType = 'CREDIT' | 'DEBIT' | 'EXPIRE' | 'ENCASH';
 
 /**

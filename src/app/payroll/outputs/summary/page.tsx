@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface SummaryData {
@@ -24,6 +24,14 @@ interface PayrollRun {
 }
 
 export default function PayrollSummaryPage() {
+  return (
+    <Suspense fallback={<div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}>
+      <PayrollSummaryContent />
+    </Suspense>
+  );
+}
+
+function PayrollSummaryContent() {
   const searchParams = useSearchParams();
   const initialRunId = searchParams.get('runId');
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -116,17 +124,17 @@ export default function PayrollSummaryPage() {
           <div className="rounded-xl border p-6" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
             <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--foreground)' }}>Totals</h2>
             <div className="grid grid-cols-2 gap-x-8 gap-y-2 md:grid-cols-3">
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Gross Earnings</span><span className="text-sm font-medium">{fmt(summary.totals.grossEarnings)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>OT Amount</span><span className="text-sm font-medium">{fmt(summary.totals.otAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Other Earnings</span><span className="text-sm font-medium">{fmt(summary.totals.otherEarnings)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>PF Employee</span><span className="text-sm font-medium">{fmt(summary.totals.pfEmployee)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>PF Employer</span><span className="text-sm font-medium">{fmt(summary.totals.pfEmployer)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>ESI Employee</span><span className="text-sm font-medium">{fmt(summary.totals.esiEmployee)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Professional Tax</span><span className="text-sm font-medium">{fmt(summary.totals.professionalTax)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>TDS</span><span className="text-sm font-medium">{fmt(summary.totals.tds)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>LOM</span><span className="text-sm font-medium">{fmt(summary.totals.lomAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>LWF</span><span className="text-sm font-medium">{fmt(summary.totals.lwfAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Health Insurance</span><span className="text-sm font-medium">{fmt(summary.totals.healthInsurance)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Gross Earnings</span><span className="text-sm font-medium" style={{ color: 'var(--success)' }}>+{fmt(summary.totals.grossEarnings)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>OT Amount</span><span className="text-sm font-medium" style={{ color: 'var(--success)' }}>+{fmt(summary.totals.otAmount)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Other Earnings</span><span className="text-sm font-medium" style={{ color: 'var(--success)' }}>+{fmt(summary.totals.otherEarnings)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>PF Employee</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.pfEmployee)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>PF Employer</span><span className="text-sm font-medium" style={{ color: 'var(--foreground-muted)' }}>{fmt(summary.totals.pfEmployer)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>ESI Employee</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.esiEmployee)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Professional Tax</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.professionalTax)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>TDS</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.tds)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>LOM</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.lomAmount)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>LWF</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.lwfAmount)}</span></div>
+              <div className="flex justify-between"><span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Health Insurance</span><span className="text-sm font-medium" style={{ color: 'var(--warning)' }}>-{fmt(summary.totals.healthInsurance)}</span></div>
               <div className="flex justify-between border-t pt-2 mt-2"><span className="text-sm font-semibold">Net Salary</span><span className="text-sm font-bold">{fmt(summary.totals.netSalary)}</span></div>
             </div>
           </div>

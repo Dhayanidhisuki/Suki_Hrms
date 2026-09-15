@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Field, DataTable, FormModal, ConfirmDialog, type FieldDef, type Column } from '@/components/ui';
@@ -56,7 +56,7 @@ interface ActivityRow { id: number; activityAt: string; module: string; activity
  */
 type TabKey =
   | 'basic' | 'personal' | 'job_profile' | 'salary' | 'education'
-  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity';
+  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity' | 'benefits';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'basic', label: 'Basic Details' },
@@ -66,6 +66,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'education', label: 'Education & Experience' },
   { key: 'passport', label: 'Passport' },
   { key: 'dependents', label: 'Dependents' },
+  { key: 'benefits', label: 'Benefits' },
   { key: 'assets', label: 'Assets' },
   { key: 'skills', label: 'Skill Matrix' },
   { key: 'kyc', label: 'KYC & Statutory' },
@@ -648,6 +649,135 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   );
 }
 
+interface EmployeeBenefitRow {
+  id: number;
+  code: string;
+  name: string;
+  employeeType: string;
+  amount: number;
+}
+
+/** Benefits tab — shows available benefit components and allows toggling enrollment. */
+function EmployeeBenefitsTab({
+  employeeId,
+  onDirtyChange,
+}: {
+  employeeId: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const [available, setAvailable] = useState<EmployeeBenefitRow[]>([]);
+  const [selected, setSelected] = useState<EmployeeBenefitRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchBenefits = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/benefits`);
+      if (!res.ok) throw new Error('Failed to fetch benefits');
+      const json = await res.json();
+      setAvailable(json.available ?? []);
+      setSelected(json.selected ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchBenefits();
+  }, [fetchBenefits]);
+
+  const selectedIds = new Set(selected.map((s) => s.id));
+
+  const toggle = (benefit: EmployeeBenefitRow) => {
+    const exists = selected.some((s) => s.id === benefit.id);
+    const next = exists ? selected.filter((s) => s.id !== benefit.id) : [...selected, benefit];
+    setSelected(next);
+    onDirtyChange?.(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/benefits`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ benefitRateIds: selected.map((s) => s.id) }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const json = await res.json();
+      setSelected(json.selected ?? []);
+      onDirtyChange?.(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Benefits" icon={<SectionIcon.Gift />}>
+      <div className="space-y-3">
+        {error && (
+          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</p>
+        ) : available.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No benefit components configured yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {available.map((b) => {
+              const checked = selectedIds.has(b.id);
+              return (
+                <label
+                  key={b.id}
+                  className="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer transition hover:opacity-80"
+                  style={{ borderColor: checked ? 'var(--accent)' : 'var(--border)', backgroundColor: checked ? 'var(--accent-soft)' : 'transparent' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(b)}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{b.name}</span>
+                    <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {b.code} · {b.employeeType} · ₹{b.amount.toFixed(2)}/mo
+                    </span>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && available.length > 0 && (
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              {saving ? 'Saving…' : 'Save Benefits'}
+            </button>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 /** Per-profile Activity tab — reuses the global activity API, filtered to this employee. */
 function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
   const [items, setItems] = useState<ActivityRow[]>([]);
@@ -679,76 +809,300 @@ function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
  * Reveals the real PAN/Aadhaar values for the KYC tab, gated server-side by
  * employee.kyc.reveal — a permission distinct from employee.kyc.view (the
  * base tab only ever sees masked values). Every reveal is server-logged.
+ *
+ * Also doubles as a document upload center for signature and government
+ * documents (PDF/images), stored as EmployeeDocument rows and served through
+ * the permission-gated /api/uploads/[...path] route.
  */
-function KycRevealPanel({ employeeId }: { employeeId: string }) {
-  const [revealed, setRevealed] = useState<{ panNumber: string | null; aadhaarNumber: string | null } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleReveal = async () => {
-    setLoading(true);
-    setError(null);
+interface EmployeeDoc {
+  id: number;
+  docType: string;
+  docNumber: string | null;
+  fileName: string | null;
+  filePath: string | null;
+  issuedDate: string | null;
+  expiryDate: string | null;
+  isExpired?: boolean;
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  aadhaar: 'Aadhaar',
+  pan: 'PAN',
+  passport: 'Passport',
+  driving_license: 'Driving Licence',
+  kpi: 'KPI',
+  jd: 'Job Description',
+  signature: 'Signature',
+  government: 'Government Document',
+  other: 'Other',
+};
+
+function KycRevealPanel({ employeeId }: { employeeId: string }) {
+  const [docs, setDocs] = useState<EmployeeDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState('government');
+  const [docNumber, setDocNumber] = useState('');
+  const [issuedDate, setIssuedDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDoc | null>(null);
+
+  const fetchDocs = useCallback(async () => {
+    setDocsLoading(true);
+    setDocsError(null);
     try {
-      const res = await fetch(`/api/employees/${employeeId}/kyc/reveal`, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Failed to reveal');
-      setRevealed(json);
+      const res = await fetch(`/api/employees/${employeeId}/documents`);
+      const json = (await res.json()) as { data: EmployeeDoc[] };
+      setDocs(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reveal');
+      setDocsError(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
-      setLoading(false);
+      setDocsLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchDocs();
+  }, [fetchDocs]);
+
+  const handleUpload = async () => {
+    setUploadError(null);
+    if (!selectedFile) {
+      setUploadError('Choose a file first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('docType', docType);
+      if (docNumber.trim()) formData.append('docNumber', docNumber.trim());
+      if (issuedDate) formData.append('issuedDate', issuedDate);
+      if (expiryDate) formData.append('expiryDate', expiryDate);
+      const res = await fetch(`/api/employees/${employeeId}/documents`, { method: 'POST', body: formData });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Upload failed');
+      setSelectedFile(null);
+      setDocNumber('');
+      setIssuedDate('');
+      setExpiryDate('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await fetchDocs();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (docId: number) => {
+    if (!window.confirm('Delete this document?')) return;
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/documents/${docId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Delete failed');
+      await fetchDocs();
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : 'Delete failed');
     }
   };
 
   return (
     <SectionCard
-      title="Sensitive Fields"
+      title="Document Upload Center"
       icon={<SectionIcon.Shield />}
-      action={
-        revealed ? (
-          <button
-            onClick={() => setRevealed(null)}
-            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          >
-            Hide
-          </button>
-        ) : (
-          <button
-            onClick={handleReveal}
-            disabled={loading}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            {loading ? 'Revealing...' : 'Reveal PAN / Aadhaar'}
-          </button>
-        )
-      }
     >
-      <div className="space-y-3">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-      {revealed && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>PAN Number</div>
-            <div style={{ color: 'var(--foreground)' }}>{revealed.panNumber ?? '—'}</div>
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+            Upload a new document
+          </h4>
+          {uploadError && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {uploadError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Document type
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                >
+                  <option value="signature">Signature</option>
+                  <option value="government">Government Document</option>
+                  <option value="aadhaar">Aadhaar</option>
+                  <option value="pan">PAN</option>
+                  <option value="passport">Passport</option>
+                  <option value="driving_license">Driving Licence</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Document number
+                <input
+                  type="text"
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  placeholder="e.g. PAN / Aadhaar number"
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Issued on
+                <input
+                  type="date"
+                  value={issuedDate}
+                  onChange={(e) => setIssuedDate(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Expires on
+                <input
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                File (PDF or image, max 5 MB)
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-[var(--accent)] file:px-2 file:py-1 file:text-xs file:text-white"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </label>
+              <button
+                onClick={handleUpload}
+                disabled={uploading || !selectedFile}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                {uploading ? 'Uploading...' : 'Upload'}
+              </button>
+            </div>
           </div>
-          <div>
-            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Aadhaar Number</div>
-            <div style={{ color: 'var(--foreground)' }}>{revealed.aadhaarNumber ?? '—'}</div>
-          </div>
         </div>
-      )}
-      {!revealed && !error && (
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          PAN and Aadhaar are masked above. Revealing them is permission-gated and logged.
-        </p>
-      )}
+
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+            Uploaded documents
+          </h4>
+          {docsLoading ? (
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading documents...</p>
+          ) : docsError ? (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {docsError}
+            </div>
+          ) : docs.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No documents uploaded yet.</p>
+          ) : (
+            <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              {docs.map((d) => (
+                <div key={d.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium" style={{ color: 'var(--foreground)' }}>
+                        {DOC_TYPE_LABELS[d.docType] ?? d.docType}
+                      </span>
+                      {d.isExpired && (
+                        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
+                          Expired
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {d.fileName ?? '—'}
+                      {d.docNumber ? ` · ${d.docNumber}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {d.filePath && (
+                      <button
+                        onClick={() => setPreviewDoc(d)}
+                        className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:opacity-80"
+                        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      >
+                        View
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(d.id)}
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90"
+                      style={{ backgroundColor: 'var(--danger)' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {previewDoc && previewDoc.filePath && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl shadow-2xl"
+            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+                {previewDoc.fileName ?? DOC_TYPE_LABELS[previewDoc.docType] ?? 'Document'}
+              </h3>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:opacity-80"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-2">
+              {previewDoc.filePath.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={previewDoc.filePath}
+                  title={previewDoc.fileName ?? 'Document'}
+                  className="h-[70vh] w-full rounded-lg"
+                  style={{ border: '1px solid var(--border)' }}
+                />
+              ) : (
+                <img
+                  src={previewDoc.filePath}
+                  alt={previewDoc.fileName ?? 'Document'}
+                  className="mx-auto max-h-[70vh] max-w-full rounded-lg"
+                  style={{ border: '1px solid var(--border)' }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </SectionCard>
   );
 }
@@ -1232,6 +1586,9 @@ export default function EmployeeProfilePage() {
             { key: 'isDependent', label: 'Is Dependent', render: (r) => (r.isDependent ? 'Yes' : 'No') },
           ]}
         />
+      )}
+      {activeTab === 'benefits' && (
+        <EmployeeBenefitsTab employeeId={employeeId} onDirtyChange={setActiveTabDirty} />
       )}
       {activeTab === 'skills' && (
         <RepeatableListTab<SkillRow>

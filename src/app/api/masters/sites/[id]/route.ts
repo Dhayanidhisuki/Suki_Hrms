@@ -28,12 +28,13 @@ export async function PUT(
   const parsed = siteSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.site.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
-  if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
+  // Code is server-generated and never changes after creation — write only
+  // the editable fields, ignoring whatever (if anything) the client sent for code.
+  const { code: _ignored, ...rest } = parsed.data;
 
   const record = await prisma.site.update({
     where: { id: parseInt(id) },
-    data: parsed.data,
+    data: rest,
     include: { company: { select: { id: true, name: true } } },
   });
   return NextResponse.json(record);

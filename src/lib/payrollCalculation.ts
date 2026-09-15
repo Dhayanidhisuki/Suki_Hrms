@@ -13,10 +13,11 @@
  *   Falls back to full gross when no component is flagged (preserves the
  *   Phase 1 behavior for catalogs that haven't been configured yet).
  * - ESI wage base: same convention using includeInEsi.
- * - OT threshold: OTPlan.applicableAfterMinutes is subtracted before
- *   computing OT hours; OTPlan.maxOtHoursPerDay caps daily OT (monthly
- *   total is the sum of daily-capped hours). OTPlan.payComponentId, when
- *   set, replaces the default "OT Pay" catalog component on the payslip.
+ * - OT threshold: OTPlan.applicableAfterMinutes is the minimum daily OT
+ *   minutes that must be worked before any OT is payable. Once reached,
+ *   the full raw OT minutes are paid, capped by OTPlan.maxOtHoursPerDay.
+ *   OTPlan.payComponentId, when set, replaces the default "OT Pay" catalog
+ *   component on the payslip.
  * - Canteen / benefit rates: BenefitRateByEmployeeType rows for the
  *   employee's current EmployeeType are auto-applied as system-generated
  *   (isAdhoc: false) PayrollLineComponent rows, prorated for deductions by
@@ -45,6 +46,7 @@
  */
 
 import { prisma } from './prisma';
+import { calculateAnnualTds } from './tdsCalculation';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -83,7 +85,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
   const totalWorkingDays = daysInMonth(year, month);
   const now = new Date();
 
-  const [employees, pfRate, esiRate, ptSlabs, tdsSlabs, otPlans, benefitRates, deductionRates, lomConfig, roundingConfig, validationConfig, otIncentiveSlabs, attendanceBonusConfig, lwfRates, healthInsuranceConfig, incentivePolicies, allowanceConfigs, statePtConfigs, licDeductionConfig] = await Promise.all([
+  const [employees, pfRate, esiRate, ptSlabs, tdsSlabs, otPlans, benefitRates, deductionRates, lomConfig, roundingConfig, validationConfig, otIncentiveSlabs, attendanceBonusConfig, lwfRates, healthInsuranceConfig, incentivePolicies, allowanceConfigs, statePtConfigs, licDeductionConfig, tdsRegimeConfig] = await Promise.all([
     prisma.employee.findMany({
       where: { companyId, deletedAt: null, isActive: true },
       select: {
@@ -144,6 +146,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     // Phase 17 — state PT configs and LIC deduction config.
     prisma.statePtConfig.findMany({ where: { companyId, isActive: true, effectiveTo: null } }),
     prisma.licDeductionConfig.findUnique({ where: { companyId } }),
+    prisma.tdsRegimeConfig.findUnique({ where: { companyId } }),
   ]);
 
   // Index benefit rates by employeeTypeId for O(1) lookup per employee.
@@ -152,6 +155,43 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const list = benefitRatesByType.get(r.employeeTypeId) ?? [];
     list.push(r);
     benefitRatesByType.set(r.employeeTypeId, list);
+  }
+
+  // ── TDS: determine financial year and fetch past APPROVED/LOCKED lines ──
+  // The annual TDS engine needs YTD gross and already-deducted TDS from
+  // prior months in the same financial year. We fetch all APPROVED/LOCKED
+  // payroll lines for this company and filter by FY in code (since the run's
+  // year/month are separate fields, not a date range we can query directly).
+  const fyStartMonth = tdsRegimeConfig?.financialYearStart ?? 4;
+  const financialYear = month >= fyStartMonth ? year : year - 1;
+  const fyStartYear = financialYear;
+  const fyEndYear = financialYear + 1;
+  const fyStart = new Date(Date.UTC(fyStartYear, fyStartMonth - 1, 1));
+  const fyEnd = new Date(Date.UTC(fyEndYear, fyStartMonth - 1, 1));
+
+  const pastLines = tdsRegimeConfig
+    ? await prisma.payrollLine.findMany({
+        where: {
+          payrollRun: {
+            companyId,
+            status: { in: ['APPROVED', 'LOCKED'] },
+          },
+        },
+        include: { payrollRun: { select: { year: true, month: true, status: true } } },
+      })
+    : [];
+
+  // Build per-employee YTD gross, YTD TDS, and months processed from past lines.
+  const ytdGrossByEmp = new Map<number, number>();
+  const ytdTdsByEmp = new Map<number, number>();
+  const ytdMonthsByEmp = new Map<number, number>();
+  for (const pl of pastLines) {
+    const runDate = new Date(Date.UTC(pl.payrollRun.year, pl.payrollRun.month - 1, 1));
+    if (runDate >= fyStart && runDate < fyEnd) {
+      ytdGrossByEmp.set(pl.employeeId, (ytdGrossByEmp.get(pl.employeeId) ?? 0) + Number(pl.grossEarnings));
+      ytdTdsByEmp.set(pl.employeeId, (ytdTdsByEmp.get(pl.employeeId) ?? 0) + Number(pl.tds));
+      ytdMonthsByEmp.set(pl.employeeId, (ytdMonthsByEmp.get(pl.employeeId) ?? 0) + 1);
+    }
   }
 
   // Well-known catalog components used for itemized PF/ESI payslip lines —
@@ -262,17 +302,20 @@ export async function calculatePayrollRun(payrollRunId: number) {
       const thresholdMinutes = otPlan?.applicableAfterMinutes ?? 0;
 
       // Phase 13 — per-day OT calculation with day-type factors.
-      // Load DailyAttendance rows for this employee/month to apply
-      // weekday/weeklyOff/holiday factors per day.
+      // Calculate OT from the actual in/out times (otMinutesCalculated) and
+      // apply the OTPlan threshold and daily cap. Fall back to approved OT
+      // minutes when the approval workflow is in use.
       const monthStart = new Date(Date.UTC(year, month - 1, 1));
       const monthEnd = new Date(Date.UTC(year, month, 1));
       const dailyOtRows = await prisma.dailyAttendance.findMany({
         where: {
           employeeId: emp.id,
           date: { gte: monthStart, lt: monthEnd },
-          otApprovalStatus: 'approved',
-          otSettlementType: 'OT',
-          otMinutesApproved: { gt: 0 },
+          status: { in: ['Present', 'HalfDay', 'OnDuty'] },
+          OR: [
+            { otMinutesApproved: { gt: 0 }, otApprovalStatus: 'approved', otSettlementType: 'OT' },
+            { otMinutesCalculated: { gt: 0 } },
+          ],
         },
       });
 
@@ -308,8 +351,16 @@ export async function calculatePayrollRun(payrollRunId: number) {
       // Group OT hours by ISO week (Monday-Sunday).
       const weeklyOtHours = new Map<string, number>();
       for (const d of dailyOtRows) {
-        const dayOtMinutes = Math.max(0, Number(d.otMinutesApproved ?? 0) - thresholdMinutes);
-        if (dayOtMinutes <= 0) continue;
+        // Prefer approved minutes if available; otherwise compute from actual working time.
+        const rawOtMinutes = d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT'
+          ? Number(d.otMinutesApproved ?? 0)
+          : Number(d.otMinutesCalculated ?? 0);
+        // applicableAfterMinutes is a qualification threshold, not a deduction.
+        // If the raw OT does not reach the threshold, no OT is payable for the day.
+        if (rawOtMinutes < thresholdMinutes) continue;
+        // Apply per-day cap (maxOtHoursPerDay from OTPlan, default 3h = 180m if unset).
+        const dailyOtCapMinutes = otPlan?.maxOtHoursPerDay != null ? Number(otPlan.maxOtHoursPerDay) * 60 : 180;
+        const dayOtMinutes = Math.min(rawOtMinutes, dailyOtCapMinutes);
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;
         if (d.isHolidayWorked && otPlan?.holidayFactor) {
@@ -477,10 +528,41 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
-    const tdsSlab = tdsSlabs.find(
-      (s) => grossEarnings >= Number(s.minSalary) && (s.maxSalary === null || grossEarnings <= Number(s.maxSalary))
-    );
-    const tds = tdsSlab ? round(grossEarnings * (Number(tdsSlab.ratePercent) / 100)) : 0;
+    // ── TDS ──────────────────────────────────────────────────────────────
+    // When TdsRegimeConfig exists, use the annual TDS engine (regime-aware,
+    // with declarations, rebate 87A, surcharge, cess). The engine computes
+    // the projected annual tax and spreads the remaining TDS evenly over the
+    // remaining months in the FY (including this one).
+    // Fall back to the flat slab lookup when no config exists (backward
+    // compatibility for companies that haven't configured TDS yet).
+    let tds = 0;
+    if (tdsRegimeConfig) {
+      const pastGross = ytdGrossByEmp.get(emp.id) ?? 0;
+      const pastTds = ytdTdsByEmp.get(emp.id) ?? 0;
+      const pastMonths = ytdMonthsByEmp.get(emp.id) ?? 0;
+      // Projected annual gross = past months + this month's gross.
+      const projectedGrossYTD = pastGross + grossEarnings;
+      // Remaining months includes this month (we're computing TDS for it now).
+      const remainingMonths = Math.max(1, 12 - pastMonths);
+      try {
+        const tdsResult = await calculateAnnualTds(
+          emp.id,
+          financialYear,
+          projectedGrossYTD,
+          pastTds,
+          remainingMonths
+        );
+        tds = round(tdsResult.remainingTDS);
+      } catch {
+        // If the annual engine fails (e.g. missing employee), fall back to 0.
+        tds = 0;
+      }
+    } else {
+      const tdsSlab = tdsSlabs.find(
+        (s) => grossEarnings >= Number(s.minSalary) && (s.maxSalary === null || grossEarnings <= Number(s.maxSalary))
+      );
+      tds = tdsSlab ? round(grossEarnings * (Number(tdsSlab.ratePercent) / 100)) : 0;
+    }
 
     // ── Auto-applied components (system-generated, isAdhoc: false) ───────
     // These are recalculated each run alongside the recurring salary
@@ -539,6 +621,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const employeeTypeId = jobInfo?.employeeTypeId;
     const applicableBenefitRates = employeeTypeId ? benefitRatesByType.get(employeeTypeId) ?? [] : [];
     for (const rate of applicableBenefitRates) {
+      if (!rate.salaryComponent || !rate.salaryComponentId) continue;
       const isDeduction = rate.salaryComponent.type === 'deduction';
       const factor = isDeduction ? lopFactor : 1;
       const amount = round(Number(rate.amount) * factor);
@@ -564,13 +647,55 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
-    // LOM (Loss of Minutes) — late + early minutes from attendance. Uses
-    // LomConfig when the admin has configured it; otherwise falls back to
-    // the default formula: (gross / totalWorkingDays / 8 / 60) × lomMinutes.
-    const lomMinutesRaw = Number(summary.lateMinutesTotal ?? 0) + Number(summary.earlyOutMinutesTotal ?? 0);
-    const graceExempt = lomConfig?.graceMinutesExempt ?? 0;
-    const lomMinutes = Math.max(0, lomMinutesRaw - graceExempt);
+    // LOM (Loss of Minutes) — only APPROVED LOM minutes are deducted.
+    // The LOM approval workflow (Phase TimeOffice) queues late/early-out
+    // minutes for HR/Admin approval. Only rows with lomApprovalStatus=
+    // 'approved' contribute to the deduction. The per-row lomApprovedMinutes
+    // already has the shift grace applied at approval time.
+    // Falls back to the old auto-deduct behavior (all late+early minutes)
+    // when no LOM approval records exist for this month — preserves backward
+    // compatibility for companies that haven't adopted the approval workflow.
+    const lomMonthStart = new Date(Date.UTC(year, month - 1, 1));
+    const lomMonthEnd = new Date(Date.UTC(year, month, 1));
+    const approvedLomRows = await prisma.dailyAttendance.findMany({
+      where: {
+        employeeId: emp.id,
+        date: { gte: lomMonthStart, lt: lomMonthEnd },
+        lomApprovalStatus: 'approved',
+        lomApprovedMinutes: { gt: 0 },
+      },
+      select: { lomApprovedMinutes: true },
+    });
+    let lomMinutes: number;
     let lomAmount = 0;
+    if (approvedLomRows.length > 0) {
+      // Use only approved LOM minutes (grace already applied at approval).
+      lomMinutes = approvedLomRows.reduce((sum, r) => sum + (r.lomApprovedMinutes ?? 0), 0);
+    } else {
+      // Backward compat: auto-deduct late + early-out minutes.
+      // Grace and daily cap are applied PER DAY, not once to the monthly total.
+      // Use the shift-specific grace from ShiftMaster when a shift is linked.
+      const dailyCap = lomConfig?.dailyLomCap ?? 0;
+      const lomDays = await prisma.dailyAttendance.findMany({
+        where: {
+          employeeId: emp.id,
+          date: { gte: lomMonthStart, lt: lomMonthEnd },
+        },
+        include: { shiftMaster: { select: { graceMinutes: true } } },
+      });
+      lomMinutes = 0;
+      for (const d of lomDays) {
+        const dayLate = Number(d.lateMinutes ?? 0);
+        const dayEarly = Number(d.earlyOutMinutes ?? 0);
+        // Per-shift grace applies to late minutes only, not early-out minutes.
+        const shiftGrace = d.shiftMaster?.graceMinutes ?? lomConfig?.graceMinutesExempt ?? 0;
+        const lateAfterGrace = Math.max(0, dayLate - shiftGrace);
+        let dayLom = lateAfterGrace + dayEarly;
+        // Apply per-day cap (0 = no cap)
+        if (dailyCap > 0 && dayLom > dailyCap) dayLom = dailyCap;
+        lomMinutes += dayLom;
+      }
+    }
     if (lomMinutes > 0 && grossEarnings > 0 && totalDays > 0) {
       const basis = lomConfig?.calculationBasis === 'BASIC'
         ? revision.components.filter((c) => c.salaryComponent.code === 'BASIC' && c.salaryComponent.type === 'earning')
@@ -626,6 +751,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     let autoEarningsTotal = 0;
     let autoDeductionsTotal = 0;
     for (const rate of applicableBenefitRates) {
+      if (!rate.salaryComponent) continue;
       const isDeduction = rate.salaryComponent.type === 'deduction';
       const factor = isDeduction ? lopFactor : 1;
       const amount = round(Number(rate.amount) * factor);
@@ -795,6 +921,39 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
+    // Phase TimeOffice — Night allowance from ShiftMaster.
+    // When an employee works a shift with nightAllowed=true, they receive
+    // nightAllowanceAmount per night-shift day worked. This reads directly
+    // from the ShiftMaster config (not AllowanceConfig) so admins only need
+    // to configure it once on the shift.
+    const naMonthStart = new Date(Date.UTC(year, month - 1, 1));
+    const naMonthEnd = new Date(Date.UTC(year, month, 1));
+    const nightShiftDays = await prisma.dailyAttendance.findMany({
+      where: {
+        employeeId: emp.id,
+        date: { gte: naMonthStart, lt: naMonthEnd },
+        status: { in: ['Present', 'HalfDay', 'OnDuty'] },
+        shiftMaster: { nightAllowed: true, nightAllowanceAmount: { gt: 0 } },
+      },
+      include: { shiftMaster: { select: { nightAllowanceAmount: true } } },
+    });
+    let nightAllowanceAmount = 0;
+    if (nightShiftDays.length > 0) {
+      // Sum per-shift allowance (each day's shift may have a different amount).
+      nightAllowanceAmount = round(
+        nightShiftDays.reduce((sum, d) => sum + Number(d.shiftMaster!.nightAllowanceAmount ?? 0), 0)
+      );
+      if (nightAllowanceAmount > 0) {
+        autoEarningsTotal += nightAllowanceAmount;
+        const naComp = await prisma.salaryComponent.findUnique({
+          where: { companyId_code: { companyId, code: 'NIGHT_ALLOWANCE' } },
+        });
+        if (naComp) {
+          autoComponentRows.push({ salaryComponentId: naComp.id, amount: nightAllowanceAmount });
+        }
+      }
+    }
+
     autoEarningsTotal = round(autoEarningsTotal);
     autoDeductionsTotal = round(autoDeductionsTotal);
 
@@ -812,7 +971,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const otherDeductionsTotal = round(recurringDeductions + otherDeductionsFromAdhoc + autoDeductionsTotal);
 
     let netSalary = round(
-      grossEarnings + otAmount + otherEarningsTotal - pfEmployee - esiEmployee - professionalTax - tds - otherDeductionsTotal
+      grossEarnings + otherEarningsTotal - pfEmployee - esiEmployee - professionalTax - tds - otherDeductionsTotal
     );
 
     // Apply configurable rounding (RoundingConfig). When no config exists,
