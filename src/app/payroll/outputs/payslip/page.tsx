@@ -152,6 +152,10 @@ function PayslipContent() {
   const rawDeductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
 
   // Earnings rows (+ green) — grouped by Gross tier for subtotal display.
+  // Driven by each component's own grossTier/includeInGross metadata (set
+  // server-side in payrollCalculation.ts) rather than a hardcoded component
+  // code list, so every earning row is covered and a newly added component
+  // never silently falls through.
   const fixedGrossEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross !== false && c.salaryComponent.grossTier === 'FIXED');
   const additionalGrossEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross !== false && c.salaryComponent.grossTier !== 'FIXED');
   const ctcOnlyEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross === false);

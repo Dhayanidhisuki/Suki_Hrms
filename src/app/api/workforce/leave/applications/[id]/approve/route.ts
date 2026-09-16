@@ -85,6 +85,41 @@ export async function POST(
 
     const numberOfDays = Number(application.numberOfDays);
     const year = application.fromDate.getUTCFullYear();
+
+    // Block approval if the employee does not have enough balance.
+    // For COMPOFF, check the comp-off ledger; for all other types, the
+    // LeaveBalance closing balance. Insufficient balance keeps the days as LOP
+    // and the request must be reduced or rejected.
+    if (application.leaveMaster.code === 'COMPOFF') {
+      const compOff = await prisma.compOffBalance.findUnique({
+        where: { employeeId: application.employeeId },
+      });
+      const available = compOff ? Number(compOff.balance) : 0;
+      if (available < numberOfDays) {
+        return NextResponse.json(
+          { error: `Insufficient comp-off balance: ${available.toFixed(2)} day(s) available, ${numberOfDays} requested` },
+          { status: 409 }
+        );
+      }
+    } else {
+      const leaveBalance = await prisma.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveMasterId_year: {
+            employeeId: application.employeeId,
+            leaveMasterId: application.leaveMasterId,
+            year,
+          },
+        },
+      });
+      const available = leaveBalance ? Number(leaveBalance.closingBalance) : 0;
+      if (available < numberOfDays) {
+        return NextResponse.json(
+          { error: `Insufficient ${application.leaveMaster.code} balance: ${available.toFixed(2)} day(s) available, ${numberOfDays} requested` },
+          { status: 409 }
+        );
+      }
+    }
+
     const touchedMonths = new Set<string>();
     const leaveDates = datesBetween(application.fromDate, application.toDate);
 

@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
           lastName: data.lastName,
           employeeCode,
           oldEmployeeCode: data.oldEmployeeCode,
+          officeEmail: data.officeEmail,
           status: data.status,
           personUid: randomUUID(),
           reportingManagerId: data.reportingManagerId,

@@ -531,9 +531,10 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     // Phase 12 — count holiday/weekly-off worked days.
     if (d.isHolidayWorked) holidayWorkedDays += 1;
 
-    // Only HR-approved OT with settlementType === 'OT' is paid out in payroll
-    if (d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT' && d.otMinutesApproved) {
-      otMinutesApprovedTotal += d.otMinutesApproved;
+    // otMinutesTotal is the total calculated overtime for the month; payroll
+    // will later apply the OTPlan threshold, caps and approval status.
+    if (['Present', 'HalfDay', 'OnDuty'].includes(d.status)) {
+      otMinutesApprovedTotal += d.otMinutesCalculated ?? 0;
     }
     lateMinutesTotal += d.lateMinutes;
     earlyOutMinutesTotal += d.earlyOutMinutes;
@@ -555,7 +556,7 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     // Prorate leave days that span across month boundaries.
     const from = app.fromDate < monthStart ? monthStart : app.fromDate;
     const to = app.toDate > monthEnd ? monthEnd : app.toDate;
-    const daysInThisMonth = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+    const daysInThisMonth = Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const code = app.leaveMaster?.code ?? '';
     if (code === 'EL') elDays += daysInThisMonth;
     else if (code === 'CL') clDays += daysInThisMonth;

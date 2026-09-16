@@ -6,6 +6,10 @@
 *.fuse_hidden*
 .commit-msg.txt
 
+# Diagnostic / test scripts with hardcoded credentials
+test-api.js
+check-user21.js
+
 # dependencies
 /node_modules
 /.pnp
@@ -57,6 +61,7 @@ scripts/erp-extract/out/
 /verify-*.js
 /verify-*.txt
 /summaries-*.txt
+check-user21.js
 
 # vercel
 .vercel
