@@ -482,9 +482,9 @@ export const navigation: NavModule[] = [
       {
         label: "Payroll",
         items: [
-          { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing" },
-          { label: "Salary Revision Approval", short: "Salary Revision", href: "/approvals/payroll/salary-revision" },
-          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final" },
+          { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing", ready: true },
+          { label: "Salary Revision Approval", short: "Salary Revision", href: "/approvals/payroll/salary-revision", ready: true },
+          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final", ready: true },
         ],
       },
       {
