@@ -68,7 +68,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Headcount (Department-wise)", short: "Headcount by Dept", href: "/dashboard/headcount" },
           { label: "Attrition", href: "/dashboard/attrition" },
-          { label: "Attendance Summary", href: "/dashboard/attendance-summary" },
+          { label: "Attendance Summary", href: "/dashboard/attendance-summary", ready: true },
           { label: "Leave Summary", href: "/dashboard/leave-summary" },
           { label: "Payroll Status", href: "/dashboard/payroll-status" },
         ],
