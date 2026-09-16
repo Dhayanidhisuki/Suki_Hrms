@@ -53,52 +53,52 @@ export default function EssDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="rounded-lg border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="rounded-lg p-6" style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface) 100%)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+            <h1 className="text-3xl font-bold" style={{ color: 'var(--foreground)' }}>
               Welcome back, {data?.employeeName || 'Employee'}!
             </h1>
-            <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-              {data?.designation} • {data?.department}
+            <p className="mt-1 text-sm uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>
+              {data?.designation} {data?.department ? '• ' + data.department : ''}
             </p>
           </div>
-          <div className="text-4xl">👋</div>
+          <div className="text-5xl">👋</div>
         </div>
       </div>
 
       {/* Employee Info Cards */}
       {data && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+            <div className="text-xs uppercase font-medium" style={{ color: 'var(--foreground-muted)' }}>
               Employee Code
             </div>
-            <div className="mt-1 text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+            <div className="mt-2 text-xl font-bold" style={{ color: 'var(--foreground)' }}>
               {data.employeeCode}
             </div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+            <div className="text-xs uppercase font-medium" style={{ color: 'var(--foreground-muted)' }}>
               Company
             </div>
-            <div className="mt-1 text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+            <div className="mt-2 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
               {data.company}
             </div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+            <div className="text-xs uppercase font-medium" style={{ color: 'var(--foreground-muted)' }}>
               Join Date
             </div>
-            <div className="mt-1 text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+            <div className="mt-2 text-xl font-bold" style={{ color: 'var(--foreground)' }}>
               {data.joinDate}
             </div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+            <div className="text-xs uppercase font-medium" style={{ color: 'var(--foreground-muted)' }}>
               Status
             </div>
-            <div className="mt-1 text-lg font-semibold" style={{ color: 'var(--foreground)' }}>
+            <div className="mt-2 text-xl font-bold" style={{ color: 'var(--foreground)' }}>
               {data.status}
             </div>
           </div>
