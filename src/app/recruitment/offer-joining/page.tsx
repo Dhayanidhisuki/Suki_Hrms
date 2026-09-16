@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import RecruitmentTabs from '@/components/recruitment/RecruitmentTabs';
 import { OFFER_JOINING_TABS, RECRUITMENT_PATHS, findRecruitmentTab } from '@/components/recruitment/tabDefs';
@@ -14,7 +15,7 @@ import OtherDocumentsTab from '@/components/recruitment/OtherDocumentsTab';
  * Recruitment > Offer & Joining — final selection, offer letter, appointment
  * order, and joining workflow as tabs (BRD §16.4). Tab from ?tab= and ?sub=.
  */
-export default function OfferJoiningPage() {
+function OfferJoiningPageContent() {
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab') ?? '';
   const sub = searchParams.get('sub') ?? '';
@@ -53,5 +54,13 @@ export default function OfferJoiningPage() {
       contentMap={contentMap}
       subContentMap={joiningSubMap}
     />
+  );
+}
+
+export default function OfferJoiningPage() {
+  return (
+    <Suspense fallback={null}>
+      <OfferJoiningPageContent />
+    </Suspense>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import RecruitmentTabs from '@/components/recruitment/RecruitmentTabs';
 import { APPLICANT_TABS, RECRUITMENT_PATHS, findRecruitmentTab } from '@/components/recruitment/tabDefs';
@@ -12,7 +13,7 @@ import Candidate360Tab from '@/components/recruitment/Candidate360Tab';
  * Recruitment > Applicants — pipeline, registration, Candidate 360° and call
  * interview as tabs on one page (BRD §16.4). Tab is read from ?tab=.
  */
-export default function ApplicantsPage() {
+function ApplicantsPageContent() {
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab') ?? '';
   const activeTab = findRecruitmentTab(APPLICANT_TABS, tab).key;
@@ -33,5 +34,13 @@ export default function ApplicantsPage() {
       initialTab={activeTab}
       contentMap={contentMap}
     />
+  );
+}
+
+export default function ApplicantsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ApplicantsPageContent />
+    </Suspense>
   );
 }
