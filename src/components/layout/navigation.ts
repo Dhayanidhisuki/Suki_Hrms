@@ -454,7 +454,7 @@ export const navigation: NavModule[] = [
       {
         label: "Employees",
         items: [
-          { label: "Confirmation", href: "/approvals/employees/confirmation" },
+          { label: "Confirmation", href: "/approvals/employees/confirmation", ready: true },
           { label: "Transfer", href: "/approvals/employees/transfer" },
           { label: "Promotion", href: "/approvals/employees/promotion" },
           { label: "Designation Change", href: "/approvals/employees/designation-change" },
