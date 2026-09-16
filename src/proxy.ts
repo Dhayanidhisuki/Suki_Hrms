@@ -49,6 +49,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/manager/') ||
     pathname.startsWith('/api/jd-master') ||
     pathname.startsWith('/api/recruitment/') ||
+    pathname.startsWith('/api/platform/') ||
     pathname === '/api/auth/me';
   const isUiRoute =
     pathname.startsWith('/masters/') ||
@@ -153,6 +154,7 @@ export const config = {
     '/api/jd-master',
     '/api/recruitment/:path*',
     '/recruitment/:path*',
+    '/api/platform/:path*',
     '/dashboard/:path*',
     '/api/auth/me',
   ],
