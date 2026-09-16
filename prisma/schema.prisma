@@ -5113,3 +5113,52 @@ model LeaveEncashmentRequest {
   @@index([companyId, leaveYear, status])
   @@map("LeaveEncashmentRequest")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 22. EXPENSE REIMBURSEMENT (ESS) — Employee-initiated reimbursement requests
+//     Status: DRAFT → SUBMITTED → APPROVED/REJECTED → PAID/CANCELLED
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ExpenseReimbursement {
+  id                    Int       @id @default(autoincrement())
+  companyId             Int
+  employeeId            Int
+  status                String    @default("DRAFT") @db.NVarChar(20) // DRAFT SUBMITTED APPROVED REJECTED PAID CANCELLED
+  submissionDate        DateTime  @default(now())
+  purpose               String    @db.NVarChar(100) // CLIENT_VISIT TRAINING TRAVEL BUSINESS_MEALS OFFICE_SUPPLIES OTHER
+  description           String?   @db.NVarChar(Max)
+  totalAmount           Decimal   @db.Decimal(18, 2)
+  approvedAmount        Decimal?  @db.Decimal(18, 2)
+  approvedBy            Int?
+  approvalDate          DateTime?
+  rejectionReason       String?   @db.NVarChar(500)
+  paymentDate           DateTime?
+  createdByUserId       Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+
+  items                 ExpenseReimbursementItem[]
+
+  @@index([companyId, employeeId, status])
+  @@index([employeeId, submissionDate])
+  @@index([status])
+  @@map("ExpenseReimbursement")
+}
+
+model ExpenseReimbursementItem {
+  id                        Int       @id @default(autoincrement())
+  expenseReimbursementId    Int
+  category                  String    @db.NVarChar(30) // MEALS TRANSPORT ACCOMMODATION OFFICE_SUPPLIES OTHERS
+  description               String    @db.NVarChar(500)
+  amount                    Decimal   @db.Decimal(18, 2)
+  receiptDate               DateTime  @db.Date
+  receiptAttachmentPath     String?   @db.NVarChar(Max) // Path or reference to uploaded receipt
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  expenseReimbursement      ExpenseReimbursement @relation(fields: [expenseReimbursementId], references: [id], onDelete: Cascade)
+
+  @@index([expenseReimbursementId])
+  @@map("ExpenseReimbursementItem")
+}

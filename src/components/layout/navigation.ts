@@ -533,6 +533,12 @@ export const navigation: NavModule[] = [
           { label: "Canteen Deductions", short: "Canteen", href: "/ess/canteen", ready: true },
         ],
       },
+      {
+        label: "Reimbursement",
+        items: [
+          { label: "Expense Reimbursement", short: "Expenses", href: "/ess/expense-reimbursement", ready: true },
+        ],
+      },
     ],
   },
 
