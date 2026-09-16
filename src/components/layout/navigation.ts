@@ -564,7 +564,7 @@ export const navigation: NavModule[] = [
       {
         label: "Visitor Pass",
         items: [
-          { label: "Visitor Pass Request", short: "Pass Request", href: "/ess/visitor-request" },
+          { label: "Visitor Pass Request", short: "Pass Request", href: "/ess/visitor-request", ready: true },
           { label: "Visitor Pass Approval", short: "Pass Approval", href: "/ess/visitor-approval" },
         ],
       },
