@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 export interface ExportOptions {
@@ -60,7 +60,7 @@ export function exportToExcel(options: Omit<ExportOptions, 'format'>) {
 export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
   const { data, columns, filename, title } = options;
 
-  const doc = new jsPDF('l', 'mm', 'a4');
+  const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
   const keys = columns || Object.keys(data[0] || {});
 
   if (title) {
@@ -69,7 +69,6 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
   }
 
   const tableData = data.map(row => keys.map(key => row[key]));
-  const tableColumns = keys.map(key => ({ header: key, dataKey: key }));
 
   (doc as any).autoTable({
     head: [keys],
@@ -77,6 +76,7 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
     startY: title ? 25 : 15,
     theme: 'grid',
     margin: 10,
+    styles: { cellPadding: 3, fontSize: 10 },
   });
 
   doc.save(`${filename}.pdf`);
