@@ -17,19 +17,20 @@ import { resolveOwnEmployeeId, listAllReports } from '@/lib/reportingManager';
 const TWO_STAGE_PENDING = ['pending_manager', 'pending_hr'];
 
 export async function GET(request: NextRequest) {
-  const userId = Number(request.headers.get('x-user-id'));
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
-  }
-  const scope = getCompanyId(request);
-  if ('error' in scope) return scope.error;
+  try {
+    const userId = Number(request.headers.get('x-user-id'));
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
+    }
+    const scope = getCompanyId(request);
+    if ('error' in scope) return scope.error;
 
-  const ownEmployeeId = await resolveOwnEmployeeId(userId);
-  if (!ownEmployeeId) {
-    return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
-  }
+    const ownEmployeeId = await resolveOwnEmployeeId(userId);
+    if (!ownEmployeeId) {
+      return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
+    }
 
-  const now = new Date();
+    const now = new Date();
   const { searchParams } = new URL(request.url);
   const year = Number(searchParams.get('year')) || now.getUTCFullYear();
   const month = Number(searchParams.get('month')) || now.getUTCMonth() + 1;
@@ -169,54 +170,58 @@ export async function GET(request: NextRequest) {
 
   const job = employee.jobInfos[0];
 
-  return NextResponse.json({
-    profile: {
-      employeeCode: employee.employeeCode,
-      firstName: employee.firstName,
-      name: [employee.firstName, employee.middleName, employee.lastName].filter(Boolean).join(' '),
-      status: employee.status,
-      lifecycleState: employee.lifecycleState,
-      photoPath: employee.profilePhotoPath,
-      email: employee.officeEmail ?? employee.personalDetails?.personalEmail ?? null,
-      mobile: employee.contactDetails?.presentMobile ?? employee.contactDetails?.permanentMobile ?? null,
-      company: employee.company?.name ?? null,
-      joinDate: job?.joinDate ?? null,
-      department: job?.department?.name ?? null,
-      designation: job?.designation?.name ?? null,
-      employeeType: job?.employeeType?.name ?? null,
-      category: job?.category?.name ?? null,
-    },
-    today,
-    month: { year, month, days: monthDays, summary: monthSummary },
-    leaveBalances: leaveBalances.map((b) => ({
-      leaveMasterId: b.leaveMasterId,
-      code: b.leaveMaster.code,
-      name: b.leaveMaster.name,
-      opening: Number(b.openingBalance),
-      accrued: Number(b.accrued),
-      availed: Number(b.availed),
-      carryForwardIn: Number(b.carryForwardIn),
-      adjusted: Number(b.adjusted),
-      total: Number(b.openingBalance) + Number(b.accrued) + Number(b.carryForwardIn) + Number(b.adjusted),
-      used: Number(b.availed),
-      available: Number(b.closingBalance),
-      closing: Number(b.closingBalance),
-      pendingApproval: Number(b.pendingApproval),
-    })),
-    requests: {
-      leave: reqLeave,
-      mispunch: reqMispunch,
-      permission: reqPermission,
-      onDuty: reqOnDuty,
-      wfh: reqWfh,
-      compOff: reqCompOff,
-      shiftChange: reqShiftChange,
-      loan: reqLoan,
-      expense: reqExpense,
-      encashment: reqEncashment,
-    },
-    approvals,
-    isManager: reportIds.length > 0,
-    latestPayslip,
-  });
+    return NextResponse.json({
+      profile: {
+        employeeCode: employee.employeeCode,
+        firstName: employee.firstName,
+        name: [employee.firstName, employee.middleName, employee.lastName].filter(Boolean).join(' '),
+        status: employee.status,
+        lifecycleState: employee.lifecycleState,
+        photoPath: employee.profilePhotoPath,
+        email: employee.officeEmail ?? employee.personalDetails?.personalEmail ?? null,
+        mobile: employee.contactDetails?.presentMobile ?? employee.contactDetails?.permanentMobile ?? null,
+        company: employee.company?.name ?? null,
+        joinDate: job?.joinDate ?? null,
+        department: job?.department?.name ?? null,
+        designation: job?.designation?.name ?? null,
+        employeeType: job?.employeeType?.name ?? null,
+        category: job?.category?.name ?? null,
+      },
+      today,
+      month: { year, month, days: monthDays, summary: monthSummary },
+      leaveBalances: leaveBalances.map((b) => ({
+        leaveMasterId: b.leaveMasterId,
+        code: b.leaveMaster.code,
+        name: b.leaveMaster.name,
+        opening: Number(b.openingBalance),
+        accrued: Number(b.accrued),
+        availed: Number(b.availed),
+        carryForwardIn: Number(b.carryForwardIn),
+        adjusted: Number(b.adjusted),
+        total: Number(b.openingBalance) + Number(b.accrued) + Number(b.carryForwardIn) + Number(b.adjusted),
+        used: Number(b.availed),
+        available: Number(b.closingBalance),
+        closing: Number(b.closingBalance),
+        pendingApproval: Number(b.pendingApproval),
+      })),
+      requests: {
+        leave: reqLeave,
+        mispunch: reqMispunch,
+        permission: reqPermission,
+        onDuty: reqOnDuty,
+        wfh: reqWfh,
+        compOff: reqCompOff,
+        shiftChange: reqShiftChange,
+        loan: reqLoan,
+        expense: reqExpense,
+        encashment: reqEncashment,
+      },
+      approvals,
+      isManager: reportIds.length > 0,
+      latestPayslip,
+    });
+  } catch (err) {
+    console.error('[my-dashboard] error:', err);
+    return NextResponse.json({ error: 'Failed to load dashboard' }, { status: 500 });
+  }
 }
