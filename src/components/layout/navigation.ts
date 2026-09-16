@@ -470,7 +470,6 @@ export const navigation: NavModule[] = [
           { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true },
           { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
           { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
-          { label: "Expense Approval", short: "Expenses", href: "/approvals/workforce/expense", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
           // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
           // spent as a normal leave application against the "Compensatory Off"
@@ -525,19 +524,6 @@ export const navigation: NavModule[] = [
           { label: "Work From Home", short: "WFH", href: "/ess/wfh", ready: true },
           { label: "Shift Change Request", short: "Shift Change", href: "/ess/shift-change", ready: true },
           { label: "Holiday Calendar", short: "Holidays", href: "/ess/holiday-calendar", ready: true },
-        ],
-      },
-      {
-        label: "Deductions & Allowances",
-        items: [
-          { label: "Petrol Allowance", short: "Petrol", href: "/ess/petrol-allowance", ready: true },
-          { label: "Canteen Deductions", short: "Canteen", href: "/ess/canteen", ready: true },
-        ],
-      },
-      {
-        label: "Reimbursement",
-        items: [
-          { label: "Expense Reimbursement", short: "Expenses", href: "/ess/expense-reimbursement", ready: true },
         ],
       },
     ],

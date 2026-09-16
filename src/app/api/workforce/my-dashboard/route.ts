@@ -105,7 +105,6 @@ export async function GET(request: NextRequest) {
     reqCompOff,
     reqShiftChange,
     reqLoan,
-    reqExpense,
     reqEncashment,
   ] = await Promise.all([
     prisma.dailyAttendance.findMany({
@@ -148,7 +147,6 @@ export async function GET(request: NextRequest) {
     prisma.compOffRequest.count({ where: { employeeId: ownEmployeeId, status: 'pending' } }),
     prisma.shiftChangeRequest.count({ where: { employeeId: ownEmployeeId, status: 'pending' } }),
     prisma.loan.count({ where: { employeeId: ownEmployeeId, status: 'pending' } }),
-    prisma.expenseReimbursement.count({ where: { employeeId: ownEmployeeId, status: 'SUBMITTED' } }),
     prisma.leaveEncashmentRequest.count({ where: { employeeId: ownEmployeeId, status: 'SUBMITTED' } }),
   ]);
 
@@ -213,7 +211,6 @@ export async function GET(request: NextRequest) {
         compOff: reqCompOff,
         shiftChange: reqShiftChange,
         loan: reqLoan,
-        expense: reqExpense,
         encashment: reqEncashment,
       },
       approvals,

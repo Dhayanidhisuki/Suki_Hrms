@@ -227,7 +227,6 @@ export default function EssDashboardPage() {
     { key: 'wfh',         label: 'Remote Work (WFH) Requests', href: '/ess/wfh' },
     { key: 'shiftChange', label: 'Shift Change Requests',      href: '/ess/shift-change' },
     { key: 'loan',        label: 'Loan Requests',              href: '/ess/loans' },
-    { key: 'expense',     label: 'Expense Reimbursement Requests', href: '/ess/expense-reimbursement' },
   ];
 
   const approvalItems = [
