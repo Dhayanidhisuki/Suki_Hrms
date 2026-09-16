@@ -15,6 +15,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkEmployeePermission, checkSpecificPermission } from '@/lib/rbac-employee';
 import { logActivity } from '@/lib/activity-log';
+import { getCompanyId } from '@/lib/companyScope';
+import { scopeContextFromHeaders, visibleEmployeeWhere } from '@/lib/employee/scope';
 
 export async function GET(
   request: NextRequest,
@@ -22,10 +24,17 @@ export async function GET(
 ) {
   const permErr = await checkEmployeePermission(request);
   if (permErr) return permErr;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
+
+  // BRD 01 §20.3: a record outside the caller's data scope is absent (404),
+  // matching the cross-tenant convention; superadmin bypasses.
+  const ctx = scopeContextFromHeaders(request.headers);
+  const scopeWhere = await visibleEmployeeWhere(ctx.userId, scope.companyId, { isSuperAdmin: ctx.isSuperAdmin });
 
   const { id } = await params;
   const employee = await prisma.employee.findFirst({
-    where: { id: parseInt(id), deletedAt: null },
+    where: { AND: [{ id: parseInt(id), companyId: scope.companyId, deletedAt: null }, scopeWhere] },
     select: {
       id: true,
       companyId: true,
@@ -37,6 +46,7 @@ export async function GET(
       oldEmployeeCode: true,
       profilePhotoPath: true,
       status: true,
+      lifecycleState: true,
       isActive: true,
       createdAt: true,
       updatedAt: true,
@@ -100,6 +110,7 @@ export async function GET(
     oldEmployeeCode: employee.oldEmployeeCode,
     profilePhotoPath: employee.profilePhotoPath,
     status: employee.status,
+    lifecycleState: employee.lifecycleState,
     isActive: employee.isActive,
     reportingManager: employee.reportingManager,
     department: currentJob?.department ?? null,

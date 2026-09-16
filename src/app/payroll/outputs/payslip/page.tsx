@@ -22,7 +22,7 @@ interface LineComponent {
   id: number;
   amount: string;
   isAdhoc: boolean;
-  salaryComponent: { code: string; name: string; type: string };
+  salaryComponent: { code: string; name: string; type: string; grossTier: string; includeInGross: boolean };
 }
 
 interface PayrollLineDetail {
@@ -31,7 +31,11 @@ interface PayrollLineDetail {
   payableDays: string;
   lopDays: number;
   grossEarnings: string;
+  fixedGross: string;
+  additionalGross: string;
+  performanceIncentive: string;
   otAmount: string;
+  otIncentiveAmount: string;
   pfEmployee: string;
   pfEmployer: string;
   epsEmployer: string;
@@ -147,16 +151,38 @@ function PayslipContent() {
   const rawEarnings = line.components.filter((c) => c.salaryComponent.type === 'earning');
   const rawDeductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
 
-  // Earnings rows (+ green)
-  const earnings: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = rawEarnings.map((c) => ({
-    label: c.salaryComponent.name,
-    amount: Number(c.amount),
-    isAdhoc: c.isAdhoc,
-    id: c.id,
-  }));
+  // Earnings rows (+ green) — grouped by Gross tier for subtotal display.
+  const fixedGrossEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross !== false && c.salaryComponent.grossTier === 'FIXED');
+  const additionalGrossEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross !== false && c.salaryComponent.grossTier !== 'FIXED');
+  const ctcOnlyEarn = rawEarnings.filter((c) => c.salaryComponent.includeInGross === false);
+
+  type EarnRow = { label: string; amount: number; isAdhoc: boolean; id?: number; isSubtotal?: boolean; isGross?: boolean };
+  const earnings: EarnRow[] = [];
+
+  // Fixed Gross tier
+  fixedGrossEarn.forEach((c) => earnings.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id }));
+  if (Number(line.fixedGross) > 0) {
+    earnings.push({ label: 'Fixed Gross', amount: Number(line.fixedGross), isAdhoc: false, isSubtotal: true });
+  }
+
+  // Additional Gross tier
+  additionalGrossEarn.forEach((c) => earnings.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id }));
+  if (Number(line.additionalGross) > 0) {
+    earnings.push({ label: 'Additional', amount: Number(line.additionalGross), isAdhoc: false, isSubtotal: true });
+  }
+
+  // Gross = Fixed + Additional
+  if (Number(line.grossEarnings) > 0 && (Number(line.fixedGross) > 0 || Number(line.additionalGross) > 0)) {
+    earnings.push({ label: 'Gross Salary', amount: Number(line.grossEarnings), isAdhoc: false, isGross: true });
+  }
+
+  // CTC-only earnings (paid outside Gross — e.g. performance incentive)
+  ctcOnlyEarn.forEach((c) => earnings.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id }));
 
   // Auto-earnings (not already in components)
+  if (Number(line.performanceIncentive) > 0) earnings.push({ label: 'Performance Incentive (PMS)', amount: Number(line.performanceIncentive), isAdhoc: false });
   if (Number(line.otAmount) > 0) earnings.push({ label: 'Overtime', amount: Number(line.otAmount), isAdhoc: false });
+  if (Number(line.otIncentiveAmount) > 0) earnings.push({ label: 'OT Incentive Bonus', amount: Number(line.otIncentiveAmount), isAdhoc: false });
   if (Number(line.attendanceBonus) > 0) earnings.push({ label: 'Attendance Bonus', amount: Number(line.attendanceBonus), isAdhoc: false });
   if (Number(line.petrolAllowance) > 0) earnings.push({ label: 'Petrol Allowance', amount: Number(line.petrolAllowance), isAdhoc: false });
   if (Number(line.doubleMachineIncentive) > 0) earnings.push({ label: 'Double Machine Incentive', amount: Number(line.doubleMachineIncentive), isAdhoc: false });
@@ -164,15 +190,9 @@ function PayslipContent() {
 
   // Catch-all for other earnings stored in otherEarningsTotal but not
   // already shown as a component or auto-earning line above.
-  const displayedEarnings = earnings.reduce((s, r) => s + r.amount, 0);
-  const otherAutoEarnings = Number(line.otherEarningsTotal) - Number(line.otAmount) - Number(line.attendanceBonus) - Number(line.petrolAllowance) - Number(line.doubleMachineIncentive) - Number(line.shiftIncentive);
-  // Subtract earning components that are NOT part of grossEarnings (e.g. NIGHT_ALLOWANCE)
-  const nonGrossEarningComponents = rawEarnings
-    .filter((c) => !['BASIC', 'HRA', 'CONVEYANCE', 'DA', 'SPECIAL_ALLOWANCE', 'BASIC_HRA'].includes(c.salaryComponent.code.toUpperCase()))
-    .reduce((s, c) => s + Number(c.amount), 0);
-  const otherEarningsCatchall = otherAutoEarnings - nonGrossEarningComponents;
-  if (otherEarningsCatchall > 0) {
-    earnings.push({ label: 'Other Earnings', amount: otherEarningsCatchall, isAdhoc: false });
+  const otherAutoEarnings = Number(line.otherEarningsTotal) - Number(line.performanceIncentive) - Number(line.otAmount) - Number(line.otIncentiveAmount) - Number(line.attendanceBonus) - Number(line.petrolAllowance) - Number(line.doubleMachineIncentive) - Number(line.shiftIncentive);
+  if (otherAutoEarnings > 0) {
+    earnings.push({ label: 'Other Earnings', amount: otherAutoEarnings, isAdhoc: false });
   }
 
   // Standard statutory + auto deductions (always show for PDF-like overview)
@@ -267,12 +287,12 @@ function PayslipContent() {
             <table className="w-full text-sm">
               <tbody>
                 {earnings.map((c, idx) => (
-                  <tr key={`e-${idx}`}>
-                    <td className="py-1" style={{ color: 'var(--foreground)' }}>
+                  <tr key={`e-${idx}`} style={c.isGross ? { borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)' } : c.isSubtotal ? { borderTop: '1px solid var(--border)' } : undefined}>
+                    <td className="py-1" style={{ color: 'var(--foreground)', fontWeight: c.isSubtotal || c.isGross ? 600 : 400, paddingLeft: c.isSubtotal ? '0.5rem' : 0 }}>
                       {c.label}
                       {c.isAdhoc && <span className="ml-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>(ad-hoc)</span>}
                     </td>
-                    <td className="py-1 pr-1 text-right" style={{ color: 'var(--success, #22b573)', fontWeight: 500 }}>
+                    <td className="py-1 pr-1 text-right" style={{ color: 'var(--success, #22b573)', fontWeight: c.isSubtotal || c.isGross ? 600 : 500 }}>
                       +{fmt(c.amount)}
                     </td>
                     <td className="py-1 pl-1 text-right print:hidden">

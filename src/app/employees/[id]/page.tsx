@@ -34,6 +34,8 @@ import {
   fetchAllMaster,
   fetchEmployeeRefs,
   applyEmployeeFieldChange,
+  toOptions,
+  toReportingManagerOptions,
   type OptionList,
   type EmployeeRef,
 } from '@/lib/employee-form-fields';
@@ -116,6 +118,7 @@ interface ProfileHeader {
   oldEmployeeCode: string | null;
   profilePhotoPath: string | null;
   status: string;
+  lifecycleState: string | null;
   isActive: boolean;
   reportingManager: { id: number; firstName: string; lastName: string; employeeCode: string } | null;
   secondReportingManager: { id: number; firstName: string; lastName: string; employeeCode: string } | null;
@@ -1107,6 +1110,362 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
   );
 }
 
+// ─── Lifecycle (BRD 01 §8) ───────────────────────────────────────────────────
+
+interface LifecycleInfo {
+  state: string;
+  derived: boolean;
+  legacyStatus: string;
+  allowedTargets: string[];
+  history: Array<{ id: number; fromState: string | null; toState: string; trigger: string; effectiveDate: string; reason: string | null; referenceNo: string | null; createdAt: string }>;
+}
+
+const LIFECYCLE_TONE: Record<string, { bg: string; fg: string }> = {
+  DRAFT: { bg: 'var(--surface-muted)', fg: 'var(--foreground-muted)' },
+  CANDIDATE_CONVERTED: { bg: 'var(--info-soft)', fg: 'var(--info)' },
+  PROBATION: { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  CONFIRMED: { bg: 'var(--success-soft)', fg: 'var(--success)' },
+  ON_NOTICE: { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  SUSPENDED: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  LONG_LEAVE: { bg: 'var(--info-soft)', fg: 'var(--info)' },
+  SEPARATED: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  REHIRED: { bg: 'var(--accent-soft)', fg: 'var(--accent)' },
+};
+
+function LifecycleBadge({ state }: { state: string | null | undefined }) {
+  if (!state) return null;
+  const tone = LIFECYCLE_TONE[state] ?? LIFECYCLE_TONE.DRAFT;
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: tone.bg, color: tone.fg }}
+      title="Lifecycle state (BRD §8)"
+    >
+      {state.replace(/_/g, ' ')}
+    </span>
+  );
+}
+
+const LIFECYCLE_TRIGGERS: Record<string, string> = {
+  CANDIDATE_CONVERTED: 'MANDATORY_FIELDS_COMPLETE',
+  PROBATION: 'JOINING_CONFIRMED',
+  CONFIRMED: 'CONFIRMATION',
+  ON_NOTICE: 'RESIGNATION_ACCEPTED',
+  SUSPENDED: 'SUSPENSION_ORDER',
+  LONG_LEAVE: 'LONG_LEAVE_COMMENCED',
+  SEPARATED: 'LAST_WORKING_DAY',
+  REHIRED: 'REHIRE',
+};
+
+/** "Change state" dialog — target list limited to what the §8.2 table permits from the current state. */
+function LifecycleChangeModal({
+  employeeId,
+  lifecycle,
+  isOpen,
+  onClose,
+  onChanged,
+}: {
+  employeeId: string;
+  lifecycle: LifecycleInfo | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const targets = lifecycle?.allowedTargets ?? [];
+  const fields: FieldDef[] = [
+    {
+      name: 'toState',
+      label: 'New State',
+      type: 'select',
+      required: true,
+      options: targets.map((t) => ({ label: t.replace(/_/g, ' '), value: t })),
+      helpText: lifecycle ? `Current: ${lifecycle.state.replace(/_/g, ' ')}` : undefined,
+    },
+    { name: 'effectiveDate', label: 'Effective Date', type: 'date', required: true, defaultValue: today },
+    { name: 'referenceNo', label: 'Reference No.', type: 'text', placeholder: 'Order / letter reference (optional)', maxLength: 60 },
+    { name: 'reason', label: 'Reason', type: 'textarea', placeholder: 'Optional' },
+    ...(targets.includes('REHIRED')
+      ? [{ name: 'rehireTo', label: 'Rehire lands in', type: 'select', options: [{ label: 'Probation', value: 'PROBATION' }, { label: 'Confirmed (probation waived)', value: 'CONFIRMED' }], defaultValue: 'PROBATION', helpText: 'Only used when the new state is REHIRED' } as FieldDef]
+      : []),
+  ];
+
+  const handleSubmit = async (values: Record<string, string | number | boolean>) => {
+    const toState = String(values.toState);
+    const res = await fetch(`/api/employees/${employeeId}/lifecycle/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toState,
+        trigger: LIFECYCLE_TRIGGERS[toState] ?? 'HR_ACTION',
+        effectiveDate: values.effectiveDate || undefined,
+        reason: values.reason || null,
+        referenceNo: values.referenceNo || null,
+        rehireTo: toState === 'REHIRED' ? values.rehireTo || 'PROBATION' : undefined,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error ?? 'Transition failed');
+    }
+    onChanged();
+  };
+
+  return (
+    <FormModal
+      title="Change Lifecycle State"
+      fields={fields}
+      initialValues={{ effectiveDate: today, rehireTo: 'PROBATION' }}
+      isOpen={isOpen}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      submitLabel="Apply"
+    />
+  );
+}
+
+// ─── Job history (BRD 01 §15 / §18 / §19) ────────────────────────────────────
+
+interface JobHistoryRow {
+  id: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  isCurrent: boolean;
+  superseded: boolean;
+  changeReason: string | null;
+  changeReference: string | null;
+  department: { name: string } | null;
+  subDepartment: { name: string } | null;
+  designation: { name: string } | null;
+  grade: { name: string } | null;
+  level: { name: string } | null;
+  employeeType: { name: string } | null;
+  unit: { name: string } | null;
+  location: { code: string; name: string } | null;
+  costCentre: { code: string; name: string } | null;
+  noticePeriodDays: number | null;
+  noticePeriodSource: string | null;
+}
+interface ReportingHistoryRow {
+  id: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  changeReason: string | null;
+  primaryManager: { firstName: string; lastName: string; employeeCode: string } | null;
+  secondaryManager: { firstName: string; lastName: string; employeeCode: string } | null;
+}
+interface CodedRef { id: number; code: string; name: string }
+
+const JOB_CHANGE_REASON_OPTIONS = [
+  { label: 'Transfer', value: 'TRANSFER' },
+  { label: 'Promotion', value: 'PROMOTION' },
+  { label: 'Designation change', value: 'DESIGNATION_CHANGE' },
+  { label: 'Departmental change', value: 'DEPARTMENT_CHANGE' },
+  { label: 'Employee type change', value: 'EMPLOYEE_TYPE_CHANGE' },
+  { label: 'Reporting change', value: 'REPORTING_CHANGE' },
+  { label: 'Correction', value: 'CORRECTION' },
+  { label: 'Policy', value: 'POLICY' },
+  { label: 'Demotion (HR Admin)', value: 'DEMOTION' },
+];
+
+function JobHistorySection({
+  employeeId,
+  masters,
+}: {
+  employeeId: string;
+  masters: {
+    departments: OptionList; subDepartments: OptionList; designations: OptionList; grades: OptionList; levels: OptionList;
+    employeeTypes: OptionList; categories: OptionList; units: OptionList; reportingManagers: EmployeeRef[];
+  };
+}) {
+  const [rows, setRows] = useState<JobHistoryRow[]>([]);
+  const [reporting, setReporting] = useState<ReportingHistoryRow[]>([]);
+  const [costCentres, setCostCentres] = useState<CodedRef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const load = useCallback(() => {
+    Promise.all([
+      fetch(`/api/employees/${employeeId}/lifecycle/job-history`),
+      fetch('/api/masters/cost-centres?limit=500'),
+    ])
+      .then(async ([histRes, ccRes]) => {
+        if (!histRes.ok) throw new Error('Failed to load job history');
+        const hist: { data: JobHistoryRow[]; reporting: ReportingHistoryRow[] } = await histRes.json();
+        const ccs = ccRes.ok ? ((await ccRes.json()) as { data: CodedRef[] }).data : [];
+        return { hist, ccs };
+      })
+      .then(({ hist, ccs }) => {
+        setRows(hist.data);
+        setReporting(hist.reporting);
+        setCostCentres(ccs);
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load job history'))
+      .finally(() => setLoading(false));
+  }, [employeeId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const current = rows.find((r) => r.isCurrent) ?? null;
+  const today = new Date().toISOString().slice(0, 10);
+  const codedOptions = (list: CodedRef[]) => list.map((l) => ({ label: `${l.name} (${l.code})`, value: l.id }));
+
+  const changeFields: FieldDef[] = [
+    { name: 'effectiveFrom', label: 'Effective From', type: 'date', required: true, defaultValue: today, helpText: 'Closes the current row the day before' },
+    { name: 'changeReason', label: 'Change Reason', type: 'select', required: true, options: JOB_CHANGE_REASON_OPTIONS },
+    { name: 'changeReference', label: 'Reference', type: 'text', placeholder: 'Letter / order no. (optional)', maxLength: 60 },
+    { name: 'departmentId', label: 'Department', type: 'select', options: toOptions(masters.departments) },
+    { name: 'subDepartmentId', label: 'Sub-Department', type: 'select', options: toOptions(masters.subDepartments) },
+    { name: 'designationId', label: 'Designation', type: 'select', options: toOptions(masters.designations) },
+    { name: 'gradeId', label: 'Grade', type: 'select', options: toOptions(masters.grades) },
+    { name: 'levelId', label: 'Level', type: 'select', options: toOptions(masters.levels) },
+    { name: 'employeeTypeId', label: 'Employee Type', type: 'select', options: toOptions(masters.employeeTypes) },
+    { name: 'unitId', label: 'Branch / Unit', type: 'select', options: toOptions(masters.units) },
+    { name: 'costCentreId', label: 'Cost Centre', type: 'select', options: codedOptions(costCentres) },
+    { name: 'noticePeriodDays', label: 'Notice Period (days)', type: 'number', min: 0, max: 365, helpText: 'Forward-dated only; blank keeps / re-derives the current value' },
+    { name: 'reportingManagerId', label: 'Reporting Manager', type: 'select', options: toReportingManagerOptions(masters.reportingManagers) },
+    { name: 'secondReportingManagerId', label: 'Second Reporting Manager', type: 'select', options: toReportingManagerOptions(masters.reportingManagers) },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', placeholder: 'Optional' },
+  ];
+
+  const handleChange = async (values: Record<string, string | number | boolean>) => {
+    // Only fields the user actually set travel; everything else is carried forward server-side.
+    const body: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(values)) {
+      if (v === '' || v === undefined || v === null) continue;
+      body[k] = v;
+    }
+    const res = await fetch(`/api/employees/${employeeId}/lifecycle/job-change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      const fieldErrors = err.details?.fieldErrors as Record<string, string[]> | undefined;
+      const first = fieldErrors && Object.entries(fieldErrors).find(([, m]) => m?.length);
+      throw new Error(first ? `${first[0]}: ${first[1][0]}` : (err.error ?? 'Job change failed'));
+    }
+    setSaved(true);
+    load();
+  };
+
+  const period = (r: { effectiveFrom: string; effectiveTo: string | null }) => `${formatDate(r.effectiveFrom)} → ${r.effectiveTo ? formatDate(r.effectiveTo) : 'current'}`;
+
+  return (
+    <SectionCard
+      title="Job History"
+      icon={<SectionIcon.Briefcase />}
+      action={
+        <button
+          type="button"
+          onClick={() => { setSaved(false); setModalOpen(true); }}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+          style={{ backgroundColor: 'var(--accent)' }}
+        >
+          + Record Job Change
+        </button>
+      }
+    >
+      {loading ? (
+        <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading...</div>
+      ) : (
+        <div className="space-y-6">
+          {error && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
+          )}
+          {saved && (
+            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>Job change recorded.</div>
+          )}
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Current posting &amp; notice period</h3>
+            <DetailGrid
+              items={[
+                { label: 'Branch / Unit', value: current?.unit?.name ?? '—' },
+                { label: 'Cost Centre', value: current?.costCentre ? `${current.costCentre.name} (${current.costCentre.code})` : '—' },
+                { label: 'Notice Period', value: current?.noticePeriodDays !== null && current?.noticePeriodDays !== undefined ? `${current.noticePeriodDays} days` : '—' },
+                { label: 'Notice Source', value: current?.noticePeriodSource ?? '—' },
+                { label: 'Effective From', value: current ? formatDate(current.effectiveFrom) : '—' },
+                { label: 'Change Reason', value: current?.changeReason ?? '—' },
+              ]}
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>
+                  <th className="py-2 pr-3">Period</th>
+                  <th className="py-2 pr-3">Department</th>
+                  <th className="py-2 pr-3">Designation</th>
+                  <th className="py-2 pr-3">Grade / Level</th>
+                  <th className="py-2 pr-3">Branch / Unit</th>
+                  <th className="py-2 pr-3">Cost Centre</th>
+                  <th className="py-2 pr-3">Notice</th>
+                  <th className="py-2 pr-3">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={8} className="py-3 text-sm" style={{ color: 'var(--foreground-muted)' }}>No job history rows.</td></tr>
+                )}
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--border)', color: 'var(--foreground)', opacity: r.superseded ? 0.55 : 1 }}>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {period(r)}
+                      {r.isCurrent && <span className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>current</span>}
+                      {r.superseded && <span className="ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--foreground-muted)' }}>superseded</span>}
+                    </td>
+                    <td className="py-2 pr-3">{r.department?.name ?? '—'}{r.subDepartment ? ` / ${r.subDepartment.name}` : ''}</td>
+                    <td className="py-2 pr-3">{r.designation?.name ?? '—'}</td>
+                    <td className="py-2 pr-3">{[r.grade?.name, r.level?.name].filter(Boolean).join(' / ') || '—'}</td>
+                    <td className="py-2 pr-3">{r.unit?.name ?? '—'}</td>
+                    <td className="py-2 pr-3">{r.costCentre?.code ?? '—'}</td>
+                    <td className="py-2 pr-3">{r.noticePeriodDays ?? '—'}{r.noticePeriodSource ? ` (${r.noticePeriodSource})` : ''}</td>
+                    <td className="py-2 pr-3">{r.changeReason ?? '—'}{r.changeReference ? ` · ${r.changeReference}` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {reporting.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Reporting line history</h3>
+              <ul className="space-y-1 text-sm" style={{ color: 'var(--foreground)' }}>
+                {reporting.map((r) => (
+                  <li key={r.id}>
+                    <span className="whitespace-nowrap" style={{ color: 'var(--foreground-muted)' }}>{period(r)}:</span>{' '}
+                    {r.primaryManager ? `${r.primaryManager.firstName} ${r.primaryManager.lastName} (${r.primaryManager.employeeCode})` : 'no primary manager'}
+                    {r.secondaryManager ? `; secondary ${r.secondaryManager.firstName} ${r.secondaryManager.lastName} (${r.secondaryManager.employeeCode})` : ''}
+                    {r.changeReason ? ` — ${r.changeReason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      <FormModal
+        title="Record Job Change"
+        fields={changeFields}
+        initialValues={{ effectiveFrom: today }}
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleChange}
+        submitLabel="Record"
+      />
+    </SectionCard>
+  );
+}
+
 export default function EmployeeProfilePage() {
   const params = useParams<{ id: string }>();
   const employeeId = params.id;
@@ -1119,6 +1478,8 @@ export default function EmployeeProfilePage() {
   const [confirmToggle, setConfirmToggle] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [lifecycle, setLifecycle] = useState<LifecycleInfo | null>(null);
+  const [changeStateOpen, setChangeStateOpen] = useState(false);
 
   const handleTabClick = useCallback(
     (key: TabKey) => {
@@ -1172,6 +1533,17 @@ export default function EmployeeProfilePage() {
       .catch(() => setHeaderError('Failed to load employee'))
       .finally(() => setLoadingHeader(false));
   }, [employeeId]);
+
+  const fetchLifecycle = useCallback(() => {
+    fetch(`/api/employees/${employeeId}/lifecycle`)
+      .then(async (res) => (res.ok ? ((await res.json()) as LifecycleInfo) : null))
+      .then((info) => setLifecycle(info))
+      .catch(() => setLifecycle(null));
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchLifecycle();
+  }, [fetchLifecycle]);
 
   useEffect(() => {
     fetchHeader();
@@ -1333,6 +1705,7 @@ export default function EmployeeProfilePage() {
               {header.oldEmployeeCode ?? header.employeeCode}
             </span>
             <StatusPill status={header.status} />
+            <LifecycleBadge state={lifecycle?.state ?? header.lifecycleState} />
             {!header.isActive && (
               <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
                 Inactive
@@ -1388,6 +1761,16 @@ export default function EmployeeProfilePage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            {lifecycle && lifecycle.allowedTargets.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setChangeStateOpen(true)}
+                className="rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
+                style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+              >
+                Change State
+              </button>
+            )}
             {header.confirmationDate && (
               <a
                 href={`/api/employees/${employeeId}/confirmation/letter`}
@@ -1429,6 +1812,17 @@ export default function EmployeeProfilePage() {
         onConfirm={handleToggleActive}
         onClose={() => setConfirmToggle(false)}
         confirmLabel={toggling ? 'Working...' : header.isActive ? 'Deactivate' : 'Reactivate'}
+      />
+
+      <LifecycleChangeModal
+        employeeId={employeeId}
+        lifecycle={lifecycle}
+        isOpen={changeStateOpen}
+        onClose={() => setChangeStateOpen(false)}
+        onChanged={() => {
+          fetchLifecycle();
+          fetchHeader();
+        }}
       />
 
       {/* Tab strip */}
@@ -1511,15 +1905,21 @@ export default function EmployeeProfilePage() {
         </div>
       )}
       {activeTab === 'job_profile' && (
-        <ProfileTabForm
-          key={activeTab}
-          title="Job Profile"
-          icon={<SectionIcon.Briefcase />}
-          fetchUrl={`/api/employees/${employeeId}/job-profile`}
-          saveUrl={`/api/employees/${employeeId}/job-profile`}
-          fields={jobProfileFields}
-          onDirtyChange={setActiveTabDirty}
-        />
+        <div className="space-y-4">
+          <ProfileTabForm
+            key={activeTab}
+            title="Job Profile"
+            icon={<SectionIcon.Briefcase />}
+            fetchUrl={`/api/employees/${employeeId}/job-profile`}
+            saveUrl={`/api/employees/${employeeId}/job-profile`}
+            fields={jobProfileFields}
+            onDirtyChange={setActiveTabDirty}
+          />
+          <JobHistorySection
+            employeeId={employeeId}
+            masters={{ departments, subDepartments, designations, grades, levels, employeeTypes, categories, units, reportingManagers }}
+          />
+        </div>
       )}
       {activeTab === 'salary' && (
         <div className="space-y-4">

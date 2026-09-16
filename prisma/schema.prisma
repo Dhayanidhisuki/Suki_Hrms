@@ -176,6 +176,7 @@ model Site {
   city        String?   @db.NVarChar(100)
   state       String?   @db.NVarChar(100)
   pinCode     String?   @db.NVarChar(10)
+  unitId      Int?      // BRD §5.1: Site sits under a Unit (statutory establishment)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -184,6 +185,7 @@ model Site {
   company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([companyId])
+  @@index([unitId])
   @@map("Site")
 }
 
@@ -266,6 +268,7 @@ model Unit {
   description String?   @db.NVarChar(500)
   // Phase 17 — state for state-wise PT lookup via StatePtConfig.
   state       String?   @db.NVarChar(100)
+  businessUnitId Int?   // BRD §5.1: Unit sits under a Business Unit
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -276,6 +279,7 @@ model Unit {
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([businessUnitId])
   @@map("Unit")
 }
 
@@ -288,6 +292,8 @@ model Grade {
   // A grade sits under a designation (migration 000022). Nullable so the
   // rows that predate the link keep loading; the master form requires it.
   designationId Int?
+  // BRD §19: applied to a new job row when the offer states no notice period.
+  defaultNoticeDays Int?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -616,6 +622,36 @@ model LeaveMaster {
   probationEligible Boolean  @default(true)
   probationMaxDays  Decimal? @db.Decimal(5, 2)
 
+  // ── Leave BRD §6.1 policy fields (Step 1, tranche 4). Nullable/defaulted so
+  // existing rows keep working; the accrual engine reads accrualBasis when set
+  // and falls back to the legacy accrualType mapping otherwise.
+  isPaid                      Boolean  @default(true)
+  accrualBasis                String?  @db.NVarChar(20) // MONTHLY | QUARTERLY | ANNUAL | ATTENDANCE_LINKED | EVENT_BASED | EXTERNAL_CREDIT | NONE
+  annualCeilingDays           Decimal? @db.Decimal(6, 2) // ATTENDANCE_LINKED ceiling
+  eventEntitlementDays        Decimal? @db.Decimal(6, 2)
+  carryForwardValidityMonths  Int?
+  isEncashable                Boolean  @default(false)
+  maxEncashableDaysPerYear    Decimal? @db.Decimal(6, 2) // In-Service Leave Encashment ceiling
+  maxEncashableDaysAtExit     Decimal? @db.Decimal(6, 2) // Exit Leave Settlement ceiling
+  halfDayAllowed              Boolean  @default(true)
+  applicableGender            String?  @db.NVarChar(10) // ALL | MALE | FEMALE
+  applicableEmployeeTypes     String?  @db.NVarChar(300) // comma list of EmployeeType.code; empty = all
+  minDaysPerApplication       Decimal? @db.Decimal(6, 2)
+  maxDaysPerApplication       Decimal? @db.Decimal(6, 2)
+  noticeDays                  Int?
+  documentRequiredBeyondDays  Decimal? @db.Decimal(6, 2)
+  negativeBalanceAllowed      Boolean  @default(false)
+  countIntermediateNonWorking Boolean  @default(true)  // §6.4
+  countSandwichedNonWorking   Boolean  @default(true)
+  backDatedAllowed            Boolean  @default(true)
+  backDatedLimitDays          Int?
+  creditValidityDays          Int?     // e.g. comp-off 90; null = no expiry
+  roundingRule                String?  @db.NVarChar(20) // NEAREST_HALF | UP_HALF | DOWN_HALF | STATUTORY_HALF_DAY | NONE
+  probationAccrualMode        String?  @db.NVarChar(20) // ACCRUE_AND_AVAIL | ACCRUE_HOLD | NO_ACCRUE
+  midPeriodJoinRule           String?  @db.NVarChar(24) // PRORATA_DAYS | CUT_OFF_DAY | FULL_PERIOD | NO_CREDIT_FIRST_PERIOD
+  cutOffDay                   Int?     @default(15)
+  displayOrder                Int?
+
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -912,6 +948,14 @@ model Employee {
   signaturePath      String? @db.NVarChar(500)
   // E2: Status as flexible string — constrain via DropdownMaster later
   status             String  @default("active") @db.NVarChar(20) // active | on-leave | terminated | resigned
+  // Employee Master BRD §8 lifecycle. Additive: `status` above is kept for
+  // every existing consumer; the lifecycle service writes both. NULL on
+  // legacy rows until backfilled (scripts/backfill-employee-lifecycle.mjs).
+  // DRAFT | CANDIDATE_CONVERTED | PROBATION | CONFIRMED | ON_NOTICE |
+  // SUSPENDED | LONG_LEAVE | SEPARATED | REHIRED
+  lifecycleState     String? @db.NVarChar(24)
+  // Stable id of the natural person across companies and rehires (BRD §7.1).
+  personUid          String? @db.NVarChar(40)
   guestEmployee      Boolean @default(false)
   inductionStatus    String? @db.NVarChar(30)
   // E8: Self-referential FK for reporting manager
@@ -994,6 +1038,8 @@ model Employee {
   @@index([secondReportingManagerId])
   @@index([status])
   @@index([jdId])
+  @@index([lifecycleState])
+  @@index([personUid])
   @@map("Employee")
 }
 
@@ -1177,10 +1223,22 @@ model JobInfo {
   shiftMaster       ShiftMaster?       @relation(fields: [shiftMasterId], references: [id])
   shiftRotationPlan ShiftRotationPlan? @relation(fields: [shiftRotationPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  // Employee Master BRD §5/§15/§19 — additive, nullable. Location and cost
+  // centre complete the org hierarchy on the dated job row; notice period
+  // is a dated attribute so F&F reads the value in force on the LWD.
+  locationId        Int?
+  costCentreId      Int?
+  noticePeriodDays  Int?
+  noticePeriodSource String? @db.NVarChar(20) // OFFER | GRADE_DEFAULT | POLICY | MANUAL
+  changeReason      String?  @db.NVarChar(30) // JOINING | TRANSFER | PROMOTION | CONFIRMATION | REPORTING_CHANGE | CORRECTION | POLICY
+  changeReference   String?  @db.NVarChar(60)
+
   @@index([employeeId])
   @@index([departmentId])
   @@index([designationId])
   @@index([effectiveFrom, effectiveTo])
+  @@index([locationId])
+  @@index([costCentreId])
   @@index([shiftRotationPlanId])
   @@map("JobInfo")
 }
@@ -1671,6 +1729,18 @@ model SalaryComponent {
   // ESI / PF eligible-wage base — same convention as includeInGratuity.
   includeInEsi      Boolean   @default(false)
   includeInPf       Boolean   @default(false)
+  // Whether this earning component counts toward Gross Salary. When false
+  // the component is CTC-only — it is paid out (e.g. a performance incentive
+  // disbursed monthly based on PMS rating) but never part of Gross and never
+  // a base for PF/ESI/PT/TDS. Defaults true so existing components are
+  // unaffected.
+  includeInGross    Boolean   @default(true)
+  // Which Gross tier this earning component belongs to, for payslip
+  // subtotal display: FIXED (Basic, HRA, LTA, Special, Educational…) or
+  // ADDITIONAL (Additional HRA and similar top-up components). Only
+  // meaningful when includeInGross = true; CTC-only components are paid
+  // outside Gross entirely and ignore this field.
+  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -2378,6 +2448,17 @@ model LeaveApplication {
   managerActionByUserId Int?
   managerActionAt       DateTime?
   managerRejectionReason String? @db.NVarChar(500)
+  // Tranche 4 additions. companyId denormalised for scoped queries.
+  companyId              Int?
+  workflowRequestId      Int?     // WorkflowRequest.id once leave approval runs on the platform engine
+  calendarDays           Decimal? @db.Decimal(6, 2)
+  nonWorkingDaysCounted  Decimal? @db.Decimal(6, 2)
+  documentId             Int?     // PlatformDocument.id for supporting document
+  contactDuringLeave     String?  @db.NVarChar(50)
+  addressDuringLeave     String?  @db.NVarChar(300)
+  cancelledAt            DateTime?
+  cancelledByUserId      Int?
+  outcomeOnExit          String?  @db.NVarChar(20) // STANDS | TRUNCATED | CANCELLED | LAPSED_ON_EXIT
   approvedByUserId      Int?
   approvedAt            DateTime?
   rejectionReason       String?   @db.NVarChar(500)
@@ -2444,6 +2525,13 @@ model LeaveBalance {
   adjusted       Decimal @default(0) @db.Decimal(5, 2)
   closingBalance Decimal @default(0) @db.Decimal(5, 2)
   carryForwardIn Decimal @default(0) @db.Decimal(5, 2)
+  // §11.2 buckets added in tranche 4; closingBalance keeps the §11.1 identity.
+  encashed        Decimal @default(0) @db.Decimal(5, 2)
+  lapsed          Decimal @default(0) @db.Decimal(5, 2)
+  expired         Decimal @default(0) @db.Decimal(5, 2)
+  pendingApproval Decimal @default(0) @db.Decimal(5, 2) // reservation, not in closing
+  held            Decimal @default(0) @db.Decimal(5, 2) // ACCRUE_HOLD on probation
+  leaveYear       String? @db.NVarChar(9) // e.g. FY2026-27; `year` stays the numeric key
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2650,7 +2738,11 @@ model OTIncentiveSlab {
   name            String   @db.NVarChar(100)
   minOtHours      Decimal  @db.Decimal(8, 2) // lower bound (inclusive)
   maxOtHours      Decimal? @db.Decimal(8, 2) // upper bound (exclusive), null = no upper limit
-  incentiveMultiplier Decimal @db.Decimal(5, 2) // multiplier on OT amount for hours in this slab
+  incentiveMultiplier Decimal @default(1) @db.Decimal(5, 2) // multiplier on OT amount for hours in this slab; ignored when flatBonusAmount is set
+  // A fixed monthly bonus for reaching this OT-hours band, added as its own
+  // earning — NOT a multiplier on OT pay. When set, this slab pays
+  // flatBonusAmount and incentiveMultiplier is ignored for it.
+  flatBonusAmount Decimal? @db.Decimal(18, 2)
   effectiveFrom   DateTime
   effectiveTo     DateTime?
   isActive        Boolean  @default(true)
@@ -2891,8 +2983,22 @@ model PayrollLine {
   payableDays      Decimal @default(0) @db.Decimal(5, 2)
   lopDays          Int     @default(0)
 
-  grossEarnings      Decimal @default(0) @db.Decimal(18, 2) // LOP-adjusted sum of recurring earning components
+  grossEarnings      Decimal @default(0) @db.Decimal(18, 2) // LOP-adjusted sum of recurring earning components (excludes CTC-only)
+  // Gross tier breakdown for payslip subtotal display. fixedGross = sum
+  // of earning components flagged grossTier = FIXED (Basic, HRA, LTA…);
+  // additionalGross = sum of grossTier = ADDITIONAL (Additional HRA…).
+  // grossEarnings = fixedGross + additionalGross. CTC-only components
+  // (includeInGross = false) are in neither subtotal — paid separately.
+  fixedGross         Decimal @default(0) @db.Decimal(18, 2)
+  additionalGross    Decimal @default(0) @db.Decimal(18, 2)
+  // Performance incentive paid this month from the PMS module — a CTC-only
+  // earning disbursed based on the employee's approved PMS rating. Not part
+  // of grossEarnings and never a base for PF/ESI/PT/TDS.
+  performanceIncentive Decimal @default(0) @db.Decimal(18, 2)
   otAmount           Decimal @default(0) @db.Decimal(18, 2)
+  // Flat monthly bonus from OTIncentiveSlab.flatBonusAmount for crossing an
+  // OT-hours threshold — a separate earning line, not part of otAmount.
+  otIncentiveAmount  Decimal @default(0) @db.Decimal(18, 2)
   otherEarningsTotal Decimal @default(0) @db.Decimal(18, 2) // sum of isAdhoc earning components
 
   pfEmployee           Decimal @default(0) @db.Decimal(18, 2)
@@ -4157,4 +4263,778 @@ model JobPosting {
   @@index([designationId])
   @@index([createdByUserId])
   @@map("JobPosting")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 19. SHARED PLATFORM SERVICES — Workflow & Approval, Notification, Document,
+//     Configuration Snapshot, Audit Trail.
+//     Spec: docs/BRD/06 - Shared Platform Services - BRD.docx
+//
+//     Deliberately relation-free. These tables reference Company, Employee,
+//     User and module entities by integer id (indexed) but declare no Prisma
+//     @relation, so this section is purely additive: no edits to the
+//     Company/Employee back-relation lists and no FK ordering in the
+//     migration — which matters while the schema is merged from several
+//     branches every few days. Company scoping is enforced in service code
+//     via getCompanyId(); every table carries companyId.
+//
+//     Names are prefixed (Workflow*, Notification*, PlatformDocument*) so they
+//     cannot collide with the recruitment tables that exist in the database
+//     outside this schema (DocumentType, EmailTemplate, SlaConfig).
+//
+//     JSON columns are NVarChar(Max) — SQL Server has no native JSON type.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Workflow & Approval Engine ───────────────────────────────────────────────
+
+// A registered kind of request (FNF_SETTLEMENT, LEAVE_APPLICATION, OFFER…).
+// handlerKey names the in-process module handler the engine calls on
+// Validate / post-approval / post-rejection (src/lib/platform/workflow/registry.ts).
+model WorkflowRequestType {
+  id                       Int      @id @default(autoincrement())
+  companyId                Int
+  code                     String   @db.NVarChar(30)
+  name                     String   @db.NVarChar(120)
+  moduleCode               String   @db.NVarChar(4) // CORE ATTN LEAV PAYR LOAN RECR TRDV ESSV PERF FNFS STAT RPTG
+  handlerKey               String?  @db.NVarChar(60)
+  conditionFieldsUsed      String?  @db.NVarChar(200) // comma list of §7.2 condition fields this type evaluates
+  allowReturn              Boolean  @default(true)
+  allowCancelAfterSubmit   Boolean  @default(true)
+  allowBulkApproval        Boolean  @default(false)
+  allowDelegation          Boolean  @default(true)
+  autoApproveOnExhaustion  Boolean  @default(false)
+  remarkMandatoryOnApprove Boolean  @default(false)
+  snapshotTypeCode         String?  @db.NVarChar(30) // ConfigSnapshot bound at Submit, if any
+  retentionYears           Int      @default(8)
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@map("WorkflowRequestType")
+}
+
+// Effective-dated, versioned approval matrix. Condition columns are the
+// §7.2 fields; a populated condition must match for the matrix to be a
+// candidate, and the most specific candidate wins (§7.5). Exactly one
+// matrix per request type per company has isFallback = true.
+model WorkflowMatrix {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  code            String    @db.NVarChar(30)
+  name            String    @db.NVarChar(120)
+  requestTypeCode String    @db.NVarChar(30)
+  versionNo       Int       @default(1)
+  effectiveFrom   DateTime  @db.Date
+  effectiveTo     DateTime? @db.Date
+  isFallback      Boolean   @default(false)
+  status          String    @default("Active") @db.NVarChar(10) // Active | Inactive
+
+  minAmount        Decimal? @db.Decimal(18, 2) // inclusive
+  maxAmount        Decimal? @db.Decimal(18, 2) // exclusive
+  designationCodes String?  @db.NVarChar(400) // comma list; empty = any
+  departmentCodes  String?  @db.NVarChar(400)
+  gradeCodes       String?  @db.NVarChar(400)
+  employmentType   String?  @db.NVarChar(20)
+  locationCode     String?  @db.NVarChar(30)
+  costCentreCode   String?  @db.NVarChar(30)
+  requestSubType   String?  @db.NVarChar(30)
+
+  createdByUserId Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([companyId, code, versionNo])
+  @@index([companyId, requestTypeCode, status])
+  @@map("WorkflowMatrix")
+}
+
+// One approver slot definition at one level of a matrix (§7.3).
+// approverType EMPLOYEE → approverRef is an employee code;
+//              ROLE     → a Role.code in this company;
+//              POSITION → a §7.4 token (REQUESTER_MANAGER_L1, PLANT_HEAD …).
+model WorkflowMatrixLine {
+  id                    Int     @id @default(autoincrement())
+  matrixId              Int
+  levelNo               Int
+  sequence              Int     @default(1)
+  parallelGroup         Int?
+  approverType          String  @db.NVarChar(10) // EMPLOYEE | ROLE | POSITION
+  approverRef           String  @db.NVarChar(60)
+  mandatory             Boolean @default(true)
+  quorumRule            String  @default("ALL") @db.NVarChar(12) // ALL | ANY | N_OF_M
+  quorumN               Int?
+  escalationDays        Decimal @default(2.0) @db.Decimal(4, 1) // business days
+  escalationTargetType  String  @default("POSITION") @db.NVarChar(12) // POSITION | ROLE | EMPLOYEE | NONE
+  escalationTargetRef   String? @db.NVarChar(60)
+  escalationMode        String  @default("ADD") @db.NVarChar(8) // ADD | REPLACE
+  maxEscalationHops     Int     @default(2)
+  skipIfSameAsRequester Boolean @default(true)
+  remarkMandatory       Boolean @default(false)
+
+  @@index([matrixId, levelNo])
+  @@map("WorkflowMatrixLine")
+}
+
+// The request object (§6.1). currentStatus follows §6.3:
+// Draft | Submitted | Validation Failed | Pending Approval | Returned |
+// Approved | Rejected | Cancelled | Reopened.
+model WorkflowRequest {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  requestNo        String   @db.NVarChar(30) // <TYPE>/<FY>/<serial>
+  requestTypeCode  String   @db.NVarChar(30)
+  moduleCode       String   @db.NVarChar(4)
+  sourceEntityType String   @db.NVarChar(40)
+  sourceEntityId   Int
+  title            String   @db.NVarChar(200)
+  requesterEmpId   Int
+  requesterUserId  Int?
+  subjectEmpId     Int?
+  onBehalfOfEmpId  Int?
+  amount           Decimal? @db.Decimal(18, 2)
+  requestSubType   String?  @db.NVarChar(30)
+  priority         String   @default("NORMAL") @db.NVarChar(10) // URGENT | NORMAL | LOW
+  payloadJson      String?  @db.NVarChar(Max) // opaque module payload
+  contextJson      String?  @db.NVarChar(Max) // condition values resolved at Submit
+
+  currentStatus         String    @default("Draft") @db.NVarChar(24)
+  currentLevel          Int       @default(0)
+  matrixId              Int?
+  matrixVersionNo       Int?
+  snapshotId            Int?
+  levelEnteredAt        DateTime?
+  dueAt                 DateTime?
+  slaBreachCount        Int       @default(0)
+  escalationExhausted   Boolean   @default(false)
+  submittedAt           DateTime?
+  decidedAt             DateTime?
+  decisionRemark        String?   @db.NVarChar(1000)
+  validationErrorsJson  String?   @db.NVarChar(Max)
+  reopenedFromRequestId Int?
+  createdByUserId       Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([companyId, requestNo])
+  @@index([companyId, currentStatus])
+  @@index([companyId, requestTypeCode, sourceEntityType, sourceEntityId])
+  @@index([requesterEmpId])
+  @@index([dueAt])
+  @@map("WorkflowRequest")
+}
+
+// Approver slots materialised for a request when a level is entered.
+// A matrix line resolves to one slot per resolved approver.
+model WorkflowSlot {
+  id              Int       @id @default(autoincrement())
+  requestId       Int
+  levelNo         Int
+  sequence        Int       @default(1)
+  parallelGroup   Int?
+  approverType    String    @db.NVarChar(10)
+  approverRef     String    @db.NVarChar(60)
+  resolvedEmpId   Int?
+  resolvedUserId  Int?
+  isMandatory     Boolean   @default(true)
+  quorumRule      String    @default("ALL") @db.NVarChar(12)
+  quorumN         Int?
+  status          String    @default("Pending") @db.NVarChar(12) // Pending | Approved | Rejected | Returned | Skipped | Replaced | Vacant
+  escalationHop   Int       @default(0)
+  actedByEmpId    Int?
+  actedByUserId   Int?
+  onBehalfOfEmpId Int? // set when acting under a delegation
+  delegationId    Int?
+  actedAt         DateTime?
+  remark          String?   @db.NVarChar(500)
+  createdAt       DateTime  @default(now())
+
+  @@index([requestId, levelNo])
+  @@index([resolvedEmpId, status])
+  @@index([resolvedUserId, status])
+  @@map("WorkflowSlot")
+}
+
+// Append-only history of every verb applied to a request (§6.4).
+model WorkflowAction {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  requestId       Int
+  verb            String   @db.NVarChar(20) // Submit Validate Approve Reject Return Cancel Resubmit Escalate Reassign Reopen
+  fromStatus      String?  @db.NVarChar(24)
+  toStatus        String   @db.NVarChar(24)
+  levelNo         Int?
+  actorUserId     Int?
+  actorEmpId      Int?
+  onBehalfOfEmpId Int?
+  delegationId    Int?
+  remark          String?  @db.NVarChar(1000)
+  detailJson      String?  @db.NVarChar(Max)
+  createdAt       DateTime @default(now())
+
+  @@index([requestId])
+  @@index([companyId, createdAt])
+  @@map("WorkflowAction")
+}
+
+// Time- and scope-bounded delegation of approval authority (§8).
+model WorkflowDelegation {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  delegatorEmpId    Int
+  delegateEmpId     Int
+  scopeType         String    @default("ALL") @db.NVarChar(12) // ALL | MODULE | REQUEST_TYPE
+  scopeRefList      String?   @db.NVarChar(400)
+  fromDate          DateTime  @db.Date
+  toDate            DateTime  @db.Date
+  amountCeiling     Decimal?  @db.Decimal(18, 2)
+  reasonCode        String    @db.NVarChar(20) // LEAVE TRAVEL MEDICAL TRAINING TEMPORARY_ROLE OTHER
+  reasonText        String?   @db.NVarChar(500)
+  includeInFlight   Boolean   @default(true)
+  notifyDelegator   Boolean   @default(true)
+  status            String    @default("Active") @db.NVarChar(10) // Active | Expired | Revoked | PendingApproval
+  approvalRequestId Int?
+  revokedAt         DateTime?
+  revokedByUserId   Int?
+  createdByUserId   Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([companyId, delegatorEmpId, status])
+  @@index([companyId, delegateEmpId, status])
+  @@map("WorkflowDelegation")
+}
+
+// One escalation event (§9.6): a level SLA breached and the target was
+// added to or replaced the late approver.
+model WorkflowEscalation {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  requestId           Int
+  levelNo             Int
+  hopNo               Int
+  fromApproverEmpId   Int?
+  toApproverEmpId     Int?
+  mode                String    @db.NVarChar(8) // ADD | REPLACE
+  dueAtBefore         DateTime?
+  dueAtAfter          DateTime?
+  elapsedBusinessDays Decimal?  @db.Decimal(6, 2)
+  triggerType         String    @db.NVarChar(10) // AUTOMATIC | MANUAL
+  triggeredByUserId   Int?
+  reasonText          String?   @db.NVarChar(500)
+  createdAt           DateTime  @default(now())
+
+  @@index([requestId])
+  @@index([companyId, createdAt])
+  @@map("WorkflowEscalation")
+}
+
+// ── Notification & Communication ─────────────────────────────────────────────
+
+// A registered event a module may raise (§12.1) with its channel switches.
+model NotificationEvent {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  code              String   @db.NVarChar(40)
+  name              String   @db.NVarChar(120)
+  moduleCode        String   @db.NVarChar(4)
+  category          String   @default("TRANSACTIONAL") @db.NVarChar(20) // TRANSACTIONAL STATUTORY REMINDER INFORMATIONAL MARKETING_INTERNAL
+  defaultPriority   String   @default("NORMAL") @db.NVarChar(10)
+  defaultRecipients String?  @db.NVarChar(400) // comma list of §13.2 recipient expressions
+  contextSchemaJson String?  @db.NVarChar(Max)
+  inAppEnabled      Boolean  @default(true)
+  emailEnabled      Boolean  @default(true)
+  smsEnabled        Boolean  @default(false)
+  pushEnabled       Boolean  @default(false)
+  quietHoursExempt  Boolean  @default(false)
+  digestEligible    Boolean  @default(false)
+  retentionDays     Int      @default(365)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@map("NotificationEvent")
+}
+
+// Versioned, effective-dated template per event × channel × language (§12.2).
+// Placeholders: {{Namespace.Field|directive}} — see §12.4/§12.5.
+model NotificationTemplate {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  code              String    @db.NVarChar(40)
+  name              String    @db.NVarChar(120)
+  eventCode         String    @db.NVarChar(40)
+  channel           String    @db.NVarChar(10) // INAPP | EMAIL | SMS | PUSH
+  language          String    @default("en-IN") @db.NVarChar(5)
+  versionNo         Int       @default(1)
+  effectiveFrom     DateTime  @db.Date
+  effectiveTo       DateTime? @db.Date
+  subject           String?   @db.NVarChar(300)
+  bodyHtml          String?   @db.NVarChar(Max)
+  bodyText          String    @db.NVarChar(Max)
+  smsText           String?   @db.NVarChar(320)
+  designationFilter String?   @db.NVarChar(200)
+  departmentFilter  String?   @db.NVarChar(200)
+  status            String    @default("Active") @db.NVarChar(10)
+  createdByUserId   Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([companyId, code, versionNo])
+  @@index([companyId, eventCode, channel, status])
+  @@map("NotificationTemplate")
+}
+
+// Outbox and delivery audit (§14.3, §14.6). One row per recipient × channel.
+// status: Queued | Deferred | Sending | Sent | Delivered | Read |
+//         SoftBounced | HardBounced | FailedUnresolvedPlaceholder |
+//         FailedNoTemplate | SuppressedOptOut | SuppressedThrottled |
+//         SuppressedNoAddress | Expired
+model NotificationDelivery {
+  id                     Int       @id @default(autoincrement())
+  companyId              Int
+  correlationId          String?   @db.NVarChar(60)
+  eventCode              String    @db.NVarChar(40)
+  eventInstanceId        String?   @db.NVarChar(60)
+  moduleCode             String?   @db.NVarChar(4)
+  sourceEntityType       String?   @db.NVarChar(40)
+  sourceEntityId         Int?
+  templateId             Int?
+  templateVersionNo      Int?
+  language               String?   @db.NVarChar(5)
+  channel                String    @db.NVarChar(10)
+  recipientType          String    @db.NVarChar(12) // EMPLOYEE | USER | EXTERNAL
+  recipientId            Int?
+  recipientAddress       String?   @db.NVarChar(320) // needed to dispatch; Restricted class per §23
+  recipientAddressMasked String?   @db.NVarChar(200)
+  recipientExpression    String?   @db.NVarChar(60)
+  renderedSubject        String?   @db.NVarChar(300)
+  renderedBody           String?   @db.NVarChar(Max)
+  priority               String    @default("NORMAL") @db.NVarChar(10)
+  status                 String    @default("Queued") @db.NVarChar(32)
+  attemptCount           Int       @default(0)
+  lastAttemptAt          DateTime?
+  nextAttemptAt          DateTime?
+  gatewayMessageId       String?   @db.NVarChar(120)
+  gatewayResponseCode    String?   @db.NVarChar(40)
+  gatewayResponseText    String?   @db.NVarChar(500)
+  failureReason          String?   @db.NVarChar(500)
+  queuedAt               DateTime  @default(now())
+  sentAt                 DateTime?
+  deliveredAt            DateTime?
+  readAt                 DateTime?
+  expiresAt              DateTime?
+  createdAt              DateTime  @default(now())
+
+  @@index([companyId, status, nextAttemptAt])
+  @@index([companyId, eventCode])
+  @@index([recipientType, recipientId])
+  @@index([correlationId])
+  @@map("NotificationDelivery")
+}
+
+// The in-app inbox ("bell"). Written by the INAPP channel; one row per recipient.
+model NotificationInApp {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  deliveryId      Int?
+  recipientUserId Int?
+  recipientEmpId  Int?
+  eventCode       String    @db.NVarChar(40)
+  title           String    @db.NVarChar(300)
+  body            String?   @db.NVarChar(Max)
+  linkPath        String?   @db.NVarChar(500)
+  priority        String    @default("NORMAL") @db.NVarChar(10)
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([companyId, recipientUserId, isRead])
+  @@index([companyId, recipientEmpId, isRead])
+  @@map("NotificationInApp")
+}
+
+// ── Document Service ─────────────────────────────────────────────────────────
+
+// Document Type Master (§15.1). documentClass drives the §17.3 access matrix.
+model PlatformDocumentType {
+  id                       Int      @id @default(autoincrement())
+  companyId                Int
+  code                     String   @db.NVarChar(30)
+  name                     String   @db.NVarChar(120)
+  category                 String   @db.NVarChar(30) // IDENTITY EDUCATION EMPLOYMENT STATUTORY FINANCIAL MEDICAL TRAINING CONTRACT POLICY OTHER
+  appliesToEntity          String   @db.NVarChar(20) // EMPLOYEE CANDIDATE TRAINING ASSET CONTRACTOR REQUEST
+  documentClass            String   @default("INTERNAL") @db.NVarChar(12) // PUBLIC INTERNAL CONFIDENTIAL RESTRICTED
+  mandatoryFlag            Boolean  @default(false)
+  mandatoryFromStage       String?  @db.NVarChar(30)
+  applicableDepartment     String?  @db.NVarChar(200)
+  applicableDesignation    String?  @db.NVarChar(200)
+  applicableGrade          String?  @db.NVarChar(200)
+  applicableEmploymentType String?  @db.NVarChar(200)
+  applicableLocation       String?  @db.NVarChar(200)
+  verificationRequired     Boolean  @default(true)
+  verifierRole             String?  @db.NVarChar(30) // Role.code permitted to verify
+  expiryRequired           Boolean  @default(false)
+  expiryAlertOffsets       String?  @db.NVarChar(60) // e.g. "60,30,15,7,0" days before expiry
+  allowedFileTypes         String   @default("pdf,jpg,png") @db.NVarChar(100)
+  maxFileSizeMb            Int      @default(5)
+  maxFileCount             Int      @default(1)
+  retentionYears           Int      @default(8)
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@map("PlatformDocumentType")
+}
+
+// A stored document (§15.2). Versions form a chain via supersedes/supersededBy.
+// verificationStatus follows §16.1: Uploaded | UnderVerification | Verified |
+// Rejected | ReuploadRequired | Expired | Superseded | Revoked | Withdrawn |
+// PendingScan | Quarantined | ScanFailed.
+model PlatformDocument {
+  id                     Int       @id @default(autoincrement())
+  companyId              Int
+  documentTypeId         Int
+  ownerEntityType        String    @db.NVarChar(20)
+  ownerEntityId          Int
+  documentRef            String    @db.NVarChar(40) // DOC/<FY>/<serial>
+  versionNo              Int       @default(1)
+  supersedesDocumentId   Int?
+  supersededByDocumentId Int?
+  storageKey             String    @db.NVarChar(400) // path under file-storage; never the bytes
+  originalFileName       String    @db.NVarChar(260)
+  mimeType               String    @db.NVarChar(100)
+  fileSizeBytes          BigInt
+  sha256Hash             String    @db.Char(64)
+  identifierMasked       String?   @db.NVarChar(40) // e.g. XXXX-XXXX-7712 for Aadhaar
+  issueDate              DateTime? @db.Date
+  expiryDate             DateTime? @db.Date
+  verificationStatus     String    @default("Uploaded") @db.NVarChar(24)
+  verifiedByUserId       Int?
+  verifiedAt             DateTime?
+  verificationRemark     String?   @db.NVarChar(500)
+  rejectionReasonCode    String?   @db.NVarChar(30) // ILLEGIBLE MISMATCH EXPIRED INCOMPLETE SUSPECTED_FORGERY OTHER
+  scanStatus             String    @default("Skipped") @db.NVarChar(12) // Skipped Pending Clean Infected Failed
+  uploadedByUserId       Int?
+  uploadedAt             DateTime  @default(now())
+  deletedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([companyId, documentRef])
+  @@index([companyId, ownerEntityType, ownerEntityId])
+  @@index([companyId, documentTypeId, verificationStatus])
+  @@index([expiryDate])
+  @@map("PlatformDocument")
+}
+
+// ── Configuration Snapshot ───────────────────────────────────────────────────
+
+// An immutable copy of the configuration a transaction was evaluated under
+// (Part D): F&F input freeze, recruitment scoring weights, payroll inputs.
+// Immutability is enforced in service code — there is no update path; a
+// change is a new snapshot that supersedes this one.
+model ConfigSnapshot {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  snapshotTypeCode String    @db.NVarChar(30) // FNF_INPUTS | INTERVIEW_CONFIG | PAYROLL_INPUTS …
+  sourceEntityType String    @db.NVarChar(40)
+  sourceEntityId   Int
+  triggerRequestId Int?
+  contentJson      String    @db.NVarChar(Max)
+  sha256Hash       String    @db.Char(64) // over the canonical JSON
+  takenAt          DateTime  @default(now())
+  takenByUserId    Int?
+  supersededById   Int?
+  supersededAt     DateTime?
+  supersededReason String?   @db.NVarChar(500)
+  note             String?   @db.NVarChar(500)
+
+  @@index([companyId, snapshotTypeCode, sourceEntityType, sourceEntityId])
+  @@map("ConfigSnapshot")
+}
+
+// ── Audit Trail ──────────────────────────────────────────────────────────────
+
+// Append-only. Every platform service writes here; modules adopt via
+// src/lib/platform/audit/service.ts. No update or delete path exists.
+model AuditLog {
+  id              Int      @id @default(autoincrement())
+  companyId       Int?
+  entityType      String   @db.NVarChar(60)
+  entityId        Int?
+  entityRef       String?  @db.NVarChar(60)
+  action          String   @db.NVarChar(30)
+  actorUserId     Int?
+  actorEmpId      Int?
+  actorSource     String   @default("user") @db.NVarChar(20) // user | system | delegate | import
+  onBehalfOfEmpId Int?
+  beforeJson      String?  @db.NVarChar(Max)
+  afterJson       String?  @db.NVarChar(Max)
+  changedFields   String?  @db.NVarChar(1000)
+  remark          String?  @db.NVarChar(1000)
+  correlationId   String?  @db.NVarChar(60)
+  ipAddress       String?  @db.NVarChar(45)
+  createdAt       DateTime @default(now())
+
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, createdAt])
+  @@index([actorUserId])
+  @@index([correlationId])
+  @@map("AuditLog")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20. EMPLOYEE MASTER / CORE HR (Step 1, tranche 3) — organisational hierarchy
+//     completion, employee code policy, lifecycle transitions, dated reporting
+//     history, and role × data-scope access.
+//     Spec: docs/BRD/01 - Employee Master & Core HR - BRD.docx
+//     Same relation-free, additive discipline as section 19. Existing tables
+//     gained only nullable columns (Employee.lifecycleState/personUid,
+//     JobInfo.locationId/costCentreId/noticePeriod*, Unit.businessUnitId,
+//     Site.unitId, Grade.defaultNoticeDays).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BRD §5.1: Company → Business Unit → Unit → Site → Location. Management
+// grouping with no statutory identity (statutory codes live on Unit).
+model BusinessUnit {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String    @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  headEmpId   Int?
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("BusinessUnit")
+}
+
+// BRD §5.1/§5.2: the physical posting. locationType drives holiday calendar
+// and shift-group defaults later; PLANT | BRANCH | CORPORATE_OFFICE | WAREHOUSE.
+model Location {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  siteId       Int?
+  code         String    @db.NVarChar(20)
+  name         String    @db.NVarChar(100)
+  locationType String    @default("PLANT") @db.NVarChar(20)
+  address      String?   @db.NVarChar(500)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([siteId])
+  @@map("Location")
+}
+
+// BRD §5.2: ccCode is supplied by Finance and is the key the accounting
+// interface books payroll cost against.
+model CostCentre {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  code         String    @db.NVarChar(20)
+  name         String    @db.NVarChar(100)
+  departmentId Int?
+  ownerEmpId   Int?
+  description  String?   @db.NVarChar(500)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([departmentId])
+  @@map("CostCentre")
+}
+
+// BRD §7.2/§7.3: per-company code format and a sequence that is never
+// reused. Width auto-expands; it never truncates. nextSequence is advanced
+// atomically inside the create transaction.
+model EmployeeCodePolicy {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      @unique
+  prefix        String   @default("EMP") @db.NVarChar(5)
+  width         Int      @default(3)
+  nextSequence  Int      @default(1)
+  updatedAt     DateTime @updatedAt
+
+  @@map("EmployeeCodePolicy")
+}
+
+// BRD §8.2: one row per lifecycle transition, append-only.
+model EmployeeStateTransition {
+  id                 Int      @id @default(autoincrement())
+  companyId          Int
+  employeeId         Int
+  fromState          String?  @db.NVarChar(24)
+  toState            String   @db.NVarChar(24)
+  trigger            String   @db.NVarChar(40)
+  effectiveDate      DateTime @db.Date
+  reason             String?  @db.NVarChar(500)
+  referenceNo        String?  @db.NVarChar(60)
+  performedByUserId  Int?
+  createdAt          DateTime @default(now())
+
+  @@index([employeeId, createdAt])
+  @@index([companyId, toState])
+  @@map("EmployeeStateTransition")
+}
+
+// BRD §15/§17: dated reporting lines. Employee.reportingManagerId and
+// secondReportingManagerId remain the denormalised "current" pointers that
+// every existing query uses; this history is written on every reporting
+// change and read by point-in-time resolution.
+model EmployeeReportingHistory {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  primaryManagerId    Int?
+  secondaryManagerId  Int?
+  effectiveFrom       DateTime  @db.Date
+  effectiveTo         DateTime? @db.Date
+  changeReason        String?   @db.NVarChar(30)
+  createdByUserId     Int?
+  createdAt           DateTime  @default(now())
+
+  @@index([employeeId, effectiveFrom])
+  @@index([primaryManagerId])
+  @@map("EmployeeReportingHistory")
+}
+
+// BRD §20: ACCESS = ROLE × DATA SCOPE. A user holds zero or more scope
+// assignments; visible employees are the union. No assignment means the
+// implicit SELF scope only. scopeValues is a comma list of codes (or
+// employee codes for EMPLOYEE_LIST); treeDepth applies to REPORTING_TREE.
+model UserScope {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  userId           Int
+  scopeType        String   @db.NVarChar(20) // GLOBAL | COMPANY | BUSINESS_UNIT | UNIT | SITE | LOCATION | DEPARTMENT | SUB_DEPARTMENT | COST_CENTRE | REPORTING_TREE | EMPLOYEE_LIST
+  scopeValues      String?  @db.NVarChar(2000)
+  treeDepth        String?  @db.NVarChar(8) // DIRECT | ALL
+  isActive         Boolean  @default(true)
+  createdByUserId  Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, isActive])
+  @@index([companyId])
+  @@map("UserScope")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 21. LEAVE MANAGEMENT ENGINE (Step 1, tranche 4) — transaction ledger,
+//     accrual runs, leave-year configuration, in-service encashment.
+//     Spec: docs/BRD/04 - Leave Management - BRD.docx
+//     Same additive, relation-free discipline as sections 19–20. LeaveMaster,
+//     LeaveBalance and LeaveApplication gained nullable/defaulted columns only.
+//     LeaveBalance remains the per-year summary; LeaveTransaction is the
+//     source of truth and LeaveBalance is rebuilt from it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// §7: leave-year basis per company and the calendar around it.
+model LeaveYearConfig {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int      @unique
+  basis                 String   @default("FINANCIAL") @db.NVarChar(12) // CALENDAR | FINANCIAL | ANNIVERSARY
+  iseWindowStartMonth   Int      @default(1)  // In-Service Encashment window, 1 Jan…
+  iseWindowStartDay     Int      @default(1)
+  iseWindowEndMonth     Int      @default(1)  // …to 31 Jan
+  iseWindowEndDay       Int      @default(31)
+  lapseWarningDays      String   @default("60,15") @db.NVarChar(40)
+  accrualRunHour        Int      @default(1)  // 01:30 IST
+  accrualRunMinute      Int      @default(30)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("LeaveYearConfig")
+}
+
+// §11.3: every movement of leave days. Append-only; a correction is a new
+// signed transaction. LeaveBalance is derived from this table.
+model LeaveTransaction {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int
+  leaveMasterId    Int
+  leaveYear        String    @db.NVarChar(9) // FY2026-27 | CY2026
+  txnType          String    @db.NVarChar(24) // OPENING ACCRUAL ACCRUAL_ADJUSTMENT RETRO_ACCRUAL AVAIL AVAIL_REVERSAL HR_ADJUSTMENT ISE_DEBIT ELS_DEBIT LAPSE EXPIRY CARRY_FORWARD_OUT CARRY_FORWARD_IN HOLD_RELEASE
+  txnDate          DateTime  @db.Date
+  postedAt         DateTime  @default(now())
+  days             Decimal   @db.Decimal(6, 2) // signed
+  rawValue         Decimal?  @db.Decimal(10, 4)
+  isHeld           Boolean   @default(false)
+  validUntil       DateTime? @db.Date
+  sourceRefType    String?   @db.NVarChar(30) // LEAVE_APPLICATION ISE_REQUEST ELS_CALC ACCRUAL_RUN HR_ADJUSTMENT COMP_OFF
+  sourceRefId      Int?
+  reasonCode       String?   @db.NVarChar(30)
+  remark           String?   @db.NVarChar(500)
+  runId            Int?
+  createdByUserId  Int?
+
+  @@index([companyId, employeeId, leaveMasterId, leaveYear])
+  @@index([employeeId, txnDate])
+  @@index([runId])
+  @@index([sourceRefType, sourceRefId])
+  @@map("LeaveTransaction")
+}
+
+// §10.1: one execution of the accrual, year-close or replay job.
+model LeaveAccrualRun {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  leaveYear           String    @db.NVarChar(9)
+  period              String    @db.NVarChar(7) // YYYY-MM for monthly; YYYY for close
+  runType             String    @db.NVarChar(24) // MONTHLY | YEAR_CLOSE | PERIOD_REPLAY | EMPLOYEE_REPLAY | RULE_VERSION_REPLAY | DRY_RUN
+  status              String    @default("RUNNING") @db.NVarChar(12) // RUNNING | COMPLETED | ABORTED | FAILED
+  employeesProcessed  Int       @default(0)
+  txnsPosted          Int       @default(0)
+  exceptionsJson      String?   @db.NVarChar(Max)
+  startedAt           DateTime  @default(now())
+  finishedAt          DateTime?
+  triggeredByUserId   Int?
+  reason              String?   @db.NVarChar(500)
+
+  @@index([companyId, leaveYear, period, runType])
+  @@map("LeaveAccrualRun")
+}
+
+// §18: In-Service Leave Encashment (ISE) — employee-initiated, paid via
+// payroll. Exit Leave Settlement (ELS) is computed by F&F on the frozen
+// ledger and has no request row here.
+model LeaveEncashmentRequest {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  leaveMasterId       Int
+  leaveYear           String    @db.NVarChar(9)
+  daysRequested       Decimal   @db.Decimal(6, 2)
+  daysApproved        Decimal?  @db.Decimal(6, 2)
+  estimatedAmount     Decimal?  @db.Decimal(18, 2)
+  finalAmount         Decimal?  @db.Decimal(18, 2)
+  status              String    @default("SUBMITTED") @db.NVarChar(20) // DRAFT SUBMITTED APPROVED QUEUED_FOR_PAYROLL PAID REJECTED CANCELLED LAPSED_ON_EXIT
+  workflowRequestId   Int?
+  payrollRunId        Int?
+  requestedAt         DateTime  @default(now())
+  decidedAt           DateTime?
+  decidedByUserId     Int?
+  paidAt              DateTime?
+  remark              String?   @db.NVarChar(500)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([companyId, employeeId, status])
+  @@index([companyId, leaveYear, status])
+  @@map("LeaveEncashmentRequest")
 }

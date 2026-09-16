@@ -28,7 +28,7 @@ export async function GET(
     include: {
       payrollRun: { select: { year: true, month: true, status: true } },
       employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-      components: { include: { salaryComponent: { select: { code: true, name: true, type: true } } } },
+      components: { include: { salaryComponent: { select: { code: true, name: true, type: true, grossTier: true, includeInGross: true } } } },
     },
   });
   if (!line) {

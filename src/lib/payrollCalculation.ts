@@ -101,7 +101,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
               select: {
                 amount: true,
                 salaryComponent: {
-                  select: { id: true, type: true, code: true, includeInPf: true, includeInEsi: true },
+                  select: { id: true, type: true, code: true, includeInPf: true, includeInEsi: true, includeInGross: true, grossTier: true },
                 },
               },
             },
@@ -198,11 +198,12 @@ export async function calculatePayrollRun(payrollRunId: number) {
   // Well-known catalog components used for itemized PF/ESI payslip lines —
   // isSystemDefined, so every company's catalog is guaranteed to have them
   // (seeded by bootstrap-admin via src/lib/defaultSalaryComponents.ts).
-  const [pfComponent, esiComponent, otComponent, lomComponent] = await Promise.all([
+  const [pfComponent, esiComponent, otComponent, lomComponent, otIncentiveComponent] = await Promise.all([
     prisma.salaryComponent.findUnique({ where: { companyId_code: { companyId, code: 'PF' } } }),
     prisma.salaryComponent.findUnique({ where: { companyId_code: { companyId, code: 'ESI' } } }),
     prisma.salaryComponent.findUnique({ where: { companyId_code: { companyId, code: 'OT_PAY' } } }),
     prisma.salaryComponent.findUnique({ where: { companyId_code: { companyId, code: 'LOM' } } }),
+    prisma.salaryComponent.findUnique({ where: { companyId_code: { companyId, code: 'OT_INCENTIVE' } } }),
   ]);
 
   // Resolve the OT component: prefer the OTPlan's configured payComponent,
@@ -239,7 +240,11 @@ export async function calculatePayrollRun(payrollRunId: number) {
           payableDays: 0,
           lopDays: 0,
           grossEarnings: 0,
+          fixedGross: 0,
+          additionalGross: 0,
+          performanceIncentive: 0,
           otAmount: 0,
+          otIncentiveAmount: 0,
           otherEarningsTotal: 0,
           pfEmployee: 0,
           esiEmployee: 0,
@@ -261,6 +266,9 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const lopFactor = totalDays > 0 ? Math.min(1, Math.max(0, payableDays / totalDays)) : 0;
 
     let grossEarnings = 0;
+    let fixedGross = 0;
+    let additionalGross = 0;
+    let ctcOnlyEarnings = 0;
     let recurringDeductions = 0;
     const newComponentRows: { salaryComponentId: number; amount: number }[] = [];
 
@@ -285,8 +293,24 @@ export async function calculatePayrollRun(payrollRunId: number) {
         proratedAmount = Number(c.amount) * lopFactor;
       }
       if (c.salaryComponent.type === 'earning') {
-        grossEarnings += proratedAmount;
-        newComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount: round(proratedAmount) });
+        // CTC-only components (includeInGross = false, e.g. performance
+        // incentive paid from PMS) are NOT part of Gross and never a base
+        // for PF/ESI/PT/TDS. They are NOT itemized as regular payslip rows
+        // — the Performance Incentive is paid separately via the PMS auto-
+        // earning mechanism below (only when PMS is approved/finalized).
+        // Other CTC-only components are simply not paid until a payment
+        // mechanism is built for them.
+        if (c.salaryComponent.includeInGross === false) {
+          ctcOnlyEarnings += proratedAmount;
+        } else {
+          grossEarnings += proratedAmount;
+          if (c.salaryComponent.grossTier === 'FIXED') {
+            fixedGross += proratedAmount;
+          } else {
+            additionalGross += proratedAmount;
+          }
+          newComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount: round(proratedAmount) });
+        }
       } else if (c.salaryComponent.type === 'deduction') {
         recurringDeductions += proratedAmount;
         newComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount: round(proratedAmount) });
@@ -295,9 +319,15 @@ export async function calculatePayrollRun(payrollRunId: number) {
       // employee earnings/deductions — skipped in Phase 1.
     }
     grossEarnings = round(grossEarnings);
+    fixedGross = round(fixedGross);
+    additionalGross = round(additionalGross);
+    ctcOnlyEarnings = round(ctcOnlyEarnings);
     recurringDeductions = round(recurringDeductions);
 
     let otAmount = 0;
+    // Flat monthly bonus from an OTIncentiveSlab.flatBonusAmount match —
+    // a separate earning, never folded into otAmount (that stays pure OT pay).
+    let otIncentiveAmount = 0;
     // Gate on the per-employee eligibility flag only. summary.otMinutesTotal
     // is written as approved-only (monthly/finalize, refreshMonthlySummary),
     // so gating on it zeroed OT for sites with no OT approval workflow.
@@ -423,12 +453,18 @@ export async function calculatePayrollRun(payrollRunId: number) {
 
       otAmount = totalOtAmount;
 
-      // Apply OT incentive slab multiplier when configured.
+      // Apply the matching OT incentive slab, if any, for this month's total
+      // OT hours. A slab is either a flat monthly bonus (flatBonusAmount set
+      // — added as its own earning, otAmount is untouched) or a multiplier
+      // on OT pay (the original behaviour). Bands don't stack — the first
+      // matching slab wins, same convention as every other slab table here.
       if (otIncentiveSlabs.length > 0 && totalOtHours > 0) {
         const slab = otIncentiveSlabs.find(
           (s) => totalOtHours >= Number(s.minOtHours) && (s.maxOtHours === null || totalOtHours < Number(s.maxOtHours))
         );
-        if (slab) {
+        if (slab?.flatBonusAmount != null) {
+          otIncentiveAmount = round(Number(slab.flatBonusAmount));
+        } else if (slab) {
           otAmount *= Number(slab.incentiveMultiplier);
         }
       }
@@ -726,6 +762,11 @@ export async function calculatePayrollRun(payrollRunId: number) {
     if (resolvedOtComponent && otAmount > 0) {
       autoComponentRows.push({ salaryComponentId: resolvedOtComponent.id, amount: otAmount });
     }
+    // Flat OT incentive bonus (OTIncentiveSlab.flatBonusAmount match) as its
+    // own payslip line, separate from OT pay itself.
+    if (otIncentiveComponent && otIncentiveAmount > 0) {
+      autoComponentRows.push({ salaryComponentId: otIncentiveComponent.id, amount: otIncentiveAmount });
+    }
 
     // Attendance bonus — auto-applied when configured and employee qualifies.
     // Qualification: zero LOP (if required), zero late (if required), zero
@@ -818,6 +859,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoDeductionsTotal += loanDeductionTotal;
 
     autoEarningsTotal += otAmount; // OT is an earning
+    autoEarningsTotal += otIncentiveAmount; // OT incentive bonus is also an earning
     autoEarningsTotal += attendanceBonus; // Attendance bonus is an earning
 
     // ── Phase 9: Incentives & Allowances ───────────────────────────────
@@ -968,6 +1010,31 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoEarningsTotal = round(autoEarningsTotal);
     autoDeductionsTotal = round(autoDeductionsTotal);
 
+    // ── Performance Incentive (PMS) — CTC-only, paid outside Gross ──────
+    // The Performance Incentive salary component is flagged includeInGross
+    // = false (CTC-only), so it was excluded from grossEarnings above. Its
+    // monthly payout is driven by the PMS module: an approved/finalized
+    // PmsIncentive row for this employee/month carries the earned amount
+    // (incentiveEarn = prorated base × total PMS %). We pay that as a flat
+    // earning on top of Gross — never a base for PF/ESI/PT/TDS per business
+    // rule. Only approved or finalized rows are paid; draft/submitted/
+    // rejected/returned rows pay zero (performance not confirmed).
+    let performanceIncentiveAmount = 0;
+    const pmsRow = await prisma.pmsIncentive.findFirst({
+      where: { employeeId: emp.id, year, month, status: { in: ['approved', 'finalized'] } },
+      select: { incentiveEarn: true, overallAmount: true },
+    });
+    if (pmsRow) {
+      performanceIncentiveAmount = round(Number(pmsRow.incentiveEarn) || Number(pmsRow.overallAmount) || 0);
+      if (performanceIncentiveAmount > 0) {
+        autoEarningsTotal += performanceIncentiveAmount;
+        const perfComp = await prisma.salaryComponent.findUnique({
+          where: { companyId_code: { companyId, code: 'PERFORMANCE_INS' } },
+        });
+        if (perfComp) autoComponentRows.push({ salaryComponentId: perfComp.id, amount: performanceIncentiveAmount });
+      }
+    }
+
     // Ad-hoc entries survive recalculation — read what's already there.
     const existingAdhoc = await prisma.payrollLineComponent.findMany({
       where: { payrollLineId: line.id, isAdhoc: true },
@@ -1082,7 +1149,11 @@ export async function calculatePayrollRun(payrollRunId: number) {
           payableDays,
           lopDays: Math.round(Number(summary.lopDays)),
           grossEarnings,
+          fixedGross,
+          additionalGross,
+          performanceIncentive: performanceIncentiveAmount,
           otAmount,
+          otIncentiveAmount,
           otherEarningsTotal,
           pfEmployee,
           pfEmployer,

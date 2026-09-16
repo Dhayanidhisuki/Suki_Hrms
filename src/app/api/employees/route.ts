@@ -11,6 +11,13 @@ import { employeeCreateSchema } from '@/lib/validations/employee';
 import { summarizeExpiry } from '@/lib/document-expiry';
 import { logActivity } from '@/lib/activity-log';
 import { calculateProbationEndDate } from '@/lib/employee-form-fields';
+import { randomUUID } from 'crypto';
+import { allocateEmployeeCode } from '@/lib/employee/codePolicy';
+import { creationChain, initialiseLifecycle } from '@/lib/employee/lifecycle';
+import { recordReportingChange, resolveNoticePeriod } from '@/lib/employee/resolveJob';
+import { scopeContextFromHeaders, visibleEmployeeWhere } from '@/lib/employee/scope';
+import { audit } from '@/lib/platform/audit/service';
+import { emitPlatformEvent } from '@/lib/platform/events';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkEmployeePermission(request);
@@ -43,7 +50,13 @@ export async function GET(request: NextRequest) {
         }
       : undefined;
 
+  // BRD 01 §20: the caller sees the union of their data scopes (+ SELF);
+  // superadmin bypasses. Applied in the query, never after the read.
+  const ctx = scopeContextFromHeaders(request.headers);
+  const scopeWhere = await visibleEmployeeWhere(ctx.userId, scope.companyId, { isSuperAdmin: ctx.isSuperAdmin });
+
   const where = {
+    AND: [scopeWhere],
     companyId: scope.companyId,
     deletedAt: null,
     ...(status ? { status } : {}),
@@ -102,35 +115,15 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/**
- * Employee Code is system-generated, not typed by the admin — RC001,
- * RC002, ... scoped per company (matches the @@unique([companyId,
- * employeeCode]) constraint, so each company has its own sequence).
- */
-async function generateEmployeeCode(companyId: number): Promise<string> {
-  const existing = await prisma.employee.findMany({
-    where: { companyId, employeeCode: { startsWith: 'RC' } },
-    select: { employeeCode: true },
-  });
-  let max = 0;
-  for (const e of existing) {
-    const m = e.employeeCode.match(/^RC(\d+)$/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `RC${String(max + 1).padStart(3, '0')}`;
-}
-
 export async function POST(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'employee.create');
   if (permErr) return permErr;
 
   const body = await request.json();
 
-  // Always server-generated — ignore whatever (if anything) the client sent.
-  const companyIdNum = Number(body.companyId);
-  if (Number.isInteger(companyIdNum) && companyIdNum > 0) {
-    body.employeeCode = await generateEmployeeCode(companyIdNum);
-  }
+  // Always server-generated from the company's code policy (BRD 01 §7.2),
+  // allocated inside the create transaction — ignore whatever the client sent.
+  body.employeeCode = '__AUTO__';
 
   const parsed = employeeCreateSchema.safeParse(body);
 
@@ -143,17 +136,7 @@ export async function POST(request: NextRequest) {
 
   const data = parsed.data;
   const performedByUserId = Number(request.headers.get('x-user-id')) || null;
-
-  // Employee code uniqueness is scoped per company.
-  const existing = await prisma.employee.findFirst({
-    where: { companyId: data.companyId, employeeCode: data.employeeCode },
-  });
-  if (existing) {
-    return NextResponse.json(
-      { error: 'Employee code already exists in this company' },
-      { status: 409 }
-    );
-  }
+  const actor = { userId: performedByUserId };
 
   if (data.reportingManagerId) {
     const manager = await prisma.employee.findFirst({
@@ -177,6 +160,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const employee = await prisma.$transaction(async (tx) => {
+      const employeeCode = await allocateEmployeeCode(data.companyId, tx);
+      // §19: offer value not carried by the manual form → grade default, else policy.
+      const notice = await resolveNoticePeriod(data.companyId, data.gradeId ?? null, null, tx);
       const created = await tx.employee.create({
         data: {
           companyId: data.companyId,
@@ -184,9 +170,10 @@ export async function POST(request: NextRequest) {
           firstName: data.firstName,
           middleName: data.middleName,
           lastName: data.lastName,
-          employeeCode: data.employeeCode,
+          employeeCode,
           oldEmployeeCode: data.oldEmployeeCode,
           status: data.status,
+          personUid: randomUUID(),
           reportingManagerId: data.reportingManagerId,
           secondReportingManagerId: data.secondReportingManagerId,
           profilePhotoPath: data.profilePhotoPath,
@@ -213,6 +200,9 @@ export async function POST(request: NextRequest) {
                 shiftAssignmentType: data.shiftAssignmentType,
                 shiftRotationPlanId: data.shiftAssignmentType === 'ROTATIONAL' ? data.shiftRotationPlanId : null,
                 effectiveFrom: data.joinDate,
+                noticePeriodDays: notice.days,
+                noticePeriodSource: notice.source,
+                changeReason: 'JOINING',
                 ...(data.jobProfile ?? {}),
               },
             ],
@@ -244,7 +234,49 @@ export async function POST(request: NextRequest) {
         newValue: { employeeCode: created.employeeCode, firstName: created.firstName, lastName: created.lastName },
       });
 
-      return created;
+      // §8.2 rules 1–5 in the creating transaction; §17 dated reporting line.
+      const lifecycleState = await initialiseLifecycle(
+        data.companyId,
+        created.id,
+        creationChain({ probationMonths: data.probationPeriodMonths }),
+        { trigger: 'MANUAL_CREATE', effectiveDate: data.joinDate, actor },
+        tx
+      );
+      await recordReportingChange(
+        {
+          companyId: data.companyId,
+          employeeId: created.id,
+          primaryManagerId: data.reportingManagerId ?? null,
+          secondaryManagerId: data.secondReportingManagerId ?? null,
+          effectiveFrom: data.joinDate,
+          changeReason: 'JOINING',
+          actor,
+        },
+        tx
+      );
+      await audit(
+        {
+          companyId: data.companyId,
+          entityType: 'Employee',
+          entityId: created.id,
+          entityRef: created.employeeCode,
+          action: 'CREATE',
+          actor,
+          after: { employeeCode: created.employeeCode, firstName: created.firstName, lastName: created.lastName, lifecycleState },
+        },
+        tx
+      );
+
+      return { ...created, lifecycleState };
+    });
+
+    await emitPlatformEvent(data.companyId, 'EMPLOYEE_CREATED', {
+      moduleCode: 'CORE',
+      sourceEntityType: 'Employee',
+      sourceEntityId: employee.id,
+      subjectEmpId: employee.id,
+      linkPath: `/employees/${employee.id}`,
+      data: { Employee: { code: employee.employeeCode, source: 'MANUAL' } },
     });
 
     return NextResponse.json(employee, { status: 201 });

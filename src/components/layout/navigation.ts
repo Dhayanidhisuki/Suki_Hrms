@@ -97,6 +97,10 @@ export const navigation: NavModule[] = [
           { label: "Sub Departments", href: "/masters/sub-departments", ready: true },
           { label: "Branch / Unit", href: "/masters/units", ready: true },
           { label: "Site Master", href: "/masters/sites", ready: true },
+          // Employee Master BRD §5 also defines Business Unit and Location,
+          // but Unit already serves that role in this app — kept out of the
+          // menu to avoid two masters for the same concept (2026-09-15).
+          { label: "Cost Centres", href: "/masters/cost-centres", ready: true },
           // Reporting Structure is now a real module (org chart, manager
           // approval stages, bulk reassign) — see /masters/reporting-structure.
           { label: "Reporting Structure", short: "Reporting", href: "/masters/reporting-structure", ready: true },
@@ -576,7 +580,7 @@ export const navigation: NavModule[] = [
           { label: "OT Comparison Report", short: "OT Comparison", href: "/reports/payroll/ot-comparison" },
           { label: "Salary Reconciliation", short: "Reconciliation", href: "/reports/payroll/reconciliation" },
           { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive" },
-          { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive" },
+          { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
           { label: "Arrear Report", short: "Arrears", href: "/reports/payroll/arrears" },
           { label: "Salary Revision Report", short: "Salary Revision", href: "/reports/payroll/salary-revision" },
         ],
@@ -638,6 +642,8 @@ export const navigation: NavModule[] = [
           { label: "Users", href: "/admin/users", ready: true },
           { label: "Roles", href: "/admin/roles", ready: true },
           { label: "Permissions", href: "/admin/permissions", ready: true },
+          // Employee Master BRD §20: role × data scope.
+          { label: "User Scopes", href: "/admin/user-scopes", ready: true },
           { label: "Page Permissions", href: "/admin/page-permissions" },
         ],
       },

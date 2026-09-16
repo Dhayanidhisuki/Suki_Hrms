@@ -351,6 +351,12 @@ export const salaryComponentSchema = z.object({
   // ESI / PF eligible-wage base.
   includeInEsi: z.boolean().default(false),
   includeInPf: z.boolean().default(false),
+  // Whether this earning component counts toward Gross Salary. When false
+  // the component is CTC-only (e.g. performance incentive paid from PMS) —
+  // paid out but never part of Gross or a statutory base.
+  includeInGross: z.boolean().default(true),
+  // Which Gross tier this earning belongs to for payslip subtotals.
+  grossTier: z.enum(['FIXED', 'ADDITIONAL']).default('ADDITIONAL'),
   isActive: z.boolean().default(true),
 });
 
@@ -440,7 +446,10 @@ export const otIncentiveSlabSchema = z.object({
   name: z.string().min(1).max(100),
   minOtHours: z.coerce.number().min(0),
   maxOtHours: optionalNumber(z.coerce.number().min(0)),
-  incentiveMultiplier: z.coerce.number().min(0.01).max(10),
+  incentiveMultiplier: z.coerce.number().min(0.01).max(10).default(1),
+  // A fixed monthly bonus for this band, e.g. INR 500 for 50+ OT hours.
+  // When set, this slab pays flatBonusAmount and incentiveMultiplier is ignored.
+  flatBonusAmount: optionalNumber(z.coerce.number().min(0)),
   effectiveFrom: z.coerce.date(),
   effectiveTo: optionalNumber(z.coerce.date()),
   isActive: z.boolean().default(true),

@@ -23,6 +23,8 @@ interface SalaryComponentRow {
   includeInGratuity: boolean;
   includeInEsi: boolean;
   includeInPf: boolean;
+  includeInGross: boolean;
+  grossTier: string;
   isSystemDefined: boolean;
   isActive: boolean;
 }
@@ -44,6 +46,18 @@ const fields: FieldDef[] = [
   { name: 'includeInGratuity', label: 'Include in Gratuity', type: 'checkbox', defaultValue: false },
   { name: 'includeInEsi', label: 'Include in ESI', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the ESI eligible-wage base.' },
   { name: 'includeInPf', label: 'Include in PF', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the PF eligible-wage base.' },
+  { name: 'includeInGross', label: 'Include in Gross', type: 'checkbox', defaultValue: true, helpText: 'When off, this component is CTC-only — paid out but never part of Gross or a statutory base (e.g. performance incentive paid from PMS).' },
+  {
+    name: 'grossTier',
+    label: 'Gross Tier',
+    type: 'select',
+    defaultValue: 'ADDITIONAL',
+    helpText: 'FIXED = core salary (Basic, HRA, LTA…); ADDITIONAL = top-up components (Additional HRA…). Only used when Include in Gross is on.',
+    options: [
+      { label: 'Fixed', value: 'FIXED' },
+      { label: 'Additional', value: 'ADDITIONAL' },
+    ],
+  },
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
 ];
 
@@ -79,7 +93,7 @@ export default function SalaryComponentsPage() {
 
   const handleAdd = () => {
     setEditingId(null);
-    setInitialValues({ isActive: true, includeInGratuity: false, includeInEsi: false, includeInPf: false });
+    setInitialValues({ isActive: true, includeInGratuity: false, includeInEsi: false, includeInPf: false, includeInGross: true, grossTier: 'ADDITIONAL' });
     setModalOpen(true);
   };
 
@@ -92,6 +106,8 @@ export default function SalaryComponentsPage() {
       includeInGratuity: row.includeInGratuity,
       includeInEsi: row.includeInEsi,
       includeInPf: row.includeInPf,
+      includeInGross: row.includeInGross,
+      grossTier: row.grossTier,
       isActive: row.isActive,
     });
     setModalOpen(true);
@@ -119,9 +135,9 @@ export default function SalaryComponentsPage() {
   };
 
   // Inline toggles — work for system-defined rows too, since the PUT route
-  // permits includeInGratuity/includeInEsi/includeInPf changes even when
-  // code/name/type are locked.
-  const toggleFlag = async (row: SalaryComponentRow, flag: 'includeInGratuity' | 'includeInEsi' | 'includeInPf') => {
+  // permits includeInGratuity/includeInEsi/includeInPf/includeInGross/
+  // grossTier changes even when code/name/type are locked.
+  const toggleFlag = async (row: SalaryComponentRow, flag: 'includeInGratuity' | 'includeInEsi' | 'includeInPf' | 'includeInGross') => {
     setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
@@ -134,7 +150,34 @@ export default function SalaryComponentsPage() {
         includeInGratuity: row.includeInGratuity,
         includeInEsi: row.includeInEsi,
         includeInPf: row.includeInPf,
+        includeInGross: row.includeInGross,
+        grossTier: row.grossTier,
         [flag]: !row[flag],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      setError(err.error ?? 'Failed to update');
+      return;
+    }
+    fetchData();
+  };
+
+  const setGrossTier = async (row: SalaryComponentRow, tier: 'FIXED' | 'ADDITIONAL') => {
+    setError(null);
+    const res = await fetch(`/api/masters/salary-components/${row.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: row.code,
+        name: row.name,
+        type: row.type,
+        isActive: row.isActive,
+        includeInGratuity: row.includeInGratuity,
+        includeInEsi: row.includeInEsi,
+        includeInPf: row.includeInPf,
+        includeInGross: row.includeInGross,
+        grossTier: tier,
       }),
     });
     if (!res.ok) {
@@ -168,6 +211,29 @@ export default function SalaryComponentsPage() {
       label: 'PF',
       render: (r) => (
         <input type="checkbox" checked={r.includeInPf} onChange={() => toggleFlag(r, 'includeInPf')} />
+      ),
+    },
+    {
+      key: 'includeInGross',
+      label: 'In Gross',
+      render: (r) => (
+        <input type="checkbox" checked={r.includeInGross} onChange={() => toggleFlag(r, 'includeInGross')} />
+      ),
+    },
+    {
+      key: 'grossTier',
+      label: 'Tier',
+      render: (r) => (
+        <select
+          value={r.grossTier}
+          disabled={!r.includeInGross}
+          onChange={(e) => setGrossTier(r, e.target.value as 'FIXED' | 'ADDITIONAL')}
+          className="rounded border px-1 py-0.5 text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--foreground)', opacity: r.includeInGross ? 1 : 0.4 }}
+        >
+          <option value="FIXED">Fixed</option>
+          <option value="ADDITIONAL">Additional</option>
+        </select>
       ),
     },
     {

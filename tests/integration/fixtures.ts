@@ -121,5 +121,13 @@ export async function deleteTestEmployee(id: number | undefined | null): Promise
   await prisma.employeeContactDetails.deleteMany({ where: { employeeId: id } });
   await prisma.personalDetails.deleteMany({ where: { employeeId: id } });
   await prisma.jobInfo.deleteMany({ where: { employeeId: id } });
+  // DailyAttendanceHistory has onDelete: NoAction on its employee relation —
+  // any test whose fixture employee wrote attendance history (biometric
+  // import, mispunch approval, etc.) left this row uncleared, which made the
+  // final employee.delete() below throw a foreign-key error, abort this
+  // whole afterAll silently, and leave the fixture employee (and everything
+  // still pointing at it) behind in the dev database (found 2026-09-15,
+  // after it recurred across three separate test runs).
+  await prisma.dailyAttendanceHistory.deleteMany({ where: { employeeId: id } });
   await prisma.employee.delete({ where: { id } });
 }

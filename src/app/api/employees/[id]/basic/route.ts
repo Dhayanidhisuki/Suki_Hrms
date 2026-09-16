@@ -10,6 +10,7 @@ import { checkEmployeePermission } from '@/lib/rbac-employee';
 import { basicDetailsSchema } from '@/lib/validations/employee';
 import { logActivity } from '@/lib/activity-log';
 import { calculateProbationEndDate } from '@/lib/employee-form-fields';
+import { recordReportingChange } from '@/lib/employee/resolveJob';
 
 export async function GET(
   request: NextRequest,
@@ -207,6 +208,24 @@ export async function PUT(
         },
         newValue: { firstName: data.firstName, lastName: data.lastName, status: data.status },
       });
+
+      // BRD 01 §17: every reporting change also writes the dated history row.
+      const newPrimary = data.reportingManagerId ?? null;
+      const newSecondary = data.secondReportingManagerId ?? null;
+      if (newPrimary !== existingEmployee.reportingManagerId || newSecondary !== existingEmployee.secondReportingManagerId) {
+        await recordReportingChange(
+          {
+            companyId: employee.companyId,
+            employeeId,
+            primaryManagerId: newPrimary,
+            secondaryManagerId: newSecondary,
+            effectiveFrom: new Date(),
+            changeReason: 'REPORTING_CHANGE',
+            actor: { userId: performedByUserId },
+          },
+          tx
+        );
+      }
 
       return employee;
     });

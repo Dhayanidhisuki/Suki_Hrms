@@ -49,16 +49,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   if (existing.isSystemDefined) {
     // code/name/type/isActive are load-bearing for Payroll/Arrear/Bonus and
-    // stay locked, but includeInGratuity/includeInEsi/includeInPf are
-    // eligibility-only flags with no dependency on those — a system-defined
-    // row (e.g. Basic Salary) must still be flaggable for them.
+    // stay locked, but includeInGratuity/includeInEsi/includeInPf/
+    // includeInGross/grossTier are eligibility/classification-only flags
+    // with no dependency on those — a system-defined row (e.g. Basic Salary)
+    // must still be flaggable for them.
     if (
       parsed.data.code !== existing.code ||
       parsed.data.name !== existing.name ||
       parsed.data.type !== existing.type ||
       parsed.data.isActive !== existing.isActive
     ) {
-      return NextResponse.json({ error: 'This is a system-defined component — only Gratuity/ESI/PF eligibility can be changed.' }, { status: 409 });
+      return NextResponse.json({ error: 'This is a system-defined component — only eligibility flags (Gratuity/ESI/PF/Gross tier) can be changed.' }, { status: 409 });
     }
     const record = await prisma.salaryComponent.update({
       where: { id: existing.id },
@@ -66,6 +67,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         includeInGratuity: parsed.data.includeInGratuity,
         includeInEsi: parsed.data.includeInEsi,
         includeInPf: parsed.data.includeInPf,
+        includeInGross: parsed.data.includeInGross,
+        grossTier: parsed.data.grossTier,
       },
     });
     return NextResponse.json(record);

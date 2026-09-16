@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { siteSchema } from '@/lib/validations/master';
+import { siteHierarchyExtension } from '@/lib/validations/employee-master';
 import { nextSequentialCode } from '@/lib/master-code';
 
 export async function GET(request: NextRequest) {
@@ -46,11 +47,20 @@ export async function POST(request: NextRequest) {
   const parsed = siteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
+  // BRD 01 §5.1: a Site sits under a Unit (optional, same company).
+  const ext = siteHierarchyExtension.safeParse(body);
+  if (!ext.success) return NextResponse.json({ error: 'Validation failed', details: ext.error.flatten() }, { status: 400 });
+  const unitId = ext.data.unitId ?? null;
+  if (unitId) {
+    const unit = await prisma.unit.findFirst({ where: { id: unitId, companyId: parsed.data.companyId, deletedAt: null }, select: { id: true } });
+    if (!unit) return NextResponse.json({ error: 'Unit not found in this company' }, { status: 400 });
+  }
+
   // Code is server-generated as SITE001, SITE002... — ignore whatever the client sent.
   const siblings = await prisma.site.findMany({ select: { code: true } });
   const code = nextSequentialCode(siblings.map((s) => s.code), 'SITE');
 
   const { code: _ignored, ...rest } = parsed.data;
-  const record = await prisma.site.create({ data: { ...rest, code }, include: { company: { select: { id: true, name: true } } } });
+  const record = await prisma.site.create({ data: { ...rest, code, unitId }, include: { company: { select: { id: true, name: true } } } });
   return NextResponse.json(record, { status: 201 });
 }
