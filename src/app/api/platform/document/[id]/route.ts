@@ -3,11 +3,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { canAccessDocument, getDocument } from '@/lib/platform/document/service';
-import { documentErrorResponse, openDocumentRequest, parseId } from '@/lib/platform/document/http';
+import { documentErrorResponse, parseId, resolveDocumentContext } from '@/lib/platform/document/http';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const opened = await openDocumentRequest(request, 'platform.document.view');
+  const opened = await resolveDocumentContext(request);
   if ('error' in opened) return opened.error;
   const { companyId, caller } = opened.ctx;
   const id = parseId((await params).id);
@@ -15,6 +16,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   try {
     const view = await getDocument(companyId, id);
+    // Viewing your own document never needs the HR-level
+    // platform.document.view grant (self-service convention).
+    const isSelf = view.ownerEntityType === 'EMPLOYEE' && caller.employeeId != null && caller.employeeId === view.ownerEntityId;
+    if (!isSelf) {
+      const permErr = await checkSpecificPermission(request, 'platform.document.view');
+      if (permErr) return permErr;
+    }
     if (!(await canAccessDocument(companyId, view, caller))) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }

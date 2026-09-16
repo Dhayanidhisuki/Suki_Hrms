@@ -1013,6 +1013,8 @@ model Employee {
   leaveBalances              LeaveBalance[]
   mispunchCorrections        MispunchCorrection[]
   permissionRequests         PermissionRequest[]
+  onDutyRequests             OnDutyRequest[]
+  wfhRequests                WfhRequest[]
   pmsIncentives              PmsIncentive[]
   doubleMachineIncentives    DoubleMachineIncentive[]
   payrollLines               PayrollLine[]
@@ -2912,6 +2914,78 @@ model PermissionRequest {
   @@index([employeeId])
   @@index([status])
   @@map("PermissionRequest")
+}
+
+// On-Duty (OD) — employee applies for official duty performed outside the
+// normal workplace (client visit, offsite work, travel). Approved OD marks
+// the covered days as OnDuty (counted as present) in DailyAttendance rather
+// than Absent/LOP. Two-stage approval mirrors MispunchCorrection/
+// PermissionRequest; BRD (HRMS-ESS BRD §D) lists fields and manager/HR
+// approval but no eligibility/limit rules, so none are enforced here.
+model OnDutyRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  location   String   @db.NVarChar(200)
+  purpose    String   @db.NVarChar(500)
+  customerProject String? @db.NVarChar(200)
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("OnDutyRequest")
+}
+
+// Work From Home (WFH) — employee applies to work remotely for a date
+// range. Approved WFH marks the covered days Present (with a remark) in
+// DailyAttendance — "WFH" is not one of the client-confirmed attendance
+// statuses (see docs/DECISIONS_NEEDED_2026-09-11.md), so this reuses
+// Present rather than inventing a new status. Two-stage approval mirrors
+// OnDutyRequest/PermissionRequest. BRD (HRMS-ESS BRD §E) lists only
+// date/duration/reason — no eligibility/frequency-limit rules, so none are
+// enforced here.
+model WfhRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  reason     String   @db.NVarChar(500)
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("WfhRequest")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

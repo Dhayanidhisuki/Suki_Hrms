@@ -466,6 +466,8 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
+          { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true },
+          { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true },
           { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
           { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
@@ -492,31 +494,75 @@ export const navigation: NavModule[] = [
   },
 
   {
-    label: "Employee Self Service",
-    icon: "ess",
-    short: "Self Service",
-    href: "/ess",
+    label: "Dashboard",
+    icon: "home",
+    href: "/ess/dashboard",
+    short: "My Dashboard",
     groups: [
       {
-        label: "Services",
+        label: "Overview",
         items: [
-          { label: "Attendance", href: "/ess/attendance" },
-          { label: "Leave Management", short: "Leave", href: "/ess/leave" },
+          { label: "Employee Dashboard", href: "/ess/dashboard" },
+        ],
+      },
+    ],
+  },
+
+  {
+    label: "Services",
+    icon: "services",
+    href: "/ess/services",
+    groups: [
+      {
+        label: "Request & Approval",
+        items: [
+          { label: "Attendance", href: "/ess/attendance", ready: true },
+          { label: "Leave Management", short: "Leave", href: "/ess/leave", ready: true },
           { label: "Permission Requests", short: "Permission", href: "/ess/permission", ready: true },
           { label: "Mis-Punch Requests", short: "Mis-Punch", href: "/ess/mis-punch", ready: true },
+          { label: "On-Duty (OD)", short: "On-Duty", href: "/ess/on-duty", ready: true },
+          { label: "Work From Home", short: "WFH", href: "/ess/wfh", ready: true },
+          { label: "Shift Change Request", short: "Shift Change", href: "/ess/shift-change", ready: true },
+          { label: "Holiday Calendar", short: "Holidays", href: "/ess/holiday-calendar", ready: true },
         ],
       },
       {
-        label: "Profile",
+        label: "Deductions & Allowances",
         items: [
-          { label: "Employee Dashboard", short: "Dashboard", href: "/ess/dashboard" },
-          { label: "Profile Update", href: "/ess/profile" },
-          { label: "Document Download", short: "Documents", href: "/ess/documents" },
-          { label: "Payslip Download", short: "Payslip", href: "/ess/payslip" },
+          { label: "Petrol Allowance", short: "Petrol", href: "/ess/petrol-allowance", ready: true },
+          { label: "Canteen Deductions", short: "Canteen", href: "/ess/canteen", ready: true },
         ],
       },
+    ],
+  },
+
+  {
+    label: "Profile",
+    icon: "profile",
+    href: "/ess/profile",
+    groups: [
       {
-        label: "Visitor",
+        label: "My Information",
+        items: [
+          { label: "Profile Update", href: "/ess/profile", ready: true },
+          { label: "Document Download", short: "Documents", href: "/ess/documents", ready: true },
+          { label: "Payslip Download", short: "Payslip", href: "/ess/payslip", ready: true },
+          { label: "OT Slip", short: "OT Slip", href: "/ess/ot-slip", ready: true },
+          { label: "Income Tax", short: "Income Tax", href: "/ess/income-tax", ready: true },
+          { label: "My Loans", short: "Loans", href: "/ess/loans", ready: true },
+          { label: "My Benefits", short: "Benefits", href: "/ess/benefits", ready: true },
+        ],
+      },
+    ],
+  },
+
+  {
+    label: "Visitors",
+    icon: "visitor",
+    href: "/ess/visitor-request",
+    groups: [
+      {
+        label: "Visitor Pass",
         items: [
           { label: "Visitor Pass Request", short: "Pass Request", href: "/ess/visitor-request" },
           { label: "Visitor Pass Approval", short: "Pass Approval", href: "/ess/visitor-approval" },

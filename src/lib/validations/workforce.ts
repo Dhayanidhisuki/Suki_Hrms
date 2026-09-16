@@ -66,6 +66,17 @@ export const leaveApplicationSchema = z.object({
   reason: z.string().max(500).optional().nullable(),
 });
 
+// Self-service variant — same shape minus employeeId, which is always
+// resolved from the caller's own session, never taken from the request body.
+export const myLeaveApplicationSchema = z.object({
+  leaveMasterId: z.coerce.number().int().positive(),
+  fromDate: z.coerce.date(),
+  toDate: z.coerce.date(),
+  numberOfDays: z.coerce.number().positive(),
+  isHalfDay: z.coerce.boolean().default(false),
+  reason: z.string().max(500).optional().nullable(),
+});
+
 export const leaveRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
@@ -93,6 +104,26 @@ export const permissionRequestSchema = z
     reason: z.string().max(500).optional().nullable(),
   })
   .refine((v) => v.toTime > v.fromTime, { message: 'toTime must be after fromTime', path: ['toTime'] });
+
+export const onDutyRequestSchema = z
+  .object({
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    location: z.string().min(1).max(200),
+    purpose: z.string().min(1).max(500),
+    customerProject: z.string().max(200).optional().nullable(),
+    remarks: z.string().max(500).optional().nullable(),
+  })
+  .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });
+
+export const wfhRequestSchema = z
+  .object({
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    reason: z.string().min(1).max(500),
+    remarks: z.string().max(500).optional().nullable(),
+  })
+  .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });
 
 export const permissionRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),

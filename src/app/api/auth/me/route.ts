@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hasAnyPermissionInModule } from '@/lib/rbac';
+import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 
 export async function GET(request: NextRequest) {
   const userId = request.headers.get('x-user-id');
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   const roleCode = request.headers.get('x-role-code');
   const companyId = request.headers.get('x-company-id');
 
-  const [hasAdminAccess, user] = await Promise.all([
+  const [hasAdminAccess, user, employeeId] = await Promise.all([
     isSuperAdmin
       ? Promise.resolve(false) // superadmin doesn't use the company-scoped Administration section
       : roleId
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
       where: { id: Number(userId) },
       select: { email: true, company: { select: { name: true } } },
     }),
+    resolveOwnEmployeeId(Number(userId)),
   ]);
 
   return NextResponse.json({
@@ -44,5 +46,6 @@ export async function GET(request: NextRequest) {
     companyId: companyId ? Number(companyId) : null,
     companyName: user?.company?.name ?? null,
     hasAdminAccess,
+    hasEmployeeAccess: !!employeeId,
   });
 }

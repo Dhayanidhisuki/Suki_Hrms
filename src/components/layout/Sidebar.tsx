@@ -17,6 +17,7 @@ interface CurrentUser {
   isSuperAdmin: boolean;
   hasAdminAccess: boolean;
   roleCode: string | null;
+  hasEmployeeAccess: boolean;
 }
 
 const readyCount = allNavLeaves.filter((leaf) => leaf.ready).length;
@@ -33,7 +34,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode });
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess });
       })
       .catch(() => {});
     return () => {
@@ -41,21 +42,28 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     };
   }, []);
 
-  // Superadmin isn't tied to any company — it has no role, no permissions,
-  // and every company-scoped screen (Masters, Employees, Payroll, ...) would
-  // just 401 for it server-side. So superadmin sees ONLY its own section,
-  // nothing else. Everyone else sees every section except "Superadmin", plus
-  // "Administration" only if they hold any admin.* permission. This is still
-  // a coarse, section-level check — full per-leaf permission filtering isn't
-  // done here (routes still 403 server-side if a page's own action isn't
-  // granted).
+  // Superadmin sees ONLY Superadmin section. Admin users see everything except
+  // employee-specific modules. Pure employees (no admin access) see ONLY
+  // Dashboard (employee), Services, Profile, and Visitors. Users with both
+  // admin + employee access see both admin modules and employee modules.
   const visibleNavigation = useMemo(() => {
+    const employeeModules = ["Dashboard", "Services", "Profile", "Visitors"];
     if (me?.isSuperAdmin) {
       return navigation.filter((mod) => mod.label === "Superadmin");
+    }
+    if (me?.hasEmployeeAccess && !me?.hasAdminAccess) {
+      // Filter to employee Dashboard only (href contains /ess/)
+      return navigation.filter((mod) => {
+        if (mod.label === "Dashboard") return mod.href.includes("/ess/");
+        return ["Services", "Profile", "Visitors"].includes(mod.label);
+      });
     }
     return navigation.filter((mod) => {
       if (mod.label === "Superadmin") return false;
       if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
+      // Hide employee-specific modules from admins
+      if (mod.label === "Dashboard" && mod.href.includes("/ess/")) return false;
+      if (["Services", "Profile", "Visitors"].includes(mod.label)) return false;
       return true;
     });
   }, [me]);
