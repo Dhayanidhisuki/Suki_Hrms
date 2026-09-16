@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { downloadCSV } from '@/lib/csv-export';
 
 interface LeaveType {
   id: number;
@@ -153,6 +154,24 @@ export default function EssLeavePage() {
     }
   }
 
+  function handleExport() {
+    const exportData = applications.map(a => ({
+      'Leave Type': a.leaveMaster.name,
+      'From Date': new Date(a.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+      'To Date': new Date(a.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+      'Days': Number(a.numberOfDays).toFixed(1),
+      'Half Day': a.isHalfDay ? 'Yes' : 'No',
+      'Status': STATUS_LABEL[a.status] ?? a.status,
+      'Reason': a.reason ?? '',
+      'Rejection Reason': a.rejectionReason ?? a.managerRejectionReason ?? '',
+    }));
+
+    downloadCSV({
+      filename: `leave-applications_${year}.csv`,
+      data: exportData,
+    });
+  }
+
   const inputClass = 'w-full rounded-lg border px-3 py-2 text-sm';
   const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' };
   const previewDays = computeDays(form.fromDate, form.toDate, form.isHalfDay);
@@ -161,13 +180,23 @@ export default function EssLeavePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Leave</h1>
-        <input
-          type="number"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-          className="w-24 rounded-lg border px-3 py-2 text-sm"
-          style={inputStyle}
-        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExport}
+            disabled={applications.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+          >
+            Export CSV
+          </button>
+          <input
+            type="number"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="w-24 rounded-lg border px-3 py-2 text-sm"
+            style={inputStyle}
+          />
+        </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}

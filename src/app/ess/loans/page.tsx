@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { downloadCSV } from '@/lib/csv-export';
 
 interface LoanType {
   id: number;
@@ -88,6 +89,25 @@ export default function EssLoansPage() {
     void fetchAll();
   }, [fetchAll]);
 
+  function handleExport() {
+    const exportData = loans.map(l => ({
+      'Code': l.code,
+      'Type': l.loanType.name,
+      'Principal': Number(l.principal).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }),
+      'Tenure': `${l.tenureMonths} months`,
+      'EMI': Number(l.installmentAmount).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }),
+      'Outstanding': Number(l.outstandingBalance).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }),
+      'Paid Installments': l.installmentsPaid,
+      'Status': l.status,
+      'Created': new Date(l.createdAt).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+    }));
+
+    downloadCSV({
+      filename: 'loans-applications.csv',
+      data: exportData,
+    });
+  }
+
   async function applyForLoan(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -126,7 +146,17 @@ export default function EssLoansPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Loans</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Loans</h1>
+        <button
+          onClick={handleExport}
+          disabled={loans.length === 0}
+          className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+        >
+          Export CSV
+        </button>
+      </div>
 
       {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {message && <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-700">{message}</div>}

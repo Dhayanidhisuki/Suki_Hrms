@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { downloadCSV } from '@/lib/csv-export';
 
 interface DayRow {
   id: number;
@@ -90,11 +91,38 @@ export default function EssAttendancePage() {
     void fetchData();
   }, [fetchData]);
 
+  function handleExport() {
+    const exportData = days.map(d => ({
+      Date: new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }),
+      Status: d.status,
+      Shift: d.shiftMaster?.code ?? '—',
+      'In Time': d.inTime ? wallClock(d.inTime) : '—',
+      'Out Time': d.outTime ? wallClock(d.outTime) : '—',
+      'Working Hrs': d.workingMinutes > 0 ? hm(d.workingMinutes) : '—',
+      'Late (min)': d.lateMinutes > 0 ? d.lateMinutes : '—',
+      'Early Out (min)': d.earlyOutMinutes > 0 ? d.earlyOutMinutes : '—',
+      'OT': d.otApprovalStatus === 'approved' ? hm(d.otMinutesApproved ?? 0) : hm(d.otMinutesCalculated),
+    }));
+
+    downloadCSV({
+      filename: `attendance_${year}-${String(month).padStart(2, '0')}.csv`,
+      data: exportData,
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Attendance</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExport}
+            disabled={days.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+          >
+            Export CSV
+          </button>
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
