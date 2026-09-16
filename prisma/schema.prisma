@@ -6332,3 +6332,915 @@ model CandidatePortalMessage {
   @@map("CandidatePortalMessage")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 22. EXISTING DB TABLES NOT YET IN SCHEMA
+//     Stub models for tables that exist in the database but were never
+//     added to schema.prisma. These prevent prisma migrate from dropping
+//     them. Fields marked @ignore are unsupported types.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Assessment {
+  id Int @id
+  companyId Int
+  trainingProgramId Int?
+  trainingScheduleId Int?
+  title String @db.NVarChar(200)
+  description String? @db.NVarChar(500)
+  assessmentType String? @db.NVarChar(20)
+  passingScore Int
+  durationMinutes Int?
+  questionIds String? @db.NVarChar(Max)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingProgramId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("Assessment")
+}
+
+model AssessmentAttempt {
+  id Int @id
+  companyId Int
+  assessmentId Int
+  employeeId Int
+  answersJson String? @db.NVarChar(Max)
+  totalScore Int
+  maxScore Int
+  scorePercent Int
+  result String @db.NVarChar(20)
+  startedAt DateTime @db.DateTime2 @default(now())
+  submittedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, assessmentId, employeeId])
+  @@index([companyId, employeeId])
+
+  @@map("AssessmentAttempt")
+}
+
+model Competency {
+  id Int @id
+  companyId Int
+  code String? @db.NVarChar(20)
+  name String @db.NVarChar(100)
+  category String @db.NVarChar(50)
+  type String? @db.NVarChar(50)
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, category])
+
+  @@map("Competency")
+}
+
+model CompetencyRequirement {
+  id Int @id
+  companyId Int
+  competencyId Int
+  departmentId Int?
+  designationId Int?
+  gradeId Int?
+  requiredLevelId Int
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, competencyId])
+  @@index([companyId, departmentId, designationId, gradeId])
+
+  @@map("CompetencyRequirement")
+}
+
+model EmployeeCompetency {
+  id Int @id
+  companyId Int @unique
+  employeeId Int @unique
+  competencyId Int @unique
+  currentLevelId Int
+  targetLevelId Int?
+  certificationNumber String? @db.NVarChar(50)
+  certifiedDate DateTime? @db.DateTime2
+  expiryDate DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([employeeId])
+
+  @@map("EmployeeCompetency")
+}
+
+model EmployeeCtcComponent {
+  id Int @id
+  employeeCtcId Int @unique
+  salaryComponentId Int @unique
+  amount Decimal @db.Decimal(18, 2)
+
+
+  @@map("EmployeeCtcComponent")
+}
+
+model EmployeeKraCycle {
+  id Int @id
+  companyId Int
+  employeeId Int
+  financialYear String @db.NVarChar(9)
+  periodLabel String @db.NVarChar(20)
+  status String @db.NVarChar(20)
+  overallScore Decimal? @db.Decimal(6, 2)
+  managerRemark String? @db.NVarChar(1000)
+  submittedAt DateTime? @db.DateTime2
+  lockedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, employeeId, financialYear, periodLabel])
+  @@index([companyId, status])
+
+  @@map("EmployeeKraCycle")
+}
+
+model EmployeeKraLine {
+  id Int @id
+  cycleId Int
+  kpiTemplateId Int?
+  goalId Int?
+  name String @db.NVarChar(200)
+  weightage Decimal @db.Decimal(5, 2)
+  targetValue String? @db.NVarChar(100)
+  actualValue String? @db.NVarChar(100)
+  score Decimal? @db.Decimal(6, 2)
+  maxScore Decimal @db.Decimal(6, 2)
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([cycleId])
+
+  @@map("EmployeeKraLine")
+}
+
+model ExitClearanceCheck {
+  id Int @id
+  exitInterviewId Int @unique
+  checkCode String @db.NVarChar(20) @unique
+  status String @db.NVarChar(20)
+  remark String? @db.NVarChar(500)
+  clearedByUserId Int?
+  clearedAt DateTime? @db.DateTime2
+
+
+  @@map("ExitClearanceCheck")
+}
+
+model ExpenseReimbursement {
+  id Int @id
+  companyId Int
+  employeeId Int
+  status String @db.NVarChar(20)
+  submissionDate DateTime @db.DateTime2
+  purpose String @db.NVarChar(100)
+  description String? @db.NVarChar(Max)
+  totalAmount Decimal @db.Decimal(18, 2)
+  approvedAmount Decimal? @db.Decimal(18, 2)
+  approvedBy Int?
+  approvalDate DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  paymentDate DateTime? @db.DateTime2
+  createdByUserId Int?
+  createdAt DateTime @db.DateTime2
+  updatedAt DateTime @db.DateTime2
+  deletedAt DateTime? @db.DateTime2
+
+  @@index([companyId, employeeId, status])
+  @@index([employeeId, submissionDate])
+  @@index([status])
+
+  @@map("ExpenseReimbursement")
+}
+
+model ExpenseReimbursementItem {
+  id Int @id
+  expenseReimbursementId Int
+  category String @db.NVarChar(30)
+  description String @db.NVarChar(500)
+  amount Decimal @db.Decimal(18, 2)
+  receiptDate DateTime @db.Date
+  receiptAttachmentPath String? @db.NVarChar(Max)
+  createdAt DateTime @db.DateTime2
+  updatedAt DateTime @db.DateTime2
+
+  @@index([expenseReimbursementId])
+
+  @@map("ExpenseReimbursementItem")
+}
+
+model FnFSettlementLine {
+  id Int @id
+  settlementId Int
+  kind String @db.NVarChar(20)
+  code String @db.NVarChar(40)
+  name String @db.NVarChar(120)
+  source String @db.NVarChar(20)
+  amount Decimal @db.Decimal(18, 2)
+  editable Boolean
+  remark String? @db.NVarChar(500)
+  sortOrder Int
+
+  @@index([settlementId])
+
+  @@map("FnFSettlementLine")
+}
+
+model GeneratedHrLetter {
+  id Int @id
+  companyId Int
+  letterType String @db.NVarChar(40)
+  referenceNo String @db.NVarChar(60)
+  employeeId Int?
+  applicantId Int?
+  issuedDate DateTime @db.Date
+  purpose String? @db.NVarChar(200)
+  bodySnapshot String @db.NVarChar(Max)
+  platformDocumentId Int?
+  issuedByUserId Int?
+  createdAt DateTime @db.DateTime2 @default(now())
+
+  @@index([applicantId])
+  @@index([companyId, letterType])
+  @@index([companyId, referenceNo])
+  @@index([employeeId])
+
+  @@map("GeneratedHrLetter")
+}
+
+model InductionAssignment {
+  id Int @id
+  companyId Int
+  inductionProgramId Int
+  employeeId Int
+  assignedDate DateTime @db.DateTime2 @default(now())
+  targetDate DateTime? @db.Date
+  completedDate DateTime? @db.Date
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, inductionProgramId, employeeId])
+
+  @@map("InductionAssignment")
+}
+
+model InductionProgram {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  departmentId Int?
+  designationId Int?
+  durationDays Int?
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, departmentId])
+
+  @@map("InductionProgram")
+}
+
+model KpiGoal {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  measurementCriteria String @db.NVarChar(500)
+  monitoringFrequency String @db.NVarChar(20)
+  reportingFrequency String @db.NVarChar(20)
+  responsibility String? @db.NVarChar(200)
+  condition String? @db.NVarChar(200)
+  targetValue String? @db.NVarChar(100)
+  isActive Boolean
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, isActive])
+
+  @@map("KpiGoal")
+}
+
+model KpiTemplate {
+  id Int @id
+  companyId Int
+  code String @db.NVarChar(30)
+  kpiFor String @db.NVarChar(20)
+  departmentId Int?
+  designationId Int?
+  criteria String @db.NVarChar(500)
+  targetValue String? @db.NVarChar(100)
+  kpiType String @db.NVarChar(20)
+  required Boolean
+  isActive Boolean
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, code])
+  @@index([companyId, kpiFor])
+
+  @@map("KpiTemplate")
+}
+
+model LetterNumberSequence {
+  companyId Int
+  letterType String @db.NVarChar(40)
+  year Int
+  lastNumber Int
+
+  @@id([companyId, letterType, year])
+  @@map("LetterNumberSequence")
+}
+
+model OjtAssignment {
+  id Int @id
+  companyId Int
+  employeeId Int
+  mentorEmployeeId Int?
+  trainerId Int?
+  competencyId Int?
+  trainingProgramId Int?
+  startDate DateTime? @db.Date
+  endDate DateTime? @db.Date
+  status String @db.NVarChar(20)
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+
+  @@map("OjtAssignment")
+}
+
+model OnDutyRequest {
+  id Int @id
+  employeeId Int
+  fromDate DateTime @db.Date
+  toDate DateTime @db.Date
+  location String @db.NVarChar(200)
+  purpose String @db.NVarChar(500)
+  customerProject String? @db.NVarChar(200)
+  remarks String? @db.NVarChar(500)
+  status String @db.NVarChar(20)
+  managerActionByUserId Int?
+  managerActionAt DateTime? @db.DateTime2
+  managerRejectionReason String? @db.NVarChar(500)
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  appliedAt DateTime @db.DateTime2
+  createdAt DateTime @db.DateTime2
+  updatedAt DateTime @db.DateTime2
+
+  @@index([employeeId])
+  @@index([status])
+
+  @@map("OnDutyRequest")
+}
+
+model QuestionBank {
+  id Int @id
+  companyId Int
+  groupId Int?
+  question String @db.NVarChar(1000)
+  questionType String? @db.NVarChar(20)
+  options String? @db.NVarChar(Max)
+  correctAnswer String? @db.NVarChar(500)
+  maxScore Int
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, groupId])
+
+  @@map("QuestionBank")
+}
+
+model QuestionBankGroup {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("QuestionBankGroup")
+}
+
+model RecruitmentApplicant {
+  id Int @id
+  companyId Int
+  applicationNo String @db.NVarChar(40)
+  applicantDate DateTime @db.Date @default(now())
+  title String? @db.NVarChar(10)
+  firstName String @db.NVarChar(100)
+  lastName String @db.NVarChar(100)
+  mobile String @db.NVarChar(20)
+  email String @db.NVarChar(100)
+  dateOfBirth DateTime? @db.Date
+  aadhaarLast4 String? @db.NVarChar(4)
+  departmentId Int?
+  designationId Int?
+  jobPostingId Int?
+  source String? @db.NVarChar(100)
+  referenceComments String? @db.NVarChar(500)
+  expectedSalary Decimal? @db.Decimal(18, 2)
+  noticePeriod String? @db.NVarChar(50)
+  availableJoinDate DateTime? @db.Date
+  proposedSalary Decimal? @db.Decimal(18, 2)
+  joiningDate DateTime? @db.Date
+  offerNo String? @db.NVarChar(50)
+  status String @db.NVarChar(24)
+  employeeId Int?
+  recruiterRemarks String? @db.NVarChar(1000)
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, applicationNo])
+  @@index([companyId, email])
+  @@index([companyId, mobile])
+  @@index([companyId, status])
+
+  @@map("RecruitmentApplicant")
+}
+
+model RecruitmentApplicationSequence {
+  companyId Int
+  year Int
+  lastNumber Int
+
+  @@id([companyId, year])
+  @@map("RecruitmentApplicationSequence")
+}
+
+model SkillLevel {
+  id Int @id
+  companyId Int @unique
+  levelNumber Int @unique
+  name String @db.NVarChar(50)
+  description String? @db.NVarChar(500)
+  color String? @db.NVarChar(7)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("SkillLevel")
+}
+
+model Trainer {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(100)
+  email String? @db.NVarChar(100)
+  phone String? @db.NVarChar(20)
+  isExternal Boolean
+  vendor String? @db.NVarChar(100)
+  commercialRate Decimal? @db.Decimal(18, 2)
+  contractDetails String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("Trainer")
+}
+
+model TrainingAttendance {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  status String @db.NVarChar(20)
+  attendedDuration Decimal? @db.Decimal(8, 2)
+  scheduledDuration Decimal? @db.Decimal(8, 2)
+  attendancePercent Decimal? @db.Decimal(5, 2)
+  markedByUserId Int?
+  markedAt DateTime? @db.DateTime2
+  remarks String? @db.NVarChar(500)
+  nominationId Int?
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+  @@index([nominationId])
+
+  @@map("TrainingAttendance")
+}
+
+model TrainingBudget {
+  id Int @id
+  companyId Int
+  year String @db.NVarChar(9)
+  departmentId Int?
+  allocatedAmount Decimal @db.Decimal(18, 2)
+  utilizedAmount Decimal @db.Decimal(18, 2)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, year, departmentId])
+  @@index([companyId, year])
+
+  @@map("TrainingBudget")
+}
+
+model TrainingCertificate {
+  id Int @id
+  companyId Int
+  employeeId Int
+  trainingScheduleId Int?
+  trainingProgramId Int?
+  certificateNumber String @db.NVarChar(50)
+  issueDate DateTime? @db.Date
+  expiryDate DateTime? @db.Date
+  filePath String? @db.NVarChar(500)
+  issuedByUserId Int?
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, certificateNumber])
+  @@index([companyId, employeeId])
+
+  @@map("TrainingCertificate")
+}
+
+model TrainingChecklist {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  checklistType String @db.NVarChar(30)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingChecklist")
+}
+
+model TrainingChecklistItem {
+  id Int @id
+  checklistId Int
+  label String @db.NVarChar(300)
+  sortOrder Int
+  isMandatory Boolean
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([checklistId])
+
+  @@map("TrainingChecklistItem")
+}
+
+model TrainingEffectiveness {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  preScore Int?
+  postScore Int?
+  scoreImprovement Int?
+  level1Reaction Int?
+  level2Learning Int?
+  level3Behavior Int?
+  level4Results Int?
+  effectivenessRating String? @db.NVarChar(20)
+  evaluationDate DateTime? @db.Date
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingEffectiveness")
+}
+
+model TrainingFeedback {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  trainerRating Int?
+  contentRating Int?
+  venueRating Int?
+  overallRating Int?
+  comments String? @db.NVarChar(1000)
+  submittedAt DateTime @db.DateTime2 @default(now())
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingFeedback")
+}
+
+model TrainingHistory {
+  id Int @id
+  companyId Int
+  employeeId Int
+  trainingScheduleId Int?
+  trainingProgramId Int?
+  programName String @db.NVarChar(200)
+  competencyId Int?
+  scheduledDate DateTime? @db.Date
+  method String? @db.NVarChar(50)
+  attendanceStatus String? @db.NVarChar(20)
+  attendancePercent Decimal? @db.Decimal(5, 2)
+  score Decimal? @db.Decimal(8, 2)
+  result String? @db.NVarChar(20)
+  certificateNumber String? @db.NVarChar(50)
+  certifiedDate DateTime? @db.Date
+  trainerId Int?
+  venueId Int?
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingHistory")
+}
+
+model TrainingNeedRequest {
+  id Int @id
+  companyId Int
+  employeeId Int
+  competencyId Int?
+  trainingProgramId Int?
+  source String? @db.NVarChar(30)
+  reason String? @db.NVarChar(500)
+  priority String? @db.NVarChar(20)
+  status String @db.NVarChar(20)
+  currentStageOrder Int
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt DateTime? @db.DateTime2
+  tnaReference String? @db.NVarChar(100)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, status])
+
+  @@map("TrainingNeedRequest")
+}
+
+model TrainingNomination {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  reason String? @db.NVarChar(200)
+  priority String? @db.NVarChar(20)
+  nominationDate DateTime @db.DateTime2 @default(now())
+  status String @db.NVarChar(20)
+  currentStageOrder Int
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, status])
+  @@index([companyId, trainingScheduleId, employeeId])
+
+  @@map("TrainingNomination")
+}
+
+model TrainingPlan {
+  id Int @id
+  companyId Int
+  year String @db.NVarChar(9)
+  departmentId Int?
+  title String? @db.NVarChar(200)
+  status String @db.NVarChar(20)
+  totalEstimatedCost Decimal? @db.Decimal(18, 2)
+  totalApprovedBudget Decimal? @db.Decimal(18, 2)
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, departmentId])
+  @@index([companyId, year])
+
+  @@map("TrainingPlan")
+}
+
+model TrainingPlanLine {
+  id Int @id
+  companyId Int
+  trainingPlanId Int
+  competencyId Int?
+  plannedMonth Int
+  trainingProgramId Int
+  trainerId Int?
+  trainingMethod String? @db.NVarChar(50)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  participantCount Int?
+  targetEmployeeIds String? @db.NVarChar(Max)
+  estimatedCost Decimal? @db.Decimal(18, 2)
+  approvedAmount Decimal? @db.Decimal(18, 2)
+  priority String? @db.NVarChar(20)
+  isMandatory Boolean
+  expectedOutcome String? @db.NVarChar(500)
+  status String @db.NVarChar(20)
+  tnaReference String? @db.NVarChar(100)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, plannedMonth])
+  @@index([companyId, trainingPlanId])
+
+  @@map("TrainingPlanLine")
+}
+
+model TrainingPolicy {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  minAttendancePercent Int?
+  assessmentRequired Boolean
+  feedbackRequired Boolean
+  nominationCutoffDays Int?
+  externalBudgetCap Decimal? @db.Decimal(18, 2)
+  mandatoryTrainingGraceDays Int?
+  effectiveFrom DateTime? @db.Date
+  effectiveTo DateTime? @db.Date
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingPolicy")
+}
+
+model TrainingProgram {
+  id Int @id
+  companyId Int
+  code String? @db.NVarChar(20)
+  name String @db.NVarChar(100)
+  category String? @db.NVarChar(50)
+  type String? @db.NVarChar(50)
+  objective String? @db.NVarChar(500)
+  learningOutcome String? @db.NVarChar(500)
+  targetAudience String? @db.NVarChar(200)
+  method String? @db.NVarChar(50)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  assessmentRequired Boolean
+  certificationRequired Boolean
+  validityMonths Int?
+  refresherFrequency String? @db.NVarChar(50)
+  estimatedCost Decimal? @db.Decimal(18, 2)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, category])
+
+  @@map("TrainingProgram")
+}
+
+model TrainingSchedule {
+  id Int @id
+  companyId Int
+  trainingPlanLineId Int?
+  trainingProgramId Int
+  title String? @db.NVarChar(200)
+  scheduledDate DateTime? @db.Date
+  startTime String? @db.NVarChar(8)
+  endTime String? @db.NVarChar(8)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  method String? @db.NVarChar(50)
+  venueId Int?
+  meetingLink String? @db.NVarChar(500)
+  trainerId Int?
+  coTrainerId Int?
+  coordinator String? @db.NVarChar(100)
+  maxParticipants Int?
+  targetDepartmentId Int?
+  targetEmployeeIds String? @db.NVarChar(Max)
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, scheduledDate])
+  @@index([companyId, status])
+
+  @@map("TrainingSchedule")
+}
+
+model TrainingVenue {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(100)
+  capacity Int?
+  location String? @db.NVarChar(200)
+  equipment String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingVenue")
+}
+
+model WfhRequest {
+  id Int @id
+  employeeId Int
+  fromDate DateTime @db.Date
+  toDate DateTime @db.Date
+  reason String @db.NVarChar(500)
+  remarks String? @db.NVarChar(500)
+  status String @db.NVarChar(20)
+  managerActionByUserId Int?
+  managerActionAt DateTime? @db.DateTime2
+  managerRejectionReason String? @db.NVarChar(500)
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  appliedAt DateTime @db.DateTime2
+  createdAt DateTime @db.DateTime2
+  updatedAt DateTime @db.DateTime2
+
+  @@index([employeeId])
+  @@index([status])
+
+  @@map("WfhRequest")
+}
+
