@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
-import { downloadCSV } from '@/lib/csv-export';
+import { handleExport } from '@/lib/export-utils';
 
 interface LoanType {
   id: number;
@@ -89,7 +89,7 @@ export default function EssLoansPage() {
     void fetchAll();
   }, [fetchAll]);
 
-  function handleExport() {
+  function exportLoansData(format: 'csv' | 'excel' | 'pdf') {
     const exportData = loans.map(l => ({
       'Code': l.code,
       'Type': l.loanType.name,
@@ -102,9 +102,11 @@ export default function EssLoansPage() {
       'Created': new Date(l.createdAt).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
     }));
 
-    downloadCSV({
-      filename: 'loans-applications.csv',
+    handleExport({
+      filename: 'loans-applications',
       data: exportData,
+      format,
+      title: 'Loan Applications',
     });
   }
 
@@ -148,14 +150,35 @@ export default function EssLoansPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Loans</h1>
-        <button
-          onClick={handleExport}
-          disabled={loans.length === 0}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: 'var(--primary, #2563eb)' }}
-        >
-          Export CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => exportLoansData('csv')}
+            disabled={loans.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as CSV"
+          >
+            CSV
+          </button>
+          <button
+            onClick={() => exportLoansData('excel')}
+            disabled={loans.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as Excel"
+          >
+            Excel
+          </button>
+          <button
+            onClick={() => exportLoansData('pdf')}
+            disabled={loans.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as PDF"
+          >
+            PDF
+          </button>
+        </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}

@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { downloadCSV } from '@/lib/csv-export';
+import { handleExport } from '@/lib/export-utils';
 
 interface DayRow {
   id: number;
@@ -91,7 +91,7 @@ export default function EssAttendancePage() {
     void fetchData();
   }, [fetchData]);
 
-  function handleExport() {
+  function handleExport(format: 'csv' | 'excel' | 'pdf') {
     const exportData = days.map(d => ({
       Date: new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }),
       Status: d.status,
@@ -104,9 +104,11 @@ export default function EssAttendancePage() {
       'OT': d.otApprovalStatus === 'approved' ? hm(d.otMinutesApproved ?? 0) : hm(d.otMinutesCalculated),
     }));
 
-    downloadCSV({
-      filename: `attendance_${year}-${String(month).padStart(2, '0')}.csv`,
+    handleExport({
+      filename: `attendance_${year}-${String(month).padStart(2, '0')}`,
       data: exportData,
+      format,
+      title: `Attendance Report - ${new Date(2024, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`,
     });
   }
 
@@ -114,14 +116,33 @@ export default function EssAttendancePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Attendance</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleExport}
+            onClick={() => handleExport('csv')}
             disabled={days.length === 0}
             className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as CSV"
           >
-            Export CSV
+            CSV
+          </button>
+          <button
+            onClick={() => handleExport('excel')}
+            disabled={days.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as Excel"
+          >
+            Excel
+          </button>
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={days.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as PDF"
+          >
+            PDF
           </button>
           <select
             value={month}

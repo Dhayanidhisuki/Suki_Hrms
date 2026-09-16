@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { downloadCSV } from '@/lib/csv-export';
+import { handleExport } from '@/lib/export-utils';
 
 interface LeaveType {
   id: number;
@@ -154,7 +154,7 @@ export default function EssLeavePage() {
     }
   }
 
-  function handleExport() {
+  function exportLeaveData(format: 'csv' | 'excel' | 'pdf') {
     const exportData = applications.map(a => ({
       'Leave Type': a.leaveMaster.name,
       'From Date': new Date(a.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
@@ -166,9 +166,11 @@ export default function EssLeavePage() {
       'Rejection Reason': a.rejectionReason ?? a.managerRejectionReason ?? '',
     }));
 
-    downloadCSV({
-      filename: `leave-applications_${year}.csv`,
+    handleExport({
+      filename: `leave-applications_${year}`,
       data: exportData,
+      format,
+      title: `Leave Applications - ${year}`,
     });
   }
 
@@ -180,14 +182,33 @@ export default function EssLeavePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Leave</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleExport}
+            onClick={() => exportLeaveData('csv')}
             disabled={applications.length === 0}
             className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as CSV"
           >
-            Export CSV
+            CSV
+          </button>
+          <button
+            onClick={() => exportLeaveData('excel')}
+            disabled={applications.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as Excel"
+          >
+            Excel
+          </button>
+          <button
+            onClick={() => exportLeaveData('pdf')}
+            disabled={applications.length === 0}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            title="Download as PDF"
+          >
+            PDF
           </button>
           <input
             type="number"
