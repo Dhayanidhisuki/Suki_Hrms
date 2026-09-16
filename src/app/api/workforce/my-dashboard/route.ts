@@ -17,13 +17,12 @@ import { resolveOwnEmployeeId, listAllReports } from '@/lib/reportingManager';
 const TWO_STAGE_PENDING = ['pending_manager', 'pending_hr'];
 
 export async function GET(request: NextRequest) {
-  try {
-    const userId = Number(request.headers.get('x-user-id'));
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
-    }
-    const scope = getCompanyId(request);
-    if ('error' in scope) return scope.error;
+  const userId = Number(request.headers.get('x-user-id'));
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
+  }
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
 
   const ownEmployeeId = await resolveOwnEmployeeId(userId);
   if (!ownEmployeeId) {
@@ -220,8 +219,4 @@ export async function GET(request: NextRequest) {
     isManager: reportIds.length > 0,
     latestPayslip,
   });
-  } catch (err) {
-    console.error('[my-dashboard]', err);
-    return NextResponse.json({ error: 'Failed to load dashboard data' }, { status: 500 });
-  }
 }
