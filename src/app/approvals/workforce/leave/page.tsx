@@ -1,0 +1,239 @@
+/**
+ * Leave Approval — two-stage approval on one page:
+ * 1. "Pending My Approval (Manager)" — shows requests for the logged-in
+ *    manager's team members, hierarchy-gated via scope=manager.
+ * 2. "Pending HR Approval" — requires workforce.leave.approve permission,
+ *    scope=hr. For manager-only logins, this section 403s and is hidden.
+ */
+
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+
+interface LeaveRow {
+  id: number;
+  fromDate: string;
+  toDate: string;
+  numberOfDays: string;
+  isHalfDay: boolean;
+  reason: string | null;
+  status: string;
+  employee: { id: number; employeeCode: string; firstName: string; lastName: string };
+  leaveMaster: { code: string; name: string };
+}
+
+const rejectFields: FieldDef[] = [
+  { name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true },
+];
+
+function useLeaveQueue(scope: 'manager' | 'hr') {
+  const [records, setRecords] = useState<LeaveRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/workforce/leave/applications?queue=${scope}`);
+      if (res.status === 403) {
+        setVisible(false);
+        return;
+      }
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
+      const json: { data: LeaveRow[] } = await res.json();
+      setRecords(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [scope]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { records, loading, visible, error, refetch: fetchData };
+}
+
+function LeaveQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
+  const { records, loading, visible, error, refetch } = useLeaveQueue(scope);
+  const [approveId, setApproveId] = useState<number | null>(null);
+  const [rejectId, setRejectId] = useState<number | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+
+  if (!visible) return null;
+
+  const handleApprove = async (id: number) => {
+    setApproving(true);
+    try {
+      const res = await fetch(`/api/workforce/leave/applications/${id}/approve`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? 'Approve failed');
+        return;
+      }
+      refetch();
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleReject = async (id: number, values: Record<string, any>) => {
+    setRejecting(true);
+    try {
+      const res = await fetch(`/api/workforce/leave/applications/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejectionReason: values.rejectionReason }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? 'Reject failed');
+        return;
+      }
+      setRejectId(null);
+      refetch();
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  const columns: Column<LeaveRow>[] = [
+    {
+      key: 'employee',
+      label: 'Employee',
+      render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}`,
+    },
+    {
+      key: 'leaveMaster',
+      label: 'Leave Type',
+      render: (r) => r.leaveMaster.name,
+    },
+    {
+      key: 'fromDate',
+      label: 'From',
+      render: (r) => new Date(r.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+    },
+    {
+      key: 'toDate',
+      label: 'To',
+      render: (r) => new Date(r.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+    },
+    {
+      key: 'numberOfDays',
+      label: 'Days',
+      render: (r) => `${Number(r.numberOfDays).toFixed(1)}${r.isHalfDay ? ' (H)' : ''}`,
+    },
+    {
+      key: 'reason',
+      label: 'Reason',
+      render: (r) => r.reason || '—',
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+          {title}
+        </h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+          {description}
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
+
+      <DataTable
+        columns={columns}
+        data={records}
+        loading={loading}
+        emptyMessage="Nothing pending here."
+        renderRowActions={(row) => (
+          <>
+            <button
+              onClick={() => setApproveId(row.id)}
+              disabled={approving}
+              className="mr-3 text-xs font-medium hover:underline disabled:opacity-50"
+              style={{ color: '#166534' }}
+            >
+              Approve
+            </button>
+            <button
+              onClick={() => setRejectId(row.id)}
+              disabled={rejecting}
+              className="text-xs font-medium hover:underline disabled:opacity-50"
+              style={{ color: '#991b1b' }}
+            >
+              Reject
+            </button>
+          </>
+        )}
+      />
+
+      <ConfirmDialog
+        title="Approve Leave Application"
+        message={
+          scope === 'manager'
+            ? 'This forwards the request to HR for final approval. Continue?'
+            : "This will approve the leave and mark the requested dates as 'Leave' in attendance. Continue?"
+        }
+        confirmLabel="Approve"
+        isOpen={approveId !== null}
+        onConfirm={() => {
+          if (approveId) handleApprove(approveId);
+          setApproveId(null);
+        }}
+        onClose={() => setApproveId(null)}
+      />
+
+      <FormModal
+        title="Reject Leave Application"
+        fields={rejectFields}
+        initialValues={{}}
+        isOpen={rejectId !== null}
+        onClose={() => setRejectId(null)}
+        onSubmit={async (values) => {
+          if (rejectId) {
+            await handleReject(rejectId, values);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+export default function LeaveApprovalPage() {
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
+          Leave Approval
+        </h1>
+        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+          Two-stage approval: Manager review, then HR finalization.
+        </p>
+      </div>
+
+      <LeaveQueueSection
+        title="Pending My Approval (Reporting Manager)"
+        scope="manager"
+        description="Leave requests from your team members awaiting your review."
+      />
+
+      <LeaveQueueSection
+        title="Pending HR Approval"
+        scope="hr"
+        description="Manager-approved requests awaiting HR finalization. Approved requests will deduct leave balance and mark attendance."
+      />
+    </div>
+  );
+}

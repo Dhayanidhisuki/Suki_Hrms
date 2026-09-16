@@ -464,7 +464,7 @@ export const navigation: NavModule[] = [
       {
         label: "Workforce",
         items: [
-          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
+          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave", ready: true },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
           { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true },
           { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true },
