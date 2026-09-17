@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 type Regime = 'OLD' | 'NEW';
 
@@ -172,6 +172,14 @@ export default function IncomeTaxPage() {
               <p className="mt-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
                 Submitting a new declaration below replaces this one for FY {currentFinancialYear}.
               </p>
+
+              {/* Old-regime deductions have to be evidenced. Without an upload
+                  path the employee could declare but never prove, which is the
+                  usual reason HR rejects a declaration. Proofs attach only
+                  while the declaration is still awaiting review. */}
+              {latestForYear.regime === 'OLD' && (
+                <ProofSection declarationId={latestForYear.id} editable={latestForYear.status === 'pending_hr'} />
+              )}
             </div>
           )}
 
@@ -299,6 +307,129 @@ export default function IncomeTaxPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const PROOF_SECTIONS = ['80C', '80D', '80CCD', '80G', '80E', '80TTA', 'HRA', 'OTHER'] as const;
+
+interface Proof {
+  id: number;
+  declarationId: number;
+  section: string;
+  amount: number;
+  description: string | null;
+  documentUrl: string | null;
+  status: string;
+  rejectionReason: string | null;
+}
+
+const PROOF_TONE: Record<string, { bg: string; fg: string }> = {
+  pending: { bg: '#fef9c3', fg: '#854d0e' },
+  verified: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+};
+
+function ProofSection({ declarationId, editable }: { declarationId: number; editable: boolean }) {
+  const [proofs, setProofs] = useState<Proof[]>([]);
+  const [section, setSection] = useState<string>('80C');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/workforce/my-tds-proofs');
+    if (!res.ok) return;
+    const json: { data: Proof[] } = await res.json();
+    // The endpoint returns every proof this employee has filed; show only the
+    // ones belonging to the declaration on screen.
+    setProofs((json.data ?? []).filter((p) => p.declarationId === declarationId));
+  }, [declarationId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amount || Number(amount) < 0) { setErr('Enter the amount this proof covers.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.set('declarationId', String(declarationId));
+      fd.set('section', section);
+      fd.set('amount', amount);
+      if (description) fd.set('description', description);
+      const f = fileRef.current?.files?.[0];
+      if (f) fd.set('file', f);
+      const res = await fetch('/api/workforce/my-tds-proofs', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Upload failed');
+      setAmount(''); setDescription('');
+      if (fileRef.current) fileRef.current.value = '';
+      await load();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : 'Upload failed');
+    } finally { setBusy(false); }
+  };
+
+  const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' };
+
+  return (
+    <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+      <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Investment Proofs</h3>
+      <p className="mb-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+        Old-regime deductions need evidence. HR verifies each proof before approving the declaration.
+      </p>
+
+      {proofs.length > 0 && (
+        <table className="mb-3 w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
+              <th className="py-1 pr-3">Section</th><th className="py-1 pr-3">Amount</th>
+              <th className="py-1 pr-3">Description</th><th className="py-1 pr-3">File</th><th className="py-1">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {proofs.map((p) => {
+              const tone = PROOF_TONE[p.status] ?? { bg: '#f1f5f9', fg: '#475569' };
+              return (
+                <tr key={p.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  <td className="py-1 pr-3">{p.section}</td>
+                  <td className="py-1 pr-3">₹{p.amount.toLocaleString('en-IN')}</td>
+                  <td className="py-1 pr-3">{p.description ?? '—'}</td>
+                  <td className="py-1 pr-3">
+                    {p.documentUrl ? <a href={p.documentUrl} className="text-xs font-medium" style={{ color: 'var(--primary)' }}>View</a> : '—'}
+                  </td>
+                  <td className="py-1">
+                    <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{p.status}</span>
+                    {p.rejectionReason && <span className="ml-2 text-xs" style={{ color: '#991b1b' }}>({p.rejectionReason})</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {editable ? (
+        <form onSubmit={add} className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+          <select value={section} onChange={(e) => setSection(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle}>
+            {PROOF_SECTIONS.map((sx) => <option key={sx} value={sx}>{sx}</option>)}
+          </select>
+          <input type="number" min="0" step="1" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+          <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+          <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="rounded-lg border px-2 py-1 text-sm" style={inputStyle} />
+          <button type="submit" disabled={busy} className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: 'var(--accent)' }}>
+            {busy ? 'Adding…' : 'Add Proof'}
+          </button>
+        </form>
+      ) : (
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+          This declaration has already been reviewed — proofs can no longer be added to it.
+        </p>
+      )}
+
+      {err && <div className="mt-2 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{err}</div>}
     </div>
   );
 }
