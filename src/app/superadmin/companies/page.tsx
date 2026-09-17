@@ -21,6 +21,13 @@ interface Company {
   code: string;
   name: string;
   description: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  phone: string | null;
+  email: string | null;
   isActive: boolean;
   deletedAt: string | null;
   createdAt: string;
@@ -40,6 +47,15 @@ const editFields: FieldDef[] = [
   { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. KUNAERO' },
   { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. KUN Aerospace Private Limited' },
   { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
+  // Registered address — printed on the letterhead of every payslip, letter
+  // and F&F statement this company issues.
+  { name: 'addressLine1', label: 'Address line 1', type: 'text', placeholder: 'e.g. Plot No. 22 & 23, Ambattur Industrial Estate' },
+  { name: 'addressLine2', label: 'Address line 2', type: 'text', placeholder: 'Optional' },
+  { name: 'city', label: 'City', type: 'text', placeholder: 'e.g. Chennai' },
+  { name: 'state', label: 'State', type: 'text', placeholder: 'e.g. Tamil Nadu' },
+  { name: 'pincode', label: 'Pincode', type: 'text', maxLength: 10, placeholder: 'e.g. 600058' },
+  { name: 'phone', label: 'Phone', type: 'text', placeholder: 'Optional — shown on letterhead' },
+  { name: 'email', label: 'Email', type: 'text', placeholder: 'Optional — shown on letterhead' },
 ];
 
 // Only "Admin" (company-admin) exists today — add more of this company's
@@ -127,6 +143,13 @@ export default function SuperadminCompaniesPage() {
       code: row.code,
       name: row.name,
       description: row.description ?? '',
+      addressLine1: row.addressLine1 ?? '',
+      addressLine2: row.addressLine2 ?? '',
+      city: row.city ?? '',
+      state: row.state ?? '',
+      pincode: row.pincode ?? '',
+      phone: row.phone ?? '',
+      email: row.email ?? '',
     });
     setModalOpen(true);
   };
@@ -140,6 +163,13 @@ export default function SuperadminCompaniesPage() {
       code: values.code,
       name: values.name,
       description: values.description || null,
+      addressLine1: values.addressLine1 || null,
+      addressLine2: values.addressLine2 || null,
+      city: values.city || null,
+      state: values.state || null,
+      pincode: values.pincode || null,
+      phone: values.phone || null,
+      email: values.email || null,
       isActive: editingRow?.isActive ?? true,
     };
 

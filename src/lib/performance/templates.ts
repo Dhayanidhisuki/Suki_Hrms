@@ -1,0 +1,96 @@
+/**
+ * Shared resolution of submitted KRA/KPI lines against the masters.
+ *
+ * Both the template builder and goal assignment take the same
+ * "KRA → KPIs" payload shape, and both must confirm, before saving, that:
+ *   - every KRA and KPI id belongs to the caller's own company (the FKs are
+ *     cross-tenant on their own);
+ *   - every KPI sits under the KRA it was submitted against — otherwise Model
+ *     A's "100% within each KRA" rule is meaningless;
+ *   - no KRA or KPI is listed twice.
+ *
+ * It also returns the master rows, so callers can snapshot unit/measurement
+ * type onto an assigned goal, and a label map for weightage error messages.
+ */
+
+import { prisma } from '@/lib/prisma';
+import type { WeightageKra } from './weightage';
+
+type SubmittedLine = {
+  kraId: number;
+  weightage: number;
+  kpis: Array<{ kpiId: number; weightage: number }>;
+};
+
+export type ResolvedMasters = {
+  forValidation: WeightageKra[];
+  kraById: Map<number, { id: number; code: string; name: string }>;
+  kpiById: Map<
+    number,
+    { id: number; kraId: number; code: string; name: string; unit: string; measurementType: string; target: unknown; minThreshold: unknown; maxTarget: unknown; frequency: string; description: string }
+  >;
+};
+
+export async function resolveTemplateLines(
+  companyId: number,
+  lines: SubmittedLine[]
+): Promise<ResolvedMasters | { error: string; status: number }> {
+  const kraIds = lines.map((l) => l.kraId);
+  if (new Set(kraIds).size !== kraIds.length) {
+    return { error: 'The same KRA is listed more than once', status: 400 };
+  }
+
+  const kpiIds = lines.flatMap((l) => l.kpis.map((k) => k.kpiId));
+  if (new Set(kpiIds).size !== kpiIds.length) {
+    return { error: 'The same KPI is listed more than once', status: 400 };
+  }
+
+  const kras = await prisma.kra.findMany({
+    where: { id: { in: kraIds }, companyId },
+    select: { id: true, code: true, name: true },
+  });
+  if (kras.length !== kraIds.length) {
+    return { error: 'One or more KRAs were not found', status: 404 };
+  }
+
+  const kpis = await prisma.kpi.findMany({
+    where: { id: { in: kpiIds }, companyId },
+    select: {
+      id: true,
+      kraId: true,
+      code: true,
+      name: true,
+      unit: true,
+      measurementType: true,
+      target: true,
+      minThreshold: true,
+      maxTarget: true,
+      frequency: true,
+      description: true,
+    },
+  });
+  if (kpis.length !== kpiIds.length) {
+    return { error: 'One or more KPIs were not found', status: 404 };
+  }
+
+  const kraById = new Map(kras.map((k) => [k.id, k]));
+  const kpiById = new Map(kpis.map((k) => [k.id, k]));
+
+  for (const line of lines) {
+    for (const kpi of line.kpis) {
+      const master = kpiById.get(kpi.kpiId)!;
+      if (master.kraId !== line.kraId) {
+        const kra = kraById.get(line.kraId)!;
+        return { error: `KPI "${master.code}" does not belong to KRA "${kra.code}"`, status: 400 };
+      }
+    }
+  }
+
+  const forValidation: WeightageKra[] = lines.map((line) => ({
+    label: kraById.get(line.kraId)!.code,
+    weightage: line.weightage,
+    kpis: line.kpis.map((k) => ({ label: kpiById.get(k.kpiId)!.code, weightage: k.weightage })),
+  }));
+
+  return { forValidation, kraById, kpiById };
+}

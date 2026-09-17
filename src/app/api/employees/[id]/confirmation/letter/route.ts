@@ -6,7 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkEmployeePermission } from '@/lib/rbac-employee';
-import { generateConfirmationLetterPdf } from '@/lib/confirmation-letter';
+import { archiveConfirmationLetter, generateConfirmationLetterPdf } from '@/lib/confirmation-letter';
+import { resolveDocumentActor } from '@/lib/platform/document/actor';
+import { loadCompanyProfile } from '@/lib/company-profile';
 
 export async function GET(
   request: NextRequest,
@@ -40,8 +42,12 @@ export async function GET(
 
   const displayCode = employee.oldEmployeeCode ?? employee.employeeCode;
 
+  const profile = await loadCompanyProfile(employee.companyId);
   const pdfBytes = await generateConfirmationLetterPdf({
-    companyName: employee.company.name,
+    companyName: profile?.name ?? employee.company.name,
+    companyAddress: profile?.address ?? null,
+    companyPhone: profile?.phone ?? null,
+    companyEmail: profile?.email ?? null,
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeCode: displayCode,
     designation: currentJob.designation.name,
@@ -49,6 +55,9 @@ export async function GET(
     joinDate: currentJob.joinDate,
     confirmationDate: currentJob.confirmationDate,
   });
+
+  const { actor } = await resolveDocumentActor(request, employee.companyId);
+  await archiveConfirmationLetter(employeeId, actor);
 
   return new NextResponse(Buffer.from(pdfBytes), {
     status: 200,

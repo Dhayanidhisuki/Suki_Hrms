@@ -69,6 +69,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         includeInPf: parsed.data.includeInPf,
         includeInGross: parsed.data.includeInGross,
         grossTier: parsed.data.grossTier,
+        fnfPayable: parsed.data.fnfPayable,
+        fnfProration: parsed.data.fnfProration,
+        fnfTaxable: parsed.data.fnfTaxable,
       },
     });
     return NextResponse.json(record);

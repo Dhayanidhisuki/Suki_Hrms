@@ -32,7 +32,12 @@ export const PENDING_STATUSES: readonly DocStatus[] = [DOC_STATUS.Uploaded, DOC_
 /** §16.1 transitions implemented in this iteration. Anything not listed is a 409. */
 export const TRANSITIONS: Readonly<Record<string, readonly DocStatus[]>> = {
   [DOC_STATUS.Uploaded]: [DOC_STATUS.UnderVerification, DOC_STATUS.Withdrawn],
-  [DOC_STATUS.UnderVerification]: [DOC_STATUS.Verified, DOC_STATUS.Rejected],
+  // Review has three verdicts, per the KUN Document Module BRD: Verified,
+  // Rejected, or Resubmission Required. ReuploadRequired is reachable straight
+  // from review so HR can ask for a better copy without recording a rejection.
+  [DOC_STATUS.UnderVerification]: [DOC_STATUS.Verified, DOC_STATUS.Rejected, DOC_STATUS.ReuploadRequired],
+  // Rejected is a verdict in its own right and no longer cascades on its own;
+  // HR may still follow it with an explicit resubmission request.
   [DOC_STATUS.Rejected]: [DOC_STATUS.ReuploadRequired],
   [DOC_STATUS.Verified]: [DOC_STATUS.Expired, DOC_STATUS.Superseded, DOC_STATUS.Revoked],
   [DOC_STATUS.ReuploadRequired]: [],

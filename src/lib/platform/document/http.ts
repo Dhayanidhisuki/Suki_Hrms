@@ -18,11 +18,19 @@ export async function openDocumentRequest(
   permissionCode: string,
 ): Promise<{ error: NextResponse } | { ctx: DocumentRequestContext }> {
   const permErr = await checkSpecificPermission(request, permissionCode);
-  if (permErr) return { error: permErr };
   const scope = getCompanyId(request);
   if ('error' in scope) return { error: scope.error };
   const resolved = await resolveDocumentActor(request, scope.companyId);
-  return { ctx: { companyId: scope.companyId, ...resolved } };
+  const ctx = { companyId: scope.companyId, ...resolved };
+
+  if (!permErr) return { ctx };
+
+  const selfService =
+    (permissionCode === 'platform.document.view' || permissionCode === 'platform.document.upload') &&
+    resolved.caller.employeeId != null;
+  if (selfService) return { ctx };
+
+  return { error: permErr };
 }
 
 export function documentErrorResponse(err: unknown): NextResponse {

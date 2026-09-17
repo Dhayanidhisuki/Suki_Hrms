@@ -25,6 +25,8 @@ interface SeparationRow {
   exitDate: string;
   exitType: string;
   exitReason: string | null;
+  clearanceStatus?: string;
+  clearanceChecks?: { checkCode: string; status: string }[];
   gratuityRecord: { id: number; status: string } | null;
 }
 
@@ -40,8 +42,14 @@ export default function ExitFormPage() {
 
   const [employeeId, setEmployeeId] = useState<number | ''>('');
   const [exitDate, setExitDate] = useState(todayIso());
-  const [exitType, setExitType] = useState<'resignation' | 'termination' | 'retirement'>('resignation');
+  const [exitType, setExitType] = useState<'resignation' | 'termination' | 'retirement' | 'death' | 'absconding' | 'contract_expiry' | 'other'>('resignation');
   const [exitReason, setExitReason] = useState('');
+  const [resignationDate, setResignationDate] = useState('');
+  const [noticePeriodDays, setNoticePeriodDays] = useState('30');
+  const [noticeServedDays, setNoticeServedDays] = useState('0');
+  const [noticeWaivedDays, setNoticeWaivedDays] = useState('0');
+  const [approvedLastWorkingDay, setApprovedLastWorkingDay] = useState(todayIso());
+  const [rehireEligible, setRehireEligible] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -82,7 +90,17 @@ export default function ExitFormPage() {
       const res = await fetch(`/api/employees/${employeeId}/exit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exitDate, exitType, exitReason: exitReason || undefined }),
+        body: JSON.stringify({
+          exitDate,
+          exitType,
+          exitReason: exitReason || undefined,
+          resignationDate: resignationDate || undefined,
+          noticePeriodDays: noticePeriodDays ? Number(noticePeriodDays) : undefined,
+          noticeServedDays: noticeServedDays ? Number(noticeServedDays) : undefined,
+          noticeWaivedDays: noticeWaivedDays ? Number(noticeWaivedDays) : undefined,
+          approvedLastWorkingDay: approvedLastWorkingDay || undefined,
+          rehireEligible,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -92,6 +110,12 @@ export default function ExitFormPage() {
       setExitDate(todayIso());
       setExitType('resignation');
       setExitReason('');
+      setResignationDate('');
+      setNoticePeriodDays('30');
+      setNoticeServedDays('0');
+      setNoticeWaivedDays('0');
+      setApprovedLastWorkingDay(todayIso());
+      setRehireEligible(true);
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record separation');
@@ -105,6 +129,44 @@ export default function ExitFormPage() {
     { key: 'exitDate', label: 'Exit Date', render: (r) => new Date(r.exitDate).toLocaleDateString() },
     { key: 'exitType', label: 'Type', render: (r) => r.exitType.charAt(0).toUpperCase() + r.exitType.slice(1) },
     { key: 'exitReason', label: 'Reason', render: (r) => r.exitReason ?? '—' },
+    {
+      key: 'clearance',
+      label: 'Clearance',
+      render: (r) => (
+        <div className="flex flex-wrap gap-1">
+          {(['MANAGER', 'IT', 'FINANCE', 'HR'] as const).map((code) => {
+            const row = r.clearanceChecks?.find((c) => c.checkCode === code);
+            const cleared = row?.status === 'CLEARED' || r.clearanceStatus === 'CLEARED';
+            return (
+              <button
+                key={code}
+                type="button"
+                className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: cleared ? '#dcfce7' : '#fef9c3',
+                  color: cleared ? '#166534' : '#854d0e',
+                }}
+                onClick={async () => {
+                  const res = await fetch(`/api/employees/${r.employeeId}/exit/clearance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ checkCode: code, status: cleared ? 'PENDING' : 'CLEARED' }),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    setError(err.error ?? 'Clearance update failed');
+                    return;
+                  }
+                  await fetchData();
+                }}
+              >
+                {code}
+              </button>
+            );
+          })}
+        </div>
+      ),
+    },
     {
       key: 'gratuity',
       label: 'Gratuity',
@@ -163,6 +225,10 @@ export default function ExitFormPage() {
               <option value="resignation">Resignation</option>
               <option value="termination">Termination</option>
               <option value="retirement">Retirement</option>
+              <option value="death">Death</option>
+              <option value="absconding">Absconding</option>
+              <option value="contract_expiry">Contract expiry</option>
+              <option value="other">Other</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
@@ -175,6 +241,63 @@ export default function ExitFormPage() {
               style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
             />
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Resignation date</label>
+            <input
+              type="date"
+              value={resignationDate}
+              onChange={(e) => setResignationDate(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Notice period (days)</label>
+            <input
+              type="number"
+              min={0}
+              value={noticePeriodDays}
+              onChange={(e) => setNoticePeriodDays(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Notice served (days)</label>
+            <input
+              type="number"
+              min={0}
+              value={noticeServedDays}
+              onChange={(e) => setNoticeServedDays(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Notice waived (days)</label>
+            <input
+              type="number"
+              min={0}
+              value={noticeWaivedDays}
+              onChange={(e) => setNoticeWaivedDays(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Approved last working day</label>
+            <input
+              type="date"
+              value={approvedLastWorkingDay}
+              onChange={(e) => setApprovedLastWorkingDay(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
+            <input type="checkbox" checked={rehireEligible} onChange={(e) => setRehireEligible(e.target.checked)} />
+            Eligible for rehire
+          </label>
         </div>
         <div className="flex justify-end">
           <button

@@ -167,6 +167,10 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Interview Criteria", href: "/masters/interview-criteria" },
           { label: "JD Master", href: "/masters/jd-master", ready: true },
+          { label: "Performance Cycles", href: "/masters/performance-cycles", ready: true },
+          { label: "KRA Master", href: "/masters/kra", ready: true },
+          { label: "KPI Master", href: "/masters/kpi", ready: true },
+          { label: "Goal Templates", href: "/masters/goal-templates", ready: true },
         ],
       },
       {
@@ -191,8 +195,9 @@ export const navigation: NavModule[] = [
         label: "Hiring",
         items: [
           { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
-          { label: "Offer Letter", href: "/recruitment/offer-letter" },
-          { label: "Appointment Order", href: "/recruitment/appointment-order" },
+          { label: "Applicants", href: "/recruitment/applicants", ready: true },
+          { label: "Offer Letter", href: "/recruitment/offer-letter", ready: true },
+          { label: "Appointment Order", href: "/recruitment/appointment-order", ready: true },
           { label: "Internship", href: "/recruitment/internship" },
         ],
       },
@@ -236,10 +241,10 @@ export const navigation: NavModule[] = [
       {
         label: "Letters & Certificates",
         items: [
-          { label: "Service Letter", href: "/employees/letters/service-letter" },
-          { label: "Bonafide Certificate", href: "/employees/letters/bonafide-certificate" },
-          { label: "Warning Letter", href: "/employees/letters/warning-letter" },
-          { label: "Show Cause Notice", href: "/employees/letters/show-cause-notice" },
+          { label: "Service Letter", href: "/employees/letters/service-letter", ready: true },
+          { label: "Bonafide Certificate", href: "/employees/letters/bonafide-certificate", ready: true },
+          { label: "Warning Letter", href: "/employees/letters/warning-letter", ready: true },
+          { label: "Show Cause Notice", href: "/employees/letters/show-cause-notice", ready: true },
         ],
       },
       {
@@ -248,7 +253,7 @@ export const navigation: NavModule[] = [
           { label: "Exit Form", href: "/employees/separation/exit-form", ready: true },
           { label: "Exit Interview Details", short: "Exit Interview", href: "/employees/separation/exit-interview" },
           { label: "No Due Form", href: "/employees/separation/no-due-form" },
-          { label: "Relieving Letter", href: "/employees/separation/relieving-letter" },
+          { label: "Relieving Letter", href: "/employees/separation/relieving-letter", ready: true },
         ],
       },
     ],
@@ -327,7 +332,7 @@ export const navigation: NavModule[] = [
           { label: "Gratuity", href: "/payroll/processing/gratuity", ready: true },
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
-          { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final" },
+          { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final", ready: true },
           { label: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
@@ -361,6 +366,24 @@ export const navigation: NavModule[] = [
           { label: "Payroll Summary", href: "/payroll/outputs/summary" },
           { label: "Bank Transfer File", short: "Bank Transfer", href: "/payroll/outputs/bank-transfer" },
           { label: "Payroll Reconciliation", short: "Reconciliation", href: "/payroll/outputs/reconciliation" },
+        ],
+      },
+    ],
+  },
+
+  {
+    // KPI/KRA Performance Management — BRD §17 goal setting. Assessment,
+    // scoring and dashboards are later phases; the masters live under
+    // Masters > HR Masters.
+    label: "Performance",
+    icon: "award",
+    href: "/performance",
+    groups: [
+      {
+        label: "Goal Setting",
+        items: [
+          { label: "Goal Assignment", href: "/performance/goals", ready: true },
+          { label: "My Goals", href: "/performance/my-goals", ready: true },
         ],
       },
     ],
@@ -427,12 +450,13 @@ export const navigation: NavModule[] = [
       {
         label: "Repository",
         items: [
-          { label: "Recruitment Documents", short: "Recruitment", href: "/documents/recruitment" },
-          { label: "Employee Documents", short: "Employee", href: "/documents/employee" },
-          { label: "Letters & Certificates", short: "Letters", href: "/documents/letters" },
-          { label: "Lifecycle Documents", short: "Lifecycle", href: "/documents/lifecycle" },
-          { label: "Payroll Documents", short: "Payroll", href: "/documents/payroll" },
-          { label: "Compliance Documents", short: "Compliance", href: "/documents/compliance" },
+          { label: "Recruitment Documents", short: "Recruitment", href: "/documents/recruitment", ready: true },
+          { label: "Employee Documents", short: "Employee", href: "/documents/employee", ready: true },
+          { label: "Letters & Certificates", short: "Letters", href: "/documents/letters", ready: true },
+          { label: "Lifecycle Documents", short: "Lifecycle", href: "/documents/lifecycle", ready: true },
+          { label: "Payroll Documents", short: "Payroll", href: "/documents/payroll", ready: true },
+          { label: "Compliance Documents", short: "Compliance", href: "/documents/compliance", ready: true },
+          { label: "Document Types", short: "Types", href: "/documents/types", ready: true },
         ],
       },
     ],
@@ -481,7 +505,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing" },
           { label: "Salary Revision Approval", short: "Salary Revision", href: "/approvals/payroll/salary-revision" },
-          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final" },
+          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final", ready: true },
         ],
       },
       {
@@ -511,8 +535,9 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Employee Dashboard", short: "Dashboard", href: "/ess/dashboard" },
           { label: "Profile Update", href: "/ess/profile" },
-          { label: "Document Download", short: "Documents", href: "/ess/documents" },
+          { label: "Document Download", short: "Documents", href: "/ess/documents", ready: true },
           { label: "Payslip Download", short: "Payslip", href: "/ess/payslip" },
+          { label: "Full & Final Statement", short: "F&F", href: "/ess/fnf", ready: true },
         ],
       },
       {

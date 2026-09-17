@@ -25,6 +25,9 @@ interface SalaryComponentRow {
   includeInPf: boolean;
   includeInGross: boolean;
   grossTier: string;
+  fnfPayable: boolean;
+  fnfProration: string;
+  fnfTaxable: boolean;
   isSystemDefined: boolean;
   isActive: boolean;
 }
@@ -47,6 +50,19 @@ const fields: FieldDef[] = [
   { name: 'includeInEsi', label: 'Include in ESI', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the ESI eligible-wage base.' },
   { name: 'includeInPf', label: 'Include in PF', type: 'checkbox', defaultValue: false, helpText: 'Counts toward the PF eligible-wage base.' },
   { name: 'includeInGross', label: 'Include in Gross', type: 'checkbox', defaultValue: true, helpText: 'When off, this component is CTC-only — paid out but never part of Gross or a statutory base (e.g. performance incentive paid from PMS).' },
+  { name: 'fnfPayable', label: 'Include in F&F', type: 'checkbox', defaultValue: true, helpText: 'When off, this earning is skipped on Full & Final salary lines.' },
+  {
+    name: 'fnfProration',
+    label: 'F&F proration',
+    type: 'select',
+    defaultValue: 'PRO_RATA',
+    options: [
+      { label: 'Pro-rata by payable days', value: 'PRO_RATA' },
+      { label: 'Full month', value: 'FULL' },
+      { label: 'Exclude', value: 'EXCLUDE' },
+    ],
+  },
+  { name: 'fnfTaxable', label: 'F&F taxable', type: 'checkbox', defaultValue: true },
   {
     name: 'grossTier',
     label: 'Gross Tier',
@@ -93,7 +109,7 @@ export default function SalaryComponentsPage() {
 
   const handleAdd = () => {
     setEditingId(null);
-    setInitialValues({ isActive: true, includeInGratuity: false, includeInEsi: false, includeInPf: false, includeInGross: true, grossTier: 'ADDITIONAL' });
+    setInitialValues({ isActive: true, includeInGratuity: false, includeInEsi: false, includeInPf: false, includeInGross: true, grossTier: 'ADDITIONAL', fnfPayable: true, fnfProration: 'PRO_RATA', fnfTaxable: true });
     setModalOpen(true);
   };
 
@@ -108,6 +124,9 @@ export default function SalaryComponentsPage() {
       includeInPf: row.includeInPf,
       includeInGross: row.includeInGross,
       grossTier: row.grossTier,
+      fnfPayable: row.fnfPayable,
+      fnfProration: row.fnfProration,
+      fnfTaxable: row.fnfTaxable,
       isActive: row.isActive,
     });
     setModalOpen(true);
@@ -152,6 +171,9 @@ export default function SalaryComponentsPage() {
         includeInPf: row.includeInPf,
         includeInGross: row.includeInGross,
         grossTier: row.grossTier,
+        fnfPayable: row.fnfPayable,
+        fnfProration: row.fnfProration,
+        fnfTaxable: row.fnfTaxable,
         [flag]: !row[flag],
       }),
     });
@@ -178,6 +200,9 @@ export default function SalaryComponentsPage() {
         includeInPf: row.includeInPf,
         includeInGross: row.includeInGross,
         grossTier: tier,
+        fnfPayable: row.fnfPayable,
+        fnfProration: row.fnfProration,
+        fnfTaxable: row.fnfTaxable,
       }),
     });
     if (!res.ok) {

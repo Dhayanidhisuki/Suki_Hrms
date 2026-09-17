@@ -1,12 +1,19 @@
 /**
  * POST /api/payroll/runs/[id]/lock — APPROVED -> LOCKED (final; no
  *      further edits, mirrors Attendance's freeze).
+ *
+ * Locking is also where payslips are filed into the Document Module: the
+ * KUN Document Module BRD wants payroll documents indexed automatically by
+ * the module that produces them, and a locked run is the first point at
+ * which a payslip is final.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { resolveDocumentActor } from '@/lib/platform/document/actor';
+import { archiveRunPayslips } from '@/lib/payroll/payslip-pdf';
 
 export async function POST(
   request: NextRequest,
@@ -32,5 +39,18 @@ export async function POST(
     data: { status: 'LOCKED', lockedAt: new Date() },
   });
 
-  return NextResponse.json(updated);
+  // File the payslips, but never fail the lock over it — the run is already
+  // locked, and archiving is idempotent, so a failure here can be retried via
+  // POST /api/payroll/runs/[id]/archive-payslips without side effects.
+  let payslips: { filed: number; skipped: number } | null = null;
+  let payslipError: string | null = null;
+  try {
+    const { actor } = await resolveDocumentActor(request, scope.companyId);
+    payslips = await archiveRunPayslips(scope.companyId, runId, actor);
+  } catch (err) {
+    payslipError = err instanceof Error ? err.message : 'Failed to archive payslips';
+    console.error('[payroll/lock] payslip archival failed', err);
+  }
+
+  return NextResponse.json({ ...updated, payslips, payslipError });
 }

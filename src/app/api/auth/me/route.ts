@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const roleCode = request.headers.get('x-role-code');
   const companyId = request.headers.get('x-company-id');
 
-  const [hasAdminAccess, user] = await Promise.all([
+  const [hasAdminAccess, user, employee] = await Promise.all([
     isSuperAdmin
       ? Promise.resolve(false) // superadmin doesn't use the company-scoped Administration section
       : roleId
@@ -33,6 +33,12 @@ export async function GET(request: NextRequest) {
       where: { id: Number(userId) },
       select: { email: true, company: { select: { name: true } } },
     }),
+    companyId
+      ? prisma.employee.findFirst({
+          where: { userId: Number(userId), companyId: Number(companyId), deletedAt: null },
+          select: { id: true, employeeCode: true, firstName: true, lastName: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   return NextResponse.json({
@@ -44,5 +50,8 @@ export async function GET(request: NextRequest) {
     companyId: companyId ? Number(companyId) : null,
     companyName: user?.company?.name ?? null,
     hasAdminAccess,
+    employeeId: employee?.id ?? null,
+    employeeCode: employee?.employeeCode ?? null,
+    employeeName: employee ? `${employee.firstName} ${employee.lastName}`.trim() : null,
   });
 }
