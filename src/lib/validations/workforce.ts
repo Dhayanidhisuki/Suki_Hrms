@@ -68,14 +68,21 @@ export const leaveApplicationSchema = z.object({
 
 // Self-service variant — same shape minus employeeId, which is always
 // resolved from the caller's own session, never taken from the request body.
-export const myLeaveApplicationSchema = z.object({
-  leaveMasterId: z.coerce.number().int().positive(),
-  fromDate: z.coerce.date(),
-  toDate: z.coerce.date(),
-  numberOfDays: z.coerce.number().positive(),
-  isHalfDay: z.coerce.boolean().default(false),
-  reason: z.string().max(500).optional().nullable(),
-});
+export const myLeaveApplicationSchema = z
+  .object({
+    leaveMasterId: z.coerce.number().int().positive(),
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    numberOfDays: z.coerce.number().positive(),
+    isHalfDay: z.coerce.boolean().default(false),
+    reason: z.string().max(500).optional().nullable(),
+  })
+  // A reversed range previously only failed indirectly, via numberOfDays
+  // computing to 0 and tripping .positive() — which reported the wrong field.
+  .refine((v) => v.toDate >= v.fromDate, {
+    message: 'To date must be on or after from date',
+    path: ['toDate'],
+  });
 
 export const leaveRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
@@ -90,6 +97,18 @@ export const mispunchRequestSchema = z
   })
   .refine((v) => v.requestedInTime || v.requestedOutTime, {
     message: 'At least one of requestedInTime or requestedOutTime is required',
+  })
+  // Both are full wall-clock datetimes, so a night shift ending the next
+  // morning passes — it carries the later date. What this rejects is an out
+  // that lands before the in on the same day, which the form could otherwise
+  // submit happily (e.g. in 9:37 AM, out 6:47 AM).
+  .refine((v) => !(v.requestedInTime && v.requestedOutTime) || v.requestedOutTime > v.requestedInTime, {
+    message: 'Out time must be after in time',
+    path: ['requestedOutTime'],
+  })
+  .refine((v) => v.date.getTime() <= Date.now(), {
+    message: 'Cannot request a correction for a future date',
+    path: ['date'],
   });
 
 export const mispunchRejectSchema = z.object({

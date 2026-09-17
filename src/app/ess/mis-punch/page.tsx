@@ -232,6 +232,17 @@ function MisPunchModal({
       setError('Enter at least one of In Time or Out Time.');
       return;
     }
+    // Both times are composed against the same picked date, so an out that
+    // reads earlier than the in can only be a mistake here — a night shift
+    // ending next morning cannot currently be expressed on this form.
+    if (form.inTime && form.outTime && form.outTime <= form.inTime) {
+      setError('Out time must be after in time.');
+      return;
+    }
+    if (form.date > new Date().toISOString().slice(0, 10)) {
+      setError('Cannot request a correction for a future date.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
