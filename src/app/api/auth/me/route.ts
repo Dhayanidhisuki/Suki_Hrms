@@ -37,6 +37,16 @@ export async function GET(request: NextRequest) {
     resolveOwnEmployeeId(Number(userId)),
   ]);
 
+  // Whether this login manages anyone. The manager approval stage is gated
+  // on the org chart rather than RBAC, so a plain employee with reports still
+  // needs the Approval Center in their nav — without this the only route to
+  // their queue is the dashboard's "My approvals" tab.
+  const isManager = employeeId
+    ? (await prisma.employee.count({
+        where: { reportingManagerId: employeeId, deletedAt: null, isActive: true },
+      })) > 0
+    : false;
+
   return NextResponse.json({
     userId: Number(userId),
     email: user?.email ?? null,
@@ -47,5 +57,6 @@ export async function GET(request: NextRequest) {
     companyName: user?.company?.name ?? null,
     hasAdminAccess,
     hasEmployeeAccess: !!employeeId,
+    isManager,
   });
 }

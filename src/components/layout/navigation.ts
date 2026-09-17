@@ -17,6 +17,12 @@ export type NavLeaf = {
   ready?: boolean;
   /** Restrict to a specific role code (e.g. 'company-admin'). */
   requiredRole?: string;
+  /**
+   * This queue has a Reporting-Manager stage, so a plain employee who manages
+   * someone should see it. Everything without this flag is HR-only and stays
+   * hidden from manager logins, which would otherwise just get an empty list.
+   */
+  managerQueue?: boolean;
 };
 
 export type NavGroup = {
@@ -464,18 +470,19 @@ export const navigation: NavModule[] = [
       {
         label: "Workforce",
         items: [
-          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave", ready: true },
-          { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
-          { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true },
-          { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true },
-          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
+          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave", ready: true, managerQueue: true },
+          { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true, managerQueue: true },
+          { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true, managerQueue: true },
+          { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true, managerQueue: true },
+          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true, managerQueue: true },
+          // LOM is an HR determination, not an employee request — no manager stage.
           { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
           // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
           // spent as a normal leave application against the "Compensatory Off"
           // leave type, reviewed on the existing Leave Approval page.
           { label: "Comp-Off Approval", short: "Comp-Off", href: "/workforce/leave/approval" },
-          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission", ready: true },
+          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission", ready: true, managerQueue: true },
         ],
       },
       {

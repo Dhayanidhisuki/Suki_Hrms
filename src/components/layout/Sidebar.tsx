@@ -18,6 +18,19 @@ interface CurrentUser {
   hasAdminAccess: boolean;
   roleCode: string | null;
   hasEmployeeAccess: boolean;
+  isManager: boolean;
+}
+
+/**
+ * Approval Center as a manager sees it: only the queues that actually have a
+ * Reporting-Manager stage. The HR-only groups (Recruitment, Employees,
+ * Payroll, Visitor) are dropped rather than shown empty.
+ */
+function managerApprovalModule(mod: NavModule): NavModule | null {
+  const groups = mod.groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.managerQueue) }))
+    .filter((g) => g.items.length > 0);
+  return groups.length > 0 ? { ...mod, groups } : null;
 }
 
 const readyCount = allNavLeaves.filter((leaf) => leaf.ready).length;
@@ -34,7 +47,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess });
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess, isManager: !!data.isManager });
       })
       .catch(() => {});
     return () => {
@@ -53,10 +66,18 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     }
     if (me?.hasEmployeeAccess && !me?.hasAdminAccess) {
       // Filter to employee Dashboard only (href contains /ess/)
-      return navigation.filter((mod) => {
+      const employeeNav = navigation.filter((mod) => {
         if (mod.label === "Dashboard") return mod.href.includes("/ess/");
         return ["Services", "Profile", "Visitors"].includes(mod.label);
       });
+      // A plain employee who manages someone still has approval queues to
+      // work — the manager stage is gated on the org chart, not on RBAC.
+      if (me.isManager) {
+        const approvals = navigation.find((mod) => mod.label === "Approval Center");
+        const managerView = approvals ? managerApprovalModule(approvals) : null;
+        if (managerView) employeeNav.splice(1, 0, managerView);
+      }
+      return employeeNav;
     }
     return navigation.filter((mod) => {
       if (mod.label === "Superadmin") return false;
