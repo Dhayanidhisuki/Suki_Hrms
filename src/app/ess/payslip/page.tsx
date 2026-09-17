@@ -13,8 +13,11 @@ import { PayslipView, fmt, type PayrollLineDetail } from '@/components/payroll/P
 
 interface PayslipListRow {
   id: number;
-  netSalary: string;
+  netSalary: string | null;
   status: string;
+  payrollStatus: 'PUBLISHED' | 'PROCESSING';
+  processedOn: string | null;
+  payslipAvailable: boolean;
   payrollRun: { id: number; year: number; month: number; status: string };
 }
 
@@ -98,7 +101,7 @@ export default function EssPayslipPage() {
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>
       ) : list.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
-          No published payslips yet.
+          No payroll has been run for you yet.
         </div>
       ) : (
         <div className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
@@ -106,6 +109,7 @@ export default function EssPayslipPage() {
             <thead>
               <tr className="border-b text-left text-xs uppercase" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
                 <th className="px-4 py-2">Month</th>
+                <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2 text-right">Net Salary</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -114,15 +118,28 @@ export default function EssPayslipPage() {
               {list.map((row) => (
                 <tr key={row.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
                   <td className="px-4 py-2">{monthLabel(row.payrollRun.year, row.payrollRun.month)}</td>
-                  <td className="px-4 py-2 text-right font-medium">₹{fmt(row.netSalary)}</td>
+                  <td className="px-4 py-2">
+                    {row.payrollStatus === 'PUBLISHED' ? (
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>Published</span>
+                    ) : (
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#fef9c3', color: '#854d0e' }}>Processing</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right font-medium">
+                    {row.payslipAvailable ? `₹${fmt(row.netSalary ?? '0')}` : <span style={{ color: 'var(--foreground-muted)' }}>—</span>}
+                  </td>
                   <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={() => setSelectedId(row.id)}
-                      className="rounded-lg border px-3 py-1 text-xs font-medium"
-                      style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                    >
-                      View
-                    </button>
+                    {row.payslipAvailable ? (
+                      <button
+                        onClick={() => setSelectedId(row.id)}
+                        className="rounded-lg border px-3 py-1 text-xs font-medium"
+                        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      >
+                        View
+                      </button>
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Payroll in progress</span>
+                    )}
                   </td>
                 </tr>
               ))}
