@@ -83,20 +83,28 @@ function useMispunchQueue(scope: 'manager' | 'hr' | 'actioned') {
 }
 
 function MispunchQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
-  const { records, loading, visible, error, refetch } = useMispunchQueue(scope);
+  const { records, loading, visible, error } = useMispunchQueue(scope);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
+  // Rows this approver has just actioned, and the status each moved to.
+  // Refetching here would drop the row out of the queue the instant it was
+  // approved — the decision would vanish under the cursor with no
+  // confirmation. Keep it in place showing its new status; it leaves the
+  // queue on the next load, and "My Approval History" holds it after that.
+  const [actioned, setActioned] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!visible) return null;
 
   const handleApprove = async (id: number) => {
+    setActionError(null);
     const res = await fetch(`/api/workforce/mispunch/${id}/approve`, { method: 'POST' });
+    const body = await res.json().catch(() => null);
     if (!res.ok) {
-      const err = await res.json();
-      alert(err.error ?? 'Approve failed');
+      setActionError(body?.error ?? 'Approve failed');
       return;
     }
-    refetch();
+    setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
   };
 
   const columns: Column<MispunchRow>[] = [
@@ -105,6 +113,22 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
     { key: 'requestedInTime', label: 'Requested In', render: (r) => formatWallClockTime(r.requestedInTime) },
     { key: 'requestedOutTime', label: 'Requested Out', render: (r) => formatWallClockTime(r.requestedOutTime) },
     { key: 'reason', label: 'Reason' },
+    {
+      key: 'outcome',
+      label: 'Status',
+      render: (r) => {
+        const moved = actioned[r.id];
+        if (!moved) {
+          return <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Awaiting your review</span>;
+        }
+        const tone = STATUS_TONE[moved] ?? { bg: '#dcfce7', fg: '#166534' };
+        return (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+            {STATUS_LABEL[moved] ?? moved}
+          </span>
+        );
+      },
+    },
   ];
 
   return (
@@ -118,9 +142,9 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
         </p>
       </div>
 
-      {error && (
+      {(error || actionError) && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
+          {actionError ?? error}
         </div>
       )}
 
@@ -129,16 +153,20 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
         data={records}
         loading={loading}
         emptyMessage="Nothing pending here."
-        renderRowActions={(row) => (
-          <>
-            <button onClick={() => setApproveId(row.id)} className="mr-3 text-xs font-medium hover:underline" style={{ color: '#166534' }}>
-              Approve
-            </button>
-            <button onClick={() => setRejectId(row.id)} className="text-xs font-medium hover:underline" style={{ color: '#991b1b' }}>
-              Reject
-            </button>
-          </>
-        )}
+        renderRowActions={(row) =>
+          actioned[row.id] ? (
+            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Done</span>
+          ) : (
+            <>
+              <button onClick={() => setApproveId(row.id)} className="mr-3 text-xs font-medium hover:underline" style={{ color: '#166534' }}>
+                Approve
+              </button>
+              <button onClick={() => setRejectId(row.id)} className="text-xs font-medium hover:underline" style={{ color: '#991b1b' }}>
+                Reject
+              </button>
+            </>
+          )
+        }
       />
 
       <ConfirmDialog
@@ -170,10 +198,10 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
             body: JSON.stringify({ rejectionReason: values.rejectionReason }),
           });
           if (!res.ok) {
-            const err = await res.json();
+            const err = await res.json().catch(() => ({}));
             throw new Error(err.error ?? 'Reject failed');
           }
-          refetch();
+          if (rejectId !== null) setActioned((prev) => ({ ...prev, [rejectId]: 'rejected' }));
         }}
         submitLabel="Reject"
       />

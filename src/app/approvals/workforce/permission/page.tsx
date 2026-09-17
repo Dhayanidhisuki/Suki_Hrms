@@ -73,6 +73,12 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
   const { records, loading, visible, error, refetch } = usePermissionQueue(scope);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
+  // Rows this approver has just actioned, and the status each moved to.
+  // Refetching here would drop the row out of the queue the instant it was
+  // approved — the decision would vanish under the cursor with no
+  // confirmation. Keep it in place showing its new status; it leaves the
+  // queue on the next load, and "My Approval History" holds it after that.
+  const [actioned, setActioned] = useState<Record<number, string>>({});
   const [approveResult, setApproveResult] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -91,7 +97,7 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
     if (data.exceedsAllowance) {
       setApproveResult(`Approved — this pushes the employee ${Number(data.excessHours).toFixed(2)}h over their monthly free allowance. Handle the excess as an LOP adjustment.`);
     }
-    refetch();
+    setActioned((prev) => ({ ...prev, [id]: data?.status ?? data?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
   };
 
   const columns: Column<PermissionRow>[] = [
@@ -102,6 +108,21 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
     { key: 'hours', label: 'Hours', render: (r) => Number(r.hours).toFixed(2) },
     { key: 'reason', label: 'Reason', render: (r) => r.reason ?? '—' },
   ];
+
+  const outcomeColumn: Column<PermissionRow> = {
+    key: 'outcome',
+    label: 'Status',
+    render: (r) => {
+      const moved = actioned[r.id];
+      if (!moved) return <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Awaiting your review</span>;
+      const tone = HIST_TONE[moved] ?? { bg: '#dcfce7', fg: '#166534' };
+      return (
+        <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+          {HIST_LABEL[moved] ?? moved}
+        </span>
+      );
+    },
+  };
 
   return (
     <div className="space-y-2">
@@ -122,11 +143,13 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
       )}
 
       <DataTable
-        columns={columns}
+        columns={[...columns, outcomeColumn]}
         data={records}
         loading={loading}
         emptyMessage="Nothing pending here."
-        renderRowActions={(row) => (
+        renderRowActions={(row) => actioned[row.id] ? (
+          <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Done</span>
+        ) : (
           <>
             <button onClick={() => setApproveId(row.id)} className="mr-3 text-xs font-medium hover:underline" style={{ color: '#166534' }}>
               Approve
@@ -166,7 +189,7 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error ?? 'Reject failed');
           }
-          refetch();
+          if (rejectId !== null) setActioned((prev) => ({ ...prev, [rejectId]: 'rejected' }));
         }}
         submitLabel="Reject"
       />

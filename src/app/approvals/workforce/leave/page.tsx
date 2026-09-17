@@ -62,6 +62,12 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
   const { records, loading, visible, error, refetch } = useLeaveQueue(scope);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
+  // Rows this approver has just actioned, and the status each moved to.
+  // Refetching here would drop the row out of the queue the instant it was
+  // approved — the decision would vanish under the cursor with no
+  // confirmation. Keep it in place showing its new status; it leaves the
+  // queue on the next load, and "My Approval History" holds it after that.
+  const [actioned, setActioned] = useState<Record<number, string>>({});
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
 
@@ -71,12 +77,12 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
     setApproving(true);
     try {
       const res = await fetch(`/api/workforce/leave/applications/${id}/approve`, { method: 'POST' });
+      const body = await res.json().catch(() => null);
       if (!res.ok) {
-        const err = await res.json();
-        alert(err.error ?? 'Approve failed');
+        alert(body?.error ?? 'Approve failed');
         return;
       }
-      refetch();
+      setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
     } finally {
       setApproving(false);
     }
@@ -135,6 +141,21 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
     },
   ];
 
+  const outcomeColumn: Column<LeaveRow> = {
+    key: 'outcome',
+    label: 'Status',
+    render: (r) => {
+      const moved = actioned[r.id];
+      if (!moved) return <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Awaiting your review</span>;
+      const tone = HIST_TONE[moved] ?? { bg: '#dcfce7', fg: '#166534' };
+      return (
+        <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+          {HIST_LABEL[moved] ?? moved}
+        </span>
+      );
+    },
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -153,11 +174,13 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
       )}
 
       <DataTable
-        columns={columns}
+        columns={[...columns, outcomeColumn]}
         data={records}
         loading={loading}
         emptyMessage="Nothing pending here."
-        renderRowActions={(row) => (
+        renderRowActions={(row) => actioned[row.id] ? (
+          <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Done</span>
+        ) : (
           <>
             <button
               onClick={() => setApproveId(row.id)}
