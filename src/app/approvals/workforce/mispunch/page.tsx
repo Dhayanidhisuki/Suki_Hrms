@@ -20,8 +20,24 @@ interface MispunchRow {
   requestedInTime: string | null;
   requestedOutTime: string | null;
   reason: string;
+  status?: string;
+  managerActionAt?: string | null;
+  hrActionAt?: string | null;
   employee: { employeeCode: string; firstName: string; lastName: string };
 }
+
+const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  pending_manager: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_hr: { bg: '#dbeafe', fg: '#1e40af' },
+  approved: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+};
+const STATUS_LABEL: Record<string, string> = {
+  pending_manager: 'Pending Manager',
+  pending_hr: 'Pending HR',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
 
 const rejectFields: FieldDef[] = [{ name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true }];
 
@@ -35,7 +51,7 @@ function formatWallClockTime(iso: string | null): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
-function useMispunchQueue(scope: 'manager' | 'hr') {
+function useMispunchQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<MispunchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -165,6 +181,60 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
   );
 }
 
+/**
+ * What this approver has already decided. A request leaves the pending queues
+ * the moment it is actioned, so without this the approver has no record of
+ * what they did — only the employee can see the outcome, on their own page.
+ */
+function MispunchHistorySection() {
+  const { records, loading, visible, error } = useMispunchQueue('actioned');
+  if (!visible) return null;
+
+  const columns: Column<MispunchRow>[] = [
+    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString() },
+    { key: 'requestedInTime', label: 'Requested In', render: (r) => formatWallClockTime(r.requestedInTime) },
+    { key: 'requestedOutTime', label: 'Requested Out', render: (r) => formatWallClockTime(r.requestedOutTime) },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (r) => {
+        const tone = STATUS_TONE[r.status ?? ''] ?? { bg: '#f1f5f9', fg: '#475569' };
+        return (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+            {STATUS_LABEL[r.status ?? ''] ?? r.status}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'actionedAt',
+      label: 'My Action',
+      render: (r) => {
+        const at = r.hrActionAt ?? r.managerActionAt;
+        return at ? new Date(at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+      },
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+          Requests you have already actioned, newest first. Read-only.
+        </p>
+      </div>
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
+      <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any requests yet." />
+    </div>
+  );
+}
+
 export default function MispunchApprovalPage() {
   return (
     <div className="space-y-6">
@@ -183,6 +253,8 @@ export default function MispunchApprovalPage() {
         scope="hr"
         description="Requests already reviewed by the Reporting Manager, awaiting final HR approval. Approving here updates attendance."
       />
+
+      <MispunchHistorySection />
     </div>
   );
 }
