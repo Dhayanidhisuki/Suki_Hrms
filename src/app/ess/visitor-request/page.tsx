@@ -88,7 +88,17 @@ export default function VisitorPassRequestPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? 'Failed to create visitor pass request');
+        // A bare "Validation failed" tells the user nothing about which field
+        // to fix. Zod's flatten() puts the reasons in details.fieldErrors.
+        const fieldErrors = data?.details?.fieldErrors as Record<string, string[]> | undefined;
+        const detail = fieldErrors
+          ? Object.entries(fieldErrors)
+              .map(([field, msgs]) => `${field}: ${(msgs ?? []).join(', ')}`)
+              .join(' · ')
+          : '';
+        throw new Error(
+          detail ? `${data.error ?? 'Validation failed'} — ${detail}` : (data.error ?? 'Failed to create visitor pass request')
+        );
       }
       const newPass = await res.json();
       setPasses([newPass, ...passes]);

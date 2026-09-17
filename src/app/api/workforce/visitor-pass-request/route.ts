@@ -7,7 +7,10 @@ import { z } from 'zod';
 const requestSchema = z.object({
   visitorName: z.string().min(1).max(100),
   mobileNo: z.string().regex(/^\d{10}$/, 'Must be 10 digits'),
-  email: z.string().email().optional(),
+  // The form submits '' for an untouched optional field, which .optional()
+  // does not treat as absent — so a blank email failed .email() and blocked
+  // every request. Normalise empty to undefined before validating.
+  email: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
   address: z.string().max(500).optional(),
   visitorTypeValue: z.string().min(1),
   purposeValue: z.string().min(1),
