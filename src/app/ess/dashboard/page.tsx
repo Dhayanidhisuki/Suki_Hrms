@@ -21,6 +21,8 @@ interface Profile {
   department: string | null;
   designation: string | null;
   employeeType: string | null;
+  reportingManager: string | null;
+  reportingManagerCode: string | null;
   category: string | null;
 }
 
@@ -227,6 +229,8 @@ export default function EssDashboardPage() {
     { key: 'wfh',         label: 'Remote Work (WFH) Requests', href: '/ess/wfh' },
     { key: 'shiftChange', label: 'Shift Change Requests',      href: '/ess/shift-change' },
     { key: 'loan',        label: 'Loan Requests',              href: '/ess/loans' },
+    { key: 'compOff',     label: 'Comp-Off Requests',          href: '/ess/comp-off' },
+    { key: 'encashment',  label: 'Leave Encashment Requests',  href: '/ess/leave-encashment' },
   ];
 
   const approvalItems = [
@@ -321,14 +325,24 @@ export default function EssDashboardPage() {
           </div>
           <div className="mt-5 space-y-2.5 text-[13px]">
             {[
-              profile?.mobile,
-              profile?.email,
-              profile?.department,
-              profile?.joinDate ? fmtDate(profile.joinDate) : null,
-            ].filter(Boolean).map((line, i) => (
+              { icon: 'calendar' as const, text: profile?.mobile },
+              { icon: 'calendar' as const, text: profile?.email },
+              { icon: 'calendar' as const, text: profile?.department },
+              { icon: 'calendar' as const, text: profile?.joinDate ? fmtDate(profile.joinDate) : null },
+              // Reporting manager — labelled, because a bare name next to the
+              // department reads as just another org field.
+              {
+                icon: 'manager' as const,
+                text: profile?.reportingManager ? `Reports to ${profile.reportingManager}` : null,
+              },
+            ].filter((row) => Boolean(row.text)).map((row, i) => (
               <div key={i} className="flex items-center gap-2.5" style={muted}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></svg>
-                <span className="truncate">{line}</span>
+                {row.icon === 'manager' ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" /></svg>
+                )}
+                <span className="truncate">{row.text}</span>
               </div>
             ))}
           </div>
