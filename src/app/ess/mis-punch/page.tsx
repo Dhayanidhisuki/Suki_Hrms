@@ -329,6 +329,39 @@ function MisPunchModal({
             </div>
           )}
 
+          {/* The device buckets punches by calendar date, so a shift crossing
+              midnight leaves the day unclosed and its exit punch sitting on the
+              next day. The sync only auto-pairs an unambiguous night shift —
+              everything else lands here, and the employee has no way to know
+              which of the two cases they are in unless we say so. */}
+          {lookedUp && recorded && recorded.inTime && !recorded.outTime && (
+            <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: '#fcd34d', backgroundColor: 'rgba(250,204,21,0.10)', color: 'var(--foreground)' }}>
+              <strong>No out-punch was recorded for this day.</strong>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4" style={{ color: 'var(--foreground-muted)' }}>
+                <li>Enter the time you actually left, then give a reason.</li>
+                <li>If your shift ended the <strong>next morning</strong>, tick “Out time is on the next day” below.</li>
+                <li>
+                  If you worked straight through into another shift, file this correction against the day you
+                  <strong> started</strong>, and raise a second one for the following day — the device logged your exit
+                  there as a fresh entry.
+                </li>
+              </ul>
+              <div className="mt-1" style={{ color: 'var(--foreground-muted)' }}>
+                Until this is approved the day counts as <strong>zero hours worked</strong>.
+              </div>
+            </div>
+          )}
+
+          {lookedUp && recorded && !recorded.inTime && recorded.outTime && (
+            <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: '#fcd34d', backgroundColor: 'rgba(250,204,21,0.10)', color: 'var(--foreground)' }}>
+              <strong>No in-punch was recorded for this day.</strong>
+              <div className="mt-1" style={{ color: 'var(--foreground-muted)' }}>
+                Enter the time you actually arrived. If this time is really the exit from a night shift that started the
+                previous day, file the correction against <strong>that</strong> day instead.
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass} style={{ color: 'var(--foreground)' }}>Correct In Time</label>
