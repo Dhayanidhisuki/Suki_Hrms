@@ -1317,7 +1317,7 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
             })}
           </div>
 
-          {bonusPreview > 0 && (
+          {bonusPreview !== null && bonusPreview > 0 && (
             <div className="space-y-2">
               <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Other Earnings</span>
               <table className="w-full text-sm">
