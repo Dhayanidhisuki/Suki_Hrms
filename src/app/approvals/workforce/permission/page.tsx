@@ -1,8 +1,14 @@
 /**
- * Permission Approval — pending queue, single-stage RBAC approval
- * (workforce.permission.approve), same pattern as Leave Approval. On
- * approve, the API flags whether this pushes the employee over their
- * monthly free-hours allowance — shown here as a warning, not blocked.
+ * Permission Approval — two independent queues on one page, matching the
+ * two-stage workflow the API implements: "Pending My Approval (Reporting
+ * Manager)" is hierarchy-gated (scope=manager — only requests where the
+ * logged-in employee is the requester's own reportingManagerId), and
+ * "Pending HR Approval" is RBAC-gated (workforce.permission.approve —
+ * scope=hr). A 403 on either fetch hides that section rather than erroring
+ * the page, so a manager-only login sees just their own queue.
+ *
+ * On HR approval the API flags whether this pushes the employee over their
+ * monthly free-hours allowance — surfaced here as a warning, not a block.
  */
 
 'use client';
@@ -31,19 +37,20 @@ function formatWallClockTime(iso: string): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
-export default function PermissionApprovalPage() {
+function usePermissionQueue(scope: 'manager' | 'hr') {
   const [records, setRecords] = useState<PermissionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [approveId, setApproveId] = useState<number | null>(null);
-  const [approveResult, setApproveResult] = useState<string | null>(null);
-  const [rejectId, setRejectId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const res = await fetch('/api/workforce/permission?scope=hr');
+      const res = await fetch(`/api/workforce/permission?scope=${scope}`);
+      if (res.status === 403) {
+        setVisible(false);
+        return;
+      }
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
       const json: { data: PermissionRow[] } = await res.json();
       setRecords(json.data);
@@ -52,23 +59,38 @@ export default function PermissionApprovalPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  return { records, loading, visible, error, refetch: fetchData };
+}
+
+function PermissionQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
+  const { records, loading, visible, error, refetch } = usePermissionQueue(scope);
+  const [approveId, setApproveId] = useState<number | null>(null);
+  const [rejectId, setRejectId] = useState<number | null>(null);
+  const [approveResult, setApproveResult] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  if (!visible) return null;
+
   const handleApprove = async (id: number) => {
+    setActionError(null);
     const res = await fetch(`/api/workforce/permission/${id}/approve`, { method: 'POST' });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.error ?? 'Approve failed');
+      setActionError(data.error ?? 'Approve failed');
       return;
     }
+    // Only the HR stage reports the allowance overshoot; the manager stage
+    // just advances the request, so there is nothing to warn about there.
     if (data.exceedsAllowance) {
       setApproveResult(`Approved — this pushes the employee ${Number(data.excessHours).toFixed(2)}h over their monthly free allowance. Handle the excess as an LOP adjustment.`);
     }
-    fetchData();
+    refetch();
   };
 
   const columns: Column<PermissionRow>[] = [
@@ -81,14 +103,15 @@ export default function PermissionApprovalPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-        Permission Approval
-      </h1>
+    <div className="space-y-2">
+      <div>
+        <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>{title}</h2>
+        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>{description}</p>
+      </div>
 
-      {error && (
+      {(error || actionError) && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
+          {actionError ?? error}
         </div>
       )}
       {approveResult && (
@@ -101,7 +124,7 @@ export default function PermissionApprovalPage() {
         columns={columns}
         data={records}
         loading={loading}
-        emptyMessage="No pending permission requests."
+        emptyMessage="Nothing pending here."
         renderRowActions={(row) => (
           <>
             <button onClick={() => setApproveId(row.id)} className="mr-3 text-xs font-medium hover:underline" style={{ color: '#166534' }}>
@@ -116,7 +139,7 @@ export default function PermissionApprovalPage() {
 
       <ConfirmDialog
         title="Approve Permission"
-        message="Approve this permission request?"
+        message={scope === 'manager' ? 'This sends the request on to HR for final approval. Continue?' : 'Approve this permission request?'}
         confirmLabel="Approve"
         isOpen={approveId !== null}
         onConfirm={() => {
@@ -139,12 +162,34 @@ export default function PermissionApprovalPage() {
             body: JSON.stringify({ rejectionReason: values.rejectionReason }),
           });
           if (!res.ok) {
-            const err = await res.json();
+            const err = await res.json().catch(() => ({}));
             throw new Error(err.error ?? 'Reject failed');
           }
-          fetchData();
+          refetch();
         }}
         submitLabel="Reject"
+      />
+    </div>
+  );
+}
+
+export default function PermissionApprovalPage() {
+  return (
+    <div className="space-y-8">
+      <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+        Permission Approval
+      </h1>
+
+      <PermissionQueueSection
+        title="Pending My Approval (Reporting Manager)"
+        scope="manager"
+        description="Requests from your direct reports awaiting your review."
+      />
+
+      <PermissionQueueSection
+        title="Pending HR Approval"
+        scope="hr"
+        description="Manager-approved requests awaiting final HR sign-off."
       />
     </div>
   );
