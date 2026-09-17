@@ -299,7 +299,7 @@ export const navigation: NavModule[] = [
         label: "Requests",
         items: [
           { label: "Comp-Off Approval", href: "/workforce/leave/approval", ready: true },
-          { label: "Permission Entry", href: "/ess/permission", ready: true },
+          { label: "Permission Policy & Usage", short: "Permission", href: "/workforce/permission", ready: true },
         ],
       },
       {
