@@ -19,6 +19,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { permissionRequestSchema } from '@/lib/validations/workforce';
+import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -44,8 +45,7 @@ export async function GET(request: NextRequest) {
     // count against it: two requests that each fit the balance can still
     // exceed it together, and that should be visible before the second is
     // raised rather than discovered at HR approval.
-    const policy = await prisma.permissionPolicy.findUnique({ where: { companyId: scope.companyId } });
-    const freeHoursPerMonth = Number(policy?.freeHoursPerMonth ?? 2);
+    const freeHoursPerMonth = await getFreeHoursPerMonth(scope.companyId);
 
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

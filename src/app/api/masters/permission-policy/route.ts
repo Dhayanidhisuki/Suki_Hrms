@@ -17,8 +17,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
+import { DEFAULT_FREE_HOURS_PER_MONTH } from '@/lib/permissionPolicy';
 
-const DEFAULTS = { freeHoursPerMonth: 2 };
+const DEFAULTS = { freeHoursPerMonth: DEFAULT_FREE_HOURS_PER_MONTH };
 
 const schema = z.object({
   // Quarter-hour granularity so a policy can be expressed the way it is

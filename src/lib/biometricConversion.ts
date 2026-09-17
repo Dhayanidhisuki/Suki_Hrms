@@ -50,6 +50,7 @@ import { checkMonthNotFrozen } from './attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from './attendanceHistory';
 import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from './weeklyOff';
 import type { BiometricAttendanceImport } from '@prisma/client';
+import { getFreeHoursPerMonthForEmployee } from './permissionPolicy';
 
 const HALF_DAY_THRESHOLD_HOURS = 7; // documented guess — see plan; only used when no in/out punch exists
 const FALLBACK_STANDARD_SHIFT_MINUTES = 8 * 60; // used only when the employee has no shift assigned at all
@@ -475,11 +476,7 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
   // beyond the company's free allowance are converted to LOP days. The
   // PermissionPolicy.freeHoursPerMonth defines the free quota; any excess
   // hours above that are converted to LOP days at 8 hours = 1 day.
-  const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
-  const permissionPolicy = employee
-    ? await prisma.permissionPolicy.findUnique({ where: { companyId: employee.companyId } })
-    : null;
-  const freeHoursPerMonth = Number(permissionPolicy?.freeHoursPerMonth ?? 2);
+  const freeHoursPerMonth = await getFreeHoursPerMonthForEmployee(employeeId);
 
   const permissionRequests = await prisma.permissionRequest.findMany({
     where: {
