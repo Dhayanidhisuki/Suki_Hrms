@@ -181,6 +181,14 @@ const HIST_TONE: Record<string, { bg: string; fg: string }> = {
   rejected: { bg: '#fee2e2', fg: '#991b1b' },
 };
 
+const HIST_LABEL: Record<string, string> = {
+  pending_manager: 'Pending Manager',
+  pending_hr: 'Pending HR',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+};
+
 /**
  * What this approver has already decided. A request leaves both pending
  * queues the moment it is actioned, so without this the approver has no
@@ -201,7 +209,7 @@ function PermissionHistorySection() {
       label: 'Status',
       render: (r) => {
         const tone = HIST_TONE[r.status ?? ''] ?? { bg: '#f1f5f9', fg: '#475569' };
-        return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{r.status}</span>;
+        return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{HIST_LABEL[r.status ?? ''] ?? r.status}</span>;
       },
     },
   ];

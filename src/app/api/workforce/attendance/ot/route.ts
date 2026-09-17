@@ -54,5 +54,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
-  return NextResponse.json({ error: 'scope must be one of: manager, hr' }, { status: 400 });
+  // What this caller has already acted on, at either stage. Needs no grant:
+  // it is filtered to their own recorded action, so it can only ever return
+  // days they personally decided.
+  if (scopeParam === 'actioned') {
+    const data = await prisma.dailyAttendance.findMany({
+      where: {
+        employee: { companyId: scope.companyId },
+        OR: [{ otManagerActionByUserId: userId }, { otHrActionByUserId: userId }],
+      },
+      include,
+      orderBy: [{ otHrActionAt: 'desc' }, { otManagerActionAt: 'desc' }],
+      take: 50,
+    });
+    return NextResponse.json({ data });
+  }
+
+  return NextResponse.json({ error: 'scope must be one of: manager, hr, actioned' }, { status: 400 });
 }
