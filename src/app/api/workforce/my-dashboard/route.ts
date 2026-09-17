@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId, listAllReports } from '@/lib/reportingManager';
+import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 const TWO_STAGE_PENDING = ['pending_manager', 'pending_hr'];
 
@@ -56,6 +57,12 @@ export async function GET(request: NextRequest) {
       profilePhotoPath: true,
       officeEmail: true,
       company: { select: { name: true } },
+      // Shown on the ESS profile card so the employee can see who their
+      // requests route to. Name only — no contact details, since this is a
+      // read-only label, not a directory entry.
+      reportingManager: {
+        select: { firstName: true, middleName: true, lastName: true, employeeCode: true },
+      },
       personalDetails: { select: { personalEmail: true } },
       contactDetails: { select: { presentMobile: true, permanentMobile: true } },
       jobInfos: {
@@ -166,6 +173,27 @@ export async function GET(request: NextRequest) {
     approvals = { leave: aLeave, mispunch: aMispunch, permission: aPermission, onDuty: aOnDuty, wfh: aWfh, ot: aOt };
   }
 
+  // Permission balance for the current month. Uses the same helper as the ESS
+  // permission page and the HR usage view, and counts pending hours the same
+  // way, so all three agree on what is left. Always the real current month —
+  // the dashboard's year/month selector drives the attendance chart, not this.
+  const permMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const permMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const [permFreeHours, permRequests] = await Promise.all([
+    getFreeHoursPerMonth(scope.companyId),
+    prisma.permissionRequest.findMany({
+      where: {
+        employeeId: ownEmployeeId,
+        date: { gte: permMonthStart, lt: permMonthEnd },
+        status: { in: ['pending_manager', 'pending_hr', 'approved'] },
+      },
+      select: { hours: true, status: true },
+    }),
+  ]);
+  const permApproved = permRequests.filter((r) => r.status === 'approved').reduce((s, r) => s + Number(r.hours), 0);
+  const permPending = permRequests.filter((r) => r.status !== 'approved').reduce((s, r) => s + Number(r.hours), 0);
+  const permUsed = permApproved + permPending;
+
   const job = employee.jobInfos[0];
 
     return NextResponse.json({
@@ -184,6 +212,16 @@ export async function GET(request: NextRequest) {
         designation: job?.designation?.name ?? null,
         employeeType: job?.employeeType?.name ?? null,
         category: job?.category?.name ?? null,
+        reportingManager: employee.reportingManager
+          ? [
+              employee.reportingManager.firstName,
+              employee.reportingManager.middleName,
+              employee.reportingManager.lastName,
+            ]
+              .filter(Boolean)
+              .join(' ')
+          : null,
+        reportingManagerCode: employee.reportingManager?.employeeCode ?? null,
       },
       today,
       month: { year, month, days: monthDays, summary: monthSummary },
@@ -212,6 +250,13 @@ export async function GET(request: NextRequest) {
         shiftChange: reqShiftChange,
         loan: reqLoan,
         encashment: reqEncashment,
+      },
+      permission: {
+        freeHoursPerMonth: permFreeHours,
+        approvedHours: Number(permApproved.toFixed(2)),
+        pendingHours: Number(permPending.toFixed(2)),
+        usedHours: Number(permUsed.toFixed(2)),
+        remainingHours: Number(Math.max(0, permFreeHours - permUsed).toFixed(2)),
       },
       approvals,
       isManager: reportIds.length > 0,

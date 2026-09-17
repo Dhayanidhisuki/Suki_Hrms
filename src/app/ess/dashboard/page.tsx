@@ -74,6 +74,13 @@ interface DashboardPayload {
   today: DayRow | null;
   month: { year: number; month: number; days: DayRow[]; summary: MonthSummary | null };
   leaveBalances: LeaveBal[];
+  permission: {
+    freeHoursPerMonth: number;
+    approvedHours: number;
+    pendingHours: number;
+    usedHours: number;
+    remainingHours: number;
+  } | null;
   requests: Record<string, number>;
   approvals: Record<string, number>;
   isManager: boolean;
@@ -81,6 +88,9 @@ interface DashboardPayload {
 }
 
 // ── Attendance flag colours (matches the reference legend) ────────────────────
+
+/** "2.5h", "4h" — trailing zeros are noise on a dashboard tile. */
+const hrs = (n: number) => `${Number(n).toFixed(2).replace(/\.?0+$/, '')}h`;
 
 const FLAG_META: Record<string, { label: string; color: string }> = {
   present:   { label: 'Present',   color: '#4f7df3' },
@@ -540,6 +550,40 @@ export default function EssDashboardPage() {
           <Link href="/ess/leave" className="mt-4 block text-center text-xs font-semibold" style={{ color: 'var(--info)' }}>
             View all leave →
           </Link>
+
+          {/* Permission (short leave) balance for the current month. Hours
+              awaiting approval are shown spent — the employee should not plan
+              against hours they have already asked for. */}
+          {data?.permission && (
+            <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold" style={fg}>Permission Balance</span>
+                <span className="text-xs" style={muted}>this month</span>
+              </div>
+              <div className="mt-2 flex items-baseline gap-1">
+                <span className="text-2xl font-bold" style={{ color: data.permission.remainingHours > 0 ? 'var(--info)' : '#ef5a3c' }}>
+                  {hrs(data.permission.remainingHours)}
+                </span>
+                <span className="text-xs" style={muted}>left of {hrs(data.permission.freeHoursPerMonth)}</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--border)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, data.permission.freeHoursPerMonth > 0 ? (data.permission.usedHours / data.permission.freeHoursPerMonth) * 100 : 0)}%`,
+                    backgroundColor: data.permission.usedHours > data.permission.freeHoursPerMonth ? '#ef5a3c' : 'var(--info)',
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs" style={muted}>
+                <span>Used {hrs(data.permission.usedHours)}</span>
+                {data.permission.pendingHours > 0 && <span>{hrs(data.permission.pendingHours)} awaiting approval</span>}
+              </div>
+              <Link href="/ess/permission" className="mt-3 block text-center text-xs font-semibold" style={{ color: 'var(--info)' }}>
+                Apply for permission →
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* My Requests / My approvals */}
