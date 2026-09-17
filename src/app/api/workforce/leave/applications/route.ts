@@ -18,8 +18,6 @@ import { leaveApplicationSchema } from '@/lib/validations/workforce';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 
 export async function GET(request: NextRequest) {
-  const permErr = await checkSpecificPermission(request, 'workforce.leave.view');
-  if (permErr) return permErr;
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
 
@@ -28,19 +26,27 @@ export async function GET(request: NextRequest) {
   const employeeIdParam = searchParams.get('employeeId');
   const queue = searchParams.get('queue'); // 'manager' | 'hr'
 
-  // Manager queue: only pending_manager for this manager's reports
+  // Stage 1 is gated on the org chart, not RBAC — a reporting manager holds no
+  // workforce.leave.* grant, so checking the permission up front (as this route
+  // used to) 403'd the manager queue and left the Leave Approval page blank for
+  // every manager. Same split the mispunch route uses.
   let managerFilter: Record<string, unknown> = {};
   if (queue === 'manager') {
     const userId = Number(request.headers.get('x-user-id'));
     const ownEmployeeId = await resolveOwnEmployeeId(userId);
-    if (ownEmployeeId) {
-      managerFilter = {
-        status: 'pending_manager',
-        employee: { reportingManagerId: ownEmployeeId, companyId: scope.companyId, deletedAt: null },
-      };
+    if (!ownEmployeeId) {
+      return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
     }
-  } else if (queue === 'hr') {
-    managerFilter = { status: 'pending_hr' };
+    // Fail closed: without this filter the query below would fall through to
+    // every leave application in the company.
+    managerFilter = {
+      status: 'pending_manager',
+      employee: { reportingManagerId: ownEmployeeId, companyId: scope.companyId, deletedAt: null },
+    };
+  } else {
+    const permErr = await checkSpecificPermission(request, 'workforce.leave.view');
+    if (permErr) return permErr;
+    if (queue === 'hr') managerFilter = { status: 'pending_hr' };
   }
 
   const records = await prisma.leaveApplication.findMany({
