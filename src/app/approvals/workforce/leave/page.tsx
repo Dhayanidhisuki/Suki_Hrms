@@ -27,7 +27,7 @@ const rejectFields: FieldDef[] = [
   { name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true },
 ];
 
-function useLeaveQueue(scope: 'manager' | 'hr') {
+function useLeaveQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -211,6 +211,53 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
   );
 }
 
+const HIST_TONE: Record<string, { bg: string; fg: string }> = {
+  pending_manager: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_hr: { bg: '#dbeafe', fg: '#1e40af' },
+  approved: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+  cancelled: { bg: '#f1f5f9', fg: '#475569' },
+};
+
+/**
+ * What this approver has already decided. A request leaves both pending
+ * queues the moment it is actioned, so without this the approver has no
+ * record of it — only the employee sees the outcome, on their own page.
+ */
+function LeaveHistorySection() {
+  const { records, loading, visible, error } = useLeaveQueue('actioned');
+  if (!visible) return null;
+
+  const columns: Column<LeaveRow>[] = [
+    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'leaveMaster', label: 'Leave Type', render: (r) => r.leaveMaster.name },
+    { key: 'fromDate', label: 'From', render: (r) => new Date(r.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'toDate', label: 'To', render: (r) => new Date(r.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'numberOfDays', label: 'Days', render: (r) => Number(r.numberOfDays).toFixed(1) },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (r) => {
+        const tone = HIST_TONE[r.status] ?? { bg: '#f1f5f9', fg: '#475569' };
+        return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{r.status}</span>;
+      },
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Leave requests you have already actioned. Read-only.</p>
+      </div>
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
+      )}
+      <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any leave requests yet." />
+    </div>
+  );
+}
+
 export default function LeaveApprovalPage() {
   return (
     <div className="space-y-8">
@@ -234,6 +281,8 @@ export default function LeaveApprovalPage() {
         scope="hr"
         description="Manager-approved requests awaiting HR finalization. Approved requests will deduct leave balance and mark attendance."
       />
+
+      <LeaveHistorySection />
     </div>
   );
 }

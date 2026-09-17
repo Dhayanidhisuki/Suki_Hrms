@@ -43,6 +43,12 @@ export async function GET(request: NextRequest) {
       status: 'pending_manager',
       employee: { reportingManagerId: ownEmployeeId, companyId: scope.companyId, deletedAt: null },
     };
+  } else if (queue === 'actioned') {
+    // What this caller has already decided, at either stage. Needs no grant:
+    // filtered to their own recorded action, so it can only return decisions
+    // they personally made. Without it an approval vanishes once actioned.
+    const userId = Number(request.headers.get('x-user-id'));
+    managerFilter = { OR: [{ managerActionByUserId: userId }, { approvedByUserId: userId }] };
   } else {
     const permErr = await checkSpecificPermission(request, 'workforce.leave.view');
     if (permErr) return permErr;
