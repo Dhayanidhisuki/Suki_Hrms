@@ -55,6 +55,13 @@ function formatWallClockTime(iso: string | null): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
+/** The calendar day after `ymd` (YYYY-MM-DD), for night shifts ending past midnight. */
+function nextDay(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Punch times are stored as wall clock in UTC, so read them back with UTC getters. */
 function toTimeInput(iso: string | null): string {
   if (!iso) return '';
@@ -87,7 +94,7 @@ export default function MisPunchRequestsPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleSubmit = async (form: { date: string; inTime: string; outTime: string; reason: string }) => {
+  const handleSubmit = async (form: { date: string; inTime: string; outTime: string; outNextDay: boolean; reason: string }) => {
     const res = await fetch('/api/workforce/mispunch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -95,7 +102,9 @@ export default function MisPunchRequestsPage() {
         date: form.date,
         // The API wants wall-clock YYYY-MM-DDTHH:mm, composed from the picked date.
         requestedInTime: form.inTime ? `${form.date}T${form.inTime}` : null,
-        requestedOutTime: form.outTime ? `${form.date}T${form.outTime}` : null,
+        // A night shift is recorded under its IN-punch date (BRD §night-shift
+        // convention), so the out time carries the following calendar date.
+        requestedOutTime: form.outTime ? `${form.outNextDay ? nextDay(form.date) : form.date}T${form.outTime}` : null,
         reason: form.reason,
       }),
     });
@@ -163,7 +172,7 @@ export default function MisPunchRequestsPage() {
   );
 }
 
-const EMPTY_FORM = { date: '', inTime: '', outTime: '', reason: '' };
+const EMPTY_FORM = { date: '', inTime: '', outTime: '', outNextDay: false, reason: '' };
 
 function MisPunchModal({
   isOpen,
@@ -193,7 +202,7 @@ function MisPunchModal({
   // Picking a date pulls that day's recorded punches and seeds the time inputs,
   // so the employee only edits the punch that is actually wrong.
   const pickDate = async (date: string) => {
-    setForm({ ...form, date, inTime: '', outTime: '' });
+    setForm({ ...form, date, inTime: '', outTime: '', outNextDay: false });
     setRecorded(null);
     setLookedUp(false);
     if (!date) return;
@@ -235,8 +244,8 @@ function MisPunchModal({
     // Both times are composed against the same picked date, so an out that
     // reads earlier than the in can only be a mistake here — a night shift
     // ending next morning cannot currently be expressed on this form.
-    if (form.inTime && form.outTime && form.outTime <= form.inTime) {
-      setError('Out time must be after in time.');
+    if (form.inTime && form.outTime && !form.outNextDay && form.outTime <= form.inTime) {
+      setError('Out time is earlier than in time — tick "Out time is on the next day" if this was a night shift.');
       return;
     }
     if (form.date > new Date().toISOString().slice(0, 10)) {
@@ -344,6 +353,15 @@ function MisPunchModal({
               />
             </div>
           </div>
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
+            <input
+              type="checkbox"
+              checked={form.outNextDay}
+              onChange={(e) => setForm({ ...form, outNextDay: e.target.checked })}
+              disabled={!form.date}
+            />
+            Out time is on the next day (night shift)
+          </label>
           <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
             Prefilled from the biometric record where available — change only the punch that is wrong.
           </p>

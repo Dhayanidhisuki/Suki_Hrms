@@ -203,6 +203,13 @@ export default function EssProfilePage() {
 
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
             <div className="mb-3 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Bank &amp; Statutory (view only — contact HR to change)</div>
+            {!profile.bank && !profile.pan && !profile.aadhaar ? (
+              // All five fields rendering as "—" reads like a failed load. Say
+              // plainly that nothing is on record, and who can add it.
+              <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'rgba(59,130,246,0.06)', color: 'var(--foreground-muted)' }}>
+                No bank or statutory details are on record for you yet. Contact HR to have them added — they cannot be entered from Self Service.
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Field label="Bank Name" value={profile.bank?.bankName} />
               <Field label="Account Number" value={profile.bank?.accountNumber} />
@@ -210,6 +217,7 @@ export default function EssProfilePage() {
               <Field label="PAN" value={profile.pan} />
               <Field label="Aadhaar" value={profile.aadhaar} />
             </div>
+            )}
           </div>
 
           <form onSubmit={saveContact} className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
