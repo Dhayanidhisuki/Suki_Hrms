@@ -91,7 +91,7 @@ export default function EssAttendancePage() {
     void fetchData();
   }, [fetchData]);
 
-  function handleExport(format: 'csv' | 'excel' | 'pdf') {
+  function exportAttendanceData(format: 'csv' | 'excel' | 'pdf') {
     const exportData = days.map(d => ({
       Date: new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }),
       Status: d.status,
@@ -118,7 +118,7 @@ export default function EssAttendancePage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Attendance</h1>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => handleExport('csv')}
+            onClick={() => exportAttendanceData('csv')}
             disabled={days.length === 0}
             className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary, #2563eb)' }}
@@ -127,7 +127,7 @@ export default function EssAttendancePage() {
             CSV
           </button>
           <button
-            onClick={() => handleExport('excel')}
+            onClick={() => exportAttendanceData('excel')}
             disabled={days.length === 0}
             className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary, #2563eb)' }}
@@ -136,7 +136,7 @@ export default function EssAttendancePage() {
             Excel
           </button>
           <button
-            onClick={() => handleExport('pdf')}
+            onClick={() => exportAttendanceData('pdf')}
             disabled={days.length === 0}
             className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary, #2563eb)' }}

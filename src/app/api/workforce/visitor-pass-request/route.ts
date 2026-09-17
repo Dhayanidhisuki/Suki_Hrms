@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           gadgets: data.gadgets || null,
           qrValidMinutes,
           personToMeetId: employeeId,
-          createdByUserId: userId,
+          createdBy: userId,
         },
       });
     });
