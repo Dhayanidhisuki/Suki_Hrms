@@ -250,7 +250,15 @@ export default function ApprovalHistoryPage() {
         </p>
       )}
 
-      <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No approval records match these filters." />
+      {/* Ids are only unique per module — leave #9 and mis-punch #9 are
+          different records — so the key has to include the module. */}
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={loading}
+        rowKey={(r) => `${r.module}-${r.id}`}
+        emptyMessage="No approval records match these filters."
+      />
     </div>
   );
 }
