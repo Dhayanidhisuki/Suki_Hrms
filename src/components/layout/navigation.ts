@@ -486,6 +486,12 @@ export const navigation: NavModule[] = [
         ],
       },
       {
+        label: "Audit",
+        items: [
+          { label: "Approval History", short: "History", href: "/approvals/history", ready: true },
+        ],
+      },
+      {
         label: "Payroll",
         items: [
           { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing", ready: true },
