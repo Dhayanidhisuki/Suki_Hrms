@@ -225,6 +225,11 @@ model Company {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // Statutory payslip/Form-25B header — printed address and factory
+  // registration number (e.g. "TVR-09353"). No logo image field yet (needs
+  // a file-upload flow); the header is text-only until that's built.
+  address     String?   @db.NVarChar(500)
+  factoryRegNo String?  @db.NVarChar(50)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -411,6 +416,30 @@ model DeductionRate {
   @@index([companyId, code])
   @@index([effectiveFrom, effectiveTo])
   @@map("DeductionRate")
+}
+
+// Per-employee override of a company-wide DeductionRate — the Salary
+// Details "Deductions" preview's Remove/Add back and Edit actions on an
+// auto-applied deduction row write here instead of touching the shared
+// DeductionRate itself. Matched to DeductionRate by code, not a FK, since
+// DeductionRate rows are versioned/replaced over time and the override
+// should keep applying to whichever row currently has that code.
+// excluded=true zeroes the deduction outright; overrideAmount (when
+// excluded=false) replaces the rate-computed amount with a fixed figure for
+// just this employee; both null/false means "use the rate as configured".
+model EmployeeDeductionExclusion {
+  id             Int      @id @default(autoincrement())
+  employeeId     Int
+  deductionCode  String   @db.NVarChar(20)
+  excluded       Boolean  @default(true)
+  overrideAmount Decimal? @db.Decimal(18, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, deductionCode])
+  @@map("EmployeeDeductionExclusion")
 }
 
 model ProfessionalTaxSlab {
@@ -1028,6 +1057,7 @@ model Employee {
   jobInfos                   JobInfo[]
   salaryStructures           SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
   salaryRevisions            EmployeeSalaryRevision[]
+  deductionExclusions        EmployeeDeductionExclusion[]
   ctcRecords                 EmployeeCtc[]
   dependents                 EmployeeDependent[]
   experiences                EmployeeExperience[]
@@ -1234,6 +1264,7 @@ model JobInfo {
   // Official access
   officialEmail                    String?   @db.NVarChar(100)
   // Statutory applicability
+  pfApplicable                     Boolean   @default(true)
   esiApplicable                    Boolean   @default(false)
   professionalTaxApplicable        Boolean   @default(false)
   bonusApplicable                  Boolean   @default(false)
@@ -1789,7 +1820,13 @@ model SalaryComponent {
   // ADDITIONAL (Additional HRA and similar top-up components). Only
   // meaningful when includeInGross = true; CTC-only components are paid
   // outside Gross entirely and ignore this field.
-  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL
+  // NON_PAYROLL is a third tier for components that must never be touched
+  // by payroll at all (not Gross, not a PF/ESI/PT base, not disbursed on
+  // any payslip) — e.g. a CTC-quoted Performance Incentive figure that is
+  // only ever read back on the Employee CTC tab and the standalone
+  // Performance Incentive Report. payrollCalculation.ts must hard-skip
+  // any component with this tier.
+  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL | NON_PAYROLL
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -1806,6 +1843,7 @@ model SalaryComponent {
   benefitRates        BenefitRateByEmployeeType[]
   pmsIncentives       PmsIncentive[]
   pmsIncentiveConfigs PmsIncentiveConfig[]
+  employeeCtcComponents EmployeeCtcComponent[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
@@ -2105,10 +2143,29 @@ model EmployeeCtc {
   updatedAt DateTime @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id])
+  components EmployeeCtcComponent[]
 
   @@index([employeeId])
   @@index([effectiveFrom, effectiveTo])
   @@map("EmployeeCtc")
+}
+
+// Ad-hoc CTC-quoted components attached to a specific EmployeeCtc revision —
+// e.g. "Performance Incentive: 2135/month". Restricted (at the API layer) to
+// SalaryComponents with grossTier = NON_PAYROLL, so nothing added here can
+// ever be picked up by payroll. Read back by the Employee CTC tab and by the
+// Performance Incentive Report (src/app/reports/payroll/performance-incentive).
+model EmployeeCtcComponent {
+  id                Int     @id @default(autoincrement())
+  employeeCtcId     Int
+  salaryComponentId Int
+  amount            Decimal @db.Decimal(18, 2)
+
+  employeeCtc     EmployeeCtc     @relation(fields: [employeeCtcId], references: [id])
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id])
+
+  @@unique([employeeCtcId, salaryComponentId])
+  @@map("EmployeeCtcComponent")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6423,9 +6480,9 @@ model CompetencyRequirement {
 
 model EmployeeCompetency {
   id Int @id
-  companyId Int @unique
-  employeeId Int @unique
-  competencyId Int @unique
+  companyId Int
+  employeeId Int
+  competencyId Int
   currentLevelId Int
   targetLevelId Int?
   certificationNumber String? @db.NVarChar(50)
@@ -6437,18 +6494,12 @@ model EmployeeCompetency {
   updatedAt DateTime @db.DateTime2
 
   @@index([employeeId])
-
+  // Corrected from the auto-generated stub, which wrongly marked
+  // companyId/employeeId/competencyId each individually @unique (which
+  // would allow only one row per company system-wide) — one row per
+  // employee's rating on a competency is the real intent.
+  @@unique([companyId, employeeId, competencyId])
   @@map("EmployeeCompetency")
-}
-
-model EmployeeCtcComponent {
-  id Int @id
-  employeeCtcId Int @unique
-  salaryComponentId Int @unique
-  amount Decimal @db.Decimal(18, 2)
-
-
-  @@map("EmployeeCtcComponent")
 }
 
 model EmployeeKraCycle {
@@ -6492,14 +6543,18 @@ model EmployeeKraLine {
 
 model ExitClearanceCheck {
   id Int @id
-  exitInterviewId Int @unique
-  checkCode String @db.NVarChar(20) @unique
+  exitInterviewId Int
+  checkCode String @db.NVarChar(20)
   status String @db.NVarChar(20)
   remark String? @db.NVarChar(500)
   clearedByUserId Int?
   clearedAt DateTime? @db.DateTime2
 
-
+  // Corrected from the auto-generated stub, which wrongly marked
+  // exitInterviewId and checkCode each individually @unique — the live
+  // data has one row per (interview, checkCode) combination (MANAGER/IT/
+  // FINANCE/HR per exit interview), so the real uniqueness is composite.
+  @@unique([exitInterviewId, checkCode])
   @@map("ExitClearanceCheck")
 }
 
@@ -6802,8 +6857,8 @@ model RecruitmentApplicationSequence {
 
 model SkillLevel {
   id Int @id
-  companyId Int @unique
-  levelNumber Int @unique
+  companyId Int
+  levelNumber Int
   name String @db.NVarChar(50)
   description String? @db.NVarChar(500)
   color String? @db.NVarChar(7)
@@ -6813,7 +6868,12 @@ model SkillLevel {
   updatedAt DateTime @db.DateTime2
 
   @@index([companyId])
-
+  // Corrected from the auto-generated stub, which wrongly marked
+  // companyId/levelNumber each individually @unique (only one company in
+  // the whole system could ever have a SkillLevel) — live data already has
+  // 3 SkillLevel rows for companyId=1, so this constraint was unusable as
+  // written. One row per (company, level number) is the real intent.
+  @@unique([companyId, levelNumber])
   @@map("SkillLevel")
 }
 

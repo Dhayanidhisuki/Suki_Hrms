@@ -176,24 +176,51 @@ function AddRevisionModal({
 
   // Recompute the component grid whenever the derived revisedGross changes.
   // A component with an active Gross % Split rule (Masters > Common Logic)
-  // is auto-filled at that fixed % of the revised Gross; every other
-  // component keeps the original behaviour — scaled proportionally from its
-  // current amount (BRD §9's worked example). Either way it's still
-  // editable per-row afterward.
+  // is auto-filled at that fixed % of the revised Gross. Every other
+  // EARNING component fills whatever of the revised Gross those fixed-%
+  // components didn't claim, split proportionally by each one's existing
+  // weight among themselves — otherwise (e.g. a flat ratio applied to each
+  // component's own current amount, ignoring what the %-components already
+  // took) the revised components silently stop summing to the revised
+  // Gross whenever the %-components' share differs from their old share.
+  // Deduction/employer-contribution rows aren't part of that Gross
+  // composition at all, so they keep the simple overall-ratio scaling.
+  // Either way every row is still editable per-row afterward.
   useEffect(() => {
     if (!current) {
       setComponentRows([]);
       return;
     }
-    const ratio = currentGross > 0 ? revisedGross / currentGross : 1;
+    const overallRatio = currentGross > 0 ? revisedGross / currentGross : 1;
+
+    const percentComponentsSum = current.components.reduce((sum, c) => {
+      const p = splitPercents[c.salaryComponentId];
+      return p != null ? sum + round(revisedGross * (p / 100)) : sum;
+    }, 0);
+    const nonPercentEarningCurrentSum = current.components.reduce((sum, c) => {
+      const isEarning = c.salaryComponent.type === 'earning';
+      const hasPercent = splitPercents[c.salaryComponentId] != null;
+      return isEarning && !hasPercent ? sum + Number(c.amount) : sum;
+    }, 0);
+    const remainder = revisedGross - percentComponentsSum;
+    const nonPercentEarningRatio = nonPercentEarningCurrentSum > 0 ? remainder / nonPercentEarningCurrentSum : 0;
+
     setComponentRows(
       current.components.map((c) => {
         const percent = splitPercents[c.salaryComponentId];
+        let revisedAmount: number;
+        if (percent != null) {
+          revisedAmount = round(revisedGross * (percent / 100));
+        } else if (c.salaryComponent.type === 'earning') {
+          revisedAmount = round(Number(c.amount) * nonPercentEarningRatio);
+        } else {
+          revisedAmount = round(Number(c.amount) * overallRatio);
+        }
         return {
           salaryComponentId: c.salaryComponentId,
           name: `${c.salaryComponent.name} (${c.salaryComponent.type})`,
           currentAmount: Number(c.amount),
-          revisedAmount: percent != null ? round(revisedGross * (percent / 100)) : round(Number(c.amount) * ratio),
+          revisedAmount,
           splitPercent: percent,
         };
       })
@@ -367,7 +394,7 @@ function AddRevisionModal({
                       <span className="rounded-full px-1.5 py-0.5 font-medium" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>
                         %
                       </span>{' '}
-                      are auto-filled from Masters &gt; Common Logic&apos;s Gross % Split; the rest scale proportionally from their current amount. Any value is still editable.
+                      are auto-filled from Masters &gt; Common Logic&apos;s Gross % Split; the remaining earning components split whatever of the revised Gross is left over, proportional to their current amounts, so the row totals always add back up to Revised Gross. Any value is still editable.
                     </p>
                   )}
                   <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCompanyId } from '@/lib/companyScope';
 
 // Generic function to count active/inactive for simple masters
 async function countSimpleMaster(model: string) {
@@ -18,7 +19,7 @@ async function countSimpleMaster(model: string) {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ module: string }> }
 ) {
   try {
@@ -81,9 +82,18 @@ export async function GET(
         stats = await countSimpleMaster('leaveMaster');
         break;
 
-      case 'salary-components':
-        stats = await countSimpleMaster('salaryComponent');
+      case 'salary-components': {
+        // Company-scoped, unlike the other countSimpleMaster() calls below —
+        // without this filter every company sees every other company's
+        // components counted into its own "Total"/"Active" KPI cards.
+        const scope = getCompanyId(request);
+        if ('error' in scope) return scope.error;
+        const total = await prisma.salaryComponent.count({ where: { companyId: scope.companyId, deletedAt: null } });
+        const active = await prisma.salaryComponent.count({ where: { companyId: scope.companyId, isActive: true, deletedAt: null } });
+        const inactive = await prisma.salaryComponent.count({ where: { companyId: scope.companyId, isActive: false, deletedAt: null } });
+        stats = { total, active, inactive, pending: 0, approved: 0, rejected: 0 };
         break;
+      }
 
       case 'bonus-rates':
         stats = await countSimpleMaster('bonusRate');

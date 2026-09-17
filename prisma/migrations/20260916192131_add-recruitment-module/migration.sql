@@ -10,6 +10,7 @@ DROP INDEX [PlatformDocumentType_companyId_businessCategory_idx] ON [dbo].[Platf
 
 -- AlterTable
 ALTER TABLE [dbo].[ExitInterview] ALTER COLUMN [exitType] NVARCHAR(20) NOT NULL;
+ALTER TABLE [dbo].[ExitInterview] DROP CONSTRAINT [DF_ExitInterview_clearanceStatus], [DF_ExitInterview_rehireEligible], [DF_ExitInterview_noticeWaivedDays];
 ALTER TABLE [dbo].[ExitInterview] DROP COLUMN [approvedLastWorkingDay],
 [clearanceStatus],
 [noticePeriodDays],
@@ -19,7 +20,9 @@ ALTER TABLE [dbo].[ExitInterview] DROP COLUMN [approvedLastWorkingDay],
 [resignationDate];
 
 -- AlterTable
+DROP INDEX [FnFSettlement_companyId_status_idx] ON [dbo].[FnFSettlement];
 ALTER TABLE [dbo].[FnFSettlement] ALTER COLUMN [status] NVARCHAR(20) NOT NULL;
+ALTER TABLE [dbo].[FnFSettlement] DROP CONSTRAINT [DF_FnFSettlement_payableDays], [DF_FnFSettlement_arrearsAmount], [DF_FnFSettlement_incentiveAmount], [DF_FnFSettlement_tdsDeduction], [DF_FnFSettlement_pfDeduction], [DF_FnFSettlement_esiDeduction], [DF_FnFSettlement_salaryDivisor], [DF_FnFSettlement_noticeServedDays], [DF_FnFSettlement_noticeWaivedDays], [DF_FnFSettlement_noticeShortfallDays];
 ALTER TABLE [dbo].[FnFSettlement] DROP COLUMN [arrearsAmount],
 [clearanceOverrideRemark],
 [completedAt],
@@ -43,6 +46,7 @@ ALTER TABLE [dbo].[FnFSettlement] DROP COLUMN [arrearsAmount],
 [tdsDeduction];
 
 -- AlterTable
+ALTER TABLE [dbo].[FullAndFinalConfig] DROP CONSTRAINT [DF_FullAndFinalConfig_salaryDivisorMode], [DF_FullAndFinalConfig_includePt], [DF_FullAndFinalConfig_clearanceRequired], [DF_FullAndFinalConfig_salaryDivisor], [DF_FullAndFinalConfig_noticeRateBasis], [DF_FullAndFinalConfig_includeTds], [DF_FullAndFinalConfig_includePf], [DF_FullAndFinalConfig_includeEsi];
 ALTER TABLE [dbo].[FullAndFinalConfig] DROP COLUMN [clearanceRequired],
 [includeEsi],
 [includePf],
@@ -214,6 +218,7 @@ EXEC SP_RENAME N'dbo.PK_PetrolAllowanceEntry', N'PetrolAllowanceEntry_pkey';
 ALTER TABLE [dbo].[PetrolAllowanceEntry] ADD CONSTRAINT [PetrolAllowanceEntry_status_df] DEFAULT 'PENDING' FOR [status];
 
 -- AlterTable
+ALTER TABLE [dbo].[PlatformDocumentType] DROP CONSTRAINT [PlatformDocumentType_businessCategory_df], [PlatformDocumentType_uploadMode_df];
 ALTER TABLE [dbo].[PlatformDocumentType] DROP COLUMN [businessCategory],
 [uploadMode];
 
@@ -227,6 +232,7 @@ ALTER TABLE [dbo].[RoundingConfig] ADD CONSTRAINT [RoundingConfig_applyTo_df] DE
 -- AlterTable
 ALTER TABLE [dbo].[SalaryComponent] DROP CONSTRAINT [DF__SalaryCom__gross__019419E5],
 [DF__SalaryCom__inclu__009FF5AC];
+ALTER TABLE [dbo].[SalaryComponent] DROP CONSTRAINT [DF_SalaryComponent_fnfPayable], [DF_SalaryComponent_fnfProration], [DF_SalaryComponent_fnfTaxable];
 ALTER TABLE [dbo].[SalaryComponent] DROP COLUMN [fnfPayable],
 [fnfProration],
 [fnfTaxable];
@@ -312,8 +318,9 @@ ALTER TABLE [dbo].[YearlyLeaveCalendar] ADD CONSTRAINT [YearlyLeaveCalendar_crea
 BEGIN TRANSACTION;
 DROP INDEX [Assessment_companyId_trainingProgramId_idx] ON [dbo].[Assessment];
 DROP INDEX [Assessment_companyId_trainingScheduleId_idx] ON [dbo].[Assessment];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+ALTER TABLE [dbo].[AssessmentAttempt] DROP CONSTRAINT [AssessmentAttempt_assessmentId_fkey];
+DECLARE @SQL_1 NVARCHAR(MAX) = N''
+SELECT @SQL_1 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -323,7 +330,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'Assessment'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_1
 ;
 CREATE TABLE [dbo].[_prisma_new_Assessment] (
     [id] INT NOT NULL,
@@ -350,8 +357,8 @@ CREATE NONCLUSTERED INDEX [Assessment_companyId_trainingProgramId_idx] ON [dbo].
 CREATE NONCLUSTERED INDEX [Assessment_companyId_trainingScheduleId_idx] ON [dbo].[Assessment]([companyId], [trainingScheduleId]);
 DROP INDEX [AssessmentAttempt_companyId_assessmentId_employeeId_key] ON [dbo].[AssessmentAttempt];
 DROP INDEX [AssessmentAttempt_companyId_employeeId_idx] ON [dbo].[AssessmentAttempt];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_2 NVARCHAR(MAX) = N''
+SELECT @SQL_2 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -361,7 +368,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'AssessmentAttempt'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_2
 ;
 CREATE TABLE [dbo].[_prisma_new_AssessmentAttempt] (
     [id] INT NOT NULL,
@@ -388,8 +395,8 @@ EXEC SP_RENAME N'dbo._prisma_new_AssessmentAttempt', N'AssessmentAttempt';
 CREATE NONCLUSTERED INDEX [AssessmentAttempt_companyId_assessmentId_employeeId_idx] ON [dbo].[AssessmentAttempt]([companyId], [assessmentId], [employeeId]);
 CREATE NONCLUSTERED INDEX [AssessmentAttempt_companyId_employeeId_idx] ON [dbo].[AssessmentAttempt]([companyId], [employeeId]);
 DROP INDEX [Competency_companyId_category_idx] ON [dbo].[Competency];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_3 NVARCHAR(MAX) = N''
+SELECT @SQL_3 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -399,7 +406,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'Competency'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_3
 ;
 CREATE TABLE [dbo].[_prisma_new_Competency] (
     [id] INT NOT NULL,
@@ -422,8 +429,8 @@ EXEC SP_RENAME N'dbo._prisma_new_Competency', N'Competency';
 CREATE NONCLUSTERED INDEX [Competency_companyId_category_idx] ON [dbo].[Competency]([companyId], [category]);
 DROP INDEX [CompetencyRequirement_companyId_competencyId_idx] ON [dbo].[CompetencyRequirement];
 DROP INDEX [CompetencyRequirement_companyId_departmentId_designationId_gradeId_idx] ON [dbo].[CompetencyRequirement];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_4 NVARCHAR(MAX) = N''
+SELECT @SQL_4 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -433,7 +440,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'CompetencyRequirement'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_4
 ;
 CREATE TABLE [dbo].[_prisma_new_CompetencyRequirement] (
     [id] INT NOT NULL,
@@ -457,8 +464,8 @@ CREATE NONCLUSTERED INDEX [CompetencyRequirement_companyId_competencyId_idx] ON 
 CREATE NONCLUSTERED INDEX [CompetencyRequirement_companyId_departmentId_designationId_gradeId_idx] ON [dbo].[CompetencyRequirement]([companyId], [departmentId], [designationId], [gradeId]);
 ALTER TABLE [dbo].[EmployeeCompetency] DROP CONSTRAINT [EmployeeCompetency_companyId_employeeId_competencyId_key];
 DROP INDEX [EmployeeCompetency_employeeId_idx] ON [dbo].[EmployeeCompetency];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_5 NVARCHAR(MAX) = N''
+SELECT @SQL_5 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -468,7 +475,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'EmployeeCompetency'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_5
 ;
 CREATE TABLE [dbo].[_prisma_new_EmployeeCompetency] (
     [id] INT NOT NULL,
@@ -485,46 +492,25 @@ CREATE TABLE [dbo].[_prisma_new_EmployeeCompetency] (
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [EmployeeCompetency_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
     CONSTRAINT [EmployeeCompetency_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [EmployeeCompetency_companyId_key] UNIQUE NONCLUSTERED ([companyId]),
-    CONSTRAINT [EmployeeCompetency_employeeId_key] UNIQUE NONCLUSTERED ([employeeId]),
-    CONSTRAINT [EmployeeCompetency_competencyId_key] UNIQUE NONCLUSTERED ([competencyId])
+    CONSTRAINT [EmployeeCompetency_companyId_employeeId_competencyId_key] UNIQUE NONCLUSTERED ([companyId],[employeeId],[competencyId])
 );
 IF EXISTS(SELECT * FROM [dbo].[EmployeeCompetency])
     EXEC('INSERT INTO [dbo].[_prisma_new_EmployeeCompetency] ([certificationNumber],[certifiedDate],[companyId],[competencyId],[createdAt],[currentLevelId],[deletedAt],[employeeId],[expiryDate],[id],[isActive],[targetLevelId],[updatedAt]) SELECT [certificationNumber],[certifiedDate],[companyId],[competencyId],[createdAt],[currentLevelId],[deletedAt],[employeeId],[expiryDate],[id],[isActive],[targetLevelId],[updatedAt] FROM [dbo].[EmployeeCompetency] WITH (holdlock tablockx)');
 DROP TABLE [dbo].[EmployeeCompetency];
 EXEC SP_RENAME N'dbo._prisma_new_EmployeeCompetency', N'EmployeeCompetency';
 CREATE NONCLUSTERED INDEX [EmployeeCompetency_employeeId_idx] ON [dbo].[EmployeeCompetency]([employeeId]);
-ALTER TABLE [dbo].[EmployeeCtcComponent] DROP CONSTRAINT [EmployeeCtcComponent_employeeCtcId_salaryComponentId_key];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
-    + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
-    + '.'
-    + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
-    + ' DROP CONSTRAINT '
-    + OBJECT_NAME(OBJECT_ID) + ';'
-FROM SYS.OBJECTS
-WHERE TYPE_DESC LIKE '%CONSTRAINT'
-    AND OBJECT_NAME(PARENT_OBJECT_ID) = 'EmployeeCtcComponent'
-    AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
-;
-CREATE TABLE [dbo].[_prisma_new_EmployeeCtcComponent] (
-    [id] INT NOT NULL,
-    [employeeCtcId] INT NOT NULL,
-    [salaryComponentId] INT NOT NULL,
-    [amount] DECIMAL(18,2) NOT NULL,
-    CONSTRAINT [EmployeeCtcComponent_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [EmployeeCtcComponent_employeeCtcId_key] UNIQUE NONCLUSTERED ([employeeCtcId]),
-    CONSTRAINT [EmployeeCtcComponent_salaryComponentId_key] UNIQUE NONCLUSTERED ([salaryComponentId])
-);
-IF EXISTS(SELECT * FROM [dbo].[EmployeeCtcComponent])
-    EXEC('INSERT INTO [dbo].[_prisma_new_EmployeeCtcComponent] ([amount],[employeeCtcId],[id],[salaryComponentId]) SELECT [amount],[employeeCtcId],[id],[salaryComponentId] FROM [dbo].[EmployeeCtcComponent] WITH (holdlock tablockx)');
-DROP TABLE [dbo].[EmployeeCtcComponent];
-EXEC SP_RENAME N'dbo._prisma_new_EmployeeCtcComponent', N'EmployeeCtcComponent';
+-- EmployeeCtcComponent rebuild removed here: the coworker's schema.prisma
+-- stub for this table (a stale introspection of a table this session had
+-- already created correctly) had the wrong shape — two separate single-
+-- column unique constraints instead of the composite
+-- (employeeCtcId, salaryComponentId) unique this feature actually needs,
+-- and no IDENTITY on id. The live table already matches the corrected
+-- model exactly, so no rebuild is needed here at all.
 DROP INDEX [EmployeeKraCycle_companyId_employeeId_financialYear_periodLabel_key] ON [dbo].[EmployeeKraCycle];
 DROP INDEX [EmployeeKraCycle_companyId_status_idx] ON [dbo].[EmployeeKraCycle];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+ALTER TABLE [dbo].[EmployeeKraLine] DROP CONSTRAINT [EmployeeKraLine_cycleId_fkey];
+DECLARE @SQL_6 NVARCHAR(MAX) = N''
+SELECT @SQL_6 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -534,7 +520,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'EmployeeKraCycle'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_6
 ;
 CREATE TABLE [dbo].[_prisma_new_EmployeeKraCycle] (
     [id] INT NOT NULL,
@@ -558,8 +544,8 @@ EXEC SP_RENAME N'dbo._prisma_new_EmployeeKraCycle', N'EmployeeKraCycle';
 CREATE NONCLUSTERED INDEX [EmployeeKraCycle_companyId_employeeId_financialYear_periodLabel_idx] ON [dbo].[EmployeeKraCycle]([companyId], [employeeId], [financialYear], [periodLabel]);
 CREATE NONCLUSTERED INDEX [EmployeeKraCycle_companyId_status_idx] ON [dbo].[EmployeeKraCycle]([companyId], [status]);
 DROP INDEX [EmployeeKraLine_cycleId_idx] ON [dbo].[EmployeeKraLine];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_7 NVARCHAR(MAX) = N''
+SELECT @SQL_7 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -569,7 +555,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'EmployeeKraLine'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_7
 ;
 CREATE TABLE [dbo].[_prisma_new_EmployeeKraLine] (
     [id] INT NOT NULL,
@@ -592,8 +578,8 @@ DROP TABLE [dbo].[EmployeeKraLine];
 EXEC SP_RENAME N'dbo._prisma_new_EmployeeKraLine', N'EmployeeKraLine';
 CREATE NONCLUSTERED INDEX [EmployeeKraLine_cycleId_idx] ON [dbo].[EmployeeKraLine]([cycleId]);
 ALTER TABLE [dbo].[ExitClearanceCheck] DROP CONSTRAINT [ExitClearanceCheck_exitInterviewId_checkCode_key];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_8 NVARCHAR(MAX) = N''
+SELECT @SQL_8 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -603,7 +589,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'ExitClearanceCheck'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_8
 ;
 CREATE TABLE [dbo].[_prisma_new_ExitClearanceCheck] (
     [id] INT NOT NULL,
@@ -614,8 +600,7 @@ CREATE TABLE [dbo].[_prisma_new_ExitClearanceCheck] (
     [clearedByUserId] INT,
     [clearedAt] DATETIME2,
     CONSTRAINT [ExitClearanceCheck_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [ExitClearanceCheck_exitInterviewId_key] UNIQUE NONCLUSTERED ([exitInterviewId]),
-    CONSTRAINT [ExitClearanceCheck_checkCode_key] UNIQUE NONCLUSTERED ([checkCode])
+    CONSTRAINT [ExitClearanceCheck_exitInterviewId_checkCode_key] UNIQUE NONCLUSTERED ([exitInterviewId],[checkCode])
 );
 IF EXISTS(SELECT * FROM [dbo].[ExitClearanceCheck])
     EXEC('INSERT INTO [dbo].[_prisma_new_ExitClearanceCheck] ([checkCode],[clearedAt],[clearedByUserId],[exitInterviewId],[id],[remark],[status]) SELECT [checkCode],[clearedAt],[clearedByUserId],[exitInterviewId],[id],[remark],[status] FROM [dbo].[ExitClearanceCheck] WITH (holdlock tablockx)');
@@ -624,8 +609,9 @@ EXEC SP_RENAME N'dbo._prisma_new_ExitClearanceCheck', N'ExitClearanceCheck';
 DROP INDEX [IX_ExpenseReimbursement_companyId_employeeId_status] ON [dbo].[ExpenseReimbursement];
 DROP INDEX [IX_ExpenseReimbursement_employeeId_submissionDate] ON [dbo].[ExpenseReimbursement];
 DROP INDEX [IX_ExpenseReimbursement_status] ON [dbo].[ExpenseReimbursement];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+ALTER TABLE [dbo].[ExpenseReimbursementItem] DROP CONSTRAINT [FK_ExpenseReimbursementItem_ExpenseReimbursement_expenseReimbursementId];
+DECLARE @SQL_9 NVARCHAR(MAX) = N''
+SELECT @SQL_9 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -635,7 +621,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'ExpenseReimbursement'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_9
 ;
 CREATE TABLE [dbo].[_prisma_new_ExpenseReimbursement] (
     [id] INT NOT NULL,
@@ -665,8 +651,8 @@ CREATE NONCLUSTERED INDEX [ExpenseReimbursement_companyId_employeeId_status_idx]
 CREATE NONCLUSTERED INDEX [ExpenseReimbursement_employeeId_submissionDate_idx] ON [dbo].[ExpenseReimbursement]([employeeId], [submissionDate]);
 CREATE NONCLUSTERED INDEX [ExpenseReimbursement_status_idx] ON [dbo].[ExpenseReimbursement]([status]);
 DROP INDEX [IX_ExpenseReimbursementItem_expenseReimbursementId] ON [dbo].[ExpenseReimbursementItem];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_10 NVARCHAR(MAX) = N''
+SELECT @SQL_10 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -676,7 +662,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'ExpenseReimbursementItem'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_10
 ;
 CREATE TABLE [dbo].[_prisma_new_ExpenseReimbursementItem] (
     [id] INT NOT NULL,
@@ -696,8 +682,8 @@ DROP TABLE [dbo].[ExpenseReimbursementItem];
 EXEC SP_RENAME N'dbo._prisma_new_ExpenseReimbursementItem', N'ExpenseReimbursementItem';
 CREATE NONCLUSTERED INDEX [ExpenseReimbursementItem_expenseReimbursementId_idx] ON [dbo].[ExpenseReimbursementItem]([expenseReimbursementId]);
 DROP INDEX [FnFSettlementLine_settlementId_idx] ON [dbo].[FnFSettlementLine];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_11 NVARCHAR(MAX) = N''
+SELECT @SQL_11 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -707,7 +693,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'FnFSettlementLine'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_11
 ;
 CREATE TABLE [dbo].[_prisma_new_FnFSettlementLine] (
     [id] INT NOT NULL,
@@ -731,8 +717,8 @@ DROP INDEX [GeneratedHrLetter_applicantId_idx] ON [dbo].[GeneratedHrLetter];
 DROP INDEX [GeneratedHrLetter_companyId_letterType_idx] ON [dbo].[GeneratedHrLetter];
 DROP INDEX [GeneratedHrLetter_companyId_referenceNo_key] ON [dbo].[GeneratedHrLetter];
 DROP INDEX [GeneratedHrLetter_employeeId_idx] ON [dbo].[GeneratedHrLetter];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_12 NVARCHAR(MAX) = N''
+SELECT @SQL_12 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -742,7 +728,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'GeneratedHrLetter'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_12
 ;
 CREATE TABLE [dbo].[_prisma_new_GeneratedHrLetter] (
     [id] INT NOT NULL,
@@ -769,8 +755,8 @@ CREATE NONCLUSTERED INDEX [GeneratedHrLetter_companyId_referenceNo_idx] ON [dbo]
 CREATE NONCLUSTERED INDEX [GeneratedHrLetter_employeeId_idx] ON [dbo].[GeneratedHrLetter]([employeeId]);
 DROP INDEX [InductionAssignment_companyId_employeeId_idx] ON [dbo].[InductionAssignment];
 DROP INDEX [InductionAssignment_companyId_inductionProgramId_employeeId_key] ON [dbo].[InductionAssignment];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_13 NVARCHAR(MAX) = N''
+SELECT @SQL_13 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -780,7 +766,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'InductionAssignment'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_13
 ;
 CREATE TABLE [dbo].[_prisma_new_InductionAssignment] (
     [id] INT NOT NULL,
@@ -804,8 +790,8 @@ EXEC SP_RENAME N'dbo._prisma_new_InductionAssignment', N'InductionAssignment';
 CREATE NONCLUSTERED INDEX [InductionAssignment_companyId_employeeId_idx] ON [dbo].[InductionAssignment]([companyId], [employeeId]);
 CREATE NONCLUSTERED INDEX [InductionAssignment_companyId_inductionProgramId_employeeId_idx] ON [dbo].[InductionAssignment]([companyId], [inductionProgramId], [employeeId]);
 DROP INDEX [InductionProgram_companyId_departmentId_idx] ON [dbo].[InductionProgram];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_14 NVARCHAR(MAX) = N''
+SELECT @SQL_14 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -815,7 +801,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'InductionProgram'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_14
 ;
 CREATE TABLE [dbo].[_prisma_new_InductionProgram] (
     [id] INT NOT NULL,
@@ -837,8 +823,8 @@ DROP TABLE [dbo].[InductionProgram];
 EXEC SP_RENAME N'dbo._prisma_new_InductionProgram', N'InductionProgram';
 CREATE NONCLUSTERED INDEX [InductionProgram_companyId_departmentId_idx] ON [dbo].[InductionProgram]([companyId], [departmentId]);
 DROP INDEX [KpiGoal_companyId_isActive_idx] ON [dbo].[KpiGoal];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_15 NVARCHAR(MAX) = N''
+SELECT @SQL_15 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -848,7 +834,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'KpiGoal'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_15
 ;
 CREATE TABLE [dbo].[_prisma_new_KpiGoal] (
     [id] INT NOT NULL,
@@ -872,8 +858,8 @@ EXEC SP_RENAME N'dbo._prisma_new_KpiGoal', N'KpiGoal';
 CREATE NONCLUSTERED INDEX [KpiGoal_companyId_isActive_idx] ON [dbo].[KpiGoal]([companyId], [isActive]);
 DROP INDEX [KpiTemplate_companyId_code_key] ON [dbo].[KpiTemplate];
 DROP INDEX [KpiTemplate_companyId_kpiFor_idx] ON [dbo].[KpiTemplate];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_16 NVARCHAR(MAX) = N''
+SELECT @SQL_16 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -883,7 +869,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'KpiTemplate'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_16
 ;
 CREATE TABLE [dbo].[_prisma_new_KpiTemplate] (
     [id] INT NOT NULL,
@@ -908,8 +894,8 @@ EXEC SP_RENAME N'dbo._prisma_new_KpiTemplate', N'KpiTemplate';
 CREATE NONCLUSTERED INDEX [KpiTemplate_companyId_code_idx] ON [dbo].[KpiTemplate]([companyId], [code]);
 CREATE NONCLUSTERED INDEX [KpiTemplate_companyId_kpiFor_idx] ON [dbo].[KpiTemplate]([companyId], [kpiFor]);
 DROP INDEX [OjtAssignment_companyId_employeeId_idx] ON [dbo].[OjtAssignment];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_17 NVARCHAR(MAX) = N''
+SELECT @SQL_17 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -919,7 +905,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'OjtAssignment'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_17
 ;
 CREATE TABLE [dbo].[_prisma_new_OjtAssignment] (
     [id] INT NOT NULL,
@@ -946,8 +932,8 @@ EXEC SP_RENAME N'dbo._prisma_new_OjtAssignment', N'OjtAssignment';
 CREATE NONCLUSTERED INDEX [OjtAssignment_companyId_employeeId_idx] ON [dbo].[OjtAssignment]([companyId], [employeeId]);
 DROP INDEX [OnDutyRequest_employeeId_idx] ON [dbo].[OnDutyRequest];
 DROP INDEX [OnDutyRequest_status_idx] ON [dbo].[OnDutyRequest];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_18 NVARCHAR(MAX) = N''
+SELECT @SQL_18 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -957,7 +943,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'OnDutyRequest'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_18
 ;
 CREATE TABLE [dbo].[_prisma_new_OnDutyRequest] (
     [id] INT NOT NULL,
@@ -987,8 +973,8 @@ EXEC SP_RENAME N'dbo._prisma_new_OnDutyRequest', N'OnDutyRequest';
 CREATE NONCLUSTERED INDEX [OnDutyRequest_employeeId_idx] ON [dbo].[OnDutyRequest]([employeeId]);
 CREATE NONCLUSTERED INDEX [OnDutyRequest_status_idx] ON [dbo].[OnDutyRequest]([status]);
 DROP INDEX [QuestionBank_companyId_groupId_idx] ON [dbo].[QuestionBank];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_19 NVARCHAR(MAX) = N''
+SELECT @SQL_19 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -998,7 +984,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'QuestionBank'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_19
 ;
 CREATE TABLE [dbo].[_prisma_new_QuestionBank] (
     [id] INT NOT NULL,
@@ -1021,8 +1007,8 @@ DROP TABLE [dbo].[QuestionBank];
 EXEC SP_RENAME N'dbo._prisma_new_QuestionBank', N'QuestionBank';
 CREATE NONCLUSTERED INDEX [QuestionBank_companyId_groupId_idx] ON [dbo].[QuestionBank]([companyId], [groupId]);
 DROP INDEX [QuestionBankGroup_companyId_idx] ON [dbo].[QuestionBankGroup];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_20 NVARCHAR(MAX) = N''
+SELECT @SQL_20 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1032,7 +1018,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'QuestionBankGroup'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_20
 ;
 CREATE TABLE [dbo].[_prisma_new_QuestionBankGroup] (
     [id] INT NOT NULL,
@@ -1054,8 +1040,8 @@ DROP INDEX [RecruitmentApplicant_companyId_applicationNo_key] ON [dbo].[Recruitm
 DROP INDEX [RecruitmentApplicant_companyId_email_idx] ON [dbo].[RecruitmentApplicant];
 DROP INDEX [RecruitmentApplicant_companyId_mobile_idx] ON [dbo].[RecruitmentApplicant];
 DROP INDEX [RecruitmentApplicant_companyId_status_idx] ON [dbo].[RecruitmentApplicant];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_21 NVARCHAR(MAX) = N''
+SELECT @SQL_21 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1065,7 +1051,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'RecruitmentApplicant'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_21
 ;
 CREATE TABLE [dbo].[_prisma_new_RecruitmentApplicant] (
     [id] INT NOT NULL,
@@ -1107,8 +1093,8 @@ CREATE NONCLUSTERED INDEX [RecruitmentApplicant_companyId_mobile_idx] ON [dbo].[
 CREATE NONCLUSTERED INDEX [RecruitmentApplicant_companyId_status_idx] ON [dbo].[RecruitmentApplicant]([companyId], [status]);
 DROP INDEX [SkillLevel_companyId_idx] ON [dbo].[SkillLevel];
 ALTER TABLE [dbo].[SkillLevel] DROP CONSTRAINT [SkillLevel_companyId_levelNumber_key];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_22 NVARCHAR(MAX) = N''
+SELECT @SQL_22 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1118,7 +1104,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'SkillLevel'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_22
 ;
 CREATE TABLE [dbo].[_prisma_new_SkillLevel] (
     [id] INT NOT NULL,
@@ -1132,8 +1118,7 @@ CREATE TABLE [dbo].[_prisma_new_SkillLevel] (
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [SkillLevel_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
     CONSTRAINT [SkillLevel_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [SkillLevel_companyId_key] UNIQUE NONCLUSTERED ([companyId]),
-    CONSTRAINT [SkillLevel_levelNumber_key] UNIQUE NONCLUSTERED ([levelNumber])
+    CONSTRAINT [SkillLevel_companyId_levelNumber_key] UNIQUE NONCLUSTERED ([companyId],[levelNumber])
 );
 IF EXISTS(SELECT * FROM [dbo].[SkillLevel])
     EXEC('INSERT INTO [dbo].[_prisma_new_SkillLevel] ([color],[companyId],[createdAt],[deletedAt],[description],[id],[isActive],[levelNumber],[name],[updatedAt]) SELECT [color],[companyId],[createdAt],[deletedAt],[description],[id],[isActive],[levelNumber],[name],[updatedAt] FROM [dbo].[SkillLevel] WITH (holdlock tablockx)');
@@ -1141,8 +1126,8 @@ DROP TABLE [dbo].[SkillLevel];
 EXEC SP_RENAME N'dbo._prisma_new_SkillLevel', N'SkillLevel';
 CREATE NONCLUSTERED INDEX [SkillLevel_companyId_idx] ON [dbo].[SkillLevel]([companyId]);
 DROP INDEX [Trainer_companyId_idx] ON [dbo].[Trainer];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_23 NVARCHAR(MAX) = N''
+SELECT @SQL_23 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1152,7 +1137,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'Trainer'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_23
 ;
 CREATE TABLE [dbo].[_prisma_new_Trainer] (
     [id] INT NOT NULL,
@@ -1178,8 +1163,8 @@ CREATE NONCLUSTERED INDEX [Trainer_companyId_idx] ON [dbo].[Trainer]([companyId]
 DROP INDEX [TrainingAttendance_companyId_trainingScheduleId_employeeId_key] ON [dbo].[TrainingAttendance];
 DROP INDEX [TrainingAttendance_companyId_trainingScheduleId_idx] ON [dbo].[TrainingAttendance];
 DROP INDEX [TrainingAttendance_nominationId_key] ON [dbo].[TrainingAttendance];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_24 NVARCHAR(MAX) = N''
+SELECT @SQL_24 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1189,7 +1174,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingAttendance'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_24
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingAttendance] (
     [id] INT NOT NULL,
@@ -1219,8 +1204,8 @@ CREATE NONCLUSTERED INDEX [TrainingAttendance_companyId_trainingScheduleId_idx] 
 CREATE NONCLUSTERED INDEX [TrainingAttendance_nominationId_idx] ON [dbo].[TrainingAttendance]([nominationId]);
 DROP INDEX [TrainingBudget_companyId_year_departmentId_key] ON [dbo].[TrainingBudget];
 DROP INDEX [TrainingBudget_companyId_year_idx] ON [dbo].[TrainingBudget];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_25 NVARCHAR(MAX) = N''
+SELECT @SQL_25 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1230,7 +1215,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingBudget'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_25
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingBudget] (
     [id] INT NOT NULL,
@@ -1253,8 +1238,8 @@ CREATE NONCLUSTERED INDEX [TrainingBudget_companyId_year_departmentId_idx] ON [d
 CREATE NONCLUSTERED INDEX [TrainingBudget_companyId_year_idx] ON [dbo].[TrainingBudget]([companyId], [year]);
 DROP INDEX [TrainingCertificate_companyId_certificateNumber_key] ON [dbo].[TrainingCertificate];
 DROP INDEX [TrainingCertificate_companyId_employeeId_idx] ON [dbo].[TrainingCertificate];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_26 NVARCHAR(MAX) = N''
+SELECT @SQL_26 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1264,7 +1249,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingCertificate'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_26
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingCertificate] (
     [id] INT NOT NULL,
@@ -1290,8 +1275,9 @@ EXEC SP_RENAME N'dbo._prisma_new_TrainingCertificate', N'TrainingCertificate';
 CREATE NONCLUSTERED INDEX [TrainingCertificate_companyId_certificateNumber_idx] ON [dbo].[TrainingCertificate]([companyId], [certificateNumber]);
 CREATE NONCLUSTERED INDEX [TrainingCertificate_companyId_employeeId_idx] ON [dbo].[TrainingCertificate]([companyId], [employeeId]);
 DROP INDEX [TrainingChecklist_companyId_idx] ON [dbo].[TrainingChecklist];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+ALTER TABLE [dbo].[TrainingChecklistItem] DROP CONSTRAINT [TrainingChecklistItem_checklistId_fkey];
+DECLARE @SQL_27 NVARCHAR(MAX) = N''
+SELECT @SQL_27 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1301,7 +1287,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingChecklist'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_27
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingChecklist] (
     [id] INT NOT NULL,
@@ -1320,8 +1306,8 @@ DROP TABLE [dbo].[TrainingChecklist];
 EXEC SP_RENAME N'dbo._prisma_new_TrainingChecklist', N'TrainingChecklist';
 CREATE NONCLUSTERED INDEX [TrainingChecklist_companyId_idx] ON [dbo].[TrainingChecklist]([companyId]);
 DROP INDEX [TrainingChecklistItem_checklistId_idx] ON [dbo].[TrainingChecklistItem];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_28 NVARCHAR(MAX) = N''
+SELECT @SQL_28 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1331,7 +1317,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingChecklistItem'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_28
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingChecklistItem] (
     [id] INT NOT NULL,
@@ -1353,8 +1339,8 @@ CREATE NONCLUSTERED INDEX [TrainingChecklistItem_checklistId_idx] ON [dbo].[Trai
 DROP INDEX [TrainingEffectiveness_companyId_employeeId_idx] ON [dbo].[TrainingEffectiveness];
 DROP INDEX [TrainingEffectiveness_companyId_trainingScheduleId_employeeId_key] ON [dbo].[TrainingEffectiveness];
 DROP INDEX [TrainingEffectiveness_companyId_trainingScheduleId_idx] ON [dbo].[TrainingEffectiveness];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_29 NVARCHAR(MAX) = N''
+SELECT @SQL_29 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1364,7 +1350,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingEffectiveness'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_29
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingEffectiveness] (
     [id] INT NOT NULL,
@@ -1396,8 +1382,8 @@ CREATE NONCLUSTERED INDEX [TrainingEffectiveness_companyId_trainingScheduleId_em
 CREATE NONCLUSTERED INDEX [TrainingEffectiveness_companyId_trainingScheduleId_idx] ON [dbo].[TrainingEffectiveness]([companyId], [trainingScheduleId]);
 DROP INDEX [TrainingFeedback_companyId_trainingScheduleId_employeeId_key] ON [dbo].[TrainingFeedback];
 DROP INDEX [TrainingFeedback_companyId_trainingScheduleId_idx] ON [dbo].[TrainingFeedback];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_30 NVARCHAR(MAX) = N''
+SELECT @SQL_30 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1407,7 +1393,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingFeedback'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_30
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingFeedback] (
     [id] INT NOT NULL,
@@ -1434,8 +1420,8 @@ CREATE NONCLUSTERED INDEX [TrainingFeedback_companyId_trainingScheduleId_employe
 CREATE NONCLUSTERED INDEX [TrainingFeedback_companyId_trainingScheduleId_idx] ON [dbo].[TrainingFeedback]([companyId], [trainingScheduleId]);
 DROP INDEX [TrainingHistory_companyId_employeeId_idx] ON [dbo].[TrainingHistory];
 DROP INDEX [TrainingHistory_companyId_trainingScheduleId_idx] ON [dbo].[TrainingHistory];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_31 NVARCHAR(MAX) = N''
+SELECT @SQL_31 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1445,7 +1431,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingHistory'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_31
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingHistory] (
     [id] INT NOT NULL,
@@ -1480,8 +1466,8 @@ CREATE NONCLUSTERED INDEX [TrainingHistory_companyId_employeeId_idx] ON [dbo].[T
 CREATE NONCLUSTERED INDEX [TrainingHistory_companyId_trainingScheduleId_idx] ON [dbo].[TrainingHistory]([companyId], [trainingScheduleId]);
 DROP INDEX [TrainingNeedRequest_companyId_employeeId_idx] ON [dbo].[TrainingNeedRequest];
 DROP INDEX [TrainingNeedRequest_companyId_status_idx] ON [dbo].[TrainingNeedRequest];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_32 NVARCHAR(MAX) = N''
+SELECT @SQL_32 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1491,7 +1477,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingNeedRequest'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_32
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingNeedRequest] (
     [id] INT NOT NULL,
@@ -1525,8 +1511,8 @@ CREATE NONCLUSTERED INDEX [TrainingNeedRequest_companyId_status_idx] ON [dbo].[T
 DROP INDEX [TrainingNomination_companyId_employeeId_idx] ON [dbo].[TrainingNomination];
 DROP INDEX [TrainingNomination_companyId_status_idx] ON [dbo].[TrainingNomination];
 DROP INDEX [TrainingNomination_companyId_trainingScheduleId_employeeId_key] ON [dbo].[TrainingNomination];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_33 NVARCHAR(MAX) = N''
+SELECT @SQL_33 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1536,7 +1522,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingNomination'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_33
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingNomination] (
     [id] INT NOT NULL,
@@ -1568,8 +1554,8 @@ CREATE NONCLUSTERED INDEX [TrainingNomination_companyId_status_idx] ON [dbo].[Tr
 CREATE NONCLUSTERED INDEX [TrainingNomination_companyId_trainingScheduleId_employeeId_idx] ON [dbo].[TrainingNomination]([companyId], [trainingScheduleId], [employeeId]);
 DROP INDEX [TrainingPlan_companyId_departmentId_idx] ON [dbo].[TrainingPlan];
 DROP INDEX [TrainingPlan_companyId_year_idx] ON [dbo].[TrainingPlan];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_34 NVARCHAR(MAX) = N''
+SELECT @SQL_34 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1579,7 +1565,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingPlan'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_34
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingPlan] (
     [id] INT NOT NULL,
@@ -1606,8 +1592,8 @@ CREATE NONCLUSTERED INDEX [TrainingPlan_companyId_departmentId_idx] ON [dbo].[Tr
 CREATE NONCLUSTERED INDEX [TrainingPlan_companyId_year_idx] ON [dbo].[TrainingPlan]([companyId], [year]);
 DROP INDEX [TrainingPlanLine_companyId_plannedMonth_idx] ON [dbo].[TrainingPlanLine];
 DROP INDEX [TrainingPlanLine_companyId_trainingPlanId_idx] ON [dbo].[TrainingPlanLine];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_35 NVARCHAR(MAX) = N''
+SELECT @SQL_35 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1617,7 +1603,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingPlanLine'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_35
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingPlanLine] (
     [id] INT NOT NULL,
@@ -1652,8 +1638,8 @@ EXEC SP_RENAME N'dbo._prisma_new_TrainingPlanLine', N'TrainingPlanLine';
 CREATE NONCLUSTERED INDEX [TrainingPlanLine_companyId_plannedMonth_idx] ON [dbo].[TrainingPlanLine]([companyId], [plannedMonth]);
 CREATE NONCLUSTERED INDEX [TrainingPlanLine_companyId_trainingPlanId_idx] ON [dbo].[TrainingPlanLine]([companyId], [trainingPlanId]);
 DROP INDEX [TrainingPolicy_companyId_idx] ON [dbo].[TrainingPolicy];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_36 NVARCHAR(MAX) = N''
+SELECT @SQL_36 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1663,7 +1649,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingPolicy'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_36
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingPolicy] (
     [id] INT NOT NULL,
@@ -1690,8 +1676,8 @@ DROP TABLE [dbo].[TrainingPolicy];
 EXEC SP_RENAME N'dbo._prisma_new_TrainingPolicy', N'TrainingPolicy';
 CREATE NONCLUSTERED INDEX [TrainingPolicy_companyId_idx] ON [dbo].[TrainingPolicy]([companyId]);
 DROP INDEX [TrainingProgram_companyId_category_idx] ON [dbo].[TrainingProgram];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_37 NVARCHAR(MAX) = N''
+SELECT @SQL_37 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1701,7 +1687,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingProgram'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_37
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingProgram] (
     [id] INT NOT NULL,
@@ -1734,8 +1720,8 @@ EXEC SP_RENAME N'dbo._prisma_new_TrainingProgram', N'TrainingProgram';
 CREATE NONCLUSTERED INDEX [TrainingProgram_companyId_category_idx] ON [dbo].[TrainingProgram]([companyId], [category]);
 DROP INDEX [TrainingSchedule_companyId_scheduledDate_idx] ON [dbo].[TrainingSchedule];
 DROP INDEX [TrainingSchedule_companyId_status_idx] ON [dbo].[TrainingSchedule];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_38 NVARCHAR(MAX) = N''
+SELECT @SQL_38 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1745,7 +1731,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingSchedule'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_38
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingSchedule] (
     [id] INT NOT NULL,
@@ -1781,8 +1767,8 @@ EXEC SP_RENAME N'dbo._prisma_new_TrainingSchedule', N'TrainingSchedule';
 CREATE NONCLUSTERED INDEX [TrainingSchedule_companyId_scheduledDate_idx] ON [dbo].[TrainingSchedule]([companyId], [scheduledDate]);
 CREATE NONCLUSTERED INDEX [TrainingSchedule_companyId_status_idx] ON [dbo].[TrainingSchedule]([companyId], [status]);
 DROP INDEX [TrainingVenue_companyId_idx] ON [dbo].[TrainingVenue];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_39 NVARCHAR(MAX) = N''
+SELECT @SQL_39 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1792,7 +1778,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'TrainingVenue'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_39
 ;
 CREATE TABLE [dbo].[_prisma_new_TrainingVenue] (
     [id] INT NOT NULL,
@@ -1814,8 +1800,8 @@ EXEC SP_RENAME N'dbo._prisma_new_TrainingVenue', N'TrainingVenue';
 CREATE NONCLUSTERED INDEX [TrainingVenue_companyId_idx] ON [dbo].[TrainingVenue]([companyId]);
 DROP INDEX [WfhRequest_employeeId_idx] ON [dbo].[WfhRequest];
 DROP INDEX [WfhRequest_status_idx] ON [dbo].[WfhRequest];
-DECLARE @SQL NVARCHAR(MAX) = N''
-SELECT @SQL += N'ALTER TABLE '
+DECLARE @SQL_40 NVARCHAR(MAX) = N''
+SELECT @SQL_40 += N'ALTER TABLE '
     + QUOTENAME(OBJECT_SCHEMA_NAME(PARENT_OBJECT_ID))
     + '.'
     + QUOTENAME(OBJECT_NAME(PARENT_OBJECT_ID))
@@ -1825,7 +1811,7 @@ FROM SYS.OBJECTS
 WHERE TYPE_DESC LIKE '%CONSTRAINT'
     AND OBJECT_NAME(PARENT_OBJECT_ID) = 'WfhRequest'
     AND SCHEMA_NAME(SCHEMA_ID) = 'dbo'
-EXEC sp_executesql @SQL
+EXEC sp_executesql @SQL_40
 ;
 CREATE TABLE [dbo].[_prisma_new_WfhRequest] (
     [id] INT NOT NULL,
@@ -2507,6 +2493,37 @@ EXEC SP_RENAME N'dbo.VisitorNotificationLog.IX_VisitorNotificationLog_companyId_
 
 -- RenameIndex
 EXEC SP_RENAME N'dbo.VisitorNotificationLog.IX_VisitorNotificationLog_companyId_status', N'VisitorNotificationLog_companyId_status_idx', N'INDEX';
+
+
+-- AddForeignKey
+ALTER TABLE [dbo].[AssessmentAttempt] ADD CONSTRAINT [AssessmentAttempt_assessmentId_fkey] FOREIGN KEY ([assessmentId]) REFERENCES [dbo].[Assessment]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[EmployeeKraLine] ADD CONSTRAINT [EmployeeKraLine_cycleId_fkey] FOREIGN KEY ([cycleId]) REFERENCES [dbo].[EmployeeKraCycle]([id]) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[ExpenseReimbursementItem] ADD CONSTRAINT [FK_ExpenseReimbursementItem_ExpenseReimbursement_expenseReimbursementId] FOREIGN KEY ([expenseReimbursementId]) REFERENCES [dbo].[ExpenseReimbursement]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[InductionAssignment] ADD CONSTRAINT [InductionAssignment_inductionProgramId_fkey] FOREIGN KEY ([inductionProgramId]) REFERENCES [dbo].[InductionProgram]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[QuestionBank] ADD CONSTRAINT [QuestionBank_groupId_fkey] FOREIGN KEY ([groupId]) REFERENCES [dbo].[QuestionBankGroup]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[TrainingChecklistItem] ADD CONSTRAINT [TrainingChecklistItem_checklistId_fkey] FOREIGN KEY ([checklistId]) REFERENCES [dbo].[TrainingChecklist]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[TrainingAttendance] ADD CONSTRAINT [TrainingAttendance_nominationId_fkey] FOREIGN KEY ([nominationId]) REFERENCES [dbo].[TrainingNomination]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[TrainingNomination] ADD CONSTRAINT [TrainingNomination_trainingScheduleId_fkey] FOREIGN KEY ([trainingScheduleId]) REFERENCES [dbo].[TrainingSchedule]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[TrainingAttendance] ADD CONSTRAINT [TrainingAttendance_trainingScheduleId_fkey] FOREIGN KEY ([trainingScheduleId]) REFERENCES [dbo].[TrainingSchedule]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE [dbo].[TrainingFeedback] ADD CONSTRAINT [TrainingFeedback_trainingScheduleId_fkey] FOREIGN KEY ([trainingScheduleId]) REFERENCES [dbo].[TrainingSchedule]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
 
 COMMIT TRAN;
 

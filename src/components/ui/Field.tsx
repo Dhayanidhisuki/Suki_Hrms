@@ -23,6 +23,21 @@ export interface FieldDef {
   defaultValue?: string | number | boolean;
   helpText?: string;
   disabled?: boolean;
+  /** When set, FormModal derives this field's value from the rest of the
+   * form on every change (e.g. an auto-generated code) and renders it
+   * read-only regardless of `disabled`. */
+  compute?: (values: Record<string, string | number | boolean | undefined>) => string | number;
+  /** When set, FormModal hides this field unless it returns true for the
+   * form's current values (e.g. a percentage that only applies to one tier). */
+  showIf?: (values: Record<string, string | number | boolean | undefined>) => boolean;
+  /** When set, FormModal treats this field as required (validation + asterisk)
+   * whenever it returns true for the form's current values, in addition to
+   * the static `required` flag. */
+  requiredIf?: (values: Record<string, string | number | boolean | undefined>) => boolean;
+  /** When true, FormModal never renders this field at all (still computes
+   * and submits its value via `compute`) — for fields fully derived from
+   * the rest of the form with nothing for the user to see or edit. */
+  hidden?: boolean;
 }
 
 interface FieldProps {
@@ -100,7 +115,7 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
           }
           placeholder={def.placeholder}
           required={def.required}
-          disabled={def.disabled}
+          disabled={def.disabled || Boolean(def.compute)}
           autoComplete="off"
           min={def.min}
           max={def.max}

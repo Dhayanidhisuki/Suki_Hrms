@@ -115,22 +115,29 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     return () => { cancelled = true; };
   }, [runId, lineId]);
 
+  // Rows always print ascending by code (falling back to label for the
+  // fields below that aren't sourced from a SalaryComponent — Overtime, LOM,
+  // TDS… — and so have none). A fixed order here, unlike the Salary
+  // Components admin table's own toggleable code sort.
+  const byCodeAsc = (a: { label: string; code?: string }, b: { label: string; code?: string }) =>
+    (a.code ?? a.label).localeCompare(b.code ?? b.label);
+
   const earnings = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'earning')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
     if (Number(data?.line.otAmount ?? 0) > 0) list.push({ label: 'Overtime', amount: Number(data?.line.otAmount) });
     if (Number(data?.line.attendanceBonus ?? 0) > 0) list.push({ label: 'Attendance Bonus', amount: Number(data?.line.attendanceBonus) });
     if (Number(data?.line.petrolAllowance ?? 0) > 0) list.push({ label: 'Petrol Allowance', amount: Number(data?.line.petrolAllowance) });
     if (Number(data?.line.doubleMachineIncentive ?? 0) > 0) list.push({ label: 'Double Machine Incentive', amount: Number(data?.line.doubleMachineIncentive) });
     if (Number(data?.line.shiftIncentive ?? 0) > 0) list.push({ label: 'Shift Incentive', amount: Number(data?.line.shiftIncentive) });
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   const deductions = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'deduction')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
 
     const has = (code: string) => data?.line.components.some((c) => c.salaryComponent.code.toUpperCase() === code);
 
@@ -173,7 +180,7 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
       list.push({ label: 'Other Auto Deductions', amount: otherAuto });
     }
 
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   if (loading) {
