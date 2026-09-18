@@ -516,6 +516,7 @@ export const navigation: NavModule[] = [
         label: "Overview",
         items: [
           { label: "Employee Dashboard", href: "/ess/dashboard", ready: true },
+          { label: "Announcements", href: "/ess/announcements", ready: true },
         ],
       },
     ],
@@ -708,6 +709,12 @@ export const navigation: NavModule[] = [
           { label: "Branch Configuration", short: "Branch Config", href: "/admin/branch-configuration" },
           { label: "Salary Logic", href: "/admin/salary-logic" },
           { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart", ready: true },
+        ],
+      },
+      {
+        label: "Communication",
+        items: [
+          { label: "Announcements & Circulars", short: "Announcements", href: "/admin/announcements", ready: true },
         ],
       },
       {

@@ -979,6 +979,7 @@ model Employee {
   // NoAction required to break cyclic cascade through child tables
   reportingManager       Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   directReports          Employee[] @relation("EmployeeToManager")
+  announcementReads      AnnouncementRead[]
   secondReportingManager Employee?  @relation("EmployeeToSecondManager", fields: [secondReportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   secondLevelReports     Employee[] @relation("EmployeeToSecondManager")
 
@@ -4728,6 +4729,63 @@ model NotificationInApp {
   @@index([companyId, recipientUserId, isRead])
   @@index([companyId, recipientEmpId, isRead])
   @@map("NotificationInApp")
+}
+
+// ── Announcements ────────────────────────────────────────────────────────────
+
+// Company announcements and internal circulars shown on the employee portal
+// (KUN MoM 23/June/2025: "Enable announcement notifications on the employee
+// portal (e.g., policy updates, internal circulars)").
+//
+// An announcement is DRAFT until published; publishing stamps publishedAt and
+// fans out an ANNOUNCEMENT_PUBLISHED notification. Employees read it on
+// /ess/announcements. Read receipts live in AnnouncementRead so HR can show
+// who has actually seen a policy update — the reason this is a separate table
+// rather than a boolean.
+model Announcement {
+  id          Int    @id @default(autoincrement())
+  companyId   Int
+  title       String @db.NVarChar(200)
+  body        String @db.NVarChar(Max)
+  // POLICY | CIRCULAR | GENERAL — the three kinds the MoM names.
+  category    String @default("GENERAL") @db.NVarChar(20)
+  // NORMAL | IMPORTANT — IMPORTANT pins the item to the top of the ESS list.
+  priority    String @default("NORMAL") @db.NVarChar(10)
+  // DRAFT | PUBLISHED | ARCHIVED
+  status      String @default("DRAFT") @db.NVarChar(12)
+
+  publishedAt DateTime?
+  // Optional end of relevance; past this the item drops off the ESS list but
+  // stays readable in the HR archive.
+  expiresAt   DateTime?
+
+  createdByUserId Int?
+  publishedByUserId Int?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  reads AnnouncementRead[]
+
+  @@index([companyId, status, publishedAt])
+  @@map("Announcement")
+}
+
+// One row the first time an employee opens an announcement. Unique per
+// (announcement, employee) so re-opening never duplicates the receipt.
+model AnnouncementRead {
+  id             Int      @id @default(autoincrement())
+  announcementId Int
+  employeeId     Int
+  readAt         DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([announcementId, employeeId])
+  @@index([employeeId])
+  @@map("AnnouncementRead")
 }
 
 // ── Document Service ─────────────────────────────────────────────────────────
