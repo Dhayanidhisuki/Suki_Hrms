@@ -101,7 +101,8 @@ export async function calculateArrear(salaryRevisionRequestId: number) {
       // Same "Employee PF Cont. Customize" cap payrollCalculation.ts
       // applies — keeps arrear consistent with what regular payroll would
       // have deducted for this employee.
-      const ceiling = currentJobInfo?.pfRestrictionAmount != null
+      // 0 is treated the same as unset — see payrollCalculation.ts's PF cap.
+      const ceiling = currentJobInfo?.pfRestrictionAmount != null && Number(currentJobInfo.pfRestrictionAmount) > 0
         ? Math.min(Number(pfRate.wageCeilingMonthly), Number(currentJobInfo.pfRestrictionAmount))
         : Number(pfRate.wageCeilingMonthly);
       const rate = Number(pfRate.employeeContributionRate) / 100;

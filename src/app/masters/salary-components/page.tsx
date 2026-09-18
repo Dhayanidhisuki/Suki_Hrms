@@ -28,6 +28,7 @@ interface SalaryComponentRow {
   isSystemDefined: boolean;
   isActive: boolean;
   percentOfGross: number | null;
+  deletedAt?: string | null;
 }
 
 const CODE_PREFIX: Record<string, string> = {
@@ -111,6 +112,7 @@ function buildFields(isEditing: boolean, existing: SalaryComponentRow[]): FieldD
       { label: 'Fixed', value: 'FIXED' },
       { label: 'Additional', value: 'ADDITIONAL' },
       { label: 'Non-Payroll', value: 'NON_PAYROLL' },
+      { label: 'Payroll-Hidden (deducted, hidden from Salary Details)', value: 'PAYROLL_HIDDEN' },
     ],
   },
   {
@@ -127,6 +129,10 @@ function buildFields(isEditing: boolean, existing: SalaryComponentRow[]): FieldD
 
 export default function SalaryComponentsPage() {
   const [records, setRecords] = useState<SalaryComponentRow[]>([]);
+  // Includes soft-deleted rows (unlike `records`, which drives the table) —
+  // only used to seed the auto-code generator's max-suffix search, since a
+  // deleted row's code still occupies the companyId+code unique constraint.
+  const [allRowsIncludingDeleted, setAllRowsIncludingDeleted] = useState<SalaryComponentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -141,10 +147,11 @@ export default function SalaryComponentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/masters/salary-components?includeInactive=true');
+      const res = await fetch('/api/masters/salary-components?includeInactive=true&includeDeleted=true');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: SalaryComponentRow[] } = await res.json();
-      setRecords(json.data);
+      setAllRowsIncludingDeleted(json.data);
+      setRecords(json.data.filter((r) => !r.deletedAt));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -184,8 +191,8 @@ export default function SalaryComponentsPage() {
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error ?? 'Save failed');
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error ?? 'Save failed');
     }
     fetchData();
   };
@@ -200,7 +207,7 @@ export default function SalaryComponentsPage() {
     fetchData();
   };
 
-  const setGrossTier = async (row: SalaryComponentRow, tier: 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL') => {
+  const setGrossTier = async (row: SalaryComponentRow, tier: 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL' | 'PAYROLL_HIDDEN') => {
     setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
@@ -300,14 +307,21 @@ export default function SalaryComponentsPage() {
       render: (r) => (
         <select
           value={r.grossTier}
-          onChange={(e) => setGrossTier(r, e.target.value as 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL')}
+          onChange={(e) => setGrossTier(r, e.target.value as 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL' | 'PAYROLL_HIDDEN')}
           className="rounded border px-1 py-0.5 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--foreground)', opacity: r.grossTier === 'NON_PAYROLL' || r.includeInGross ? 1 : 0.4 }}
-          title={r.grossTier === 'NON_PAYROLL' ? 'Never touched by payroll' : undefined}
+          title={
+            r.grossTier === 'NON_PAYROLL'
+              ? 'Never touched by payroll'
+              : r.grossTier === 'PAYROLL_HIDDEN'
+              ? 'Deducted in real payroll, but hidden from the Salary Details tab'
+              : undefined
+          }
         >
           <option value="FIXED">Fixed</option>
           <option value="ADDITIONAL">Additional</option>
           <option value="NON_PAYROLL">Non-Payroll</option>
+          <option value="PAYROLL_HIDDEN">Payroll-Hidden</option>
         </select>
       ),
     },
@@ -427,7 +441,7 @@ export default function SalaryComponentsPage() {
 
       <FormModal
         title={editingId ? 'Edit Salary Component' : 'Add Salary Component'}
-        fields={buildFields(editingId !== null, records)}
+        fields={buildFields(editingId !== null, allRowsIncludingDeleted)}
         initialValues={initialValues}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

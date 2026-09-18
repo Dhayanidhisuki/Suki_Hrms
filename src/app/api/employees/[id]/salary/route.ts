@@ -114,7 +114,13 @@ export async function GET(
       pfApplicable: employee.jobInfos[0]?.pfApplicable ?? true,
       esiApplicable: employee.jobInfos[0]?.esiApplicable ?? false,
       bonusApplicable: employee.jobInfos[0]?.bonusApplicable ?? false,
-      pfRestrictionAmount: employee.jobInfos[0]?.pfRestrictionAmount != null ? Number(employee.jobInfos[0].pfRestrictionAmount) : null,
+      // 0 is treated the same as unset (null) — a zero restriction would
+      // otherwise zero out the whole PF wage base instead of meaning "no
+      // restriction, use the statutory ceiling" (the help text's promise).
+      pfRestrictionAmount:
+        employee.jobInfos[0]?.pfRestrictionAmount != null && Number(employee.jobInfos[0].pfRestrictionAmount) > 0
+          ? Number(employee.jobInfos[0].pfRestrictionAmount)
+          : null,
       pfRateComponentIds,
       pfRate: pfRate ? { employeeContributionRate: Number(pfRate.employeeContributionRate), wageCeilingMonthly: Number(pfRate.wageCeilingMonthly) } : null,
       esiRate: esiRate ? { employeeContributionRate: Number(esiRate.employeeContributionRate), wageCeilingMonthly: Number(esiRate.wageCeilingMonthly) } : null,

@@ -359,7 +359,11 @@ export const salaryComponentSchema = z.object({
   // NON_PAYROLL = never touched by payroll at all (see schema.prisma comment
   // on SalaryComponent.grossTier); used for CTC-quoted, display-only figures
   // like Performance Incentive.
-  grossTier: z.enum(['FIXED', 'ADDITIONAL', 'NON_PAYROLL']).default('ADDITIONAL'),
+  // PAYROLL_HIDDEN = the opposite of NON_PAYROLL: it DOES reduce Net Pay in
+  // real payroll (shows on Payroll Processing/Payslip like a normal
+  // deduction), but is attached per-employee via the CTC Components picker
+  // and deliberately not offered/shown on the Salary Details tab.
+  grossTier: z.enum(['FIXED', 'ADDITIONAL', 'NON_PAYROLL', 'PAYROLL_HIDDEN']).default('ADDITIONAL'),
   isActive: z.boolean().default(true),
   // Optional convenience: setting this here upserts the same GrossSplitRule
   // row the Common Logic > Gross % Split page manages, so an earning

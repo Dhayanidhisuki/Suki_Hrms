@@ -502,14 +502,15 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
             }))
           : [];
         const d = computeDeductionsShared(String(fixedGross), revCompRows, currentDeductionContext);
-        const monthlyCtc = round2(actualGross + currentNonPayrollTotal);
         const bonusPreview = computeBonusProjection(currentBasic, currentDeductionContext);
-        const annualCtc = round2(monthlyCtc * 12 + bonusPreview);
+        const monthlyBonus = round2(bonusPreview / 12);
+        const monthlyCtc = round2(actualGross + currentNonPayrollTotal + monthlyBonus);
+        const annualCtc = round2(monthlyCtc * 12);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setViewRow(null)}>
             <div
-              className="w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="w-full max-w-xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
               style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -523,118 +524,109 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
               <div className="px-5 py-4 space-y-4 text-sm">
                 {!rev ? (
                   <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>No current Salary Details revision to break down.</p>
-                ) : (
-                  <>
-                    <div>
-                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Fixed</div>
-                      <table className="w-full">
+                ) : (() => {
+                  const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+                  const SectionRows = ({
+                    title,
+                    accent,
+                    rows,
+                  }: {
+                    title: string;
+                    accent: string;
+                    rows: { key: string; label: string; monthly: number }[];
+                  }) => (
+                    <>
+                      <tr>
+                        <td colSpan={3} className="px-3 py-1.5">
+                          <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: 'var(--foreground-muted)' }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />
+                            {title}
+                          </div>
+                        </td>
+                      </tr>
+                      {rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-3 pb-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>—</td>
+                        </tr>
+                      ) : (
+                        rows.map((r) => (
+                          <tr key={r.key} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="px-3 py-1" style={{ color: 'var(--foreground)' }}>{r.label}</td>
+                            <td className="px-3 py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{fmt(r.monthly)}</td>
+                            <td className="px-3 py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{fmt(round2(r.monthly * 12))}</td>
+                          </tr>
+                        ))
+                      )}
+                    </>
+                  );
+
+                  return (
+                    <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr style={{ backgroundColor: 'var(--background-subtle, var(--surface-muted))' }}>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Component</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Per Month</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Per Annum</th>
+                          </tr>
+                        </thead>
                         <tbody>
-                          {fixedEarnings.map((c) => (
-                            <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                              <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
-                              <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                          <SectionRows
+                            title="Earnings — Fixed"
+                            accent="#16a34a"
+                            rows={fixedEarnings.map((c) => ({ key: c.salaryComponent.code, label: c.salaryComponent.name, monthly: Number(c.amount) }))}
+                          />
+                          <SectionRows
+                            title="Earnings — Additional"
+                            accent="#0ea5e9"
+                            rows={additionalEarnings.map((c) => ({ key: c.salaryComponent.code, label: c.salaryComponent.name, monthly: Number(c.amount) }))}
+                          />
+                          <tr style={{ borderTop: '1px solid var(--border)' }}>
+                            <td className="px-3 py-1.5" style={{ color: 'var(--foreground)' }}>Actual Gross</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(actualGross)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(round2(actualGross * 12))}</td>
+                          </tr>
+
+                          <SectionRows
+                            title="Deductions"
+                            accent="#dc2626"
+                            rows={[
+                              ...(d.pfEmployee > 0 ? [{ key: 'pf', label: 'PF', monthly: d.pfEmployee }] : []),
+                              ...(d.esiEmployee > 0 ? [{ key: 'esi', label: 'ESI', monthly: d.esiEmployee }] : []),
+                              ...d.otherDeductions.filter((o) => o.amount > 0).map((o) => ({ key: o.code, label: o.name, monthly: o.amount })),
+                            ]}
+                          />
+
+                          <tr style={{ borderTop: '1px solid var(--border)' }}>
+                            <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--foreground)' }}>Net Pay</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(round2(actualGross - d.total))}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(round2((actualGross - d.total) * 12))}</td>
+                          </tr>
+
+                          <SectionRows
+                            title="Employee Contribution"
+                            accent="#a855f7"
+                            rows={currentNonPayrollComponents.map((c) => ({ key: String(c.id), label: c.salaryComponent.name, monthly: Number(c.amount) }))}
+                          />
+
+                          {bonusPreview > 0 && (
+                            <tr>
+                              <td className="px-3 py-1.5" style={{ color: 'var(--foreground)' }}>Bonus</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(monthlyBonus)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>{fmt(bonusPreview)}</td>
                             </tr>
-                          ))}
+                          )}
+                          <tr style={{ borderTop: '1px solid var(--accent)' }}>
+                            <td className="px-3 py-2 font-semibold" style={{ color: 'var(--foreground)' }}>Total CTC</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: 'var(--accent)' }}>{fmt(monthlyCtc)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: 'var(--accent)' }}>{fmt(annualCtc)}</td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
-
-                    <div>
-                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Additional</div>
-                      {additionalEarnings.length === 0 ? (
-                        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                      ) : (
-                        <table className="w-full">
-                          <tbody>
-                            {additionalEarnings.map((c) => (
-                              <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                                <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
-                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Deductions</div>
-                      {d.pfEmployee === 0 && d.esiEmployee === 0 && d.otherDeductions.every((o) => o.amount === 0) ? (
-                        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                      ) : (
-                        <table className="w-full">
-                          <tbody>
-                            {d.pfEmployee > 0 && (
-                              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                                <td className="py-1" style={{ color: 'var(--foreground)' }}>PF</td>
-                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.pfEmployee}</td>
-                              </tr>
-                            )}
-                            {d.esiEmployee > 0 && (
-                              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                                <td className="py-1" style={{ color: 'var(--foreground)' }}>ESI</td>
-                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.esiEmployee}</td>
-                              </tr>
-                            )}
-                            {d.otherDeductions.filter((o) => o.amount > 0).map((o) => (
-                              <tr key={o.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                                <td className="py-1" style={{ color: 'var(--foreground)' }}>{o.name}</td>
-                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{o.amount}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Non-Payroll (CTC-only) Components</div>
-                  {currentNonPayrollComponents.length === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                  ) : (
-                    <table className="w-full">
-                      <tbody>
-                        {currentNonPayrollComponents.map((c) => (
-                          <tr key={c.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                <div className="border-t pt-3 space-y-1" style={{ borderColor: 'var(--border)' }}>
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--foreground-muted)' }}>Actual Gross</span>
-                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{actualGross}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--foreground-muted)' }}>+ Non-Payroll Total</span>
-                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{currentNonPayrollTotal}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Monthly CTC</span>
-                    <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{monthlyCtc}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--foreground-muted)' }}>Monthly CTC × 12</span>
-                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{round2(monthlyCtc * 12)}</span>
-                  </div>
-                  {bonusPreview > 0 && (
-                    <div className="flex justify-between">
-                      <span style={{ color: 'var(--foreground-muted)' }}>+ Bonus (year-end)</span>
-                      <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{bonusPreview}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Annual CTC</span>
-                    <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{annualCtc}</span>
-                  </div>
-                </div>
+                  );
+                })()}
                 <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
                   Computed live from Salary Details&apos; current revision and current CTC-only Components — not the (possibly stale) figures stored on this specific historical row. Bonus is a preview (Basic × Bonus Rate %), not the real annual bonusCalculation.ts figure.
                 </p>
@@ -1491,97 +1483,135 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
         }));
         const d = computeDeductions(String(fixedGross), revCompRows);
 
+        const netSalary = round2(actualGross - d.total);
+        const hasDeductions = d.pfEmployee > 0 || d.esiEmployee > 0 || d.otherDeductions.some((o) => o.amount > 0);
+
+        const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+        const SectionTable = ({
+          title,
+          accent,
+          rows,
+        }: {
+          title: string;
+          accent: string;
+          rows: { key: string; label: string; amount: number }[];
+        }) => (
+          <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            <div
+              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+              style={{ backgroundColor: 'var(--background-subtle, var(--surface-muted))', color: 'var(--foreground-muted)' }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />
+              {title}
+            </div>
+            {rows.length === 0 ? (
+              <p className="px-3 py-3 text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr
+                      key={r.key}
+                      style={{
+                        backgroundColor: i % 2 === 1 ? 'var(--background-subtle, transparent)' : 'transparent',
+                        borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                      }}
+                    >
+                      <td className="px-3 py-1.5" style={{ color: 'var(--foreground)' }}>{r.label}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-medium" style={{ color: 'var(--foreground)' }}>
+                        ₹{fmt(r.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: `1px solid ${accent}` }}>
+                    <td className="px-3 py-1.5 font-semibold" style={{ color: 'var(--foreground)' }}>Total</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: accent }}>
+                      ₹{fmt(rows.reduce((s, r) => s + r.amount, 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setViewRevision(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setViewRevision(null)}>
             <div
               className="w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
               style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-                <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
-                  Salary Revision — {viewRevision.effectiveFrom.slice(0, 10)}
-                  {viewRevision.effectiveTo ? ` to ${viewRevision.effectiveTo.slice(0, 10)}` : ' (Current)'}
-                </h2>
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b"
+                style={{ borderColor: 'var(--border)', background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent)' }}
+              >
+                <div>
+                  <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                    Salary Revision
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--foreground-muted)' }}>
+                    {viewRevision.effectiveFrom.slice(0, 10)}
+                    {viewRevision.effectiveTo ? ` → ${viewRevision.effectiveTo.slice(0, 10)}` : (
+                      <span
+                        className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ backgroundColor: 'var(--accent-soft, #dcfce7)', color: 'var(--accent)' }}
+                      >
+                        Current
+                      </span>
+                    )}
+                  </p>
+                </div>
                 <button onClick={() => setViewRevision(null)} className="text-lg leading-none hover:opacity-70" style={{ color: 'var(--foreground-muted)' }}>×</button>
               </div>
               <div className="px-5 py-4 space-y-4 text-sm">
-                <div className="grid grid-cols-2 gap-3">
-                  <div><span style={{ color: 'var(--foreground-muted)' }}>Financial Year</span><div style={{ color: 'var(--foreground)' }}>{viewRevision.financialYear ?? '—'}</div></div>
-                  <div><span style={{ color: 'var(--foreground-muted)' }}>Fixed Gross</span><div className="font-semibold" style={{ color: 'var(--foreground)' }}>{fixedGross}</div></div>
-                  <div><span style={{ color: 'var(--foreground-muted)' }}>Additional Gross</span><div style={{ color: 'var(--foreground)' }}>{additionalGross}</div></div>
-                  <div><span style={{ color: 'var(--foreground-muted)' }}>Actual Gross</span><div className="font-semibold" style={{ color: 'var(--foreground)' }}>{actualGross}</div></div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Financial Year', value: viewRevision.financialYear ?? '—', emphasize: false },
+                    { label: 'Fixed Gross', value: `₹${fmt(fixedGross)}`, emphasize: true },
+                    { label: 'Additional Gross', value: `₹${fmt(additionalGross)}`, emphasize: false },
+                    { label: 'Actual Gross', value: `₹${fmt(actualGross)}`, emphasize: true },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--background-subtle, var(--surface-muted))', border: '1px solid var(--border)' }}>
+                      <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>{item.label}</div>
+                      <div className={item.emphasize ? 'font-semibold' : ''} style={{ color: 'var(--foreground)' }}>{item.value}</div>
+                    </div>
+                  ))}
                 </div>
 
-                <div>
-                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Fixed</div>
-                  {fixedEarnings.length === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                  ) : (
-                    <table className="w-full">
-                      <tbody>
-                        {fixedEarnings.map((c) => (
-                          <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                <SectionTable
+                  title="Earnings — Fixed"
+                  accent="#16a34a"
+                  rows={fixedEarnings.map((c) => ({ key: c.salaryComponent.code, label: c.salaryComponent.name, amount: Number(c.amount) }))}
+                />
 
-                <div>
-                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Additional</div>
-                  {additionalEarnings.length === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                  ) : (
-                    <table className="w-full">
-                      <tbody>
-                        {additionalEarnings.map((c) => (
-                          <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                <SectionTable
+                  title="Earnings — Additional"
+                  accent="#0ea5e9"
+                  rows={additionalEarnings.map((c) => ({ key: c.salaryComponent.code, label: c.salaryComponent.name, amount: Number(c.amount) }))}
+                />
 
-                <div>
-                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Deductions</div>
-                  {d.pfEmployee === 0 && d.esiEmployee === 0 && d.otherDeductions.every((o) => o.amount === 0) ? (
-                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
-                  ) : (
-                    <table className="w-full">
-                      <tbody>
-                        {d.pfEmployee > 0 && (
-                          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>PF</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.pfEmployee}</td>
-                          </tr>
-                        )}
-                        {d.esiEmployee > 0 && (
-                          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>ESI</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.esiEmployee}</td>
-                          </tr>
-                        )}
-                        {d.otherDeductions.filter((o) => o.amount > 0).map((o) => (
-                          <tr key={o.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{o.name}</td>
-                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{o.amount}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                <SectionTable
+                  title="Deductions"
+                  accent="#dc2626"
+                  rows={
+                    hasDeductions
+                      ? [
+                          ...(d.pfEmployee > 0 ? [{ key: 'pf', label: 'PF', amount: d.pfEmployee }] : []),
+                          ...(d.esiEmployee > 0 ? [{ key: 'esi', label: 'ESI', amount: d.esiEmployee }] : []),
+                          ...d.otherDeductions.filter((o) => o.amount > 0).map((o) => ({ key: o.code, label: o.name, amount: o.amount })),
+                        ]
+                      : []
+                  }
+                />
 
-                <div className="flex justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                <div
+                  className="flex justify-between items-center rounded-lg px-4 py-3"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)', border: '1px solid var(--accent)' }}
+                >
                   <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Net Salary</span>
-                  <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{round2(actualGross - d.total)}</span>
+                  <span className="font-bold text-base tabular-nums" style={{ color: 'var(--accent)' }}>₹{fmt(netSalary)}</span>
                 </div>
               </div>
             </div>
