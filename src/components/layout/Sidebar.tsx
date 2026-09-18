@@ -16,6 +16,8 @@ interface SidebarProps {
 interface CurrentUser {
   isSuperAdmin: boolean;
   hasAdminAccess: boolean;
+  /** Holds any permission at all — an HR-side role rather than an ESS-only login. */
+  hasHrAccess: boolean;
   roleCode: string | null;
   hasEmployeeAccess: boolean;
   isManager: boolean;
@@ -47,7 +49,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess, isManager: !!data.isManager });
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, hasHrAccess: !!data.hasHrAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess, isManager: !!data.isManager });
       })
       .catch(() => {});
     return () => {
@@ -55,21 +57,29 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     };
   }, []);
 
-  // Superadmin sees ONLY Superadmin section. Admin users see everything except
-  // employee-specific modules. Pure employees (no admin access) see ONLY
-  // Dashboard (employee), Services, Profile, and Visitors. Users with both
-  // admin + employee access see both admin modules and employee modules.
+  // Superadmin sees ONLY the Superadmin section. An ESS-only login (an employee
+  // record, no permissions) sees ONLY Dashboard (employee), Services, Profile
+  // and Visitors. An HR-side login sees the HR modules — and if it ALSO has an
+  // employee record, it keeps its own ESS modules too, because an HR manager is
+  // still someone who applies for leave and reads their own payslip.
+  //
+  // The HR test is hasHrAccess (holds any permission), not hasAdminAccess
+  // (admin.* only): an HR Admin has no admin.* grant, and testing the narrow
+  // flag used to strip every HR module the moment that person was given an
+  // employee record.
   const visibleNavigation = useMemo(() => {
     const employeeModules = ["Dashboard", "Services", "Profile", "Visitors"];
+    const isEmployeeModule = (mod: NavModule) =>
+      mod.label === "Dashboard"
+        ? mod.href.includes("/ess/")
+        : employeeModules.includes(mod.label);
+
     if (me?.isSuperAdmin) {
       return navigation.filter((mod) => mod.label === "Superadmin");
     }
-    if (me?.hasEmployeeAccess && !me?.hasAdminAccess) {
-      // Filter to employee Dashboard only (href contains /ess/)
-      const employeeNav = navigation.filter((mod) => {
-        if (mod.label === "Dashboard") return mod.href.includes("/ess/");
-        return ["Services", "Profile", "Visitors"].includes(mod.label);
-      });
+
+    if (me?.hasEmployeeAccess && !me?.hasHrAccess) {
+      const employeeNav = navigation.filter(isEmployeeModule);
       // A plain employee who manages someone still has approval queues to
       // work — the manager stage is gated on the org chart, not on RBAC.
       if (me.isManager) {
@@ -79,12 +89,13 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       }
       return employeeNav;
     }
+
     return navigation.filter((mod) => {
       if (mod.label === "Superadmin") return false;
       if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
-      // Hide employee-specific modules from admins
-      if (mod.label === "Dashboard" && mod.href.includes("/ess/")) return false;
-      if (["Services", "Profile", "Visitors"].includes(mod.label)) return false;
+      // An HR user with no employee record has no self-service data to show,
+      // so those modules stay hidden for them and only for them.
+      if (isEmployeeModule(mod)) return me ? me.hasEmployeeAccess : false;
       return true;
     });
   }, [me]);
@@ -98,7 +109,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       : pathname === mod.href || pathname.startsWith(`${mod.href}/`);
 
   // The module holding the current route opens by default until the user picks another.
-  const activeModule = visibleNavigation.find(isModuleActive)?.label ?? null;
+  const activeModule = visibleNavigation.find(isModuleActive)?.href ?? null;
   const expandedModule = openModule ?? activeModule;
 
   const visibleModuleLabels = useMemo(
@@ -124,10 +135,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
   const handleModuleClick = (mod: NavModule) => {
     if (collapsed) {
       onToggleCollapse();
-      setOpenModule(mod.label);
+      setOpenModule(mod.href);
       return;
     }
-    setOpenModule((current) => (current === mod.label ? "" : mod.label));
+    setOpenModule((current) => (current === mod.href ? "" : mod.href));
   };
 
   const readyDot = (
@@ -140,10 +151,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
 
   const renderModule = (mod: NavModule) => {
     const active = isModuleActive(mod);
-    const expanded = expandedModule === mod.label && !collapsed;
+    const expanded = expandedModule === mod.href && !collapsed;
 
     return (
-      <div key={mod.label}>
+      <div key={mod.href}>
         <button
           type="button"
           onClick={() => handleModuleClick(mod)}

@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { hasAnyPermissionInModule } from '@/lib/rbac';
+import { hasAnyPermission, hasAnyPermissionInModule } from '@/lib/rbac';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 
 export async function GET(request: NextRequest) {
@@ -24,11 +24,19 @@ export async function GET(request: NextRequest) {
   const roleCode = request.headers.get('x-role-code');
   const companyId = request.headers.get('x-company-id');
 
-  const [hasAdminAccess, user, employeeId] = await Promise.all([
+  const [hasAdminAccess, hasHrAccess, user, employeeId] = await Promise.all([
     isSuperAdmin
       ? Promise.resolve(false) // superadmin doesn't use the company-scoped Administration section
       : roleId
         ? hasAnyPermissionInModule(Number(roleId), 'admin')
+        : Promise.resolve(false),
+    // Holds ANY permission — i.e. this is an HR-side role, not an ESS-only
+    // login. hasAdminAccess is narrower (admin.* only) and cannot stand in for
+    // this: an HR Admin has no admin.* grant but still works the HR modules.
+    isSuperAdmin
+      ? Promise.resolve(false)
+      : roleId
+        ? hasAnyPermission(Number(roleId))
         : Promise.resolve(false),
     prisma.user.findUnique({
       where: { id: Number(userId) },
@@ -56,6 +64,7 @@ export async function GET(request: NextRequest) {
     companyId: companyId ? Number(companyId) : null,
     companyName: user?.company?.name ?? null,
     hasAdminAccess,
+    hasHrAccess,
     hasEmployeeAccess: !!employeeId,
     isManager,
   });
