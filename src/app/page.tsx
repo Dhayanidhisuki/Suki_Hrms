@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { verifyTokenNode } from "@/lib/jwt";
+import { hasAnyPermission } from "@/lib/rbac";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import SecurityDashboardKpi from "@/components/dashboard/SecurityDashboardKpi";
 import AttendanceChart from "@/components/dashboard/AttendanceChart";
@@ -24,6 +25,15 @@ export default async function Home() {
   }
   if (payload.isSuperAdmin) {
     redirect("/superadmin/companies");
+  }
+
+  // The dashboard below is company-wide HR data — headcount, attendance rate,
+  // payroll. An ESS-only login (a role holding no permissions at all) has no
+  // business seeing any of it, so send them to their own self-service
+  // dashboard instead. /api/stats/* enforces the same rule server-side; this
+  // redirect is what stops the page from rendering empty cards at them.
+  if (payload.roleId === undefined || !(await hasAnyPermission(payload.roleId))) {
+    redirect("/ess/dashboard");
   }
 
   return (
