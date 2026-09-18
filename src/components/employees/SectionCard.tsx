@@ -63,8 +63,8 @@ export function DetailGrid({ items, columns = 6 }: { items: Array<{ label: strin
   const cols = columns === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-6';
   return (
     <dl className={`grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-3 ${cols}`}>
-      {items.map((it) => (
-        <div key={it.label} className="min-w-0">
+      {items.map((it, idx) => (
+        <div key={`${it.label}-${idx}`} className="min-w-0">
           <dt className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
             {it.label}
           </dt>

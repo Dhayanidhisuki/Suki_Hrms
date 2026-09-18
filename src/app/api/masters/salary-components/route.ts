@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
-import { salaryComponentSchema } from '@/lib/validations/master';
+import { salaryComponentSchema, normalizeSalaryComponentFlags } from '@/lib/validations/master';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
@@ -21,11 +21,23 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
+  const grossTier = searchParams.get('grossTier');
+  // Every picker (Salary Details, Payslip ad-hoc, Salary Revision…) wants
+  // active-only, the default. Only the Salary Components admin page itself
+  // opts into seeing inactive rows too, so its eye-icon toggle doesn't make
+  // a component vanish from the list — it just flips the Status badge.
+  const includeInactive = searchParams.get('includeInactive') === 'true';
 
-  const data = await prisma.salaryComponent.findMany({
-    where: { companyId: scope.companyId, deletedAt: null, isActive: true, ...(type ? { type } : {}) },
+  const rows = await prisma.salaryComponent.findMany({
+    where: { companyId: scope.companyId, deletedAt: null, ...(includeInactive ? {} : { isActive: true }), ...(type ? { type } : {}), ...(grossTier ? { grossTier } : {}) },
     orderBy: { name: 'asc' },
+    include: { grossSplitRule: { select: { percentOfGross: true } } },
   });
+  const data = rows.map((r) => ({
+    ...r,
+    percentOfGross: r.type === 'earning' && r.grossTier === 'FIXED' ? (r.grossSplitRule?.percentOfGross ?? null) : null,
+    grossSplitRule: undefined,
+  }));
 
   return NextResponse.json({ data });
 }
@@ -48,8 +60,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
   }
 
+  const { percentOfGross, ...componentData } = normalizeSalaryComponentFlags(parsed.data);
   const record = await prisma.salaryComponent.create({
-    data: { ...parsed.data, companyId: scope.companyId },
+    data: { ...componentData, companyId: scope.companyId },
   });
-  return NextResponse.json(record, { status: 201 });
+
+  // Percentage of Gross only ever applies to Fixed-tier earning components
+  // (Basic, HRA, LTA…) — Additional/Non-Payroll components are always
+  // manually entered, so a submitted percentage is silently ignored for them.
+  const appliesPercent = componentData.type === 'earning' && componentData.grossTier === 'FIXED';
+  if (appliesPercent && percentOfGross !== null && percentOfGross !== undefined) {
+    await prisma.grossSplitRule.upsert({
+      where: { salaryComponentId: record.id },
+      create: { companyId: scope.companyId, salaryComponentId: record.id, percentOfGross, isActive: true },
+      update: { percentOfGross },
+    });
+  }
+
+  return NextResponse.json({ ...record, percentOfGross: appliesPercent ? (percentOfGross ?? null) : null }, { status: 201 });
 }

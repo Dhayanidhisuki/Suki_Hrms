@@ -30,7 +30,6 @@ import {
   buildPassportFields,
   buildAssetFields,
   buildKycFields,
-  buildCtcFields,
   fetchAllMaster,
   fetchEmployeeRefs,
   applyEmployeeFieldChange,
@@ -47,7 +46,8 @@ interface EmergencyContactRow { id: number; contactName: string; relationship: s
 interface SkillRow { id: number; skillCategory: string | null; skillName: string; proficiencyLevel: string | null; certified: boolean; expiryDate: string | null; }
 interface AssetRow { id: number; assetMasterId: number; assetTypeName: string; serialNumber: string | null; model: string | null; assetValue: string | null; allocatedDate: string; expectedReturnDate: string | null; returnedDate: string | null; }
 interface CtcRow { id: number; effectiveFrom: string; effectiveTo: string | null; monthlyCtc: string; annualCtc: string; basic: string; }
-interface SalaryComponentRow { salaryComponent: { name: string; code: string; type: string }; amount: string; }
+interface CtcComponentRow { id: number; salaryComponentId: number; amount: string; salaryComponent: { id: number; code: string; name: string; grossTier: string } }
+interface SalaryComponentRow { salaryComponentId: number; salaryComponent: { name: string; code: string; type: string; grossTier: string }; amount: string; }
 interface SalaryRevisionRow { id: number; financialYear: string | null; grossSalary: string; netSalary: string | null; effectiveFrom: string; effectiveTo: string | null; components: SalaryComponentRow[]; }
 interface ActivityRow { id: number; activityAt: string; module: string; activityType: string; remarks: string | null; }
 
@@ -332,8 +332,21 @@ function ProfileTabForm({
 function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
   const [rows, setRows] = useState<CtcRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewRow, setViewRow] = useState<CtcRow | null>(null);
+  // Live figures pulled from Salary Details / CTC-only Components — CTC no
+  // longer asks for Basic/HRA/allowances/PF/ESI manually; Payroll ("all of
+  // that") is Salary Details' job. Monthly CTC = current Actual Gross + sum
+  // of current CTC-only (Non-Payroll) components; Annual CTC = ×12.
+  const [currentBasic, setCurrentBasic] = useState(0);
+  const [currentActualGross, setCurrentActualGross] = useState(0);
+  const [currentNonPayrollTotal, setCurrentNonPayrollTotal] = useState(0);
+  // Itemized breakdown for the View dialog — same source data as above, kept
+  // in full (not just totals) so View can show Earnings/Deductions/Non-Payroll
+  // line by line, not just the Monthly/Annual CTC totals.
+  const [currentSalaryRevision, setCurrentSalaryRevision] = useState<SalaryRevisionRow | null>(null);
+  const [currentDeductionContext, setCurrentDeductionContext] = useState<DeductionContext | null>(null);
+  const [currentNonPayrollComponents, setCurrentNonPayrollComponents] = useState<CtcComponentRow[]>([]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -343,21 +356,92 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
       .finally(() => setLoading(false));
   }, [employeeId]);
 
+  const fetchLiveFigures = useCallback(() => {
+    Promise.all([
+      fetch(`/api/employees/${employeeId}/salary`).then((r) => r.json()),
+      fetch(`/api/employees/${employeeId}/ctc/components`).then((r) => r.json()).catch(() => ({ data: [] })),
+    ]).then(([salaryJson, ctcCompJson]) => {
+      const current: SalaryRevisionRow | undefined = (salaryJson.data ?? []).find((r: SalaryRevisionRow) => !r.effectiveTo);
+      setCurrentSalaryRevision(current ?? null);
+      setCurrentDeductionContext(salaryJson.deductionContext ?? null);
+      if (current) {
+        const earnings = current.components.filter((c) => c.salaryComponent.type === 'earning');
+        const actualGross = round2(earnings.reduce((s, c) => s + Number(c.amount), 0));
+        const basicRow = current.components.find((c) => c.salaryComponent.code === 'BASIC');
+        setCurrentActualGross(actualGross);
+        setCurrentBasic(basicRow ? Number(basicRow.amount) : 0);
+      } else {
+        setCurrentActualGross(0);
+        setCurrentBasic(0);
+      }
+      const nonPayrollRows: CtcComponentRow[] = ctcCompJson.data ?? [];
+      setCurrentNonPayrollComponents(nonPayrollRows);
+      const nonPayrollTotal = nonPayrollRows.reduce((s, c) => s + Number(c.amount), 0);
+      setCurrentNonPayrollTotal(round2(nonPayrollTotal));
+    });
+  }, [employeeId]);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchLiveFigures();
+  }, [fetchData, fetchLiveFigures]);
 
-  const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const res = await fetch(`/api/employees/${employeeId}/ctc`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error ?? 'Save failed');
+  const monthlyCtc = round2(currentActualGross + currentNonPayrollTotal);
+  // Bonus is a once-a-year figure — added on top of Monthly CTC × 12, not
+  // folded into the monthly number itself. CTC uses the projected formula,
+  // not the real earned-history sum shown in Salary Details.
+  const currentBonusPreview = computeBonusProjection(currentBasic, currentDeductionContext);
+  const annualCtc = round2(monthlyCtc * 12 + currentBonusPreview);
+
+  // Only Effective From is actually asked — every other ctcSchema field is
+  // auto-derived (Basic/Monthly/Annual from Salary Details + CTC-only
+  // Components above) or a legacy breakdown field (HRA, allowances, PF/ESI…)
+  // that's no longer entered here at all now that Salary Details/payroll own
+  // that data; those all default to 0 silently.
+  const ctcFields: FieldDef[] = [
+    { name: 'effectiveFrom', label: 'Effective From', type: 'date', required: true },
+    { name: 'basic', label: 'Basic', type: 'number', required: true, hidden: true, compute: () => currentBasic },
+    { name: 'monthlyCtc', label: 'Monthly CTC', type: 'number', required: true, hidden: true, compute: () => monthlyCtc },
+    { name: 'annualCtc', label: 'Annual CTC', type: 'number', required: true, hidden: true, compute: () => annualCtc },
+    ...(['hra', 'specialAllowance', 'conveyanceAllowance', 'washAllowance', 'canteen', 'dislocationAllowance', 'otherAllowance', 'shiftAllowance', 'attendanceBonus', 'bonus', 'lta', 'medicalClaim', 'employeePf', 'employeeEsi', 'employerPf', 'employerEsi', 'gratuity', 'otherBenefits', 'nonMonetaryBenefits'] as const).map(
+      (name) => ({ name, label: name, type: 'number' as const, defaultValue: 0, hidden: true })
+    ),
+  ];
+
+  // Refresh — no dialog at all: every field ctcSchema needs is already
+  // computed (Effective From = today, everything else from ctcFields'
+  // compute/defaultValue), so one click both creates the CTC row and
+  // recomputes it against Salary Details' current numbers.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    // Full timestamp, not just a date — the server requires strictly-after
+    // the current revision's own effectiveFrom, so a same-day Refresh (e.g.
+    // clicking it twice today) would otherwise always 409 against a row
+    // also created today at midnight.
+    const values: Record<string, string | number | boolean> = { effectiveFrom: new Date().toISOString() };
+    for (const f of ctcFields) {
+      if (f.name === 'effectiveFrom') continue;
+      values[f.name] = f.compute ? f.compute(values) : (f.defaultValue ?? 0);
     }
-    fetchData();
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/ctc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Save failed');
+      }
+      fetchData();
+      fetchLiveFigures();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const columns: Column<CtcRow>[] = [
@@ -366,12 +450,18 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
     { key: 'monthlyCtc', label: 'Monthly CTC' },
     { key: 'annualCtc', label: 'Annual CTC' },
     { key: 'basic', label: 'Basic' },
+    {
+      key: 'view',
+      label: '',
+      render: (r) => (
+        <button type="button" onClick={() => setViewRow(r)} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+          View
+        </button>
+      ),
+    },
   ];
 
-  // The first-ever CTC entered for an employee isn't a "revision" of
-  // anything — HR/payroll terms that "CTC Fixation" (an employee with no
-  // CTC row yet); only subsequent entries are a revision.
-  const isFixation = !loading && rows.length === 0;
+  const hasCurrentRevision = !loading && rows.some((r) => !r.effectiveTo);
 
   return (
     <SectionCard
@@ -379,11 +469,12 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
       icon={<SectionIcon.Wallet />}
       action={
         <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
           style={{ backgroundColor: 'var(--accent)' }}
         >
-          {isFixation ? '+ Fix CTC' : '+ New Revision'}
+          {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
       }
     >
@@ -392,25 +483,297 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
       )}
       <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No CTC fixed yet." />
-      <FormModal
-        title={isFixation ? 'CTC Fixation' : 'New CTC Revision'}
-        fields={buildCtcFields()}
-        initialValues={{}}
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={async (v) => {
-          try {
-            await handleSubmit(v);
-            setModalOpen(false);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Save failed');
-            throw err;
-          }
-        }}
-        submitLabel={isFixation ? 'Fix CTC' : 'Add'}
-      />
+      {hasCurrentRevision && <EmployeeCtcComponentsSection employeeId={employeeId} onChange={fetchLiveFigures} />}
+
+      {viewRow && (() => {
+        const rev = currentSalaryRevision;
+        const earnings = rev ? rev.components.filter((c) => c.salaryComponent.type === 'earning') : [];
+        const fixedEarnings = earnings.filter((c) => c.salaryComponent.grossTier === 'FIXED');
+        const additionalEarnings = earnings.filter((c) => c.salaryComponent.grossTier !== 'FIXED');
+        const fixedGross = round2(fixedEarnings.reduce((s, c) => s + Number(c.amount), 0));
+        const additionalGross = round2(additionalEarnings.reduce((s, c) => s + Number(c.amount), 0));
+        const actualGross = round2(fixedGross + additionalGross);
+        const revCompRows = rev
+          ? rev.components.map((c) => ({
+              salaryComponentId: String(c.salaryComponentId),
+              amount: c.amount,
+              source: (c.salaryComponent.grossTier === 'FIXED' ? 'fixed' : 'manual') as 'fixed' | 'manual',
+              type: c.salaryComponent.type,
+            }))
+          : [];
+        const d = computeDeductionsShared(String(fixedGross), revCompRows, currentDeductionContext);
+        const monthlyCtc = round2(actualGross + currentNonPayrollTotal);
+        const bonusPreview = computeBonusProjection(currentBasic, currentDeductionContext);
+        const annualCtc = round2(monthlyCtc * 12 + bonusPreview);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setViewRow(null)}>
+            <div
+              className="w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
+              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+                <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                  CTC — {viewRow.effectiveFrom.slice(0, 10)}
+                  {viewRow.effectiveTo ? ` to ${viewRow.effectiveTo.slice(0, 10)}` : ' (Current)'}
+                </h2>
+                <button onClick={() => setViewRow(null)} className="text-lg leading-none hover:opacity-70" style={{ color: 'var(--foreground-muted)' }}>×</button>
+              </div>
+              <div className="px-5 py-4 space-y-4 text-sm">
+                {!rev ? (
+                  <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>No current Salary Details revision to break down.</p>
+                ) : (
+                  <>
+                    <div>
+                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Fixed</div>
+                      <table className="w-full">
+                        <tbody>
+                          {fixedEarnings.map((c) => (
+                            <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                              <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
+                              <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div>
+                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Additional</div>
+                      {additionalEarnings.length === 0 ? (
+                        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                      ) : (
+                        <table className="w-full">
+                          <tbody>
+                            {additionalEarnings.map((c) => (
+                              <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                                <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
+                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Deductions</div>
+                      {d.pfEmployee === 0 && d.esiEmployee === 0 && d.otherDeductions.every((o) => o.amount === 0) ? (
+                        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                      ) : (
+                        <table className="w-full">
+                          <tbody>
+                            {d.pfEmployee > 0 && (
+                              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                                <td className="py-1" style={{ color: 'var(--foreground)' }}>PF</td>
+                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.pfEmployee}</td>
+                              </tr>
+                            )}
+                            {d.esiEmployee > 0 && (
+                              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                                <td className="py-1" style={{ color: 'var(--foreground)' }}>ESI</td>
+                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.esiEmployee}</td>
+                              </tr>
+                            )}
+                            {d.otherDeductions.filter((o) => o.amount > 0).map((o) => (
+                              <tr key={o.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                                <td className="py-1" style={{ color: 'var(--foreground)' }}>{o.name}</td>
+                                <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{o.amount}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Non-Payroll (CTC-only) Components</div>
+                  {currentNonPayrollComponents.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                  ) : (
+                    <table className="w-full">
+                      <tbody>
+                        {currentNonPayrollComponents.map((c) => (
+                          <tr key={c.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="border-t pt-3 space-y-1" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--foreground-muted)' }}>Actual Gross</span>
+                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{actualGross}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--foreground-muted)' }}>+ Non-Payroll Total</span>
+                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{currentNonPayrollTotal}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Monthly CTC</span>
+                    <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{monthlyCtc}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--foreground-muted)' }}>Monthly CTC × 12</span>
+                    <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{round2(monthlyCtc * 12)}</span>
+                  </div>
+                  {bonusPreview > 0 && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--foreground-muted)' }}>+ Bonus (year-end)</span>
+                      <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>{bonusPreview}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Annual CTC</span>
+                    <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{annualCtc}</span>
+                  </div>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  Computed live from Salary Details&apos; current revision and current CTC-only Components — not the (possibly stale) figures stored on this specific historical row. Bonus is a preview (Basic × Bonus Rate %), not the real annual bonusCalculation.ts figure.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       </div>
     </SectionCard>
+  );
+}
+
+/**
+ * CTC-only, non-payroll components (e.g. "Performance Incentive: 2135") on
+ * the employee's current CTC revision. Restricted to SalaryComponents with
+ * grossTier = NON_PAYROLL — the API refuses anything else. These amounts are
+ * never read by payroll; they only feed the Performance Incentive Report.
+ */
+function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: string; onChange?: () => void }) {
+  const [rows, setRows] = useState<CtcComponentRow[]>([]);
+  const [options, setOptions] = useState<OptionList>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState('');
+  const [amount, setAmount] = useState('');
+
+  const fetchData = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/employees/${employeeId}/ctc/components`).then((r) => r.json()),
+      fetch('/api/masters/salary-components?grossTier=NON_PAYROLL').then((r) => r.json()),
+    ])
+      .then(([compRes, optRes]) => {
+        setRows(compRes.data ?? []);
+        setOptions(optRes.data ?? []);
+      })
+      .finally(() => setLoading(false));
+  }, [employeeId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleAdd = async () => {
+    setError(null);
+    if (!selectedId || !amount) return;
+    const res = await fetch(`/api/employees/${employeeId}/ctc/components`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ salaryComponentId: Number(selectedId), amount: Number(amount) }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      setError(err.error ?? 'Failed to save');
+      return;
+    }
+    setSelectedId('');
+    setAmount('');
+    fetchData();
+    onChange?.();
+  };
+
+  const handleRemove = async (rowId: number) => {
+    setError(null);
+    const res = await fetch(`/api/employees/${employeeId}/ctc/components/${rowId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json();
+      setError(err.error ?? 'Failed to remove');
+      return;
+    }
+    fetchData();
+    onChange?.();
+  };
+
+  return (
+    <div className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+      <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--foreground)' }}>
+        CTC-only Components (e.g. Performance Incentive)
+      </h4>
+      <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+        Non-payroll figures quoted in this employee&apos;s CTC — never part of Gross, PF, ESI, or any payroll run. Used only by the Performance Incentive Report.
+      </p>
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm mb-2" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
+      )}
+      {!loading && rows.length > 0 && (
+        <table className="w-full text-sm mb-3">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                <td className="py-1.5">{r.salaryComponent.name}</td>
+                <td className="py-1.5">{r.amount}</td>
+                <td className="py-1.5 text-right">
+                  <button onClick={() => handleRemove(r.id)} className="text-xs font-medium hover:underline text-red-500">
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="flex gap-2 items-end">
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className="rounded-lg border px-3 py-2 text-sm flex-1"
+          style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+        >
+          <option value="">Select component…</option>
+          {options
+            .filter((o) => !rows.some((r) => r.salaryComponent.id === o.id))
+            .map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+        </select>
+        <input
+          type="number"
+          placeholder="Amount / month"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="rounded-lg border px-3 py-2 text-sm w-40"
+          style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+        />
+        <button
+          onClick={handleAdd}
+          className="rounded-lg px-3 py-2 text-xs font-medium text-white transition hover:opacity-90"
+          style={{ backgroundColor: 'var(--accent)' }}
+        >
+          Add
+        </button>
+      </div>
+      {!loading && options.length === 0 && (
+        <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+          No Non-Payroll salary components exist yet — create one under Masters &gt; Salary Components with Gross Tier = Non-Payroll.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -420,37 +783,273 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
  * catalog. FormModal only handles flat fields, so the "new revision" form is
  * hand-built here to support adding/removing component rows.
  */
+interface SalaryComponentMeta { id: number; code: string; name: string; type: string; grossTier: string; percentOfGross: number | null; includeInPf: boolean; includeInEsi: boolean }
+
+interface DeductionContext {
+  pfApplicable: boolean;
+  esiApplicable: boolean;
+  bonusApplicable: boolean;
+  pfRestrictionAmount: number | null;
+  pfRateComponentIds: number[];
+  pfRate: { employeeContributionRate: number; wageCeilingMonthly: number } | null;
+  esiRate: { employeeContributionRate: number; wageCeilingMonthly: number } | null;
+  bonusRate: { ratePercent: number; calculationWageCeiling: number } | null;
+  // Average of this employee's actual monthly Earned Basic (already
+  // prorated by real attendance/LOP) across every processed payroll month
+  // this financial year — null when no month has been processed yet,
+  // meaning there's nothing to show (not zero, not a fabricated projection).
+  avgMonthlyEarnedBasic: number | null;
+  deductionRates: { code: string; name: string; deductionType: 'PERCENT' | 'FLAT'; rateValue: number; excluded: boolean; overrideAmount: number | null }[];
+}
+
+// Bonus (report) = average of this FY's processed-month real attendance-
+// prorated Basic pay (PayrollLineComponent BASIC amounts) × 12 × Bonus
+// Rate's Rate %. Averaging (not summing) means it projects sanely to a full
+// year even mid-year, before all 12 months have been processed — once they
+// all have, avg × 12 is exactly the same as sum × rate. Returns null
+// (nothing to show) rather than 0 when no payroll month's been processed yet.
+function computeBonusPreview(deductionContext: DeductionContext | null): number | null {
+  if (!deductionContext?.bonusApplicable || !deductionContext?.bonusRate || deductionContext.avgMonthlyEarnedBasic == null) return null;
+  return round2(deductionContext.avgMonthlyEarnedBasic * 12 * (deductionContext.bonusRate.ratePercent / 100));
+}
+
+// CTC's Bonus figure — a projection, not the real earned-history average
+// above: Basic × 12 × Rate % (no Calculation Wage Ceiling cap). CTC is a
+// quoted/projected annual figure ("as if this pay continues all year"), so
+// it deliberately doesn't depend on how many payroll months have actually
+// been processed.
+function computeBonusProjection(basic: number, deductionContext: DeductionContext | null): number {
+  if (!deductionContext?.bonusApplicable || !deductionContext?.bonusRate) return 0;
+  return round2(basic * 12 * (deductionContext.bonusRate.ratePercent / 100));
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Shared by the Salary Details "Deductions" preview/View and the CTC View
+ * dialog — same PF/ESI/Deduction-Rate formula both places, so the two tabs
+ * never quietly disagree. `rowsIn` must already carry each row's `type`
+ * ('earning' | 'deduction'); callers that don't have it handy per-row (the
+ * live Salary Details form, keyed by componentById) map it in before calling.
+ */
+function computeDeductionsShared(
+  gross: string,
+  rowsIn: { salaryComponentId: string; amount: string; source: 'fixed' | 'manual'; type: string }[],
+  deductionContext: DeductionContext | null
+) {
+  const additionalEarnings = rowsIn.reduce((sum, r) => {
+    if (r.source !== 'manual') return sum;
+    return r.type === 'earning' ? sum + (Number(r.amount) || 0) : sum;
+  }, 0);
+  const actual = (Number(gross) || 0) + additionalEarnings;
+
+  // If the employee has a PF Restriction Amount set (Job Profile), PF is
+  // calculated against that fixed amount directly instead of the summed
+  // PF-Rate-attached components — a per-employee override for someone whose
+  // PF should be capped/fixed below what their actual components add up to.
+  // Falls back to the normal component-sum flow when no restriction is set.
+  const pfComponentIds = new Set((deductionContext?.pfRateComponentIds ?? []).map(String));
+  const pfComponentSum = rowsIn.reduce((sum, r) => (pfComponentIds.has(r.salaryComponentId) ? sum + (Number(r.amount) || 0) : sum), 0);
+  const pfWageBase = deductionContext?.pfRestrictionAmount ?? pfComponentSum;
+  const pfEmployee = deductionContext?.pfApplicable && deductionContext?.pfRate && pfWageBase > 0
+    ? round2(pfWageBase * (deductionContext.pfRate.employeeContributionRate / 100))
+    : 0;
+
+  const esiEligible = Boolean(
+    deductionContext?.esiApplicable && deductionContext?.esiRate && actual > 0 && actual <= deductionContext.esiRate.wageCeilingMonthly
+  );
+  const esiEmployee = esiEligible ? round2(actual * (deductionContext!.esiRate!.employeeContributionRate / 100)) : 0;
+
+  const otherDeductions = (deductionContext?.deductionRates ?? []).map((dr) => ({
+    code: dr.code,
+    name: dr.name,
+    amount: dr.excluded ? 0 : dr.overrideAmount != null ? dr.overrideAmount : round2(dr.deductionType === 'PERCENT' ? actual * (dr.rateValue / 100) : dr.rateValue),
+    excluded: dr.excluded,
+    overrideAmount: dr.overrideAmount,
+  }));
+
+  const total = round2(pfEmployee + esiEmployee + otherDeductions.reduce((s, d) => s + d.amount, 0));
+  return { actual: round2(actual), pfEmployee, esiEmployee, esiEligible, otherDeductions, total };
+}
+
 function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   const [rows, setRows] = useState<SalaryRevisionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [components, setComponents] = useState<OptionList>([]);
+  const [viewRevision, setViewRevision] = useState<SalaryRevisionRow | null>(null);
+  const [allComponents, setAllComponents] = useState<SalaryComponentMeta[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [financialYear, setFinancialYear] = useState('');
   const [grossSalary, setGrossSalary] = useState('');
   const [netSalary, setNetSalary] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [compRows, setCompRows] = useState<{ salaryComponentId: string; amount: string }[]>([]);
+  // "fixed" rows are the auto-populated Fixed-tier components (their
+  // dropdown only offers other Fixed components); "manual" rows come from
+  // + Add Component and only offer Additional-tier components — Non-Payroll
+  // components never appear here at all, only on the Employee CTC tab.
+  const [compRows, setCompRows] = useState<{ salaryComponentId: string; amount: string; source: 'fixed' | 'manual' }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deductionContext, setDeductionContext] = useState<DeductionContext | null>(null);
+  // Deduction code currently being edited (Edit button on an "other
+  // deduction" row) and its in-progress typed override amount.
+  const [editingDeductionCode, setEditingDeductionCode] = useState<string | null>(null);
+  const [editingDeductionAmount, setEditingDeductionAmount] = useState('');
+
+  const componentById = new Map(allComponents.map((c) => [String(c.id), c]));
+  const fixedComponents = allComponents.filter((c) => c.grossTier === 'FIXED');
+
+  const bonusPreview = computeBonusPreview(deductionContext);
 
   // Computed Gross — the live sum of every component row's amount (Basic +
   // HRA + DA + every allowance), shown alongside the typed Gross Salary so
   // a mismatch between "what was typed" and "what the components add up
   // to" is visible before saving, not discovered later on a payslip.
-  const computedGross = compRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  // Compared only against Fixed Gross, so Additional-tier rows (top-ups,
+  // deductions) never trigger a false "doesn't match" mismatch warning here.
+  const computedGross = compRows.filter((r) => r.source === 'fixed').reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   const grossMismatch = grossSalary !== '' && Math.abs(computedGross - (Number(grossSalary) || 0)) > 0.01;
+
+  // Additional Gross — the live sum of every manually-added (+ Add
+  // Component) EARNING row's amount only; deduction rows added the same way
+  // (PF/PT/Canteen…) must never inflate Gross. Read-only, derived.
+  const additionalGross = compRows.reduce((sum, r) => {
+    if (r.source !== 'manual') return sum;
+    const meta = componentById.get(r.salaryComponentId);
+    return meta?.type === 'earning' ? sum + (Number(r.amount) || 0) : sum;
+  }, 0);
+  // Actual Gross — Fixed Gross + Additional Gross. Read-only, derived; never
+  // typed directly.
+  const actualGross = round2((Number(grossSalary) || 0) + additionalGross);
+
+  // Fixed-tier components with a configured Percentage of Gross (set on
+  // Masters > Salary Components) auto-fill their amount as that % of
+  // whatever Gross Salary is typed — HR only has to type Gross once.
+  const applyFixedPercentages = (gross: string, rowsIn: typeof compRows) => {
+    const g = Number(gross) || 0;
+    return rowsIn.map((r) => {
+      const meta = componentById.get(r.salaryComponentId);
+      if (!meta || meta.grossTier !== 'FIXED' || meta.percentOfGross === null) return r;
+      return { ...r, amount: gross === '' ? '' : String(round2((g * meta.percentOfGross) / 100)) };
+    });
+  };
+
+  // Deductions — this is a structure-time preview, not a payroll run;
+  // see computeDeductionsShared's own comment for the PF/ESI/Deduction-Rate
+  // formula. compRows doesn't carry each row's type, so it's mapped in from
+  // componentById here before delegating to the shared calculator (also used
+  // by the CTC tab's View dialog, so the two never disagree).
+  const computeDeductions = (gross: string, rowsIn: typeof compRows) =>
+    computeDeductionsShared(
+      gross,
+      rowsIn.map((r) => ({ ...r, type: componentById.get(r.salaryComponentId)?.type ?? '' })),
+      deductionContext
+    );
+
+  // Net Salary = Actual Gross − every computed deduction above, recomputed
+  // live so it never has to be hand-calculated before saving.
+  const computeNet = (gross: string, rowsIn: typeof compRows) => {
+    if (gross === '') return '';
+    const { actual, total } = computeDeductions(gross, rowsIn);
+    return String(round2(actual - total));
+  };
+
+  // Financial Year is picked as a From/To year pair (e.g. 2026 → 2027) and
+  // combined into the stored "YYYY-YYYY" string, instead of free text that
+  // could be typed inconsistently ("2026-27", "26-27", etc.).
+  const fyYearOptions = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
+  const [fyFromStr, fyToStr] = financialYear.split('-');
+  const fyFrom = fyFromStr ? Number(fyFromStr) : new Date().getFullYear();
+  const fyTo = fyToStr ? Number(fyToStr) : fyFrom + 1;
+  const setFyFrom = (year: number) => setFinancialYear(`${year}-${year + 1}`);
+  const setFyTo = (year: number) => setFinancialYear(`${fyFrom}-${year}`);
+
+  const handleGrossChange = (value: string) => {
+    setGrossSalary(value);
+    setCompRows(applyFixedPercentages(value, compRows));
+  };
+
+  const handleCompRowChange = (idx: number, patch: Partial<{ salaryComponentId: string; amount: string }>) => {
+    setCompRows((rs) => {
+      let next = rs.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+      // Picking a Fixed component with a configured % auto-fills its amount
+      // from the current Gross immediately, same as typing Gross does.
+      if (patch.salaryComponentId !== undefined) {
+        const meta = componentById.get(patch.salaryComponentId);
+        if (meta && meta.grossTier === 'FIXED' && meta.percentOfGross !== null && grossSalary !== '') {
+          next = next.map((r, i) => (i === idx ? { ...r, amount: String(round2((Number(grossSalary) * meta.percentOfGross!) / 100)) } : r));
+        }
+      }
+      return next;
+    });
+  };
+
+  const removeCompRow = (idx: number) => {
+    setCompRows((rs) => rs.filter((_, i) => i !== idx));
+  };
+
+  // Net Salary tracks Gross/Components/deductionContext reactively — this is
+  // the single source of truth for recomputing it, so a Remove/Add back/Edit
+  // on a deduction row (which only refreshes deductionContext via fetchData,
+  // not compRows) still updates it, not just typing Gross or editing a
+  // component amount.
+  useEffect(() => {
+    setNetSalary(computeNet(grossSalary, compRows));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grossSalary, compRows, deductionContext]);
+
+  // Excludes/re-includes this employee from one company-wide Deduction Rate
+  // (the Remove / Add back action on an "other deduction" row).
+  const toggleDeductionExclusion = async (code: string, currentlyExcluded: boolean) => {
+    if (currentlyExcluded) {
+      await fetch(`/api/employees/${employeeId}/deduction-exclusions?code=${encodeURIComponent(code)}`, { method: 'DELETE' });
+    } else {
+      await fetch(`/api/employees/${employeeId}/deduction-exclusions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deductionCode: code }),
+      });
+    }
+    fetchData();
+  };
+
+  // Sets (or, with amount === null, clears) a fixed per-employee override
+  // amount for one deduction (the Edit action).
+  const setDeductionOverride = async (code: string, amount: number | null) => {
+    if (amount === null) {
+      await fetch(`/api/employees/${employeeId}/deduction-exclusions?code=${encodeURIComponent(code)}`, { method: 'DELETE' });
+    } else {
+      await fetch(`/api/employees/${employeeId}/deduction-exclusions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deductionCode: code, excluded: false, overrideAmount: amount }),
+      });
+    }
+    fetchData();
+  };
 
   const fetchData = useCallback(() => {
     setLoading(true);
     fetch(`/api/employees/${employeeId}/salary`)
       .then((res) => res.json())
-      .then((json) => setRows(json.data ?? []))
+      .then((json) => {
+        setRows(json.data ?? []);
+        setDeductionContext(json.deductionContext ?? null);
+      })
       .finally(() => setLoading(false));
   }, [employeeId]);
 
   useEffect(() => {
     fetchData();
-    fetchAllMaster('salary-components').then(setComponents);
+    // Fixed-tier components (Basic, HRA, LTA…) should be on the form by
+    // default — HR shouldn't have to know to add them one by one; only
+    // top-up/Additional components are opt-in via "+ Add Component". Each
+    // component's type/grossTier/percentOfGross drives the Gross % auto-fill
+    // and the Net Salary auto-calc below.
+    fetch('/api/masters/salary-components')
+      .then((res) => res.json())
+      .then((json: { data: SalaryComponentMeta[] }) => setAllComponents(json.data ?? []));
   }, [fetchData]);
 
   const resetForm = () => {
@@ -520,6 +1119,20 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
           '—'
         ),
     },
+    {
+      key: 'view',
+      label: '',
+      render: (r) => (
+        <button
+          type="button"
+          onClick={() => setViewRevision(r)}
+          className="text-xs font-medium hover:underline"
+          style={{ color: 'var(--accent)' }}
+        >
+          View
+        </button>
+      ),
+    },
   ];
 
   // Same "Fixation vs Revision" distinction as CTC — the first salary
@@ -532,7 +1145,29 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
       icon={<SectionIcon.Wallet />}
       action={
         <button
-          onClick={() => setFormOpen((o) => !o)}
+          onClick={() => {
+            if (!formOpen) {
+              // Opening — default in every Fixed-tier component that isn't
+              // already on the form, so HR doesn't have to know to add
+              // Basic/HRA/LTA one by one, and a Fixed row can never end up
+              // permanently missing (Remove is disabled for them, but this
+              // also repairs a form still carrying a gap from before that
+              // restriction existed).
+              const present = new Set(compRows.filter((r) => r.source === 'fixed').map((r) => r.salaryComponentId));
+              const missing = fixedComponents.filter((c) => !present.has(String(c.id)));
+              if (missing.length > 0) {
+                setCompRows((rs) => [
+                  ...missing.map((c) => ({ salaryComponentId: String(c.id), amount: '', source: 'fixed' as const })),
+                  ...rs,
+                ]);
+              }
+              if (!financialYear) {
+                const y = new Date().getFullYear();
+                setFinancialYear(`${y}-${y + 1}`);
+              }
+            }
+            setFormOpen((o) => !o);
+          }}
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
@@ -546,20 +1181,42 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
           <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
             {isFixation ? 'Salary Fixation' : 'New Salary Revision'}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Financial Year</label>
-              <input value={financialYear} onChange={(e) => setFinancialYear(e.target.value)} placeholder="e.g. 2026-27" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
+              <div className="mt-1 flex items-center gap-1">
+                <select
+                  value={fyFrom}
+                  onChange={(e) => setFyFrom(Number(e.target.value))}
+                  className="w-full rounded-lg border px-2 py-2 text-sm"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
+                >
+                  {fyYearOptions.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <span style={{ color: 'var(--foreground-muted)' }}>–</span>
+                <select
+                  value={fyTo}
+                  onChange={(e) => setFyTo(Number(e.target.value))}
+                  className="w-full rounded-lg border px-2 py-2 text-sm"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
+                >
+                  {fyYearOptions.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Gross Salary *</label>
-              <input type="number" min={0} value={grossSalary} onChange={(e) => setGrossSalary(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: grossMismatch ? 'var(--warning)' : 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
+              <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Fixed Gross *</label>
+              <input type="number" min={0} value={grossSalary} onChange={(e) => handleGrossChange(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: grossMismatch ? 'var(--warning)' : 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
               {compRows.length > 0 && (
                 <p className="mt-1 text-xs" style={{ color: grossMismatch ? 'var(--warning)' : 'var(--foreground-muted)' }}>
                   Computed from components: <span className="font-semibold tabular-nums">{computedGross}</span>
                   {grossMismatch && (
                     <>
-                      {' — doesn\'t match Gross Salary. '}
+                      {' — doesn\'t match Fixed Gross. '}
                       <button
                         type="button"
                         onClick={() => setGrossSalary(String(computedGross))}
@@ -574,8 +1231,14 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
               )}
             </div>
             <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Actual Gross</label>
+              <input type="number" value={actualGross} disabled className="mt-1 w-full rounded-lg border px-3 py-2 text-sm cursor-not-allowed font-semibold" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-muted)', color: 'var(--foreground)' }} />
+              <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>Fixed Gross + Additional Gross (sum of + Add Component earnings).</p>
+            </div>
+            <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Net Salary</label>
               <input type="number" min={0} value={netSalary} onChange={(e) => setNetSalary(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }} />
+              <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>Auto-calculated as Gross − deduction components; editable if it needs overriding.</p>
             </div>
             <div>
               <label className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Effective From *</label>
@@ -588,24 +1251,40 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
               <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Components</span>
               <button
                 type="button"
-                onClick={() => setCompRows((r) => [...r, { salaryComponentId: '', amount: '' }])}
+                onClick={() => setCompRows((r) => [...r, { salaryComponentId: '', amount: '', source: 'manual' as const }])}
                 className="text-xs font-medium"
                 style={{ color: 'var(--accent)' }}
               >
                 + Add Component
               </button>
             </div>
-            {compRows.map((row, idx) => (
+            {compRows.map((row, idx) => {
+              const meta = componentById.get(row.salaryComponentId);
+              const isAutoFixed = meta?.grossTier === 'FIXED' && meta.percentOfGross !== null;
+              // Fixed rows may only be swapped for another Fixed component;
+              // manually-added rows may only pick Additional-tier components
+              // (top-ups, deductions like PF/PT/Canteen) — Non-Payroll
+              // components (e.g. Performance Incentive) are never offered
+              // here at all, only on the Employee CTC tab. Also exclude
+              // whatever's already picked on another row, so + Add Component
+              // only ever offers components not yet added.
+              const pickedElsewhere = new Set(
+                compRows.filter((r, i) => i !== idx && r.salaryComponentId).map((r) => r.salaryComponentId)
+              );
+              const options = allComponents.filter(
+                (c) => c.grossTier === (row.source === 'fixed' ? 'FIXED' : 'ADDITIONAL') && !pickedElsewhere.has(String(c.id))
+              );
+              return (
               <div key={idx} className="flex items-center gap-2">
                 <select
                   value={row.salaryComponentId}
-                  onChange={(e) => setCompRows((rs) => rs.map((r, i) => (i === idx ? { ...r, salaryComponentId: e.target.value } : r)))}
+                  onChange={(e) => handleCompRowChange(idx, { salaryComponentId: e.target.value })}
                   className="flex-1 rounded-lg border px-3 py-2 text-sm"
                   style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
                 >
                   <option value="">— Select component —</option>
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                  {options.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}{c.grossTier === 'FIXED' && c.percentOfGross !== null ? ` (${c.percentOfGross}% of Gross)` : ''}</option>
                   ))}
                 </select>
                 <input
@@ -613,21 +1292,164 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
                   min={0}
                   placeholder="Amount"
                   value={row.amount}
-                  onChange={(e) => setCompRows((rs) => rs.map((r, i) => (i === idx ? { ...r, amount: e.target.value } : r)))}
+                  readOnly={isAutoFixed}
+                  title={isAutoFixed ? 'Auto-filled from Gross × this component\'s % — change % on Masters > Salary Components to adjust.' : undefined}
+                  onChange={(e) => handleCompRowChange(idx, { amount: e.target.value })}
                   className="w-32 rounded-lg border px-3 py-2 text-sm"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
+                  style={{ borderColor: 'var(--border)', backgroundColor: isAutoFixed ? 'var(--surface-muted)' : 'var(--surface)', color: 'var(--foreground)' }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setCompRows((rs) => rs.filter((_, i) => i !== idx))}
-                  className="text-xs"
-                  style={{ color: 'var(--danger)' }}
-                >
-                  Remove
-                </button>
+                {row.source === 'fixed' ? (
+                  <span className="text-xs w-[52px] text-center" style={{ color: 'var(--foreground-muted)' }} title="Fixed-tier components can be swapped for another Fixed component, but not removed">
+                    —
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => removeCompRow(idx)}
+                    className="text-xs"
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
+
+          {bonusPreview !== null && bonusPreview > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Other Earnings</span>
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                    <td className="py-1.5" style={{ color: 'var(--foreground)' }}>Bonus (year-end estimate)</td>
+                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{bonusPreview}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Basic × Bonus Rate % — a preview only, not part of Actual Gross/Net Salary. Shown once a year at bonus time; the real payable amount is computed by Payroll &gt; Processing &gt; Bonus from actual Net Pay across the year.
+              </p>
+            </div>
+          )}
+
+          {(() => {
+            const d = computeDeductions(grossSalary, compRows);
+            const visibleOther = d.otherDeductions.filter((o) => o.amount > 0 || o.excluded);
+            const hasAny = d.pfEmployee > 0 || d.esiEmployee > 0 || visibleOther.length > 0;
+            return (
+              <div className="space-y-2">
+                <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Deductions</span>
+                {!hasAny ? (
+                  <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                    No deductions apply yet — set a PF/ESI Rate or Deduction Rate under Masters, and flag components Include in PF/ESI.
+                  </p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {d.pfEmployee > 0 && (
+                        <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                          <td className="py-1.5" style={{ color: 'var(--foreground)' }}>PF</td>
+                          <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.pfEmployee}</td>
+                          <td className="py-1.5" />
+                        </tr>
+                      )}
+                      {deductionContext?.esiApplicable && (
+                        <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                          <td className="py-1.5" style={{ color: 'var(--foreground)' }}>
+                            ESI{!d.esiEligible && <span style={{ color: 'var(--foreground-muted)' }}> (not eligible — Actual Gross above ESI wage ceiling)</span>}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.esiEmployee}</td>
+                          <td className="py-1.5" />
+                        </tr>
+                      )}
+                      {visibleOther.map((o) => (
+                        <tr key={o.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                          <td className="py-1.5" style={{ color: o.excluded ? 'var(--foreground-muted)' : 'var(--foreground)', textDecoration: o.excluded ? 'line-through' : undefined }}>
+                            {o.name}
+                            {o.overrideAmount != null && !o.excluded && (
+                              <span className="ml-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>(edited)</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums" style={{ color: o.excluded ? 'var(--foreground-muted)' : 'var(--foreground)', textDecoration: o.excluded ? 'line-through' : undefined }}>
+                            {editingDeductionCode === o.code ? (
+                              <input
+                                type="number"
+                                autoFocus
+                                value={editingDeductionAmount}
+                                onChange={(e) => setEditingDeductionAmount(e.target.value)}
+                                className="w-24 rounded border px-2 py-0.5 text-right text-sm"
+                                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
+                              />
+                            ) : o.excluded ? (
+                              '—'
+                            ) : (
+                              o.amount
+                            )}
+                          </td>
+                          <td className="py-1.5 text-right whitespace-nowrap">
+                            {editingDeductionCode === o.code ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await setDeductionOverride(o.code, editingDeductionAmount === '' ? null : Number(editingDeductionAmount));
+                                    setEditingDeductionCode(null);
+                                  }}
+                                  className="text-xs font-medium hover:underline mr-2"
+                                  style={{ color: 'var(--accent)' }}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingDeductionCode(null)}
+                                  className="text-xs font-medium hover:underline"
+                                  style={{ color: 'var(--foreground-muted)' }}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {!o.excluded && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDeductionCode(o.code);
+                                      setEditingDeductionAmount(String(o.amount));
+                                    }}
+                                    className="text-xs font-medium hover:underline mr-2"
+                                    style={{ color: 'var(--accent)' }}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDeductionExclusion(o.code, o.excluded)}
+                                  className="text-xs font-medium hover:underline"
+                                  style={{ color: o.excluded ? 'var(--accent)' : 'var(--danger)' }}
+                                >
+                                  {o.excluded ? 'Add back' : 'Remove'}
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td className="py-1.5 font-semibold" style={{ color: 'var(--foreground)' }}>Total Deductions</td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{d.total}</td>
+                        <td className="py-1.5" />
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })()}
 
           {error && (
             <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
@@ -647,6 +1469,125 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
       )}
 
       <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No salary fixed yet." />
+
+      {viewRevision && (() => {
+        const earnings = viewRevision.components.filter((c) => c.salaryComponent.type === 'earning');
+        const fixedEarnings = earnings.filter((c) => c.salaryComponent.grossTier === 'FIXED');
+        const additionalEarnings = earnings.filter((c) => c.salaryComponent.grossTier !== 'FIXED');
+        const fixedGross = round2(fixedEarnings.reduce((s, c) => s + Number(c.amount), 0));
+        const additionalGross = round2(additionalEarnings.reduce((s, c) => s + Number(c.amount), 0));
+        const actualGross = round2(fixedGross + additionalGross);
+
+        // Same PF/ESI/Deduction-Rate breakdown as the live "New Salary
+        // Revision" panel above, run against THIS revision's own stored
+        // components — accurate for the current revision; for a closed
+        // historical one it reflects today's rates, not necessarily what
+        // applied back then (payroll's own record is the source of truth
+        // for what was actually deducted that month).
+        const revCompRows = viewRevision.components.map((c) => ({
+          salaryComponentId: String(c.salaryComponentId),
+          amount: c.amount,
+          source: (c.salaryComponent.grossTier === 'FIXED' ? 'fixed' : 'manual') as 'fixed' | 'manual',
+        }));
+        const d = computeDeductions(String(fixedGross), revCompRows);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setViewRevision(null)}>
+            <div
+              className="w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
+              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+                <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+                  Salary Revision — {viewRevision.effectiveFrom.slice(0, 10)}
+                  {viewRevision.effectiveTo ? ` to ${viewRevision.effectiveTo.slice(0, 10)}` : ' (Current)'}
+                </h2>
+                <button onClick={() => setViewRevision(null)} className="text-lg leading-none hover:opacity-70" style={{ color: 'var(--foreground-muted)' }}>×</button>
+              </div>
+              <div className="px-5 py-4 space-y-4 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span style={{ color: 'var(--foreground-muted)' }}>Financial Year</span><div style={{ color: 'var(--foreground)' }}>{viewRevision.financialYear ?? '—'}</div></div>
+                  <div><span style={{ color: 'var(--foreground-muted)' }}>Fixed Gross</span><div className="font-semibold" style={{ color: 'var(--foreground)' }}>{fixedGross}</div></div>
+                  <div><span style={{ color: 'var(--foreground-muted)' }}>Additional Gross</span><div style={{ color: 'var(--foreground)' }}>{additionalGross}</div></div>
+                  <div><span style={{ color: 'var(--foreground-muted)' }}>Actual Gross</span><div className="font-semibold" style={{ color: 'var(--foreground)' }}>{actualGross}</div></div>
+                </div>
+
+                <div>
+                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Fixed</div>
+                  {fixedEarnings.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                  ) : (
+                    <table className="w-full">
+                      <tbody>
+                        {fixedEarnings.map((c) => (
+                          <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Earnings — Additional</div>
+                  {additionalEarnings.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                  ) : (
+                    <table className="w-full">
+                      <tbody>
+                        {additionalEarnings.map((c) => (
+                          <tr key={c.salaryComponent.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{c.salaryComponent.name}</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{c.amount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-medium mb-1" style={{ color: 'var(--foreground)' }}>Deductions</div>
+                  {d.pfEmployee === 0 && d.esiEmployee === 0 && d.otherDeductions.every((o) => o.amount === 0) ? (
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</p>
+                  ) : (
+                    <table className="w-full">
+                      <tbody>
+                        {d.pfEmployee > 0 && (
+                          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>PF</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.pfEmployee}</td>
+                          </tr>
+                        )}
+                        {d.esiEmployee > 0 && (
+                          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>ESI</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{d.esiEmployee}</td>
+                          </tr>
+                        )}
+                        {d.otherDeductions.filter((o) => o.amount > 0).map((o) => (
+                          <tr key={o.code} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <td className="py-1" style={{ color: 'var(--foreground)' }}>{o.name}</td>
+                            <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>{o.amount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="flex justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                  <span className="font-semibold" style={{ color: 'var(--foreground)' }}>Net Salary</span>
+                  <span className="font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{round2(actualGross - d.total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       </div>
     </SectionCard>
   );

@@ -168,12 +168,53 @@ export const navigation: NavModule[] = [
           { label: "Common Logic", href: "/masters/common-logic", ready: true },
         ],
       },
+      // Recruitment masters — BRD v6.4 §11/§12/§13. The nav model supports
+      // only Group > Item, so the approved "HR Masters sub-groups" render as
+      // these four sibling groups, followed by the existing HR Masters group.
+      {
+        label: "Interview Config",
+        items: [
+          { label: "Interview Process", short: "Process", href: "/masters/interview-process" },
+          { label: "Interview Levels", short: "Levels", href: "/masters/interview-levels" },
+          { label: "Interview Types", short: "Types", href: "/masters/interview-types" },
+          { label: "Interview Criteria", short: "Criteria", href: "/masters/interview-criteria" },
+          { label: "Score & Weightage", short: "Scoring", href: "/masters/interview-scores" },
+          { label: "Interview Panel", short: "Panel", href: "/masters/interview-panel" },
+        ],
+      },
+      {
+        label: "Recruitment Setup",
+        items: [
+          { label: "Recruitment Status", short: "Status", href: "/masters/recruitment-status" },
+          { label: "Document Types", short: "Doc Types", href: "/masters/document-types" },
+          { label: "Sourcing Channels", short: "Sourcing", href: "/masters/sourcing-channels" },
+          { label: "BGV Steps", short: "BGV", href: "/masters/bgv-steps" },
+          { label: "SLA Config", short: "SLA", href: "/masters/sla-config" },
+          { label: "Checklist Master", short: "Checklist", href: "/masters/checklist-master" },
+          { label: "Other Joining Doc Types", short: "Other Docs", href: "/masters/other-joining-doc-types" },
+          { label: "Designation Levels", short: "Desig. Levels", href: "/masters/designation-levels" },
+          { label: "Employee ID Config", short: "Emp ID", href: "/masters/employee-id-config" },
+        ],
+      },
+      {
+        label: "Templates",
+        items: [
+          { label: "Email Templates", short: "Email", href: "/masters/email-templates" },
+          { label: "Offer Letter Templates", short: "Offer Letter", href: "/masters/offer-templates" },
+          { label: "Appointment Templates", short: "Appointment", href: "/masters/appointment-templates" },
+          { label: "Internship Policy", short: "Internship", href: "/masters/internship-policies" },
+        ],
+      },
+      {
+        label: "Approval Config",
+        items: [
+          { label: "Recruitment Approval Matrix", short: "Recruit. Matrix", href: "/masters/recruitment-approval" },
+          { label: "Joining Approval Matrix", short: "Joining Matrix", href: "/masters/joining-approval" },
+        ],
+      },
       {
         label: "HR Masters",
-        items: [
-          { label: "Interview Criteria", href: "/masters/interview-criteria" },
-          { label: "JD Master", href: "/masters/jd-master", ready: true },
-        ],
+        items: [{ label: "JD Master", href: "/masters/jd-master", ready: true }],
       },
       {
         // Not in the BRD sidebar list, but these pages already exist and work.
@@ -194,24 +235,23 @@ export const navigation: NavModule[] = [
     href: "/recruitment",
     groups: [
       {
-        label: "Hiring",
+        // BRD v6.4 §16.4 — 4 tab-based pages replace the old 11-item flat list.
+        // Old routes (/recruitment/offer-letter, /recruitment/joining-form, …)
+        // redirect to the matching tab inside Offer & Joining.
+        label: "Pipeline",
         items: [
-          { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
-          { label: "Offer Letter", href: "/recruitment/offer-letter" },
-          { label: "Appointment Order", href: "/recruitment/appointment-order" },
-          { label: "Internship", href: "/recruitment/internship" },
+          { label: "Dashboard", href: "/recruitment/dashboard", ready: true },
+          { label: "Applicants", href: "/recruitment/applicants", ready: true },
+          { label: "Interviews", href: "/recruitment/interviews", ready: true },
+          { label: "Offer & Joining", short: "Offer/Joining", href: "/recruitment/offer-joining", ready: true },
+          { label: "Reports", href: "/recruitment/reports", ready: true },
         ],
       },
       {
-        label: "Employee Joining",
+        label: "Hiring",
         items: [
-          { label: "Joining Checklist", href: "/recruitment/joining-checklist" },
-          { label: "Joining Form", href: "/recruitment/joining-form" },
-          { label: "Gratuity Form", href: "/recruitment/gratuity-form" },
-          { label: "PF Form", href: "/recruitment/pf-form" },
-          { label: "Insurance Form", href: "/recruitment/insurance-form" },
-          { label: "ESI Form", href: "/recruitment/esi-form" },
-          { label: "Other Joining Documents", short: "Other Documents", href: "/recruitment/other-documents" },
+          { label: "Job Postings", href: "/recruitment/job-postings", ready: true },
+          { label: "Internship", href: "/recruitment/internship", ready: true },
         ],
       },
     ],
@@ -454,6 +494,8 @@ export const navigation: NavModule[] = [
         label: "Recruitment",
         items: [
           { label: "Hiring Approval", short: "Hiring", href: "/approvals/recruitment/hiring" },
+          { label: "Final Selection Approval", short: "Selection", href: "/approvals/recruitment/final-selection" },
+          { label: "Offer Approval", short: "Offer", href: "/approvals/recruitment/offer" },
           { label: "Employee Joining Approval", short: "Employee Joining", href: "/approvals/recruitment/joining" },
         ],
       },
@@ -631,10 +673,10 @@ export const navigation: NavModule[] = [
           { label: "Exception Report", short: "Exceptions", href: "/reports/exceptions" },
           { label: "Salary Statement", href: "/reports/payroll/salary-statement" },
           { label: "Bank Statement", href: "/reports/payroll/bank-statement" },
-          { label: "Payslip Report", short: "Payslip", href: "/reports/payroll/payslip" },
+          { label: "Payslip Report", short: "Payslip", href: "/reports/payroll/payslip", ready: true },
           { label: "OT Comparison Report", short: "OT Comparison", href: "/reports/payroll/ot-comparison" },
           { label: "Salary Reconciliation", short: "Reconciliation", href: "/reports/payroll/reconciliation" },
-          { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive" },
+          { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive", ready: true },
           { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
           { label: "Arrear Report", short: "Arrears", href: "/reports/payroll/arrears" },
           { label: "Salary Revision Report", short: "Salary Revision", href: "/reports/payroll/salary-revision" },

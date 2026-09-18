@@ -111,6 +111,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
           where: { effectiveTo: null },
           take: 1,
           select: {
+            pfApplicable: true,
             esiApplicable: true,
             professionalTaxApplicable: true,
             overtimeAllowed: true,
@@ -225,7 +226,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const line = await prisma.payrollLine.upsert({
       where: { payrollRunId_employeeId: { payrollRunId, employeeId: emp.id } },
       update: {},
-      create: { payrollRunId, employeeId: emp.id },
+      // pfApplicable defaults from JobInfo (same convention as esiApplicable
+      // below), not hardcoded true — only applies the first time a line is
+      // created for this run; a manual per-run override afterward persists.
+      create: { payrollRunId, employeeId: emp.id, pfApplicable: jobInfo?.pfApplicable ?? true },
     });
 
     const summary = await prisma.monthlyAttendanceSummary.findUnique({
@@ -281,6 +285,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const isDaily = wageType === 'daily';
 
     for (const c of revision.components) {
+      // NON_PAYROLL components (e.g. a CTC-quoted Performance Incentive
+      // figure) must never touch payroll in any way — not Gross, not a
+      // deduction, not a PF/ESI/PT/TDS base. Skip before any accumulation.
+      if (c.salaryComponent.grossTier === 'NON_PAYROLL') continue;
       let proratedAmount: number;
       if (isHourly) {
         // Hourly rate × payable hours (payableDays × 8).

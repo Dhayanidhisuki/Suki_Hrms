@@ -68,6 +68,19 @@ model Department {
   jobPostings      JobPosting[]
   departmentWeeklyOffs DepartmentWeeklyOff[]
 
+  interviewCriteria           InterviewCriteria[]         @relation("InterviewCriteriaDept")
+  interviewScoreConfigs       InterviewScoreConfig[]      @relation("ScoreConfigDept")
+  interviewPanels             InterviewPanel[]            @relation("PanelDept")
+  interviewProcesses          InterviewProcess[]          @relation("ProcessDept")
+  documentTypes               DocumentType[]              @relation("DocTypeDept")
+  emailTemplates              EmailTemplate[]             @relation("EmailTemplateDept")
+  offerTemplates              OfferTemplate[]             @relation("OfferTemplateDept")
+  appointmentTemplates        AppointmentTemplate[]       @relation("ApptTemplateDept")
+  recruitmentApprovalMatrices RecruitmentApprovalMatrix[] @relation("RecruitApprovalDept")
+  joiningApprovalMatrices     JoiningApprovalMatrix[]     @relation("JoiningApprovalDept")
+  candidates                  Candidate[]                 @relation("CandidateDept")
+  internships                 Internship[]                @relation("InternshipDept")
+
   @@map("Department")
 }
 
@@ -127,6 +140,19 @@ model Designation {
   jobDescriptions JobDescription[]
   jobPostings     JobPosting[]
 
+  interviewCriteria           InterviewCriteria[]         @relation("InterviewCriteriaDesig")
+  interviewScoreConfigs       InterviewScoreConfig[]      @relation("ScoreConfigDesig")
+  interviewPanels             InterviewPanel[]            @relation("PanelDesig")
+  interviewProcesses          InterviewProcess[]          @relation("ProcessDesig")
+  documentTypes               DocumentType[]              @relation("DocTypeDesig")
+  emailTemplates              EmailTemplate[]             @relation("EmailTemplateDesig")
+  offerTemplates              OfferTemplate[]             @relation("OfferTemplateDesig")
+  appointmentTemplates        AppointmentTemplate[]       @relation("ApptTemplateDesig")
+  recruitmentApprovalMatrices RecruitmentApprovalMatrix[] @relation("RecruitApprovalDesig")
+  candidates                  Candidate[]                 @relation("CandidateDesig")
+  joiningReports              JoiningReport[]             @relation("JoiningReportDesig")
+  designationLevelMappings    DesignationLevelMapping[]   @relation("DesigLevelMapping")
+
   @@map("Designation")
 }
 
@@ -183,6 +209,9 @@ model Site {
   updatedAt   DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobPostings    JobPosting[]    @relation("JobPostingLocation")
+  offerLetters   OfferLetter[]   @relation("OfferLocation")
+  joiningReports JoiningReport[] @relation("JoiningReportLocation")
 
   @@index([companyId])
   @@index([unitId])
@@ -196,6 +225,11 @@ model Company {
   code        String    @unique @db.NVarChar(20)
   name        String    @db.NVarChar(100)
   description String?   @db.NVarChar(500)
+  // Statutory payslip/Form-25B header — printed address and factory
+  // registration number (e.g. "TVR-09353"). No logo image field yet (needs
+  // a file-upload flow); the header is text-only until that's built.
+  address     String?   @db.NVarChar(500)
+  factoryRegNo String?  @db.NVarChar(50)
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -382,6 +416,30 @@ model DeductionRate {
   @@index([companyId, code])
   @@index([effectiveFrom, effectiveTo])
   @@map("DeductionRate")
+}
+
+// Per-employee override of a company-wide DeductionRate — the Salary
+// Details "Deductions" preview's Remove/Add back and Edit actions on an
+// auto-applied deduction row write here instead of touching the shared
+// DeductionRate itself. Matched to DeductionRate by code, not a FK, since
+// DeductionRate rows are versioned/replaced over time and the override
+// should keep applying to whichever row currently has that code.
+// excluded=true zeroes the deduction outright; overrideAmount (when
+// excluded=false) replaces the rate-computed amount with a fixed figure for
+// just this employee; both null/false means "use the rate as configured".
+model EmployeeDeductionExclusion {
+  id             Int      @id @default(autoincrement())
+  employeeId     Int
+  deductionCode  String   @db.NVarChar(20)
+  excluded       Boolean  @default(true)
+  overrideAmount Decimal? @db.Decimal(18, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, deductionCode])
+  @@map("EmployeeDeductionExclusion")
 }
 
 model ProfessionalTaxSlab {
@@ -884,6 +942,11 @@ model User {
   jobDescriptionEdits    JobDescriptionVersion[] @relation("JdVersionEditedBy")
   jobPostingsCreated     JobPosting[]            @relation("JobPostingCreatedBy")
 
+  candidatesCreated      Candidate[]             @relation("CandidateCreatedBy")
+  candidateActivities    CandidateActivityLog[]  @relation("ActivityPerformedBy")
+  offersCreated          OfferLetter[]           @relation("OfferCreatedBy")
+  communicationsCreated  CommunicationLog[]      @relation("CommCreatedBy")
+
   @@index([roleId])
   @@index([companyId])
   @@map("User")
@@ -980,6 +1043,8 @@ model Employee {
   reportingManager       Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   directReports          Employee[] @relation("EmployeeToManager")
   announcementReads      AnnouncementRead[]
+  onDutyRequests         OnDutyRequest[]
+  wfhRequests            WfhRequest[]
   secondReportingManager Employee?  @relation("EmployeeToSecondManager", fields: [secondReportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   secondLevelReports     Employee[] @relation("EmployeeToSecondManager")
 
@@ -995,6 +1060,7 @@ model Employee {
   jobInfos                   JobInfo[]
   salaryStructures           SalaryStructure[] // legacy — superseded by salaryRevisions, kept for no-destructive-migration
   salaryRevisions            EmployeeSalaryRevision[]
+  deductionExclusions        EmployeeDeductionExclusion[]
   ctcRecords                 EmployeeCtc[]
   dependents                 EmployeeDependent[]
   experiences                EmployeeExperience[]
@@ -1014,8 +1080,6 @@ model Employee {
   leaveBalances              LeaveBalance[]
   mispunchCorrections        MispunchCorrection[]
   permissionRequests         PermissionRequest[]
-  onDutyRequests             OnDutyRequest[]
-  wfhRequests                WfhRequest[]
   pmsIncentives              PmsIncentive[]
   doubleMachineIncentives    DoubleMachineIncentive[]
   payrollLines               PayrollLine[]
@@ -1036,6 +1100,20 @@ model Employee {
   canteenTokens              CanteenToken[]
   petrolAllowanceEntries     PetrolAllowanceEntry[]
   manualArrears              ManualArrear[]
+
+  interviewPanels            InterviewPanel[]            @relation("PanelInterviewer")
+  interviewSchedules         InterviewSchedule[]         @relation("ScheduleInterviewer")
+  callInterviews             CallInterview[]             @relation("CallRecruiter")
+  verifiedCandidateDocs      CandidateDocument[]         @relation("DocVerifiedBy")
+  interviewEvaluations       InterviewEvaluation[]       @relation("EvalSubmittedBy")
+  offerReportingManager      OfferLetter[]               @relation("OfferReportingManager")
+  joiningApprovalMatrices    JoiningApprovalMatrix[]     @relation("JoiningApprover")
+  candidateJoiningApprovals  CandidateJoining[]          @relation("JoiningApproverEmp")
+  checklistUpdates           CandidateChecklistItem[]    @relation("ChecklistUpdatedBy")
+  joiningFormsVerified       JoiningForm[]               @relation("JoiningFormVerifiedBy")
+  convertedCandidates        Candidate[]                 @relation("ConvertedFromCandidate")
+  designationLevelApprover   DesignationLevel[]          @relation("DesigLevelApprover")
+  internshipMentor           Internship[]                @relation("InternshipMentor")
 
   @@unique([companyId, employeeCode])
   @@index([reportingManagerId])
@@ -1189,6 +1267,7 @@ model JobInfo {
   // Official access
   officialEmail                    String?   @db.NVarChar(100)
   // Statutory applicability
+  pfApplicable                     Boolean   @default(true)
   esiApplicable                    Boolean   @default(false)
   professionalTaxApplicable        Boolean   @default(false)
   bonusApplicable                  Boolean   @default(false)
@@ -1744,7 +1823,13 @@ model SalaryComponent {
   // ADDITIONAL (Additional HRA and similar top-up components). Only
   // meaningful when includeInGross = true; CTC-only components are paid
   // outside Gross entirely and ignore this field.
-  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL
+  // NON_PAYROLL is a third tier for components that must never be touched
+  // by payroll at all (not Gross, not a PF/ESI/PT base, not disbursed on
+  // any payslip) — e.g. a CTC-quoted Performance Incentive figure that is
+  // only ever read back on the Employee CTC tab and the standalone
+  // Performance Incentive Report. payrollCalculation.ts must hard-skip
+  // any component with this tier.
+  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL | NON_PAYROLL
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -1761,6 +1846,7 @@ model SalaryComponent {
   benefitRates        BenefitRateByEmployeeType[]
   pmsIncentives       PmsIncentive[]
   pmsIncentiveConfigs PmsIncentiveConfig[]
+  employeeCtcComponents EmployeeCtcComponent[]
 
   @@unique([companyId, code])
   @@map("SalaryComponent")
@@ -2060,10 +2146,29 @@ model EmployeeCtc {
   updatedAt DateTime @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id])
+  components EmployeeCtcComponent[]
 
   @@index([employeeId])
   @@index([effectiveFrom, effectiveTo])
   @@map("EmployeeCtc")
+}
+
+// Ad-hoc CTC-quoted components attached to a specific EmployeeCtc revision —
+// e.g. "Performance Incentive: 2135/month". Restricted (at the API layer) to
+// SalaryComponents with grossTier = NON_PAYROLL, so nothing added here can
+// ever be picked up by payroll. Read back by the Employee CTC tab and by the
+// Performance Incentive Report (src/app/reports/payroll/performance-incentive).
+model EmployeeCtcComponent {
+  id                Int     @id @default(autoincrement())
+  employeeCtcId     Int
+  salaryComponentId Int
+  amount            Decimal @db.Decimal(18, 2)
+
+  employeeCtc     EmployeeCtc     @relation(fields: [employeeCtcId], references: [id])
+  salaryComponent SalaryComponent @relation(fields: [salaryComponentId], references: [id])
+
+  @@unique([employeeCtcId, salaryComponentId])
+  @@map("EmployeeCtcComponent")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2915,78 +3020,6 @@ model PermissionRequest {
   @@index([employeeId])
   @@index([status])
   @@map("PermissionRequest")
-}
-
-// On-Duty (OD) — employee applies for official duty performed outside the
-// normal workplace (client visit, offsite work, travel). Approved OD marks
-// the covered days as OnDuty (counted as present) in DailyAttendance rather
-// than Absent/LOP. Two-stage approval mirrors MispunchCorrection/
-// PermissionRequest; BRD (HRMS-ESS BRD §D) lists fields and manager/HR
-// approval but no eligibility/limit rules, so none are enforced here.
-model OnDutyRequest {
-  id         Int      @id @default(autoincrement())
-  employeeId Int
-  fromDate   DateTime @db.Date
-  toDate     DateTime @db.Date
-  location   String   @db.NVarChar(200)
-  purpose    String   @db.NVarChar(500)
-  customerProject String? @db.NVarChar(200)
-  remarks    String?  @db.NVarChar(500)
-
-  // pending_manager | pending_hr | approved | rejected
-  status                 String    @default("pending_manager") @db.NVarChar(20)
-  managerActionByUserId  Int?
-  managerActionAt        DateTime?
-  managerRejectionReason String?   @db.NVarChar(500)
-  approvedByUserId       Int?
-  approvedAt             DateTime?
-  rejectionReason        String?   @db.NVarChar(500)
-
-  appliedAt DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  employee Employee @relation(fields: [employeeId], references: [id])
-
-  @@index([employeeId])
-  @@index([status])
-  @@map("OnDutyRequest")
-}
-
-// Work From Home (WFH) — employee applies to work remotely for a date
-// range. Approved WFH marks the covered days Present (with a remark) in
-// DailyAttendance — "WFH" is not one of the client-confirmed attendance
-// statuses (see docs/DECISIONS_NEEDED_2026-09-11.md), so this reuses
-// Present rather than inventing a new status. Two-stage approval mirrors
-// OnDutyRequest/PermissionRequest. BRD (HRMS-ESS BRD §E) lists only
-// date/duration/reason — no eligibility/frequency-limit rules, so none are
-// enforced here.
-model WfhRequest {
-  id         Int      @id @default(autoincrement())
-  employeeId Int
-  fromDate   DateTime @db.Date
-  toDate     DateTime @db.Date
-  reason     String   @db.NVarChar(500)
-  remarks    String?  @db.NVarChar(500)
-
-  // pending_manager | pending_hr | approved | rejected
-  status                 String    @default("pending_manager") @db.NVarChar(20)
-  managerActionByUserId  Int?
-  managerActionAt        DateTime?
-  managerRejectionReason String?   @db.NVarChar(500)
-  approvedByUserId       Int?
-  approvedAt             DateTime?
-  rejectionReason        String?   @db.NVarChar(500)
-
-  appliedAt DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  employee Employee @relation(fields: [employeeId], references: [id])
-
-  @@index([employeeId])
-  @@index([status])
-  @@map("WfhRequest")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4318,21 +4351,32 @@ model JobDescriptionSequence {
 }
 
 model JobPosting {
-  id              Int      @id @default(autoincrement())
-  title           String   @db.NVarChar(200)
-  departmentId    Int?
-  designationId   Int?
-  jdId            Int?
-  status          String   @default("Open") @db.NVarChar(20)
-  createdByUserId Int?
-  deletedAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 Int       @id @default(autoincrement())
+  title              String    @db.NVarChar(200)
+  departmentId       Int?
+  designationId      Int?
+  jdId               Int?
+  // BRD §10.7 — extended vacancy fields
+  vacancies          Int       @default(1)
+  employmentType     String?   @db.NVarChar(30) // Full-time | Part-time | Contract | Intern
+  minExperienceYears Decimal?  @db.Decimal(4, 1)
+  maxExperienceYears Decimal?  @db.Decimal(4, 1)
+  minSalary          Decimal?  @db.Decimal(18, 2)
+  maxSalary          Decimal?  @db.Decimal(18, 2)
+  closingDate        DateTime?
+  locationId         Int? // → Site
+  status             String    @default("Open") @db.NVarChar(20)
+  createdByUserId    Int?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  department  Department?     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  designation Designation?    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  department     Department?     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation    Designation?    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   jobDescription JobDescription? @relation(fields: [jdId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdBy   User?           @relation("JobPostingCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location       Site?           @relation("JobPostingLocation", fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy      User?           @relation("JobPostingCreatedBy", fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  candidates     Candidate[]     @relation("JobPostingCandidates")
 
   @@index([jdId])
   @@index([departmentId])
@@ -4731,63 +4775,6 @@ model NotificationInApp {
   @@map("NotificationInApp")
 }
 
-// ── Announcements ────────────────────────────────────────────────────────────
-
-// Company announcements and internal circulars shown on the employee portal
-// (KUN MoM 23/June/2025: "Enable announcement notifications on the employee
-// portal (e.g., policy updates, internal circulars)").
-//
-// An announcement is DRAFT until published; publishing stamps publishedAt and
-// fans out an ANNOUNCEMENT_PUBLISHED notification. Employees read it on
-// /ess/announcements. Read receipts live in AnnouncementRead so HR can show
-// who has actually seen a policy update — the reason this is a separate table
-// rather than a boolean.
-model Announcement {
-  id          Int    @id @default(autoincrement())
-  companyId   Int
-  title       String @db.NVarChar(200)
-  body        String @db.NVarChar(Max)
-  // POLICY | CIRCULAR | GENERAL — the three kinds the MoM names.
-  category    String @default("GENERAL") @db.NVarChar(20)
-  // NORMAL | IMPORTANT — IMPORTANT pins the item to the top of the ESS list.
-  priority    String @default("NORMAL") @db.NVarChar(10)
-  // DRAFT | PUBLISHED | ARCHIVED
-  status      String @default("DRAFT") @db.NVarChar(12)
-
-  publishedAt DateTime?
-  // Optional end of relevance; past this the item drops off the ESS list but
-  // stays readable in the HR archive.
-  expiresAt   DateTime?
-
-  createdByUserId Int?
-  publishedByUserId Int?
-
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  reads AnnouncementRead[]
-
-  @@index([companyId, status, publishedAt])
-  @@map("Announcement")
-}
-
-// One row the first time an employee opens an announcement. Unique per
-// (announcement, employee) so re-opening never duplicates the receipt.
-model AnnouncementRead {
-  id             Int      @id @default(autoincrement())
-  announcementId Int
-  employeeId     Int
-  readAt         DateTime @default(now())
-
-  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@unique([announcementId, employeeId])
-  @@index([employeeId])
-  @@map("AnnouncementRead")
-}
-
 // ── Document Service ─────────────────────────────────────────────────────────
 
 // Document Type Master (§15.1). documentClass drives the §17.3 access matrix.
@@ -5172,10 +5159,1407 @@ model LeaveEncashmentRequest {
   @@map("LeaveEncashmentRequest")
 }
 
+// 20. RECRUITMENT & ONBOARDING MODULE (BRD v6.4)
+//
+//    Full hiring lifecycle: Manpower Requisition ΓåÆ Candidate Sourcing ΓåÆ
+//    Screening ΓåÆ Interview ΓåÆ Selection ΓåÆ Offer ΓåÆ Appointment ΓåÆ Joining ΓåÆ
+//    Employee Creation. See docs/RECRUITMENT_IMPLEMENTATION_PLAN_2026-09-13.md.
+//
+//    Conventions: company-scoped (companyId), soft-delete (isActive + deletedAt),
+//    audit (createdAt + updatedAt), NoAction on cross-module FKs.
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// ΓöÇΓöÇ 20.1  Recruitment Masters (config) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º12.10 ΓÇö 20 status lifecycle states (seeded).
+model RecruitmentStatus {
+  id            Int      @id @default(autoincrement())
+  statusCode    String   @unique @db.NVarChar(40)
+  statusName    String   @db.NVarChar(80)
+  description   String?  @db.NVarChar(500)
+  sequence      Int
+  stageCategory String   @db.NVarChar(30) // Screening | Interview | Verification | Selection | Offer | Joining
+  isTerminal    Boolean  @default(false)
+  color         String?  @db.NVarChar(20)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  candidates Candidate[]
+
+  @@index([stageCategory])
+  @@map("RecruitmentStatus")
+}
+
+// BRD ┬º12.2
+model InterviewType {
+  id                  Int       @id @default(autoincrement())
+  typeCode            String    @unique @db.NVarChar(20)
+  typeName            String    @db.NVarChar(100)
+  description         String?   @db.NVarChar(500)
+  mode                String    @db.NVarChar(20) // Physical | Online | Phone
+  durationMins        Int?
+  evaluationRequired  Boolean   @default(true)
+  scoreRequired       Boolean   @default(true)
+  remarksRequired     Boolean   @default(true)
+  interviewerRequired Boolean   @default(true)
+  meetingLinkRequired Boolean   @default(false)
+  locationRequired    Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  levels       InterviewLevel[]
+  criteria     InterviewCriteria[]
+  scoreConfigs InterviewScoreConfig[]
+  panels       InterviewPanel[]
+  processes    InterviewProcessLevel[]
+  schedules    InterviewSchedule[]
+
+  @@map("InterviewType")
+}
+
+// BRD ┬º12.1
+model InterviewLevel {
+  id               Int       @id @default(autoincrement())
+  levelCode        String    @unique @db.NVarChar(20)
+  levelName        String    @db.NVarChar(100)
+  description      String?   @db.NVarChar(500)
+  sequenceNo       Int
+  interviewTypeId  Int
+  mandatory        Boolean   @default(true)
+  minPassingScore  Decimal?  @db.Decimal(5, 2)
+  maxAttempts      Int?
+  autoProgressNext Boolean   @default(false)
+  allowReinterview Boolean   @default(false)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  interviewType InterviewType           @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  criteria      InterviewCriteria[]
+  scoreConfigs  InterviewScoreConfig[]
+  panels        InterviewPanel[]
+  processLevels InterviewProcessLevel[]
+  schedules     InterviewSchedule[]
+
+  @@index([interviewTypeId])
+  @@map("InterviewLevel")
+}
+
+// BRD ┬º12.3
+model InterviewCriteria {
+  id               Int       @id @default(autoincrement())
+  criteriaCode     String    @unique @db.NVarChar(20)
+  criteriaName     String    @db.NVarChar(100)
+  description      String?   @db.NVarChar(500)
+  category         String    @db.NVarChar(40) // Technical | Functional | Behavioral | Communication | Leadership | Analytical | Domain | Culture | Problem
+  departmentId     Int?
+  designationId    Int?
+  interviewTypeId  Int
+  interviewLevelId Int?
+  scoreType        String    @default("10") @db.NVarChar(10) // 10 | 5 | Percentage
+  minScore         Decimal   @default(0) @db.Decimal(5, 2)
+  maxScore         Decimal   @default(10) @db.Decimal(5, 2)
+  weightage        Decimal   @default(0) @db.Decimal(5, 2)
+  mandatory        Boolean   @default(true)
+  remarksRequired  Boolean   @default(false)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  department     Department?            @relation("InterviewCriteriaDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation    Designation?           @relation("InterviewCriteriaDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewType  InterviewType          @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewLevel InterviewLevel?        @relation(fields: [interviewLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  scoreConfigs   InterviewScoreConfig[]
+  evaluations    InterviewEvaluation[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([interviewTypeId])
+  @@index([interviewLevelId])
+  @@map("InterviewCriteria")
+}
+
+// BRD ┬º12.4
+model InterviewScoreConfig {
+  id               Int      @id @default(autoincrement())
+  configCode       String   @unique @db.NVarChar(20)
+  departmentId     Int?
+  designationId    Int?
+  interviewLevelId Int
+  interviewTypeId  Int
+  criteriaId       Int
+  maxScore         Decimal  @default(10) @db.Decimal(5, 2)
+  minScore         Decimal  @default(0) @db.Decimal(5, 2)
+  weightage        Decimal  @default(0) @db.Decimal(5, 2)
+  passingScore     Decimal  @default(70) @db.Decimal(5, 2)
+  ratingScale      String   @default("10") @db.NVarChar(10) // 10 | 5 | Percentage
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  department     Department?       @relation("ScoreConfigDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation    Designation?      @relation("ScoreConfigDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewLevel InterviewLevel    @relation(fields: [interviewLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewType  InterviewType     @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  criteria       InterviewCriteria @relation(fields: [criteriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([interviewLevelId])
+  @@index([criteriaId])
+  @@map("InterviewScoreConfig")
+}
+
+// BRD ┬º12.9
+model InterviewPanel {
+  id                    Int       @id @default(autoincrement())
+  panelCode             String    @unique @db.NVarChar(20)
+  departmentId          Int?
+  designationId         Int?
+  interviewLevelId      Int
+  interviewTypeId       Int
+  eligibleInterviewerId Int // ΓåÆ Employee
+  isActive              Boolean   @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  department     Department?    @relation("PanelDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation    Designation?   @relation("PanelDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewLevel InterviewLevel @relation(fields: [interviewLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewType  InterviewType  @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewer    Employee       @relation("PanelInterviewer", fields: [eligibleInterviewerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([interviewLevelId])
+  @@index([eligibleInterviewerId])
+  @@map("InterviewPanel")
+}
+
+// BRD ┬º13 ΓÇö central 6-step stepper config (dept+designation ΓåÆ process).
+model InterviewProcess {
+  id             Int       @id @default(autoincrement())
+  processName    String    @db.NVarChar(200)
+  departmentId   Int
+  designationId  Int
+  employmentType String?   @db.NVarChar(30)
+  effectiveFrom  DateTime  @default(now())
+  status         String    @default("Active") @db.NVarChar(20)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department  Department              @relation("ProcessDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation             @relation("ProcessDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  levels      InterviewProcessLevel[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@map("InterviewProcess")
+}
+
+model InterviewProcessLevel {
+  id               Int      @id @default(autoincrement())
+  processId        Int
+  interviewLevelId Int
+  interviewTypeId  Int
+  sequence         Int
+  mandatory        Boolean  @default(true)
+  passScore        Decimal? @db.Decimal(5, 2)
+
+  process        InterviewProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  interviewLevel InterviewLevel   @relation(fields: [interviewLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewType  InterviewType    @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([processId, interviewLevelId])
+  @@index([processId])
+  @@index([interviewLevelId])
+  @@map("InterviewProcessLevel")
+}
+
+// BRD ┬º12.5
+model DocumentType {
+  id                   Int       @id @default(autoincrement())
+  documentCode         String    @unique @db.NVarChar(20)
+  documentName         String    @db.NVarChar(100)
+  category             String    @db.NVarChar(40) // Identity | Education | Employment | Other
+  description          String?   @db.NVarChar(500)
+  mandatory            Boolean   @default(false)
+  departmentId         Int?
+  designationId        Int?
+  employmentType       String?   @db.NVarChar(30)
+  verificationRequired Boolean   @default(true)
+  allowedFileTypes     String?   @db.NVarChar(200) // pdf,jpg,png
+  maxFileSizeMb        Int       @default(5)
+  multipleFiles        Boolean   @default(false)
+  isActive             Boolean   @default(true)
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  department         Department?         @relation("DocTypeDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation        Designation?        @relation("DocTypeDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  candidateDocuments CandidateDocument[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@map("DocumentType")
+}
+
+// BRD ┬º12.6
+model EmailTemplate {
+  id            Int       @id @default(autoincrement())
+  templateCode  String    @unique @db.NVarChar(20)
+  templateName  String    @db.NVarChar(100)
+  event         String    @db.NVarChar(40)
+  subject       String    @db.NVarChar(500)
+  body          String    @db.NVarChar(Max)
+  toRecipients  String?   @db.NVarChar(500)
+  ccRecipients  String?   @db.NVarChar(500)
+  bccRecipients String?   @db.NVarChar(500)
+  attachmentUrl String?   @db.NVarChar(500)
+  language      String    @default("en") @db.NVarChar(10)
+  departmentId  Int?
+  designationId Int?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  department     Department?        @relation("EmailTemplateDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation    Designation?       @relation("EmailTemplateDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  communications CommunicationLog[]
+
+  @@index([event])
+  @@map("EmailTemplate")
+}
+
+// BRD ┬º12.7
+model OfferTemplate {
+  id             Int       @id @default(autoincrement())
+  templateCode   String    @unique @db.NVarChar(20)
+  templateName   String    @db.NVarChar(100)
+  departmentId   Int?
+  designationId  Int?
+  employmentType String?   @db.NVarChar(30)
+  gradeId        Int?
+  locationId     Int?
+  version        String    @default("1.0") @db.NVarChar(20)
+  effectiveFrom  DateTime  @default(now())
+  effectiveTo    DateTime?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department  Department?   @relation("OfferTemplateDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation?  @relation("OfferTemplateDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  offers      OfferLetter[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@map("OfferTemplate")
+}
+
+// BRD ┬º12.7 ΓÇö Appointment Order Template Master (P1)
+model AppointmentTemplate {
+  id             Int       @id @default(autoincrement())
+  templateCode   String    @unique @db.NVarChar(20)
+  templateName   String    @db.NVarChar(100)
+  subject        String    @db.NVarChar(500)
+  body           String    @db.NVarChar(Max)
+  departmentId   Int?
+  designationId  Int?
+  employmentType String?   @db.NVarChar(30)
+  gradeId        Int?
+  locationId     Int?
+  version        String    @default("1.0") @db.NVarChar(20)
+  effectiveFrom  DateTime  @default(now())
+  effectiveTo    DateTime?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department  Department?   @relation("ApptTemplateDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation?  @relation("ApptTemplateDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  appointmentOrders AppointmentOrder[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@map("AppointmentTemplate")
+}
+
+// BRD ┬º12.11
+model DesignationLevel {
+  id                Int       @id @default(autoincrement())
+  levelCode         String    @unique @db.NVarChar(20)
+  levelName         String    @db.NVarChar(50) // Junior | Middle | Senior | Top Management
+  description       String?   @db.NVarChar(500)
+  defaultApproverId Int?
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  defaultApprover       Employee?                 @relation("DesigLevelApprover", fields: [defaultApproverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designations          DesignationLevelMapping[]
+  joiningApprovalMatrix JoiningApprovalMatrix[]
+
+  @@map("DesignationLevel")
+}
+
+model DesignationLevelMapping {
+  id                 Int @id @default(autoincrement())
+  designationLevelId Int
+  designationId      Int
+
+  designationLevel DesignationLevel @relation(fields: [designationLevelId], references: [id], onDelete: Cascade)
+  designation      Designation      @relation("DesigLevelMapping", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([designationLevelId, designationId])
+  @@index([designationLevelId])
+  @@index([designationId])
+  @@map("DesignationLevelMapping")
+}
+
+// BRD ┬º12.8
+model RecruitmentApprovalMatrix {
+  id             Int       @id @default(autoincrement())
+  matrixCode     String    @unique @db.NVarChar(20)
+  process        String    @db.NVarChar(30) // Recruitment | Selection | Offer
+  departmentId   Int?
+  designationId  Int?
+  employmentType String?   @db.NVarChar(30)
+  minSalary      Decimal?  @db.Decimal(18, 2)
+  maxSalary      Decimal?  @db.Decimal(18, 2)
+  approvalLevel  Int
+  approverType   String    @db.NVarChar(30) // Employee | Role | Position
+  approverId     Int?
+  mandatory      Boolean   @default(true)
+  sequence       Int
+  escalationDays Int?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department  Department?  @relation("RecruitApprovalDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation? @relation("RecruitApprovalDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@map("RecruitmentApprovalMatrix")
+}
+
+// BRD ┬º8 ΓÇö dynamic, admin-configurable per company.
+model JoiningApprovalMatrix {
+  id                 Int       @id @default(autoincrement())
+  matrixCode         String    @unique @db.NVarChar(20)
+  departmentId       Int?
+  designationLevelId Int
+  approvalLevel      Int
+  approverId         Int
+  approverRole       String?   @db.NVarChar(100)
+  mandatory          Boolean   @default(true)
+  sequence           Int
+  escalationDays     Int?
+  isActive           Boolean   @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  department       Department?      @relation("JoiningApprovalDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designationLevel DesignationLevel @relation(fields: [designationLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approver         Employee         @relation("JoiningApprover", fields: [approverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([departmentId])
+  @@index([designationLevelId])
+  @@index([approverId])
+  @@map("JoiningApprovalMatrix")
+}
+
+// BRD ┬º9 ΓÇö company-configurable Employee ID numbering.
+model EmployeeIdConfig {
+  id                Int      @id @default(autoincrement())
+  prefix            String   @default("KUN") @db.NVarChar(10)
+  includeYear       Boolean  @default(true)
+  includeDepartment Boolean  @default(false)
+  sequenceLength    Int      @default(4)
+  separator         String   @default("-") @db.NVarChar(5)
+  startNumber       Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("EmployeeIdConfig")
+}
+
+// Counter table for Employee ID generation (mirrors JobDescriptionSequence).
+model EmployeeIdSequence {
+  counterKey String @id @default("default")
+  lastNumber Int
+
+  @@map("EmployeeIdSequence")
+}
+
+// BRD ┬º10.1
+model SourcingChannel {
+  id          Int       @id @default(autoincrement())
+  channelCode String    @unique @db.NVarChar(20)
+  channelName String    @db.NVarChar(100)
+  channelType String    @db.NVarChar(30) // External | Internal | Direct | Custom
+  notes       String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  candidates Candidate[]
+
+  @@map("SourcingChannel")
+}
+
+// BRD ┬º10.3
+model BgvStep {
+  id        Int       @id @default(autoincrement())
+  stepCode  String    @unique @db.NVarChar(20)
+  stepName  String    @db.NVarChar(100)
+  sequence  Int
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  candidateBgv CandidateBgv[]
+
+  @@map("BgvStep")
+}
+
+// BRD ┬º10.5
+model SlaConfig {
+  id             Int       @id @default(autoincrement())
+  stageCode      String    @unique @db.NVarChar(40)
+  stageName      String    @db.NVarChar(100)
+  slaDays        Int
+  escalationRole String?   @db.NVarChar(100)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("SlaConfig")
+}
+
+// BRD ┬º7.1 ΓÇö admin adds items; joining checklist shows them with status.
+model ChecklistMaster {
+  id         Int       @id @default(autoincrement())
+  itemCode   String    @unique @db.NVarChar(20)
+  itemName   String    @db.NVarChar(200)
+  sourceForm String?   @db.NVarChar(100)
+  mandatory  Boolean   @default(true)
+  isActive   Boolean   @default(true)
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  checklistItems CandidateChecklistItem[]
+
+  @@map("ChecklistMaster")
+}
+
+// BRD ┬º7.8 ΓÇö Other Joining Document Types (company-configurable master).
+// Company configures which miscellaneous joining documents they want to collect.
+// During joining, HR/candidate selects from this list and uploads the document.
+// On push-to-employee, these flow to EmployeeDocument (KYC & Statutory ΓåÆ Document Upload).
+model OtherJoiningDocType {
+  id            Int       @id @default(autoincrement())
+  docCode       String    @unique @db.NVarChar(20)
+  docName       String    @db.NVarChar(200)
+  description   String?   @db.NVarChar(500)
+  mandatory     Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  candidateOtherDocuments CandidateOtherDocument[]
+
+  @@map("OtherJoiningDocType")
+}
+
+// BRD ┬º7.8 ΓÇö Candidate's uploaded "Other Joining Documents".
+// Each row = one document uploaded by HR/candidate against a configured doc type.
+// On push-to-employee, copied to EmployeeDocument with docType='other'.
+model CandidateOtherDocument {
+  id                Int       @id @default(autoincrement())
+  candidateId       Int
+  otherDocTypeId    Int
+  documentName      String    @db.NVarChar(200)
+  fileName          String?   @db.NVarChar(200)
+  filePath          String?   @db.NVarChar(500)
+  verificationStatus String   @default("Pending") @db.NVarChar(20) // Pending | Verified | Rejected
+  remarks           String?   @db.NVarChar(500)
+  uploadedAt        DateTime  @default(now())
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  candidate       Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  otherDocType    OtherJoiningDocType  @relation(fields: [otherDocTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([otherDocTypeId])
+  @@map("CandidateOtherDocument")
+}
+
+// BRD ┬º6.2 ΓÇö company-configurable internship policy (stipend + allowances).
+model InternshipPolicy {
+  id                   Int       @id @default(autoincrement())
+  policyCode           String    @unique @db.NVarChar(20)
+  policyName           String    @db.NVarChar(100)
+  stipendApplicable    Boolean   @default(false)
+  defaultStipendAmount Decimal?  @db.Decimal(18, 2)
+  stipendFrequency     String?   @db.NVarChar(20) // Monthly | One-time | Weekly
+  allowancesApplicable Boolean   @default(false)
+  allowanceComponents  String?   @db.NVarChar(Max) // JSON array of AllowanceConfig IDs
+  effectiveFrom        DateTime  @default(now())
+  effectiveTo          DateTime?
+  isActive             Boolean   @default(true)
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  internships Internship[]
+
+  @@map("InternshipPolicy")
+}
+
+// ΓöÇΓöÇ 20.2  Candidate Core ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.3, ┬º5.18
+model Candidate {
+  id                Int       @id @default(autoincrement())
+  applicationNo     String    @unique @db.NVarChar(40)
+  applicantDate     DateTime  @default(now())
+  title             String?   @db.NVarChar(10)
+  firstName         String    @db.NVarChar(100)
+  lastName          String    @db.NVarChar(100)
+  mobile            String    @db.NVarChar(20)
+  email             String    @db.NVarChar(100)
+  dateOfBirth       DateTime?
+  aadhaar           String?   @db.NVarChar(20)
+  departmentId      Int?
+  designationId     Int?
+  jobPostingId      Int?
+  sourceChannelId   Int?
+  referenceComments String?   @db.NVarChar(500)
+  currentStatusId   Int?
+  createdById       Int?
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  department          Department?              @relation("CandidateDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation         Designation?             @relation("CandidateDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  jobPosting          JobPosting?              @relation("JobPostingCandidates", fields: [jobPostingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sourceChannel       SourcingChannel?         @relation(fields: [sourceChannelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currentStatus       RecruitmentStatus?       @relation(fields: [currentStatusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy           User?                    @relation("CandidateCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  detail              CandidateDetail?
+  documents           CandidateDocument[]
+  activityLogs        CandidateActivityLog[]
+  callInterviews      CallInterview[]
+  interviewSchedules  InterviewSchedule[]
+  bgvRecords          CandidateBgv[]
+  checklistItems      CandidateChecklistItem[]
+  offerLetters        OfferLetter[]
+  appointmentOrders   AppointmentOrder[]
+  joining             CandidateJoining?
+  convertedEmployee   Employee?                @relation("ConvertedFromCandidate", fields: [convertedEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  convertedEmployeeId Int?
+  communications      CommunicationLog[]
+  internships         Internship[]
+  joiningForm         JoiningForm?
+  joiningReport       JoiningReport?
+  gratuityNomination  GratuityNomination?
+  pfNomination        PfNomination?
+  esiApplication      EsiApplication?
+  insuranceForm       InsuranceForm?
+  otherDocuments      CandidateOtherDocument[]
+  portalTokens       CandidatePortalToken[]
+  portalMessages     CandidatePortalMessage[]
+
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([jobPostingId])
+  @@index([currentStatusId])
+  @@index([sourceChannelId])
+  @@index([createdById])
+  @@map("Candidate")
+}
+
+// BRD ┬º5.18 ΓÇö personal details (1:1 extension).
+model CandidateDetail {
+  id                   Int      @id @default(autoincrement())
+  candidateId          Int      @unique
+  gender               String?  @db.NVarChar(10)
+  nationality          String?  @db.NVarChar(50)
+  religion             String?  @db.NVarChar(50)
+  bloodGroup           String?  @db.NVarChar(10)
+  maritalStatus        String?  @db.NVarChar(20)
+  communicationAddress String?  @db.NVarChar(Max)
+  permanentAddress     String?  @db.NVarChar(Max)
+  languages            String?  @db.NVarChar(500)
+  spouseName           String?  @db.NVarChar(100)
+  dependents           String?  @db.NVarChar(Max) // JSON array
+  references           String?  @db.NVarChar(Max) // JSON array of name+mobile
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("CandidateDetail")
+}
+
+// BRD ┬º5.13
+model CandidateDocument {
+  id             Int       @id @default(autoincrement())
+  candidateId    Int
+  documentTypeId Int
+  fileUrl        String?   @db.NVarChar(500)
+  fileName       String?   @db.NVarChar(200)
+  status         String    @default("Uploaded") @db.NVarChar(20) // Uploaded | Pending | Verified | Rejected | Re-upload
+  verifiedById   Int?
+  verifiedAt     DateTime?
+  remarks        String?   @db.NVarChar(500)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  verifiedBy   Employee?    @relation("DocVerifiedBy", fields: [verifiedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([documentTypeId])
+  @@index([verifiedById])
+  @@map("CandidateDocument")
+}
+
+// BRD ┬º5.18 ΓÇö Activity Log tab.
+model CandidateActivityLog {
+  id            Int      @id @default(autoincrement())
+  candidateId   Int
+  action        String   @db.NVarChar(200)
+  fromStatus    String?  @db.NVarChar(40)
+  toStatus      String?  @db.NVarChar(40)
+  performedById Int?
+  remarks       String?  @db.NVarChar(Max)
+  createdAt     DateTime @default(now())
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  performedBy User?     @relation("ActivityPerformedBy", fields: [performedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([performedById])
+  @@map("CandidateActivityLog")
+}
+
+// ΓöÇΓöÇ 20.3  Call Interview ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.4
+model CallInterview {
+  id                   Int       @id @default(autoincrement())
+  candidateId          Int
+  recruiterId          Int?
+  callDate             DateTime
+  callTime             String?   @db.NVarChar(10)
+  callOutcome          String    @db.NVarChar(40) // Connected-Interested | Connected-Not Interested | Call Back | No Response | Not Reachable | Rejected | Proceed
+  candidateInterested  Boolean   @default(false)
+  expectedSalary       Decimal?  @db.Decimal(18, 2)
+  noticePeriod         String?   @db.NVarChar(100)
+  availableJoiningDate DateTime?
+  remarks              String?   @db.NVarChar(Max)
+  nextAction           String?   @db.NVarChar(200)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  recruiter Employee? @relation("CallRecruiter", fields: [recruiterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([recruiterId])
+  @@map("CallInterview")
+}
+
+// ΓöÇΓöÇ 20.4  Interview Transactions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.7, ┬º5.9 ΓÇö schedule with config snapshot (┬º15.2).
+model InterviewSchedule {
+  id               Int      @id @default(autoincrement())
+  candidateId      Int
+  interviewLevelId Int
+  interviewTypeId  Int
+  interviewerId    Int
+  scheduledDate    DateTime
+  startTime        String   @db.NVarChar(10)
+  endTime          String?  @db.NVarChar(10)
+  mode             String   @db.NVarChar(20) // Online | In-person | Phone
+  locationOrLink   String?  @db.NVarChar(500)
+  status           String   @default("Pending") @db.NVarChar(20) // Pending | Scheduled | Completed | Cancelled
+  processSnapshot  String?  @db.NVarChar(Max) // JSON snapshot of criteria+weightage at schedule time
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  candidate         Candidate                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  interviewLevel    InterviewLevel              @relation(fields: [interviewLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewType     InterviewType               @relation(fields: [interviewTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  interviewer       Employee                    @relation("ScheduleInterviewer", fields: [interviewerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  evaluations       InterviewEvaluation[]
+  evaluationSummary InterviewEvaluationSummary?
+
+  @@index([candidateId])
+  @@index([interviewLevelId])
+  @@index([interviewerId])
+  @@index([scheduledDate])
+  @@map("InterviewSchedule")
+}
+
+// BRD ┬º5.11 ΓÇö one row per criteria per schedule.
+model InterviewEvaluation {
+  id            Int       @id @default(autoincrement())
+  scheduleId    Int
+  criteriaId    Int
+  score         Decimal   @default(0) @db.Decimal(5, 2)
+  maxScore      Decimal   @default(10) @db.Decimal(5, 2)
+  remarks       String?   @db.NVarChar(Max)
+  submittedById Int?
+  submittedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  schedule    InterviewSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  criteria    InterviewCriteria @relation(fields: [criteriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submittedBy Employee?         @relation("EvalSubmittedBy", fields: [submittedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([scheduleId])
+  @@index([criteriaId])
+  @@map("InterviewEvaluation")
+}
+
+// BRD ┬º5.12 ΓÇö summary with weighted score and decision.
+model InterviewEvaluationSummary {
+  id             Int      @id @default(autoincrement())
+  scheduleId     Int      @unique
+  totalScore     Decimal  @default(0) @db.Decimal(5, 2)
+  weightedScore  Decimal  @default(0) @db.Decimal(5, 2)
+  result         String   @db.NVarChar(20) // Pass | Fail | Hold | Re-interview
+  recommendation String?  @db.NVarChar(40) // Select | Reject | Hold | Next Level | Re-interview
+  strengths      String?  @db.NVarChar(Max)
+  weaknesses     String?  @db.NVarChar(Max)
+  finalRemarks   String?  @db.NVarChar(Max)
+  calculatedAt   DateTime @default(now())
+
+  schedule InterviewSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@map("InterviewEvaluationSummary")
+}
+
+// ΓöÇΓöÇ 20.5  Background Verification ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º10.3
+model CandidateBgv {
+  id           Int       @id @default(autoincrement())
+  candidateId  Int
+  bgvStepId    Int
+  status       String    @default("Not Initiated") @db.NVarChar(20) // Not Initiated | In Progress | Completed | Failed | On Hold
+  contactName  String?   @db.NVarChar(100)
+  contactPhone String?   @db.NVarChar(20)
+  performedAt  DateTime?
+  outcome      String?   @db.NVarChar(500)
+  remarks      String?   @db.NVarChar(Max)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  bgvStep   BgvStep   @relation(fields: [bgvStepId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([bgvStepId])
+  @@map("CandidateBgv")
+}
+
+// ΓöÇΓöÇ 20.6  Offer & Appointment ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.15
+model OfferLetter {
+  id                 Int       @id @default(autoincrement())
+  candidateId        Int
+  offerNo            String    @unique @db.NVarChar(40) // HRM/OFL/YYYY/NNNN
+  offerTemplateId    Int?
+  status             String    @default("Draft") @db.NVarChar(20) // Draft | Generated | Sent | Accepted | Rejected | Expired | Closed
+  proposedSalary     Decimal?  @db.Decimal(18, 2)
+  ctc                Decimal?  @db.Decimal(18, 2)
+  joiningDate        DateTime?
+  employmentType     String?   @db.NVarChar(30)
+  reportingManagerId Int?
+  locationId         Int?
+  probationMonths    Int       @default(6)
+  generatedPdfUrl    String?   @db.NVarChar(500)
+  sentAt             DateTime?
+  acceptedAt         DateTime?
+  expiredAt          DateTime?
+  remarks            String?   @db.NVarChar(Max)
+  createdById        Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  candidate         Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  offerTemplate     OfferTemplate?     @relation(fields: [offerTemplateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reportingManager  Employee?          @relation("OfferReportingManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  location          Site?              @relation("OfferLocation", fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy         User?              @relation("OfferCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  appointmentOrders AppointmentOrder[]
+  candidateJoinings CandidateJoining[] @relation("JoiningOffer")
+
+  @@index([candidateId])
+  @@index([offerTemplateId])
+  @@index([status])
+  @@map("OfferLetter")
+}
+
+// BRD ┬º6.1
+model AppointmentOrder {
+  id              Int       @id @default(autoincrement())
+  candidateId     Int
+  apptNo          String    @unique @db.NVarChar(40) // KAPLHR/Appt/YYYY/NNNN
+  offerLetterId   Int?
+  appointmentTemplateId Int?
+  status          String    @default("Draft") @db.NVarChar(20) // Draft | Generated | Sent | Accepted | Declined | Expired | Closed
+  generatedPdfUrl String?   @db.NVarChar(500)
+  sentAt          DateTime?
+  acceptedAt      DateTime?
+  declinedAt      DateTime?
+  remarks         String?   @db.NVarChar(Max)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  candidate   Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  offerLetter OfferLetter?         @relation(fields: [offerLetterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  appointmentTemplate AppointmentTemplate? @relation(fields: [appointmentTemplateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([offerLetterId])
+  @@index([appointmentTemplateId])
+  @@map("AppointmentOrder")
+}
+
+// ΓöÇΓöÇ 20.7  Internship ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º6.2
+model Internship {
+  id                  Int      @id @default(autoincrement())
+  internId            String   @unique @db.NVarChar(40)
+  candidateId         Int
+  college             String?  @db.NVarChar(200)
+  regNo               String?  @db.NVarChar(50)
+  course              String?  @db.NVarChar(200)
+  departmentId        Int?
+  mentorId            Int?
+  trainingStart       DateTime
+  trainingEnd         DateTime
+  stipend             Decimal? @db.Decimal(18, 2)
+  policyId            Int?
+  status              String   @default("Applied") @db.NVarChar(20) // Applied | Accepted | Active | Completed | Terminated | Converted | Closed
+  convertedEmployeeId Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  candidate  Candidate?        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  department Department?       @relation("InternshipDept", fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mentor     Employee?         @relation("InternshipMentor", fields: [mentorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  policy     InternshipPolicy? @relation(fields: [policyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([departmentId])
+  @@index([mentorId])
+  @@map("Internship")
+}
+
+// ΓöÇΓöÇ 20.8  Joining ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.16, ┬º8
+model CandidateJoining {
+  id                Int       @id @default(autoincrement())
+  candidateId       Int       @unique
+  offerLetterId     Int?
+  joiningDate       DateTime?
+  joiningStatus     String    @default("Offer Released") @db.NVarChar(30) // Offer Released | Accepted | Joining Pending | Joining Approval | Joined
+  actualJoiningDate DateTime?
+  approvalStatus    String    @default("Pending") @db.NVarChar(20) // Pending | Approved | Rejected
+  approverId        Int?
+  approvedAt        DateTime?
+  approvalRemarks   String?   @db.NVarChar(Max)
+  remarks           String?   @db.NVarChar(Max)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  candidate   Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  offerLetter OfferLetter? @relation("JoiningOffer", fields: [offerLetterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approver    Employee?    @relation("JoiningApproverEmp", fields: [approverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@map("CandidateJoining")
+}
+
+// BRD ┬º7.1 ΓÇö per-candidate checklist items with status (Received/Not Received/Not Required).
+model CandidateChecklistItem {
+  id                Int      @id @default(autoincrement())
+  candidateId       Int
+  checklistMasterId Int
+  status            String   @default("Not Received") @db.NVarChar(20) // Received (green) | Not Received (yellow) | Not Required (red)
+  updatedAt         DateTime @updatedAt
+  updatedById       Int?
+
+  candidate       Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  checklistMaster ChecklistMaster @relation(fields: [checklistMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  updatedBy       Employee?       @relation("ChecklistUpdatedBy", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([candidateId, checklistMasterId])
+  @@index([candidateId])
+  @@index([checklistMasterId])
+  @@map("CandidateChecklistItem")
+}
+
+// BRD ┬º7.2 ΓÇö Application/Joining Form (19 fields).
+model JoiningForm {
+  id                       Int       @id @default(autoincrement())
+  candidateId              Int       @unique
+  applicationNo            String    @db.NVarChar(40)
+  postApplied              String    @db.NVarChar(200)
+  applicantName            String    @db.NVarChar(200)
+  fatherName               String?   @db.NVarChar(200)
+  dateOfBirth              DateTime?
+  age                      Int?
+  gender                   String?   @db.NVarChar(10)
+  nationality              String?   @db.NVarChar(50)
+  religion                 String?   @db.NVarChar(50)
+  communicationAddress     String?   @db.NVarChar(Max)
+  permanentAddress         String?   @db.NVarChar(Max)
+  experience               String?   @db.NVarChar(Max)
+  languages                String?   @db.NVarChar(500)
+  educationalQualification String?   @db.NVarChar(Max)
+  technicalQualification   String?   @db.NVarChar(500)
+  maritalStatus            String?   @db.NVarChar(20)
+  email                    String?   @db.NVarChar(100)
+  bloodGroup               String?   @db.NVarChar(10)
+  mobile                   String?   @db.NVarChar(20)
+  status                   String    @default("Pending") @db.NVarChar(20) // Pending | Verified
+  verifiedById             Int?
+  verifiedAt               DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  candidate  Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  verifiedBy Employee? @relation("JoiningFormVerifiedBy", fields: [verifiedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("JoiningForm")
+}
+
+// BRD ┬º7.3 ΓÇö Joining Report (12 fields).
+model JoiningReport {
+  id                             Int      @id @default(autoincrement())
+  candidateId                    Int      @unique
+  joiningDate                    DateTime
+  locationId                     Int?
+  grade                          String?  @db.NVarChar(20)
+  bloodGroup                     String?  @db.NVarChar(10)
+  designationId                  Int?
+  reportedTo                     String?  @db.NVarChar(200)
+  panNo                          String?  @db.NVarChar(20)
+  presentAddress                 String?  @db.NVarChar(Max)
+  permanentAddress               String?  @db.NVarChar(Max)
+  contactNumber                  String   @db.NVarChar(20)
+  emergencyContact               String?  @db.NVarChar(200)
+  certificatesVerifiedBy         String?  @db.NVarChar(200)
+  candidateSignatureUrl          String?  @db.NVarChar(500)
+  reportingAuthoritySignatureUrl String?  @db.NVarChar(500)
+  status                         String   @default("Pending") @db.NVarChar(20)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+
+  candidate   Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  location    Site?        @relation("JoiningReportLocation", fields: [locationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  designation Designation? @relation("JoiningReportDesig", fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("JoiningReport")
+}
+
+// BRD ┬º7.4 ΓÇö Gratuity Nomination Form F.
+model GratuityNomination {
+  id                   Int       @id @default(autoincrement())
+  candidateId          Int       @unique
+  employerRefNo        String?   @db.NVarChar(40)
+  employeeName         String    @db.NVarChar(200)
+  sex                  String?   @db.NVarChar(10)
+  religion             String?   @db.NVarChar(50)
+  maritalStatus        String?   @db.NVarChar(20)
+  department           String?   @db.NVarChar(100)
+  postHeld             String?   @db.NVarChar(100)
+  appointmentDate      DateTime?
+  permanentAddress     String?   @db.NVarChar(Max)
+  employeeSignatureUrl String?   @db.NVarChar(500)
+  employerSignatureUrl String?   @db.NVarChar(500)
+  witnesses            String?   @db.NVarChar(Max) // JSON array of {name, address, signatureUrl}
+  status               String    @default("Pending") @db.NVarChar(20)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  candidate Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  nominees  GratuityNominee[]
+
+  @@map("GratuityNomination")
+}
+
+model GratuityNominee {
+  id           Int      @id @default(autoincrement())
+  nominationId Int
+  nomineeName  String   @db.NVarChar(200)
+  relationship String   @db.NVarChar(50)
+  age          Int?
+  proportion   Decimal? @db.Decimal(5, 2)
+
+  nomination GratuityNomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+
+  @@index([nominationId])
+  @@map("GratuityNominee")
+}
+
+// BRD ┬º7.5 ΓÇö PF Nomination Form 2.
+model PfNomination {
+  id                   Int      @id @default(autoincrement())
+  candidateId          Int      @unique
+  employeeName         String   @db.NVarChar(200)
+  aadhaar              String?  @db.NVarChar(20)
+  mobile               String?  @db.NVarChar(20)
+  uan                  String?  @db.NVarChar(20)
+  employeeSignatureUrl String?  @db.NVarChar(500)
+  status               String   @default("Pending") @db.NVarChar(20)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  candidate Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  nominees  PfNominee[]
+
+  @@map("PfNomination")
+}
+
+model PfNominee {
+  id           Int      @id @default(autoincrement())
+  nominationId Int
+  nomineeName  String   @db.NVarChar(200)
+  relationship String   @db.NVarChar(50)
+  age          Int?
+  proportion   Decimal? @db.Decimal(5, 2)
+
+  nomination PfNomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+
+  @@index([nominationId])
+  @@map("PfNominee")
+}
+
+// BRD ┬º7.6 ΓÇö ESI Application Form 1.
+model EsiApplication {
+  id                    Int       @id @default(autoincrement())
+  candidateId           Int       @unique
+  applicable            Boolean   @default(true)
+  ipNumber              String?   @db.NVarChar(40)
+  mobile                String?   @db.NVarChar(20)
+  dateOfJoining         DateTime?
+  photoUrl              String?   @db.NVarChar(500)
+  aadhaarMobile         String?   @db.NVarChar(20)
+  aadhaar               String?   @db.NVarChar(20)
+  dateOfBirth           DateTime?
+  presentAddress        String?   @db.NVarChar(Max)
+  nomineeDetails        String?   @db.NVarChar(Max)
+  bankIfsc              String?   @db.NVarChar(20)
+  bankAccount           String?   @db.NVarChar(30)
+  reasonIfNotApplicable String?   @db.NVarChar(500)
+  status                String    @default("Pending") @db.NVarChar(20)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("EsiApplication")
+}
+
+// BRD ┬º7.7 ΓÇö Insurance Form (14 fields per BRD; company-adjustable later).
+model InsuranceForm {
+  id                   Int      @id @default(autoincrement())
+  candidateId          Int      @unique
+  employeeName         String   @db.NVarChar(200)
+  employeeId           Int?
+  policyNo             String   @db.NVarChar(50)
+  provider             String   @db.NVarChar(200)
+  coverageType         String   @db.NVarChar(50)
+  coverageAmount       Decimal? @db.Decimal(18, 2)
+  premiumAmount        Decimal? @db.Decimal(18, 2)
+  nomineeName          String   @db.NVarChar(200)
+  nomineeRelationship  String?  @db.NVarChar(50)
+  nomineeAge           Int?
+  nomineeAddress       String?  @db.NVarChar(Max)
+  dependentsCovered    String?  @db.NVarChar(Max) // names + Aadhaar for endorsement
+  employeeSignatureUrl String?  @db.NVarChar(500)
+  hrVerificationUrl    String?  @db.NVarChar(500)
+  status               String   @default("Pending") @db.NVarChar(20)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("InsuranceForm")
+}
+
+// ΓöÇΓöÇ 20.9  Communication Log ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// BRD ┬º5.5, ┬º5.21
+model CommunicationLog {
+  id              Int      @id @default(autoincrement())
+  candidateId     Int
+  emailTemplateId Int?
+  eventType       String   @db.NVarChar(40)
+  toEmail         String   @db.NVarChar(100)
+  subject         String   @db.NVarChar(500)
+  body            String   @db.NVarChar(Max)
+  status          String   @default("Sent") @db.NVarChar(20) // Sent | Failed | Pending
+  deliveryStatus  String?  @db.NVarChar(20) // Delivered | Bounced
+  createdById     Int?
+  sentAt          DateTime @default(now())
+
+  candidate     Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  emailTemplate EmailTemplate? @relation(fields: [emailTemplateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy     User?          @relation("CommCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([candidateId])
+  @@index([emailTemplateId])
+  @@index([eventType])
+  @@map("CommunicationLog")
+}
+
+// ΓöÇΓöÇ 20.10  Candidate Self-Service Portal (BRD ┬º10.6) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Token-based, no-login access for candidates to view status, upload docs,
+// view interview/offer/joining details, accept/reject offers, and message HR.
+
+// BRD ┬º10.6 ΓÇö unique token sent to candidate email; link expires after joining/rejection.
+model CandidatePortalToken {
+  id          Int       @id @default(autoincrement())
+  candidateId Int
+  token       String    @unique @db.NVarChar(100)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([token])
+  @@map("CandidatePortalToken")
+}
+
+// BRD ┬º10.6 ΓÇö two-way communication between candidate and HR.
+model CandidatePortalMessage {
+  id          Int      @id @default(autoincrement())
+  candidateId Int
+  fromRole    String   @db.NVarChar(20) // candidate | hr
+  fromName    String   @db.NVarChar(200)
+  message     String   @db.NVarChar(Max)
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@map("CandidatePortalMessage")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 22. EXPENSE REIMBURSEMENT (ESS) — Employee-initiated reimbursement requests
-//     Status: DRAFT → SUBMITTED → APPROVED/REJECTED → PAID/CANCELLED
+// 22. EXISTING DB TABLES NOT YET IN SCHEMA
+//     Stub models for tables that exist in the database but were never
+//     added to schema.prisma. These prevent prisma migrate from dropping
+//     them. Fields marked @ignore are unsupported types.
 // ─────────────────────────────────────────────────────────────────────────────
+
+model Assessment {
+  id Int @id
+  companyId Int
+  trainingProgramId Int?
+  trainingScheduleId Int?
+  title String @db.NVarChar(200)
+  description String? @db.NVarChar(500)
+  assessmentType String? @db.NVarChar(20)
+  passingScore Int
+  durationMinutes Int?
+  questionIds String? @db.NVarChar(Max)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingProgramId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("Assessment")
+}
+
+model AssessmentAttempt {
+  id Int @id
+  companyId Int
+  assessmentId Int
+  employeeId Int
+  answersJson String? @db.NVarChar(Max)
+  totalScore Int
+  maxScore Int
+  scorePercent Int
+  result String @db.NVarChar(20)
+  startedAt DateTime @db.DateTime2 @default(now())
+  submittedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, assessmentId, employeeId])
+  @@index([companyId, employeeId])
+
+  @@map("AssessmentAttempt")
+}
+
+model Competency {
+  id Int @id
+  companyId Int
+  code String? @db.NVarChar(20)
+  name String @db.NVarChar(100)
+  category String @db.NVarChar(50)
+  type String? @db.NVarChar(50)
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, category])
+
+  @@map("Competency")
+}
+
+model CompetencyRequirement {
+  id Int @id
+  companyId Int
+  competencyId Int
+  departmentId Int?
+  designationId Int?
+  gradeId Int?
+  requiredLevelId Int
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, competencyId])
+  @@index([companyId, departmentId, designationId, gradeId])
+
+  @@map("CompetencyRequirement")
+}
+
+model EmployeeCompetency {
+  id Int @id
+  companyId Int
+  employeeId Int
+  competencyId Int
+  currentLevelId Int
+  targetLevelId Int?
+  certificationNumber String? @db.NVarChar(50)
+  certifiedDate DateTime? @db.DateTime2
+  expiryDate DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([employeeId])
+  // Corrected from the auto-generated stub, which wrongly marked
+  // companyId/employeeId/competencyId each individually @unique (which
+  // would allow only one row per company system-wide) — one row per
+  // employee's rating on a competency is the real intent.
+  @@unique([companyId, employeeId, competencyId])
+  @@map("EmployeeCompetency")
+}
+
+model EmployeeKraCycle {
+  id Int @id
+  companyId Int
+  employeeId Int
+  financialYear String @db.NVarChar(9)
+  periodLabel String @db.NVarChar(20)
+  status String @db.NVarChar(20)
+  overallScore Decimal? @db.Decimal(6, 2)
+  managerRemark String? @db.NVarChar(1000)
+  submittedAt DateTime? @db.DateTime2
+  lockedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, employeeId, financialYear, periodLabel])
+  @@index([companyId, status])
+
+  @@map("EmployeeKraCycle")
+}
+
+model EmployeeKraLine {
+  id Int @id
+  cycleId Int
+  kpiTemplateId Int?
+  goalId Int?
+  name String @db.NVarChar(200)
+  weightage Decimal @db.Decimal(5, 2)
+  targetValue String? @db.NVarChar(100)
+  actualValue String? @db.NVarChar(100)
+  score Decimal? @db.Decimal(6, 2)
+  maxScore Decimal @db.Decimal(6, 2)
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([cycleId])
+
+  @@map("EmployeeKraLine")
+}
+
+model ExitClearanceCheck {
+  id Int @id
+  exitInterviewId Int
+  checkCode String @db.NVarChar(20)
+  status String @db.NVarChar(20)
+  remark String? @db.NVarChar(500)
+  clearedByUserId Int?
+  clearedAt DateTime? @db.DateTime2
+
+  // Corrected from the auto-generated stub, which wrongly marked
+  // exitInterviewId and checkCode each individually @unique — the live
+  // data has one row per (interview, checkCode) combination (MANAGER/IT/
+  // FINANCE/HR per exit interview), so the real uniqueness is composite.
+  @@unique([exitInterviewId, checkCode])
+  @@map("ExitClearanceCheck")
+}
 
 model ExpenseReimbursement {
   id                    Int       @id @default(autoincrement())
@@ -5219,4 +6603,771 @@ model ExpenseReimbursementItem {
 
   @@index([expenseReimbursementId])
   @@map("ExpenseReimbursementItem")
+}
+
+model FnFSettlementLine {
+  id Int @id
+  settlementId Int
+  kind String @db.NVarChar(20)
+  code String @db.NVarChar(40)
+  name String @db.NVarChar(120)
+  source String @db.NVarChar(20)
+  amount Decimal @db.Decimal(18, 2)
+  editable Boolean
+  remark String? @db.NVarChar(500)
+  sortOrder Int
+
+  @@index([settlementId])
+
+  @@map("FnFSettlementLine")
+}
+
+model GeneratedHrLetter {
+  id Int @id
+  companyId Int
+  letterType String @db.NVarChar(40)
+  referenceNo String @db.NVarChar(60)
+  employeeId Int?
+  applicantId Int?
+  issuedDate DateTime @db.Date
+  purpose String? @db.NVarChar(200)
+  bodySnapshot String @db.NVarChar(Max)
+  platformDocumentId Int?
+  issuedByUserId Int?
+  createdAt DateTime @db.DateTime2 @default(now())
+
+  @@index([applicantId])
+  @@index([companyId, letterType])
+  @@index([companyId, referenceNo])
+  @@index([employeeId])
+
+  @@map("GeneratedHrLetter")
+}
+
+model InductionAssignment {
+  id Int @id
+  companyId Int
+  inductionProgramId Int
+  employeeId Int
+  assignedDate DateTime @db.DateTime2 @default(now())
+  targetDate DateTime? @db.Date
+  completedDate DateTime? @db.Date
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, inductionProgramId, employeeId])
+
+  @@map("InductionAssignment")
+}
+
+model InductionProgram {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  departmentId Int?
+  designationId Int?
+  durationDays Int?
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, departmentId])
+
+  @@map("InductionProgram")
+}
+
+model KpiGoal {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  measurementCriteria String @db.NVarChar(500)
+  monitoringFrequency String @db.NVarChar(20)
+  reportingFrequency String @db.NVarChar(20)
+  responsibility String? @db.NVarChar(200)
+  condition String? @db.NVarChar(200)
+  targetValue String? @db.NVarChar(100)
+  isActive Boolean
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, isActive])
+
+  @@map("KpiGoal")
+}
+
+model KpiTemplate {
+  id Int @id
+  companyId Int
+  code String @db.NVarChar(30)
+  kpiFor String @db.NVarChar(20)
+  departmentId Int?
+  designationId Int?
+  criteria String @db.NVarChar(500)
+  targetValue String? @db.NVarChar(100)
+  kpiType String @db.NVarChar(20)
+  required Boolean
+  isActive Boolean
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, code])
+  @@index([companyId, kpiFor])
+
+  @@map("KpiTemplate")
+}
+
+model LetterNumberSequence {
+  companyId Int
+  letterType String @db.NVarChar(40)
+  year Int
+  lastNumber Int
+
+  @@id([companyId, letterType, year])
+  @@map("LetterNumberSequence")
+}
+
+model OjtAssignment {
+  id Int @id
+  companyId Int
+  employeeId Int
+  mentorEmployeeId Int?
+  trainerId Int?
+  competencyId Int?
+  trainingProgramId Int?
+  startDate DateTime? @db.Date
+  endDate DateTime? @db.Date
+  status String @db.NVarChar(20)
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+
+  @@map("OjtAssignment")
+}
+
+model OnDutyRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  location   String   @db.NVarChar(200)
+  purpose    String   @db.NVarChar(500)
+  customerProject String? @db.NVarChar(200)
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("OnDutyRequest")
+}
+
+model QuestionBank {
+  id Int @id
+  companyId Int
+  groupId Int?
+  question String @db.NVarChar(1000)
+  questionType String? @db.NVarChar(20)
+  options String? @db.NVarChar(Max)
+  correctAnswer String? @db.NVarChar(500)
+  maxScore Int
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, groupId])
+
+  @@map("QuestionBank")
+}
+
+model QuestionBankGroup {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  description String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("QuestionBankGroup")
+}
+
+model RecruitmentApplicant {
+  id Int @id
+  companyId Int
+  applicationNo String @db.NVarChar(40)
+  applicantDate DateTime @db.Date @default(now())
+  title String? @db.NVarChar(10)
+  firstName String @db.NVarChar(100)
+  lastName String @db.NVarChar(100)
+  mobile String @db.NVarChar(20)
+  email String @db.NVarChar(100)
+  dateOfBirth DateTime? @db.Date
+  aadhaarLast4 String? @db.NVarChar(4)
+  departmentId Int?
+  designationId Int?
+  jobPostingId Int?
+  source String? @db.NVarChar(100)
+  referenceComments String? @db.NVarChar(500)
+  expectedSalary Decimal? @db.Decimal(18, 2)
+  noticePeriod String? @db.NVarChar(50)
+  availableJoinDate DateTime? @db.Date
+  proposedSalary Decimal? @db.Decimal(18, 2)
+  joiningDate DateTime? @db.Date
+  offerNo String? @db.NVarChar(50)
+  status String @db.NVarChar(24)
+  employeeId Int?
+  recruiterRemarks String? @db.NVarChar(1000)
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2 @default(now())
+
+  @@index([companyId, applicationNo])
+  @@index([companyId, email])
+  @@index([companyId, mobile])
+  @@index([companyId, status])
+
+  @@map("RecruitmentApplicant")
+}
+
+model RecruitmentApplicationSequence {
+  companyId Int
+  year Int
+  lastNumber Int
+
+  @@id([companyId, year])
+  @@map("RecruitmentApplicationSequence")
+}
+
+model SkillLevel {
+  id Int @id
+  companyId Int
+  levelNumber Int
+  name String @db.NVarChar(50)
+  description String? @db.NVarChar(500)
+  color String? @db.NVarChar(7)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+  // Corrected from the auto-generated stub, which wrongly marked
+  // companyId/levelNumber each individually @unique (only one company in
+  // the whole system could ever have a SkillLevel) — live data already has
+  // 3 SkillLevel rows for companyId=1, so this constraint was unusable as
+  // written. One row per (company, level number) is the real intent.
+  @@unique([companyId, levelNumber])
+  @@map("SkillLevel")
+}
+
+model Trainer {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(100)
+  email String? @db.NVarChar(100)
+  phone String? @db.NVarChar(20)
+  isExternal Boolean
+  vendor String? @db.NVarChar(100)
+  commercialRate Decimal? @db.Decimal(18, 2)
+  contractDetails String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("Trainer")
+}
+
+model TrainingAttendance {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  status String @db.NVarChar(20)
+  attendedDuration Decimal? @db.Decimal(8, 2)
+  scheduledDuration Decimal? @db.Decimal(8, 2)
+  attendancePercent Decimal? @db.Decimal(5, 2)
+  markedByUserId Int?
+  markedAt DateTime? @db.DateTime2
+  remarks String? @db.NVarChar(500)
+  nominationId Int?
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+  @@index([nominationId])
+
+  @@map("TrainingAttendance")
+}
+
+model TrainingBudget {
+  id Int @id
+  companyId Int
+  year String @db.NVarChar(9)
+  departmentId Int?
+  allocatedAmount Decimal @db.Decimal(18, 2)
+  utilizedAmount Decimal @db.Decimal(18, 2)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, year, departmentId])
+  @@index([companyId, year])
+
+  @@map("TrainingBudget")
+}
+
+model TrainingCertificate {
+  id Int @id
+  companyId Int
+  employeeId Int
+  trainingScheduleId Int?
+  trainingProgramId Int?
+  certificateNumber String @db.NVarChar(50)
+  issueDate DateTime? @db.Date
+  expiryDate DateTime? @db.Date
+  filePath String? @db.NVarChar(500)
+  issuedByUserId Int?
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, certificateNumber])
+  @@index([companyId, employeeId])
+
+  @@map("TrainingCertificate")
+}
+
+model TrainingChecklist {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  checklistType String @db.NVarChar(30)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingChecklist")
+}
+
+model TrainingChecklistItem {
+  id Int @id
+  checklistId Int
+  label String @db.NVarChar(300)
+  sortOrder Int
+  isMandatory Boolean
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([checklistId])
+
+  @@map("TrainingChecklistItem")
+}
+
+model TrainingEffectiveness {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  preScore Int?
+  postScore Int?
+  scoreImprovement Int?
+  level1Reaction Int?
+  level2Learning Int?
+  level3Behavior Int?
+  level4Results Int?
+  effectivenessRating String? @db.NVarChar(20)
+  evaluationDate DateTime? @db.Date
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingEffectiveness")
+}
+
+model TrainingFeedback {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  trainerRating Int?
+  contentRating Int?
+  venueRating Int?
+  overallRating Int?
+  comments String? @db.NVarChar(1000)
+  submittedAt DateTime @db.DateTime2 @default(now())
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingFeedback")
+}
+
+model TrainingHistory {
+  id Int @id
+  companyId Int
+  employeeId Int
+  trainingScheduleId Int?
+  trainingProgramId Int?
+  programName String @db.NVarChar(200)
+  competencyId Int?
+  scheduledDate DateTime? @db.Date
+  method String? @db.NVarChar(50)
+  attendanceStatus String? @db.NVarChar(20)
+  attendancePercent Decimal? @db.Decimal(5, 2)
+  score Decimal? @db.Decimal(8, 2)
+  result String? @db.NVarChar(20)
+  certificateNumber String? @db.NVarChar(50)
+  certifiedDate DateTime? @db.Date
+  trainerId Int?
+  venueId Int?
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, trainingScheduleId])
+
+  @@map("TrainingHistory")
+}
+
+model TrainingNeedRequest {
+  id Int @id
+  companyId Int
+  employeeId Int
+  competencyId Int?
+  trainingProgramId Int?
+  source String? @db.NVarChar(30)
+  reason String? @db.NVarChar(500)
+  priority String? @db.NVarChar(20)
+  status String @db.NVarChar(20)
+  currentStageOrder Int
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt DateTime? @db.DateTime2
+  tnaReference String? @db.NVarChar(100)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, status])
+
+  @@map("TrainingNeedRequest")
+}
+
+model TrainingNomination {
+  id Int @id
+  companyId Int
+  trainingScheduleId Int
+  employeeId Int
+  reason String? @db.NVarChar(200)
+  priority String? @db.NVarChar(20)
+  nominationDate DateTime @db.DateTime2 @default(now())
+  status String @db.NVarChar(20)
+  currentStageOrder Int
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  rejectionReason String? @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, employeeId])
+  @@index([companyId, status])
+  @@index([companyId, trainingScheduleId, employeeId])
+
+  @@map("TrainingNomination")
+}
+
+model TrainingPlan {
+  id Int @id
+  companyId Int
+  year String @db.NVarChar(9)
+  departmentId Int?
+  title String? @db.NVarChar(200)
+  status String @db.NVarChar(20)
+  totalEstimatedCost Decimal? @db.Decimal(18, 2)
+  totalApprovedBudget Decimal? @db.Decimal(18, 2)
+  approvedByUserId Int?
+  approvedAt DateTime? @db.DateTime2
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, departmentId])
+  @@index([companyId, year])
+
+  @@map("TrainingPlan")
+}
+
+model TrainingPlanLine {
+  id Int @id
+  companyId Int
+  trainingPlanId Int
+  competencyId Int?
+  plannedMonth Int
+  trainingProgramId Int
+  trainerId Int?
+  trainingMethod String? @db.NVarChar(50)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  participantCount Int?
+  targetEmployeeIds String? @db.NVarChar(Max)
+  estimatedCost Decimal? @db.Decimal(18, 2)
+  approvedAmount Decimal? @db.Decimal(18, 2)
+  priority String? @db.NVarChar(20)
+  isMandatory Boolean
+  expectedOutcome String? @db.NVarChar(500)
+  status String @db.NVarChar(20)
+  tnaReference String? @db.NVarChar(100)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, plannedMonth])
+  @@index([companyId, trainingPlanId])
+
+  @@map("TrainingPlanLine")
+}
+
+model TrainingPolicy {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(200)
+  minAttendancePercent Int?
+  assessmentRequired Boolean
+  feedbackRequired Boolean
+  nominationCutoffDays Int?
+  externalBudgetCap Decimal? @db.Decimal(18, 2)
+  mandatoryTrainingGraceDays Int?
+  effectiveFrom DateTime? @db.Date
+  effectiveTo DateTime? @db.Date
+  remarks String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingPolicy")
+}
+
+model TrainingProgram {
+  id Int @id
+  companyId Int
+  code String? @db.NVarChar(20)
+  name String @db.NVarChar(100)
+  category String? @db.NVarChar(50)
+  type String? @db.NVarChar(50)
+  objective String? @db.NVarChar(500)
+  learningOutcome String? @db.NVarChar(500)
+  targetAudience String? @db.NVarChar(200)
+  method String? @db.NVarChar(50)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  assessmentRequired Boolean
+  certificationRequired Boolean
+  validityMonths Int?
+  refresherFrequency String? @db.NVarChar(50)
+  estimatedCost Decimal? @db.Decimal(18, 2)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, category])
+
+  @@map("TrainingProgram")
+}
+
+model TrainingSchedule {
+  id Int @id
+  companyId Int
+  trainingPlanLineId Int?
+  trainingProgramId Int
+  title String? @db.NVarChar(200)
+  scheduledDate DateTime? @db.Date
+  startTime String? @db.NVarChar(8)
+  endTime String? @db.NVarChar(8)
+  duration Decimal? @db.Decimal(8, 2)
+  durationUnit String? @db.NVarChar(20)
+  method String? @db.NVarChar(50)
+  venueId Int?
+  meetingLink String? @db.NVarChar(500)
+  trainerId Int?
+  coTrainerId Int?
+  coordinator String? @db.NVarChar(100)
+  maxParticipants Int?
+  targetDepartmentId Int?
+  targetEmployeeIds String? @db.NVarChar(Max)
+  status String @db.NVarChar(20)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId, scheduledDate])
+  @@index([companyId, status])
+
+  @@map("TrainingSchedule")
+}
+
+model TrainingVenue {
+  id Int @id
+  companyId Int
+  name String @db.NVarChar(100)
+  capacity Int?
+  location String? @db.NVarChar(200)
+  equipment String? @db.NVarChar(500)
+  isActive Boolean
+  deletedAt DateTime? @db.DateTime2
+  createdAt DateTime @db.DateTime2 @default(now())
+  updatedAt DateTime @db.DateTime2
+
+  @@index([companyId])
+
+  @@map("TrainingVenue")
+}
+
+model WfhRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  reason     String   @db.NVarChar(500)
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("WfhRequest")
+}
+
+// ── Announcements ────────────────────────────────────────────────────────────
+
+// Company announcements and internal circulars shown on the employee portal
+// (KUN MoM 23/June/2025: "Enable announcement notifications on the employee
+// portal (e.g., policy updates, internal circulars)").
+//
+// An announcement is DRAFT until published; publishing stamps publishedAt and
+// fans out an ANNOUNCEMENT_PUBLISHED notification. Employees read it on
+// /ess/announcements. Read receipts live in AnnouncementRead so HR can show
+// who has actually seen a policy update — the reason this is a separate table
+// rather than a boolean.
+model Announcement {
+  id          Int    @id @default(autoincrement())
+  companyId   Int
+  title       String @db.NVarChar(200)
+  body        String @db.NVarChar(Max)
+  // POLICY | CIRCULAR | GENERAL — the three kinds the MoM names.
+  category    String @default("GENERAL") @db.NVarChar(20)
+  // NORMAL | IMPORTANT — IMPORTANT pins the item to the top of the ESS list.
+  priority    String @default("NORMAL") @db.NVarChar(10)
+  // DRAFT | PUBLISHED | ARCHIVED
+  status      String @default("DRAFT") @db.NVarChar(12)
+
+  publishedAt DateTime?
+  // Optional end of relevance; past this the item drops off the ESS list but
+  // stays readable in the HR archive.
+  expiresAt   DateTime?
+
+  createdByUserId Int?
+  publishedByUserId Int?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  reads AnnouncementRead[]
+
+  @@index([companyId, status, publishedAt])
+  @@map("Announcement")
+}
+
+model AnnouncementRead {
+  id             Int      @id @default(autoincrement())
+  announcementId Int
+  employeeId     Int
+  readAt         DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([announcementId, employeeId])
+  @@index([employeeId])
+  @@map("AnnouncementRead")
 }

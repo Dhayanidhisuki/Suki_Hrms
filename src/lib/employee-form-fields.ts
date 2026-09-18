@@ -393,6 +393,7 @@ export function buildJobProfileFields(): FieldDef[] {
     },
     { name: 'officialEmail', label: 'Official Email', type: 'email' },
     { name: 'petrolAllowance', label: 'Petrol Allowance', type: 'checkbox' },
+    { name: 'pfApplicable', label: 'PF Applicable', type: 'checkbox' },
     { name: 'esiApplicable', label: 'ESI Applicable', type: 'checkbox' },
     { name: 'professionalTaxApplicable', label: 'Professional Tax Applicable', type: 'checkbox' },
     { name: 'bonusApplicable', label: 'Bonus Applicable', type: 'checkbox' },
