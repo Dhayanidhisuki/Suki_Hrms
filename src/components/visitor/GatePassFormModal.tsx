@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useToast } from '@/components/ui';
 import { fetchEmployeeRefs, toReportingManagerOptions, type EmployeeRef } from '@/lib/employee-form-fields';
 import {
   fetchVisitorOptions,
@@ -31,10 +32,10 @@ export default function GatePassFormModal({
   title = 'Visitor Details',
   submitLabel = 'Save',
 }: GatePassFormModalProps) {
+  const toast = useToast();
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [employeeOptions, setEmployeeOptions] = useState<FieldOption[]>([]);
   const [options, setOptions] = useState<VisitorOptions>({
     visitor_type: [],
@@ -49,7 +50,6 @@ export default function GatePassFormModal({
     if (!isOpen) return;
     setValues(initialValues ?? {});
     setErrors({});
-    setSubmitError(null);
 
     Promise.all([fetchVisitorOptions(), fetchEmployeeRefs()]).then(([opts, emps]) => {
       setOptions(opts);
@@ -82,7 +82,6 @@ export default function GatePassFormModal({
     e.preventDefault();
     if (!validate()) return;
     setSubmitting(true);
-    setSubmitError(null);
     try {
       const payload = { ...values };
       const hours = typeof payload.qrValidHours === 'number' ? payload.qrValidHours : Number(payload.qrValidHours);
@@ -91,7 +90,7 @@ export default function GatePassFormModal({
       await onSubmit(payload as Record<string, string | number | boolean>);
       onClose();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -121,12 +120,6 @@ export default function GatePassFormModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
-          {submitError && (
-            <div className="mb-4 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-              {submitError}
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Left column — visitor details */}
             <div className="space-y-4">

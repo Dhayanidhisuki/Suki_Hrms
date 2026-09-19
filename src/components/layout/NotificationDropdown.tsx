@@ -3,17 +3,22 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from './NavIcons';
 
+/** A row from /api/platform/notification/inbox (NotificationInApp). */
 interface Notification {
   id: number;
-  event: string;
-  subject: string | null;
+  eventCode: string;
+  title: string;
   body: string | null;
-  status: string;
+  linkPath: string | null;
+  isRead: boolean;
   createdAt: string;
 }
 
 const PAGE_SIZE = 10;
 
+// Only the codes whose raw form reads badly. Anything unmapped falls back to
+// a title-cased version of the code, so a newly added event still renders
+// sensibly without a deploy.
 const EVENT_LABELS: Record<string, string> = {
   VISITOR_SUBMITTED: 'Visitor Submitted',
   VISITOR_APPROVED: 'Visitor Approved',
@@ -27,6 +32,10 @@ const EVENT_LABELS: Record<string, string> = {
   GNR_OUTWARD: 'GNR Outward',
 };
 
+function eventLabel(code: string): string {
+  return EVENT_LABELS[code] ?? code.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 export default function NotificationDropdown() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -39,14 +48,17 @@ export default function NotificationDropdown() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/visitor/notifications?status=PENDING&limit=${PAGE_SIZE}`);
+      // The platform inbox — every module's notifications, not just visitor
+      // passes. The bell previously polled /api/visitor/notifications, which
+      // 403s for role EMP, so employees saw nothing at all.
+      const res = await fetch(`/api/platform/notification/inbox?unread=true&limit=${PAGE_SIZE}`);
       if (!res.ok) {
         setNotifications([]);
         setTotal(0);
       } else {
         const json = await res.json();
         setNotifications(json.data ?? []);
-        setTotal(json.pagination?.total ?? 0);
+        setTotal(json.unreadCount ?? 0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -67,19 +79,16 @@ export default function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const markRead = async (ids: number[]) => {
-    const res = await fetch('/api/visitor/notifications', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    });
+  const markRead = async (id: number) => {
+    const res = await fetch(`/api/platform/notification/inbox/${id}/read`, { method: 'POST' });
     if (!res.ok) return;
     fetchNotifications();
   };
 
-  const markAllRead = () => {
-    const ids = notifications.filter((n) => n.status !== 'READ').map((n) => n.id);
-    if (ids.length > 0) markRead(ids);
+  const markAllRead = async () => {
+    const res = await fetch('/api/platform/notification/inbox/read-all', { method: 'POST' });
+    if (!res.ok) return;
+    fetchNotifications();
   };
 
   const countText = total > 99 ? '99+' : total > 0 ? String(total) : null;
@@ -141,18 +150,18 @@ export default function NotificationDropdown() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold" style={{ color: 'var(--foreground)' }}>
-                      {EVENT_LABELS[n.event] ?? n.event}
+                      {eventLabel(n.eventCode)}
                     </p>
                     <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                      {n.subject ?? n.body ?? ''}
+                      {n.title ?? n.body ?? ''}
                     </p>
                     <p className="mt-0.5 text-[10px]" style={{ color: 'var(--foreground-muted)' }}>
                       {new Date(n.createdAt).toLocaleString('en-IN')}
                     </p>
                   </div>
-                  {n.status !== 'READ' && (
+                  {!n.isRead && (
                     <button
-                      onClick={() => markRead([n.id])}
+                      onClick={() => markRead(n.id)}
                       className="shrink-0 text-[10px] font-medium opacity-0 group-hover:opacity-100"
                       style={{ color: 'var(--accent)' }}
                     >

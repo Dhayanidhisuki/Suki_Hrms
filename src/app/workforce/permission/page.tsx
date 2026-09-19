@@ -1,187 +1,232 @@
 /**
- * Permission (Short Leave) — self-service page. Employees apply for
- * short-leave-in-hours; managers see pending approvals; HR sees all.
+ * Permission Policy & Usage — the HR/admin view. Sets the company's monthly
+ * short-leave allowance and shows every employee's usage against it for a
+ * chosen month.
+ *
+ * Employees apply on /ess/permission; the two-stage approval queue is
+ * /approvals/workforce/permission. This page is neither — it is the policy
+ * dial plus the company-wide picture of who is using it.
  */
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
+import { handleExport } from '@/lib/export-utils';
 
-interface PermissionRequest {
+interface UsageRow {
   id: number;
-  date: string;
-  fromTime: string;
-  toTime: string;
-  hours: string;
-  reason: string | null;
-  status: string;
-  exceedsAllowance: boolean;
-  excessHours: string;
-  managerRejectionReason: string | null;
-  rejectionReason: string | null;
-  employee?: { employeeCode: string; firstName: string; lastName: string };
-  [key: string]: unknown;
+  employeeId: number;
+  employeeCode: string;
+  employeeName: string;
+  department: string | null;
+  approvedHours: number;
+  pendingHours: number;
+  usedHours: number;
+  remainingHours: number;
+  excessHours: number;
 }
 
-const columns: Column<PermissionRequest>[] = [
-  { key: 'date', label: 'Date', sortable: true },
-  { key: 'fromTime', label: 'From' },
-  { key: 'toTime', label: 'To' },
-  { key: 'hours', label: 'Hours', sortable: true },
-  { key: 'reason', label: 'Reason' },
-  { key: 'status', label: 'Status', sortable: true },
-  { key: 'excess', label: 'Excess' },
-];
+interface Totals {
+  employees: number;
+  usingPermission: number;
+  overAllowance: number;
+  totalHours: number;
+}
 
-const fields: FieldDef[] = [
-  { name: 'date', label: 'Date', type: 'date', required: true },
-  { name: 'fromTime', label: 'From Time (HH:MM)', type: 'text', required: true, placeholder: 'e.g. 14:00', helpText: 'Time when permission starts' },
-  { name: 'toTime', label: 'To Time (HH:MM)', type: 'text', required: true, placeholder: 'e.g. 16:00', helpText: 'Time when permission ends' },
-  { name: 'reason', label: 'Reason', type: 'textarea', placeholder: 'Brief reason for permission' },
-];
+const MONTHS = Array.from({ length: 12 }, (_, i) => ({
+  value: i + 1,
+  label: new Date(2000, i, 1).toLocaleString('default', { month: 'long' }),
+}));
 
-export default function PermissionPage() {
-  const [records, setRecords] = useState<PermissionRequest[]>([]);
+const hrs = (n: number) => `${Number(n).toFixed(2).replace(/\.00$/, '')}h`;
+
+export default function PermissionPolicyPage() {
+  const toast = useToast();
+  const now = new Date();
+  const [year, setYear] = useState(now.getUTCFullYear());
+  const [month, setMonth] = useState(now.getUTCMonth() + 1);
+
+  const [rows, setRows] = useState<UsageRow[]>([]);
+  const [totals, setTotals] = useState<Totals | null>(null);
+  const [allowance, setAllowance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [scope, setScope] = useState<'mine' | 'manager' | 'hr'>('mine');
-  const [modalOpen, setModalOpen] = useState(false);
+
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/workforce/permission?scope=${scope}`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const json = await res.json();
-      const mapped = (json.data ?? []).map((r: Record<string, unknown>) => ({
-        ...r,
-        date: r.date as string,
-        fromTime: (r.fromTime as string)?.slice(11, 16) ?? '',
-        toTime: (r.toTime as string)?.slice(11, 16) ?? '',
-        excess: r.exceedsAllowance ? `${r.excessHours} hrs` : '—',
-        employeeCode: r.employee ? (r.employee as Record<string, unknown>).employeeCode as string : '',
-        employeeName: r.employee ? `${(r.employee as Record<string, unknown>).firstName} ${(r.employee as Record<string, unknown>).lastName}`.trim() : '',
-      })) as PermissionRequest[];
-      setRecords(mapped);
+      const res = await fetch(`/api/workforce/permission/summary?year=${year}&month=${month}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to load');
+      const json: { data: UsageRow[]; totals: Totals; freeHoursPerMonth: number } = await res.json();
+      setRows(json.data ?? []);
+      setTotals(json.totals);
+      setAllowance(json.freeHoursPerMonth);
+      setDraft(String(json.freeHoursPerMonth));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [year, month, toast]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
-  const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const res = await fetch('/api/workforce/permission', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    });
-    if (res.ok) {
-      setModalOpen(false);
-      fetchData();
-    } else {
-      const json = await res.json().catch(() => ({}));
-      alert(json.error ?? 'Failed to submit');
+  const saveAllowance = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/masters/permission-policy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ freeHoursPerMonth: Number(draft) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const fe = body?.details?.fieldErrors as Record<string, string[]> | undefined;
+        throw new Error(fe ? Object.values(fe).flat().join(', ') : body.error ?? 'Could not save');
+      }
+      toast.success(`Allowance set to ${hrs(Number(draft))} per month.`);
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleApprove = async (id: number) => {
-    const res = await fetch(`/api/workforce/permission/${id}/approve`, { method: 'POST' });
-    if (res.ok) fetchData();
-    else alert('Failed to approve');
-  };
+  const columns: Column<UsageRow>[] = [
+    { key: 'employee', label: 'Employee', render: (r) => `${r.employeeCode} — ${r.employeeName}` },
+    { key: 'department', label: 'Department', render: (r) => r.department ?? '—' },
+    { key: 'approvedHours', label: 'Approved', render: (r) => hrs(r.approvedHours) },
+    { key: 'pendingHours', label: 'Awaiting', render: (r) => hrs(r.pendingHours) },
+    { key: 'usedHours', label: 'Used', render: (r) => <span className="font-semibold">{hrs(r.usedHours)}</span> },
+    { key: 'remainingHours', label: 'Remaining', render: (r) => hrs(r.remainingHours) },
+    {
+      key: 'excessHours',
+      label: 'Over Allowance',
+      render: (r) =>
+        r.excessHours > 0 ? (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
+            +{hrs(r.excessHours)}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--foreground-muted)' }}>—</span>
+        ),
+    },
+  ];
 
-  const handleReject = async (id: number) => {
-    const reason = prompt('Rejection reason:');
-    if (!reason) return;
-    const res = await fetch(`/api/workforce/permission/${id}/reject`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rejectionReason: reason }),
-    });
-    if (res.ok) fetchData();
-    else alert('Failed to reject');
-  };
+  const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Permission (Short Leave)</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Apply for short-leave-in-hours. Managers approve their reports; HR approves all.
-          </p>
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Permission Policy &amp; Usage</h1>
+        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+          Set the monthly short-leave allowance and see how much of it each employee has used. Employees spend it in
+          any split they like; hours beyond the allowance are flagged, not deducted automatically.
+        </p>
+      </div>
+
+      <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+        <div className="mb-2 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Monthly Allowance</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Hours per employee, per month</label>
+            <input
+              type="number"
+              min="0"
+              step="0.25"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="w-40 rounded-lg border px-3 py-2 text-sm"
+              style={inputStyle}
+            />
+          </div>
+          <button
+            onClick={saveAllowance}
+            disabled={saving || draft === '' || Number(draft) === allowance}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            {saving ? 'Saving…' : 'Save Allowance'}
+          </button>
+          <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            Applies to every employee in the company. Quarter-hour steps.
+          </span>
         </div>
-        {scope === 'mine' && (
-          <button
-            onClick={() => setModalOpen(true)}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: 'var(--primary)' }}
-          >
-            Apply for Permission
-          </button>
-        )}
       </div>
 
-      {/* Scope tabs */}
-      <div className="flex gap-2">
-        {(['mine', 'manager', 'hr'] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setScope(s)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${scope === s ? 'text-white' : ''}`}
-            style={scope === s ? { backgroundColor: 'var(--primary)' } : { borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' }}
-          >
-            {s === 'mine' ? 'My Requests' : s === 'manager' ? 'Pending (Manager)' : 'Pending (HR)'}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="rounded-lg border px-3 py-2 text-sm" style={inputStyle}>
+            {MONTHS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+          <input
+            type="number"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="w-24 rounded-lg border px-3 py-2 text-sm"
+            style={inputStyle}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {(['csv', 'excel', 'pdf'] as const).map((fmt) => (
+            <button
+              key={fmt}
+              onClick={() =>
+                handleExport({
+                  filename: `permission-usage_${year}-${String(month).padStart(2, '0')}`,
+                  data: rows.map((r) => ({
+                    'Employee Code': r.employeeCode, Employee: r.employeeName, Department: r.department ?? '',
+                    Approved: r.approvedHours, Awaiting: r.pendingHours, Used: r.usedHours,
+                    Remaining: r.remainingHours, 'Over Allowance': r.excessHours,
+                  })),
+                  format: fmt,
+                  title: `Permission Usage — ${MONTHS[month - 1].label} ${year}`,
+                })
+              }
+              disabled={rows.length === 0}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+            >
+              {fmt.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-
-      {loading ? (
-        <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>
-      ) : (
-        <DataTable
-          data={records}
-          columns={scope === 'mine' ? columns : [
-            { key: 'employeeCode', label: 'Code', sortable: true, className: 'font-medium' },
-            { key: 'employeeName', label: 'Name', sortable: true },
-            ...columns.slice(0, -1),
-            { key: 'excess', label: 'Excess' },
-          ]}
-          emptyMessage="No permission requests"
-          renderRowActions={(row) => (
-            <div className="flex gap-2">
-              {(row.status === 'pending_manager' && scope === 'manager') && (
-                <>
-                  <button onClick={() => handleApprove(row.id)} className="rounded px-2 py-1 text-xs font-medium text-white" style={{ backgroundColor: 'var(--success)' }}>Approve</button>
-                  <button onClick={() => handleReject(row.id)} className="rounded px-2 py-1 text-xs font-medium text-white" style={{ backgroundColor: 'var(--danger)' }}>Reject</button>
-                </>
-              )}
-              {(row.status === 'pending_hr' && scope === 'hr') && (
-                <>
-                  <button onClick={() => handleApprove(row.id)} className="rounded px-2 py-1 text-xs font-medium text-white" style={{ backgroundColor: 'var(--success)' }}>Approve</button>
-                  <button onClick={() => handleReject(row.id)} className="rounded px-2 py-1 text-xs font-medium text-white" style={{ backgroundColor: 'var(--danger)' }}>Reject</button>
-                </>
-              )}
-              {row.exceedsAllowance && row.status === 'approved' && (
-                <span className="text-xs" style={{ color: 'var(--warning)' }}>Excess → LOP</span>
-              )}
+      {totals && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Employees</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{totals.employees}</div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Used Permission</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{totals.usingPermission}</div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Over Allowance</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: totals.overAllowance > 0 ? '#991b1b' : 'var(--foreground)' }}>
+              {totals.overAllowance}
             </div>
-          )}
-        />
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Total Hours</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{hrs(totals.totalHours)}</div>
+          </div>
+        </div>
       )}
 
-      <FormModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Apply for Permission"
-        fields={fields}
-        onSubmit={handleSubmit}
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={loading}
+        emptyMessage="No active employees."
       />
     </div>
   );

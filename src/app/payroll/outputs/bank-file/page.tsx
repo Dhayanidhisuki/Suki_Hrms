@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useToast } from '@/components/ui';
 
 interface BankFileTemplate {
   id: number;
@@ -33,6 +34,7 @@ export default function BankFilePage() {
 }
 
 function BankFileContent() {
+  const toast = useToast();
   const searchParams = useSearchParams();
   const runId = searchParams.get('runId');
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -40,7 +42,6 @@ function BankFileContent() {
   const [selectedRun, setSelectedRun] = useState(runId ?? '');
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -57,11 +58,11 @@ function BankFileContent() {
         setSelectedTemplate(String(templatesJson.data[0].id));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [selectedTemplate]);
+  }, [selectedTemplate, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -83,10 +84,6 @@ function BankFileContent() {
           <Link href="/masters/bank-file-templates" className="underline">Masters {'>'} Bank File Templates</Link>.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
 
       {templates.length === 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">

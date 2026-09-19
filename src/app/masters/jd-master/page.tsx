@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ConfirmDialog, DataTable, KPICard, KPIGrid, SearchableSelect, type Column } from '@/components/ui';
+import { ConfirmDialog, DataTable, KPICard, KPIGrid, SearchableSelect, useToast, type Column } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 import { formatDate } from '@/lib/format-date';
 
@@ -117,11 +117,10 @@ const inputStyle = {
 } as const;
 
 export default function JdMasterPage() {
+  const toast = useToast();
   const { stats } = useModuleStats('jd-master');
   const [records, setRecords] = useState<JobDescriptionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -168,7 +167,6 @@ export default function JdMasterPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/masters/jd-master?${queryParams()}`);
       const json = await res.json().catch(() => ({}));
@@ -176,11 +174,11 @@ export default function JdMasterPage() {
       setRecords(Array.isArray(json.data) ? json.data : []);
       setPagination(json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [queryParams]);
+  }, [queryParams, toast]);
 
   useEffect(() => {
     fetchData();
@@ -233,7 +231,7 @@ export default function JdMasterPage() {
     params.delete('limit');
     const res = await fetch(`/api/masters/jd-master/export?${params}`);
     if (!res.ok) {
-      setError('Export failed');
+      toast.error('Export failed');
       return;
     }
     const blob = await res.blob();
@@ -249,7 +247,7 @@ export default function JdMasterPage() {
     const res = await fetch(`/api/masters/jd-master/${row.id}`, { method: 'DELETE' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(json.error ?? 'Delete failed');
+      toast.error(json.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -323,23 +321,6 @@ export default function JdMasterPage() {
         <KPICard label="With file" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>
-            dismiss
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-          {success}
-          <button className="ml-2 underline" onClick={() => setSuccess(null)}>
-            dismiss
-          </button>
-        </div>
-      )}
-
       <DataTable
         columns={columns}
         data={records}
@@ -408,7 +389,7 @@ export default function JdMasterPage() {
           onClose={() => setFormOpen(false)}
           onSaved={(msg) => {
             setFormOpen(false);
-            setSuccess(msg);
+            toast.success(msg);
             fetchData();
           }}
         />
@@ -470,6 +451,7 @@ function JdForm({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const toast = useToast();
   const [departmentId, setDepartmentId] = useState<string | number | ''>(editing?.departmentId ?? '');
   const [designationId, setDesignationId] = useState<string | number | ''>(editing?.designationId ?? '');
   const [title, setTitle] = useState(editing?.title ?? '');
@@ -484,7 +466,6 @@ function JdForm({
   const [file, setFile] = useState<File | null>(null);
   const [fileSkipped, setFileSkipped] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pendingDuplicate, setPendingDuplicate] = useState<string | null>(null);
 
@@ -511,7 +492,6 @@ function JdForm({
     if (!file && !editing?.jdFileUrl) setFileSkipped(true);
 
     setSubmitting(true);
-    setSubmitError(null);
     try {
       const form = new FormData();
       form.set('departmentId', String(departmentId));
@@ -534,7 +514,7 @@ function JdForm({
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
       onSaved(editing ? `Updated ${json.jdCode}` : `Created ${json.jdCode}`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSubmitting(false);
     }
@@ -672,11 +652,6 @@ function JdForm({
               </span>
             )}
           </div>
-          {submitError && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-              {submitError}
-            </div>
-          )}
           {pendingDuplicate && (
             <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
               <p>{pendingDuplicate}</p>
@@ -925,6 +900,7 @@ function BulkUploadModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState<'csv' | 'pdf' | 'zip' | null>(null);
@@ -933,7 +909,6 @@ function BulkUploadModal({
     attachedFileCount?: number;
     failedRows: { row: number; reason: string }[];
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const downloadBlob = async (url: string, filename: string) => {
     const res = await fetch(url);
@@ -949,11 +924,10 @@ function BulkUploadModal({
 
   const downloadSampleCsv = async () => {
     setDownloading('csv');
-    setError(null);
     try {
       await downloadBlob('/templates/jd-master-sample.csv', 'jd-master-sample.csv');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
+      toast.error(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setDownloading(null);
     }
@@ -961,11 +935,10 @@ function BulkUploadModal({
 
   const downloadSampleZip = async () => {
     setDownloading('zip');
-    setError(null);
     try {
       await downloadBlob('/templates/jd-master-test-pack.zip', 'jd-master-test-pack.zip');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
+      toast.error(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setDownloading(null);
     }
@@ -973,11 +946,10 @@ function BulkUploadModal({
 
   const downloadSamplePdf = async () => {
     setDownloading('pdf');
-    setError(null);
     try {
       await downloadBlob('/api/masters/jd-master/sample-pdf', 'jd-document-template.pdf');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
+      toast.error(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setDownloading(null);
     }
@@ -985,11 +957,10 @@ function BulkUploadModal({
 
   const upload = async () => {
     if (!file) {
-      setError('Choose a CSV, Excel, or ZIP (CSV + JD PDFs) first');
+      toast.warning('Choose a CSV, Excel, or ZIP (CSV + JD PDFs) first');
       return;
     }
     setUploading(true);
-    setError(null);
     try {
       const form = new FormData();
       form.set('file', file);
@@ -998,7 +969,7 @@ function BulkUploadModal({
       if (!res.ok) throw new Error(json.error ?? 'Upload failed');
       setSummary(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -1090,7 +1061,6 @@ function BulkUploadModal({
               Masters loaded: {departments.length} departments, {designations.length} designations.
             </p>
           )}
-          {error && <p className="text-xs text-red-500">{error}</p>}
           {summary && (
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
               <p>

@@ -1,12 +1,6 @@
-'use client';
-import LetterIssuePage from '@/components/letters/LetterIssuePage';
+import { redirect } from 'next/navigation';
+
+/** Folded into Offer & Joining — keep old links working. */
 export default function Page() {
-  return (
-    <LetterIssuePage
-      letterType="OFFER_LETTER"
-      title="Offer letter"
-      description="Issue HRM/OFL numbering. The PDF is stored on the candidate in the Document Module."
-      ownerKind="CANDIDATE"
-    />
-  );
+  redirect('/recruitment/offer-joining?tab=offer');
 }

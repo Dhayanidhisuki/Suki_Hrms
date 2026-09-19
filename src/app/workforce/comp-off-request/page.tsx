@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { FormModal, PageHeader, Alert, StatusBadge, statusTone, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, type FieldDef } from '@/components/ui';
+import { FormModal, PageHeader, StatusBadge, statusTone, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast, type FieldDef } from '@/components/ui';
 
 interface CompOffRequest {
   id: number;
@@ -49,10 +49,9 @@ const DateTile = ({ iso, label, tone }: { iso: string; label: string; tone: 'war
 };
 
 export default function CompOffRequestPage() {
+  const toast = useToast();
   const [requests, setRequests] = useState<CompOffRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
   const [isHr, setIsHr] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [formData, setFormData] = useState({ workedDate: '', requestedDate: '', reason: '' });
@@ -71,17 +70,17 @@ export default function CompOffRequestPage() {
       // Check if we see all employees' requests (HR mode)
       setIsHr(rows.length > 0 && rows.some((r) => r.employeeId !== rows[0]?.employeeId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSubmit = async () => {
     if (!formData.workedDate || !formData.requestedDate) {
-      alert('Please fill in both dates');
+      toast.warning('Please fill in both dates');
       return;
     }
     setSubmitting(true);
@@ -93,15 +92,15 @@ export default function CompOffRequestPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to submit');
+        toast.error(err.error ?? 'Failed to submit');
         return;
       }
       setShowCreate(false);
       setFormData({ workedDate: '', requestedDate: '', reason: '' });
-      setResult('Comp-off request submitted for approval');
+      toast.success('Comp-off request submitted for approval');
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setSubmitting(false);
     }
@@ -112,13 +111,13 @@ export default function CompOffRequestPage() {
       const res = await fetch(`/api/workforce/comp-off-request/${id}/approve`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to approve');
+        toast.error(err.error ?? 'Failed to approve');
         return;
       }
-      setResult('Comp-off approved — 1 day credited to the employee');
+      toast.success('Comp-off approved — 1 day credited to the employee');
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
 
@@ -134,7 +133,7 @@ export default function CompOffRequestPage() {
       throw new Error(err.error ?? 'Failed to reject');
     }
     setRejectId(null);
-    setResult('Comp-off request rejected');
+    toast.success('Comp-off request rejected');
     fetchData();
   };
 
@@ -162,9 +161,6 @@ export default function CompOffRequestPage() {
         <KPICard label="Approved" value={counts.approved} subtitle={`${counts.approved} day${counts.approved === 1 ? '' : 's'} credited`} tone="success" />
         <KPICard label="Rejected" value={counts.rejected} tone={counts.rejected > 0 ? 'danger' : 'success'} />
       </KPIGrid>
-
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
-      {result && <Alert tone="success" onDismiss={() => setResult(null)}>{result}</Alert>}
 
       <SectionCard
         title={isHr ? 'All Requests' : 'My Requests'}

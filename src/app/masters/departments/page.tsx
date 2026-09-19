@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface Department {
@@ -40,9 +40,9 @@ const fields: FieldDef[] = [
 ];
 
 export default function DepartmentPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -59,7 +59,6 @@ export default function DepartmentPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/departments?${params}`);
@@ -68,11 +67,11 @@ export default function DepartmentPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -126,7 +125,7 @@ export default function DepartmentPage() {
     const res = await fetch(`/api/masters/departments/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -226,15 +225,6 @@ export default function DepartmentPage() {
         <KPICard label="Total Departments" value={stats.total} tone="info" />
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
-
-      {error && (
-        <div
-          className="rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-        >
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

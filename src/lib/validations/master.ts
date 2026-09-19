@@ -356,12 +356,34 @@ export const salaryComponentSchema = z.object({
   // paid out but never part of Gross or a statutory base.
   includeInGross: z.boolean().default(true),
   // Which Gross tier this earning belongs to for payslip subtotals.
-  grossTier: z.enum(['FIXED', 'ADDITIONAL']).default('ADDITIONAL'),
+  // NON_PAYROLL = never touched by payroll at all (see schema.prisma comment
+  // on SalaryComponent.grossTier); used for CTC-quoted, display-only figures
+  // like Performance Incentive.
+  // PAYROLL_HIDDEN = the opposite of NON_PAYROLL: it DOES reduce Net Pay in
+  // real payroll (shows on Payroll Processing/Payslip like a normal
+  // deduction), but is attached per-employee via the CTC Components picker
+  // and deliberately not offered/shown on the Salary Details tab.
+  grossTier: z.enum(['FIXED', 'ADDITIONAL', 'NON_PAYROLL', 'PAYROLL_HIDDEN']).default('ADDITIONAL'),
   fnfPayable: z.boolean().default(true),
   fnfProration: z.enum(['PRO_RATA', 'FULL', 'EXCLUDE']).default('PRO_RATA'),
   fnfTaxable: z.boolean().default(true),
   isActive: z.boolean().default(true),
+  // Optional convenience: setting this here upserts the same GrossSplitRule
+  // row the Common Logic > Gross % Split page manages, so an earning
+  // component's fixed share of Gross can be set right where the component
+  // itself is created — see PUT /api/masters/gross-split-rules and its use
+  // from src/app/masters/salary-components/route.ts. null/omitted leaves any
+  // existing rule untouched; only meaningful for type = 'earning'.
+  percentOfGross: optionalNumber(z.coerce.number().min(0).max(100)),
 });
+
+// A NON_PAYROLL component must never be touched by payroll — force every
+// payroll-facing flag off regardless of what was submitted, so it can't be
+// wired into Gross/PF/ESI/Gratuity by accident via the flag checkboxes.
+export function normalizeSalaryComponentFlags<T extends { grossTier?: string; includeInGross?: boolean; includeInPf?: boolean; includeInEsi?: boolean; includeInGratuity?: boolean }>(data: T): T {
+  if (data.grossTier !== 'NON_PAYROLL') return data;
+  return { ...data, includeInGross: false, includeInPf: false, includeInEsi: false, includeInGratuity: false };
+}
 
 // ─── Slab overlap validation (app-layer, Q5) ─────────────────────────────────
 

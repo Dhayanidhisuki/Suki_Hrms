@@ -1,12 +1,6 @@
-'use client';
-import LetterIssuePage from '@/components/letters/LetterIssuePage';
+import { redirect } from 'next/navigation';
+
+/** Folded into Offer & Joining — keep old links working. */
 export default function Page() {
-  return (
-    <LetterIssuePage
-      letterType="APPOINTMENT_LETTER"
-      title="Appointment order"
-      description="Issue KAPLHR/Appt numbering and archive the PDF on the employee."
-      ownerKind="EMPLOYEE"
-    />
-  );
+  redirect('/recruitment/offer-joining?tab=appointment');
 }

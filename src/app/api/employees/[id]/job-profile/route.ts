@@ -35,6 +35,7 @@ export async function GET(
     paymentMode: currentJob?.paymentMode ?? null,
     officialEmail: currentJob?.officialEmail ?? null,
     petrolAllowance: currentJob?.petrolAllowance ?? false,
+    pfApplicable: currentJob?.pfApplicable ?? true,
     esiApplicable: currentJob?.esiApplicable ?? false,
     professionalTaxApplicable: currentJob?.professionalTaxApplicable ?? false,
     bonusApplicable: currentJob?.bonusApplicable ?? false,

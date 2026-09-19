@@ -4,7 +4,7 @@ import { ReactNode } from 'react';
 
 export interface Column<T> {
   key: string;
-  label: string;
+  label: ReactNode;
   render?: (row: T) => ReactNode;
   sortable?: boolean;
   className?: string;
@@ -32,6 +32,12 @@ interface DataTableProps<T> {
   onDelete?: (row: T) => void;
   /** Extra per-row action(s) rendered before Edit/Delete in the Actions cell. */
   renderRowActions?: (row: T) => ReactNode;
+  /**
+   * React key per row. Defaults to row.id, which is unique within a single
+   * table — but not across a merged dataset, where two modules can both
+   * carry id 9. Was declared but never read until now, so any caller passing
+   * it was silently ignored.
+   */
   rowKey?: (row: T) => string | number;
   emptyMessage?: string;
   /**
@@ -93,6 +99,7 @@ export default function DataTable<T extends { id: number }>({
   onPageChange,
   onEdit,
   onDelete,
+  rowKey,
   renderRowActions,
   emptyMessage = 'No records found.',
   variant = 'default',
@@ -137,7 +144,7 @@ export default function DataTable<T extends { id: number }>({
         ) : (
           data.map((row) => (
             <tr
-              key={row.id}
+              key={rowKey ? rowKey(row) : row.id}
               className="transition-colors"
               style={{ borderTop: '1px solid var(--border)' }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--surface-hover)')}

@@ -34,6 +34,31 @@ describe('computeLomMinutes', () => {
     expect(computeLomMinutes(120, 60, shift, { graceMinutesExempt: 0, dailyLomCap: null })).toBe(165);
   });
 
+  it('excuses approved permission minutes, capped at what was granted', () => {
+    // Morning permission: 09:00 shift, in at 10:00 -> 60 raw late, 45 after
+    // the 15m grace. One approved hour of permission wipes it out.
+    expect(computeLomMinutes(60, 0, shift, null, 60)).toBe(0);
+    // Early going: left 60 min early, one approved hour -> nothing charged.
+    expect(computeLomMinutes(0, 60, shift, null, 60)).toBe(0);
+    // Two hours late on one approved hour: only the granted hour is excused,
+    // the rest stays chargeable (105 after grace - 60 = 45).
+    expect(computeLomMinutes(120, 0, shift, null, 60)).toBe(45);
+    // A permission longer than the lateness never produces a credit.
+    expect(computeLomMinutes(20, 0, shift, null, 120)).toBe(0);
+  });
+
+  it('leaves LOM untouched when there is no approved permission', () => {
+    // A pending or rejected request contributes 0 excused minutes, so the
+    // day is charged exactly as it was before permission existed.
+    expect(computeLomMinutes(60, 0, shift, null, 0)).toBe(45);
+    expect(computeLomMinutes(60, 0, shift, null)).toBe(45);
+  });
+
+  it('applies the daily cap to what is left after permission, not before', () => {
+    // 120 late (no grace) + 60 early = 180 raw, 60 excused -> 120, capped 90.
+    expect(computeLomMinutes(120, 60, shift, { graceMinutesExempt: 0, dailyLomCap: 90 }, 60)).toBe(90);
+  });
+
   it('agrees with the raw late stored by computeAttendanceMetrics (grace applied exactly once)', () => {
     // 09:25 punch -> 25 raw late stored -> 10 LOM after the 15m grace.
     const a = computeAttendanceMetrics('2026-09-01T09:25:00.000Z', '2026-09-01T17:30:00.000Z', shift);

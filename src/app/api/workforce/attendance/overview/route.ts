@@ -26,6 +26,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveEmployeeShiftConfig, resolveDailyShift } from '@/lib/biometricConversion';
 import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
+import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -33,6 +34,11 @@ const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday
 function wallClockMinutes(d: Date | null): number | null {
   if (!d) return null;
   return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
+/** Same wall-clock rule, rendered as HH:MM for the permission tooltip. */
+function wallClock(d: Date): string {
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 function daysInMonth(year: number, month: number) {
@@ -114,10 +120,54 @@ export async function GET(request: NextRequest) {
     ).map((s) => [s.id, s])
   );
 
-  const [otPlan, lomConfig] = await Promise.all([
+  const [otPlan, lomConfig, permissionRequests, permissionFreeHours] = await Promise.all([
     prisma.oTPlan.findFirst({ where: { isActive: true, deletedAt: null } }),
     prisma.lomConfig.findUnique({ where: { companyId: scope.companyId } }),
+    prisma.permissionRequest.findMany({
+      where: { employeeId: employee.id, date: { gte: monthStart, lt: monthEnd } },
+      orderBy: [{ date: 'asc' }, { fromTime: 'asc' }],
+      select: {
+        date: true,
+        fromTime: true,
+        toTime: true,
+        hours: true,
+        reason: true,
+        status: true,
+      },
+    }),
+    getFreeHoursPerMonth(scope.companyId),
   ]);
+
+  // A day can carry more than one permission request (e.g. an hour in the
+  // morning and half an hour in the evening), so the grid shows the day's
+  // total hours plus one status: approved if anything on that day is
+  // approved, otherwise pending, otherwise rejected. Rejected hours are
+  // never counted into the day's or the month's totals.
+  type PermissionEntry = { approvedHours: number; pendingHours: number; status: string; entries: string[] };
+  const permissionByIso = new Map<string, PermissionEntry>();
+  for (const p of permissionRequests) {
+    const iso = p.date.toISOString().slice(0, 10);
+    const entry = permissionByIso.get(iso) ?? { approvedHours: 0, pendingHours: 0, status: 'rejected', entries: [] };
+    const hours = Number(p.hours);
+    if (p.status === 'approved') {
+      entry.approvedHours += hours;
+      entry.status = 'approved';
+    } else if (p.status === 'pending_manager' || p.status === 'pending_hr') {
+      entry.pendingHours += hours;
+      if (entry.status !== 'approved') entry.status = 'pending';
+    }
+    entry.entries.push(
+      `${wallClock(p.fromTime)}–${wallClock(p.toTime)} · ${hours.toFixed(2)} h · ${p.status}${p.reason ? ` · ${p.reason}` : ''}`
+    );
+    permissionByIso.set(iso, entry);
+  }
+  const permissionApprovedHours = permissionRequests
+    .filter((p) => p.status === 'approved')
+    .reduce((acc, p) => acc + Number(p.hours), 0);
+  const permissionPendingHours = permissionRequests
+    .filter((p) => p.status === 'pending_manager' || p.status === 'pending_hr')
+    .reduce((acc, p) => acc + Number(p.hours), 0);
+  const permissionExcessHours = Math.max(0, permissionApprovedHours - permissionFreeHours);
   const lomCfg = lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null;
   const otCfg = otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null;
 
@@ -125,6 +175,7 @@ export async function GET(request: NextRequest) {
   const todayIso = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString().slice(0, 10);
 
   const days = rawDays.map(({ date, iso, rec, shift, shiftMasterId }) => {
+    const perm = permissionByIso.get(iso) ?? null;
     const inMin = wallClockMinutes(rec?.inTime ?? null);
     let outMin = wallClockMinutes(rec?.outTime ?? null);
 
@@ -159,7 +210,13 @@ export async function GET(request: NextRequest) {
     const shiftMasterForCalc = shiftMaster
       ? { startTime: shiftMaster.startTime, endTime: shiftMaster.endTime, graceMinutes: shiftMaster.graceMinutes }
       : null;
-    const lomMinutes = computeLomMinutes(rec?.lateMinutes ?? 0, rec?.earlyOutMinutes ?? 0, shiftMasterForCalc, lomCfg);
+    const lomMinutes = computeLomMinutes(
+      rec?.lateMinutes ?? 0,
+      rec?.earlyOutMinutes ?? 0,
+      shiftMasterForCalc,
+      lomCfg,
+      Math.round((perm?.approvedHours ?? 0) * 60)
+    );
     const otPayableMinutes = computeOtPayableMinutes(rec?.otMinutesCalculated ?? 0, otCfg);
 
     return {
@@ -187,6 +244,10 @@ export async function GET(request: NextRequest) {
       lomMinutes,
       otMinutesApproved: rec?.otMinutesApproved ?? null,
       otApprovalStatus: rec?.otApprovalStatus ?? null,
+      permissionHours: perm?.approvedHours ?? 0,
+      permissionPendingHours: perm?.pendingHours ?? 0,
+      permissionStatus: perm?.status ?? null,
+      permissionDetail: perm ? perm.entries.join('\n') : null,
       source: rec?.source ?? null,
       remarks: rec?.remarks ?? null,
     };
@@ -215,6 +276,13 @@ export async function GET(request: NextRequest) {
     onDutyDays: count((d) => d.status === 'OnDuty'),
     halfDays: count((d) => d.status === 'HalfDay'),
     permissionDays: count((d) => d.status === 'Permission'),
+    // Permission (short leave) is tracked as its own request, not as a day
+    // status, so these come from PermissionRequest rather than the grid.
+    permissionRequestDays: days.filter((d) => d.permissionHours > 0 || d.permissionPendingHours > 0).length,
+    permissionApprovedHours,
+    permissionPendingHours,
+    permissionFreeHours,
+    permissionExcessHours,
     missingPunchDays: count((d) => d.status === 'MissingPunch'),
     invalidPunchPairDays: count((d) => d.punchPairInvalid),
     paidDays,

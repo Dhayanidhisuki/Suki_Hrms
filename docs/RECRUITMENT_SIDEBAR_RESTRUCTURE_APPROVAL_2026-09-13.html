@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Recruitment Module — Sidebar Restructure Proposal</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; padding: 40px; max-width: 950px; margin: 0 auto; line-height: 1.5; }
+  h1 { font-size: 20pt; color: #0f3460; border-bottom: 3px solid #0f3460; padding-bottom: 8px; margin-bottom: 4px; }
+  h2 { font-size: 14pt; color: #0f3460; margin: 24px 0 10px; border-bottom: 1.5px solid #b8c5d6; padding-bottom: 4px; }
+  h3 { font-size: 12pt; color: #16213e; margin: 16px 0 8px; }
+  .subtitle { font-size: 13pt; color: #555; margin-bottom: 20px; }
+  .meta { background: #f0f4f8; border-left: 4px solid #0f3460; padding: 12px 16px; margin: 16px 0; font-size: 10pt; }
+  .meta td { padding: 2px 12px 2px 0; }
+  .meta td:first-child { font-weight: 600; color: #0f3460; width: 130px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10pt; }
+  th { background: #0f3460; color: #fff; padding: 7px 10px; text-align: left; font-weight: 600; }
+  td { border: 1px solid #c8d2de; padding: 6px 10px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7fafc; }
+  .tree { font-family: 'Consolas', 'Courier New', monospace; font-size: 9.5pt; background: #f7fafc; border: 1px solid #d5dee8; border-radius: 6px; padding: 14px 18px; margin: 10px 0; white-space: pre; overflow-x: auto; line-height: 1.45; }
+  .ok { color: #1a7f37; font-weight: 600; }
+  .bad { color: #c0392b; font-weight: 600; }
+  .new { color: #0b5394; font-weight: 600; }
+  .hold { color: #b06000; font-weight: 600; }
+  .chg { color: #674ea7; font-weight: 600; }
+  .callout { background: #fff8e6; border-left: 4px solid #e6a817; padding: 10px 14px; margin: 12px 0; font-size: 10.5pt; }
+  .pagebreak { page-break-before: always; }
+  .signoff td { height: 60px; }
+  .footer { margin-top: 30px; font-size: 9pt; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; }
+  @media print { body { padding: 20px; } .pagebreak { page-break-before: always; } }
+</style>
+</head>
+<body>
+
+<h1>Recruitment Module — Sidebar Restructure Proposal</h1>
+<div class="subtitle">For Team Lead Approval — Suki HRM / KUN Aerospace</div>
+
+<div class="meta">
+<table>
+<tr><td>Date</td><td>2026-09-13</td></tr>
+<tr><td>Module</td><td>Recruitment &amp; Onboarding</td></tr>
+<tr><td>Reference</td><td>BRD v6.4 — RECRUITMENT_ONBOARDING_BRD_COMPLETE_2026-09-12, §16 Module Structure</td></tr>
+<tr><td>Purpose</td><td>Approve new sidebar structure before development begins</td></tr>
+</table>
+</div>
+
+<h2>1. Problem Statement</h2>
+<p><b>Current Recruitment sidebar:</b> 2 groups / 11 items — but <b>10 of 11 items are dead links</b> (no pages built). Only Job Postings works.</p>
+<p>If all missing BRD screens are added as flat sidebar items, the module grows to <b>41 items</b> — unusable for recruiters.</p>
+<p><b>BRD §16.3 solution:</b> Tab-based pages — sidebar shows 4 groups; each opens a page with tabs inside.</p>
+
+<h2>2. CURRENT STRUCTURE (As-Is)</h2>
+
+<h3>2.1 Recruitment Sidebar — 2 Groups / 11 Items</h3>
+<div class="tree">RECRUITMENT
+│
+├── HIRING
+│   ├── Job Postings              <span class="ok">✅ Working (only working item)</span>
+│   ├── Offer Letter              <span class="bad">🔴 Empty page</span>
+│   ├── Appointment Order         <span class="bad">🔴 Empty page</span>
+│   └── Internship                <span class="bad">🔴 Empty page</span>
+│
+└── EMPLOYEE JOINING
+    ├── Joining Checklist         <span class="bad">🔴 Empty + BRD HOLD</span>
+    ├── Joining Form              <span class="bad">🔴 Empty page</span>
+    ├── Gratuity Form             <span class="bad">🔴 Empty page</span>
+    ├── PF Form                   <span class="bad">🔴 Empty page</span>
+    ├── Insurance Form            <span class="bad">🔴 Empty + BRD HOLD</span>
+    ├── ESI Form                  <span class="bad">🔴 Empty page</span>
+    └── Other Documents           <span class="bad">🔴 Empty + BRD HOLD</span></div>
+<p><b>Status: 1 of 11 items functional.</b></p>
+
+<h3>2.2 Masters — HR Masters Group</h3>
+<div class="tree">MASTERS &gt; HR MASTERS
+├── Interview Criteria            <span class="bad">🔴 Dead link (no page, no API)</span>
+└── JD Master                     <span class="ok">✅ Working</span></div>
+
+<h3>2.3 Approval Center — Recruitment Group</h3>
+<div class="tree">APPROVAL CENTER &gt; RECRUITMENT
+├── Hiring Approval               <span class="bad">🔴 Empty page</span>
+└── Employee Joining Approval     <span class="bad">🔴 Empty page</span></div>
+
+<div class="pagebreak"></div>
+<h2>3. PROPOSED STRUCTURE (To-Be)</h2>
+
+<h3>3.1 Recruitment Sidebar — 4 Items Only</h3>
+<div class="tree">RECRUITMENT
+│
+├── <b>Dashboard</b>                Single page
+│       └── Cards: Total | New | Call Pending | Interview Scheduled |
+│           Evaluation Pending | Doc Verification | Selected |
+│           Offer Released | Joined | Rejected
+│       └── Metrics: Time-to-Hire | Offer Acceptance % | Pipeline Aging | SLA Breach
+│
+├── <b>Applicants</b>               Page with 4 tabs
+│       ├── Tab 1: Applicant Pipeline    — grid + all filters
+│       │                                 (dept, designation, stage, level,
+│       │                                  interviewer, status, search)
+│       ├── Tab 2: New Applicant         — registration + duplicate checks
+│       │                                 (Aadhaar / Mobile / Email)
+│       ├── Tab 3: Candidate 360°        — single-candidate view, 9 sub-tabs
+│       │                                 (Overview | Personal | Application |
+│       │                                  Call | Interview | Evaluation |
+│       │                                  Documents | Offer | Joining | Activity)
+│       └── Tab 4: Call Interview        — screening call + outcome dropdown
+│                                         ("Proceed" auto-sends interview email)
+│
+├── <b>Interviews</b>               Page with 4 tabs
+│       ├── Tab 1: Scheduling            — level-based (L1→L2→L3→L4),
+│       │                                 interviewer filtered by Panel master
+│       ├── Tab 2: My Interviews         — interviewer's personal queue
+│       ├── Tab 3: Evaluation            — scorecard per level, auto weighted
+│       │                                 score, Pass/Fail/Hold decision
+│       └── Tab 4: Document Verification — required docs, upload/verify/reject
+│
+└── <b>Offer &amp; Joining</b>          Page with 4 tabs
+        ├── Tab 1: Final Selection       — salary proposal → approval routing
+        ├── Tab 2: Offer Letter          — template → PDF → email → status
+        │                                 (Draft→Sent→Accepted/Rejected/Expired)
+        ├── Tab 3: Appointment Order     — PDF generate/send/track
+        │                                 (Declined → revert to Offer Pending)
+        └── Tab 4: Joining               — SUB-TABS:
+                ├── Joining Checklist       <span class="hold">🔴 BRD HOLD</span>
+                ├── Application Form        (19 fields + PDF)
+                ├── Joining Report          (12 fields + PDF)
+                ├── Gratuity Form (Form F)  (nominees + PDF)
+                ├── PF Form (Form 2)        (UAN + nominees + PDF)
+                ├── ESI Form (Form 1)       (applicability check + PDF)
+                ├── Insurance Form          <span class="hold">🔴 BRD HOLD</span>
+                ├── Other Documents         <span class="hold">🔴 BRD HOLD</span>
+                ├── Joining Approval        (approval gate)
+                └── Push to Employee        (convert → Employee + auto ID)</div>
+
+<div class="pagebreak"></div>
+<h3>3.2 Masters — HR Masters Group (2 → 21 items, 4 sub-groups)</h3>
+<div class="tree">MASTERS &gt; HR MASTERS
+│
+├── INTERVIEW CONFIG
+│   ├── Interview Process         <span class="new">🆕 P0 — CENTRAL CONFIG</span> (6-step stepper:
+│   │                               Basic → Levels → Criteria → Panel → Docs → Approval)
+│   ├── Interview Levels          <span class="new">🆕 P0</span> (L1/L2/L3/L4, sequence, pass score)
+│   ├── Interview Types           <span class="new">🆕 P0</span> (HR/Technical/Managerial, mode, duration)
+│   ├── Interview Criteria        <span class="chg">🔧 P0</span> (dead link → real page)
+│   ├── Score &amp; Weightage         <span class="new">🆕 P0</span> (criteria weightage + passing score)
+│   └── Interview Panel           <span class="new">🆕 P0</span> (eligible interviewers per
+│   │                               dept + designation + level)
+│
+├── RECRUITMENT SETUP
+│   ├── Recruitment Status        <span class="new">🆕 P0</span> (20 lifecycle states)
+│   ├── Document Types            <span class="new">🆕 P0</span> (doc list for verification)
+│   ├── Sourcing Channels         <span class="new">🆕 P1</span> (Naukri/LinkedIn/Referral/Agency)
+│   ├── BGV Steps                 <span class="new">🆕 P1</span> (background verification steps)
+│   ├── SLA Config                <span class="new">🆕 P1</span> (days-per-stage + escalation)
+│   ├── Checklist Master          <span class="new">🆕 P1</span> (joining checklist items)
+│   ├── Designation Levels        <span class="new">🆕 P1</span> (Junior/Middle/Senior)
+│   └── Employee ID Config        <span class="new">🆕 P0</span> (rule: KUN-YYYY-NNNN)
+│
+├── TEMPLATES
+│   ├── Email Templates           <span class="new">🆕 P0</span> (17 templates — invite/reject/offer)
+│   ├── Offer Letter Templates    <span class="new">🆕 P0</span> (per employment type)
+│   └── Appointment Templates     <span class="new">🆕 P1</span>
+│
+├── APPROVAL CONFIG
+│   ├── Recruitment Approval Matrix <span class="new">🆕 P0</span> (CTC-based routing)
+│   └── Joining Approval Matrix     <span class="new">🆕 P0</span> (level-based approvers)
+│
+└── JD Master                     <span class="ok">✅ Existing — unchanged</span></div>
+
+<h3>3.3 Approval Center — Recruitment Group (2 → 4 items)</h3>
+<div class="tree">APPROVAL CENTER &gt; RECRUITMENT
+├── Hiring Approval               <span class="chg">🔧 Existing → wire to requisition</span>
+├── Final Selection Approval      <span class="new">🆕 NEW</span> (per §5.14)
+├── Offer Approval                <span class="new">🆕 NEW</span> (per §5.15)
+└── Employee Joining Approval     <span class="chg">🔧 Existing → wire to joining gate</span> (§8)</div>
+
+<div class="pagebreak"></div>
+<h2>4. SUMMARY OF CHANGES</h2>
+<table>
+<tr><th>#</th><th>Change</th><th>Old</th><th>New</th><th>Reason</th></tr>
+<tr><td>1</td><td>Recruitment sidebar</td><td>2 groups / 11 items</td><td><b>4 items</b></td><td>41 flat items unusable → tabs (§16.3)</td></tr>
+<tr><td>2</td><td>Joining forms</td><td>7 separate items</td><td><b>Sub-tabs in Joining</b></td><td>Same flow, one screen</td></tr>
+<tr><td>3</td><td>HR Masters</td><td>2 items</td><td><b>21 items / 4 sub-groups</b></td><td>BRD needs 19 new masters</td></tr>
+<tr><td>4</td><td>Approval Center</td><td>2 items</td><td><b>4 items</b></td><td>+Final Selection +Offer approvals</td></tr>
+<tr><td>5</td><td>Candidate handling</td><td>10 separate popups</td><td><b>Candidate 360° page</b></td><td>All actions in one place (§5.18)</td></tr>
+<tr><td>6</td><td>Interview config</td><td>None / hardcoded</td><td><b>Interview Process Master</b></td><td>Config, not code (§13)</td></tr>
+<tr><td>7</td><td>Letter numbering</td><td>None</td><td><b>Auto-sequence</b> (HRM/OFL/YYYY)</td><td>§5.15, §6.1</td></tr>
+<tr><td>8</td><td>Emails</td><td>None</td><td><b>Template master + auto-triggers</b></td><td>14 events (§5.21)</td></tr>
+<tr><td>9</td><td>Employee creation</td><td>None</td><td><b>Push to Employee + auto ID</b></td><td>§5.17, §9</td></tr>
+</table>
+
+<h2>5. ITEMS ON HOLD (BRD owner input needed — not blocking this approval)</h2>
+<table>
+<tr><th>#</th><th>Item</th><th>Status</th></tr>
+<tr><td>1</td><td>Insurance Form</td><td><span class="hold">🔴 Template required</span></td></tr>
+<tr><td>2</td><td>Joining Checklist</td><td><span class="hold">🔴 Template/spec required</span></td></tr>
+<tr><td>3</td><td>Other Joining Documents</td><td><span class="hold">🔴 Confirm doc types</span></td></tr>
+<tr><td>4</td><td>Employee ID numbering format</td><td>⚠️ Confirm: KUN-YYYY-NNNN?</td></tr>
+<tr><td>5</td><td>Joining Approval matrix</td><td>⚠️ Confirm approver rules</td></tr>
+<tr><td>6</td><td>Candidate Self-Service Portal</td><td>⚠️ In-scope or future phase?</td></tr>
+<tr><td>7</td><td>BGV agency integration</td><td>⚠️ Internal-only or agency?</td></tr>
+<tr><td>8</td><td>Internship stipend logic</td><td>⚠️ Can interns be paid stipend?</td></tr>
+</table>
+
+<h2>6. WHAT DOES NOT CHANGE</h2>
+<ul>
+<li>✅ Masters &gt; Organization (Departments, Sites, Units, Reporting Structure) — reused as-is</li>
+<li>✅ Masters &gt; Employee (Designations, Levels, Employee Types) — reused as-is</li>
+<li>✅ Masters &gt; Payroll &amp; Statutory (Gratuity, PF, ESI, Health Insurance) — reused read-only</li>
+<li>✅ Masters &gt; JD Master — unchanged</li>
+<li>✅ All other modules — untouched</li>
+</ul>
+
+<h2>7. DECISIONS NEEDED FROM TL</h2>
+<table>
+<tr><th>#</th><th>Question</th><th>Options</th></tr>
+<tr><td>1</td><td>Job Postings &amp; Internship placement</td><td>(a) Standalone sidebar items (5-item sidebar)<br>(b) Inside Offer &amp; Joining tabs (strict 4-item)</td></tr>
+<tr><td>2</td><td>HR Masters layout</td><td>(a) 4 sub-groups as shown<br>(b) Flat list of 21</td></tr>
+<tr><td>3</td><td>Old dead routes (/recruitment/offer-letter etc.)</td><td>(a) Remove<br>(b) Redirect to new tab URLs</td></tr>
+<tr><td>4</td><td>This document approves</td><td>Sidebar structure + masters grouping</td></tr>
+</table>
+
+<h2>8. SIGN-OFF</h2>
+<table class="signoff">
+<tr><th>Role</th><th>Name</th><th>Decision</th><th>Date</th></tr>
+<tr><td>Team Lead</td><td></td><td>☐ Approved &nbsp; ☐ With changes &nbsp; ☐ Rejected</td><td></td></tr>
+<tr><td>Developer</td><td></td><td></td><td></td></tr>
+<tr><td>HR (BRD Owner)</td><td></td><td></td><td></td></tr>
+</table>
+
+<p style="margin-top:14px"><b>Comments:</b></p>
+<div style="border-bottom:1px solid #999; height:24px; margin-top:24px"></div>
+<div style="border-bottom:1px solid #999; height:24px; margin-top:24px"></div>
+<div style="border-bottom:1px solid #999; height:24px; margin-top:24px"></div>
+
+<div class="footer">Suki HRM — Recruitment Module Restructure Proposal — 2026-09-13</div>
+
+</body>
+</html>

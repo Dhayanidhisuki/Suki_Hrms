@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface Loan {
   id: number;
@@ -37,9 +37,9 @@ const columns: Column<Loan>[] = [
 ];
 
 export default function LoansPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [disburseId, setDisburseId] = useState<number | null>(null);
   const [disburseRef, setDisburseRef] = useState('');
 
@@ -57,18 +57,18 @@ export default function LoansPage() {
       })) as Loan[];
       setRecords(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleApprove = async (id: number) => {
     const res = await fetch(`/api/payroll/loans/${id}/approve`, { method: 'POST' });
     if (res.ok) fetchData();
-    else alert('Failed to approve');
+    else toast.error('Failed to approve');
   };
 
   const handleReject = async (id: number) => {
@@ -80,7 +80,7 @@ export default function LoansPage() {
       body: JSON.stringify({ rejectionReason: reason }),
     });
     if (res.ok) fetchData();
-    else alert('Failed to reject');
+    else toast.error('Failed to reject');
   };
 
   const handleDisburse = async () => {
@@ -95,7 +95,7 @@ export default function LoansPage() {
       setDisburseRef('');
       fetchData();
     } else {
-      alert('Failed to disburse');
+      toast.error('Failed to disburse');
     }
   };
 
@@ -107,8 +107,6 @@ export default function LoansPage() {
           Manage employee loans — approve, disburse, and track repayments.
         </p>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

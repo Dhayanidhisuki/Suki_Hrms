@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
+import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { notifyVisitorEvent } from '@/lib/visitor-notifications';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const permErr = await checkVisitorPermission(request, 'reject');
-  if (permErr) return permErr;
 
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
@@ -19,6 +18,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     where: { id: passId, companyId: scope.companyId, deletedAt: null },
   });
   if (!pass) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Mirror the approve route: the host may decline a visit to themselves
+  // without the HR-level visitor.gate.reject grant.
+  const ownEmployeeId = await resolveOwnEmployeeId(Number(request.headers.get('x-user-id')));
+  const isHost = ownEmployeeId != null && ownEmployeeId === pass.personToMeetId;
+  if (!isHost) {
+    const permErr = await checkVisitorPermission(request, 'reject');
+    if (permErr) return permErr;
+  }
   if (pass.status !== 'PENDING_APPROVAL') {
     return NextResponse.json({ error: 'Only PENDING_APPROVAL requests can be rejected' }, { status: 400 });
   }

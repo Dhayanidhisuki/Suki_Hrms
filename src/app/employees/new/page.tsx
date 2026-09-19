@@ -19,7 +19,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Field, Stepper, type FieldDef, type StepDef } from '@/components/ui';
+import { Field, Stepper, useToast, type FieldDef, type StepDef } from '@/components/ui';
 import {
   buildBasicFields,
   fetchAllMaster,
@@ -64,11 +64,11 @@ const WIZARD_STEPS: { key: string; label: string; fieldNames: string[] }[] = [
 
 export default function NewEmployeePage() {
   const router = useRouter();
+  const toast = useToast();
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({
     status: 'active',
   });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
 
   const [deviceUserId, setDeviceUserId] = useState('');
@@ -205,15 +205,13 @@ export default function NewEmployeePage() {
   const goNext = () => {
     const missing = missingRequired(currentFields);
     if (missing.length > 0) {
-      setError(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
+      toast.warning(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
       return;
     }
-    setError(null);
     setStepIndex((i) => Math.min(i + 1, WIZARD_STEPS.length - 1));
   };
 
   const goBack = () => {
-    setError(null);
     setStepIndex((i) => Math.max(i - 1, 0));
   };
 
@@ -222,12 +220,11 @@ export default function NewEmployeePage() {
 
     const missing = missingRequired(currentFields);
     if (missing.length > 0) {
-      setError(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
+      toast.warning(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
       return;
     }
 
     setSubmitting(true);
-    setError(null);
 
     try {
       const payload = { ...values, benefitRateIds: selectedBenefitIds };
@@ -243,7 +240,7 @@ export default function NewEmployeePage() {
       const created = await res.json();
       router.push(`/employees/${created.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create employee');
+      toast.error(err instanceof Error ? err.message : 'Failed to create employee');
     } finally {
       setSubmitting(false);
     }
@@ -305,12 +302,6 @@ export default function NewEmployeePage() {
       <div className="card px-5 py-4">
         <Stepper steps={steps} activeKey={currentStep.key} completedKeys={WIZARD_STEPS.slice(0, stepIndex).map((s) => s.key)} />
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       <div className="card p-5 space-y-4">
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>

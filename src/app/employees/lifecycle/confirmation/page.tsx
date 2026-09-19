@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 import ConfirmationActionDialog, { type ConfirmationTarget } from '@/components/employees/ConfirmationActionDialog';
 import { formatDateNumeric, formatMonthYear } from '@/lib/format-date';
 
@@ -179,10 +179,9 @@ function ActionButton({ label, color, onClick }: { label: string; color: string;
 }
 
 export default function ConfirmationPendingPage() {
+  const toast = useToast();
   const [items, setItems] = useState<PendingConfirmation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<{ text: string; letterHref?: string } | null>(null);
 
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
@@ -198,18 +197,17 @@ export default function ConfirmationPendingPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/employees/confirmation-pending');
       if (!res.ok) throw new Error('Failed to fetch pending confirmations');
       const json = await res.json();
       setItems(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -284,10 +282,7 @@ export default function ConfirmationPendingPage() {
       const err = await res.json();
       throw new Error(err.error ?? 'Approve failed');
     }
-    setSuccessMsg({
-      text: `${approveTarget.firstName} ${approveTarget.lastName} confirmed.`,
-      letterHref: `/api/employees/${approveTarget.id}/confirmation/letter`,
-    });
+    toast.success(`${approveTarget.firstName} ${approveTarget.lastName} confirmed.`);
     fetchData();
   };
 
@@ -302,7 +297,7 @@ export default function ConfirmationPendingPage() {
       const err = await res.json();
       throw new Error(err.error ?? 'Extend failed');
     }
-    setSuccessMsg({ text: `Probation extended for ${extendTarget.firstName} ${extendTarget.lastName}.` });
+    toast.success(`Probation extended for ${extendTarget.firstName} ${extendTarget.lastName}.`);
     fetchData();
   };
 
@@ -319,7 +314,7 @@ export default function ConfirmationPendingPage() {
       const err = await res.json();
       throw new Error(err.error ?? 'Reject failed');
     }
-    setSuccessMsg({ text: `${rejectTarget.firstName} ${rejectTarget.lastName} marked resigned.` });
+    toast.success(`${rejectTarget.firstName} ${rejectTarget.lastName} marked resigned.`);
     fetchData();
   };
 
@@ -399,22 +394,6 @@ export default function ConfirmationPendingPage() {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-      {successMsg && (
-        <div className="rounded-lg px-3 py-2 text-sm flex items-center justify-between" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
-          <span>{successMsg.text}</span>
-          {successMsg.letterHref && (
-            <a href={successMsg.letterHref} className="font-medium hover:underline" style={{ color: 'var(--success)' }}>
-              Download Confirmation Letter
-            </a>
-          )}
-        </div>
-      )}
 
       <DataTable
         variant="card"

@@ -66,6 +66,24 @@ export const leaveApplicationSchema = z.object({
   reason: z.string().max(500).optional().nullable(),
 });
 
+// Self-service variant — same shape minus employeeId, which is always
+// resolved from the caller's own session, never taken from the request body.
+export const myLeaveApplicationSchema = z
+  .object({
+    leaveMasterId: z.coerce.number().int().positive(),
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    numberOfDays: z.coerce.number().positive(),
+    isHalfDay: z.coerce.boolean().default(false),
+    reason: z.string().max(500).optional().nullable(),
+  })
+  // A reversed range previously only failed indirectly, via numberOfDays
+  // computing to 0 and tripping .positive() — which reported the wrong field.
+  .refine((v) => v.toDate >= v.fromDate, {
+    message: 'To date must be on or after from date',
+    path: ['toDate'],
+  });
+
 export const leaveRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
@@ -79,6 +97,18 @@ export const mispunchRequestSchema = z
   })
   .refine((v) => v.requestedInTime || v.requestedOutTime, {
     message: 'At least one of requestedInTime or requestedOutTime is required',
+  })
+  // Both are full wall-clock datetimes, so a night shift ending the next
+  // morning passes — it carries the later date. What this rejects is an out
+  // that lands before the in on the same day, which the form could otherwise
+  // submit happily (e.g. in 9:37 AM, out 6:47 AM).
+  .refine((v) => !(v.requestedInTime && v.requestedOutTime) || v.requestedOutTime > v.requestedInTime, {
+    message: 'Out time must be after in time',
+    path: ['requestedOutTime'],
+  })
+  .refine((v) => v.date.getTime() <= Date.now(), {
+    message: 'Cannot request a correction for a future date',
+    path: ['date'],
   });
 
 export const mispunchRejectSchema = z.object({
@@ -93,6 +123,26 @@ export const permissionRequestSchema = z
     reason: z.string().max(500).optional().nullable(),
   })
   .refine((v) => v.toTime > v.fromTime, { message: 'toTime must be after fromTime', path: ['toTime'] });
+
+export const onDutyRequestSchema = z
+  .object({
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    location: z.string().min(1).max(200),
+    purpose: z.string().min(1).max(500),
+    customerProject: z.string().max(200).optional().nullable(),
+    remarks: z.string().max(500).optional().nullable(),
+  })
+  .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });
+
+export const wfhRequestSchema = z
+  .object({
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    reason: z.string().min(1).max(500),
+    remarks: z.string().max(500).optional().nullable(),
+  })
+  .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });
 
 export const permissionRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),

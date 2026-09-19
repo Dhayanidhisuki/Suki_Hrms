@@ -110,6 +110,7 @@ export const jobProfileSchema = z.object({
   officialEmail: z.string().email().max(100).optional().nullable(),
   userId: z.number().int().positive().optional().nullable(), // linked login account
   petrolAllowance: z.boolean().default(false),
+  pfApplicable: z.boolean().default(true),
   esiApplicable: z.boolean().default(false),
   professionalTaxApplicable: z.boolean().default(false),
   bonusApplicable: z.boolean().default(false),

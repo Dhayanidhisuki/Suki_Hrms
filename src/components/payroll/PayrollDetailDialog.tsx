@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useToast } from '@/components/ui';
 
 interface SalaryComponent {
   id: number;
@@ -82,14 +83,13 @@ function fmt(n: string | number) {
 }
 
 export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollDetailDialogProps) {
+  const toast = useToast();
   const [data, setData] = useState<PayrollDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
     Promise.all([
       fetch(`/api/payroll/runs/${runId}/lines/${lineId}`),
       fetch(`/api/workforce/attendance/monthly?year=2026&month=7`),
@@ -107,30 +107,37 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load payroll details');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [runId, lineId]);
+  }, [runId, lineId, toast]);
+
+  // Rows always print ascending by code (falling back to label for the
+  // fields below that aren't sourced from a SalaryComponent — Overtime, LOM,
+  // TDS… — and so have none). A fixed order here, unlike the Salary
+  // Components admin table's own toggleable code sort.
+  const byCodeAsc = (a: { label: string; code?: string }, b: { label: string; code?: string }) =>
+    (a.code ?? a.label).localeCompare(b.code ?? b.label);
 
   const earnings = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'earning')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
     if (Number(data?.line.otAmount ?? 0) > 0) list.push({ label: 'Overtime', amount: Number(data?.line.otAmount) });
     if (Number(data?.line.attendanceBonus ?? 0) > 0) list.push({ label: 'Attendance Bonus', amount: Number(data?.line.attendanceBonus) });
     if (Number(data?.line.petrolAllowance ?? 0) > 0) list.push({ label: 'Petrol Allowance', amount: Number(data?.line.petrolAllowance) });
     if (Number(data?.line.doubleMachineIncentive ?? 0) > 0) list.push({ label: 'Double Machine Incentive', amount: Number(data?.line.doubleMachineIncentive) });
     if (Number(data?.line.shiftIncentive ?? 0) > 0) list.push({ label: 'Shift Incentive', amount: Number(data?.line.shiftIncentive) });
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   const deductions = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'deduction')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
 
     const has = (code: string) => data?.line.components.some((c) => c.salaryComponent.code.toUpperCase() === code);
 
@@ -173,7 +180,7 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
       list.push({ label: 'Other Auto Deductions', amount: otherAuto });
     }
 
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   if (loading) {
@@ -186,11 +193,11 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
         <div className="w-full max-w-5xl rounded-xl p-6" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
-          <p className="text-sm" style={{ color: '#dc2626' }}>{error ?? 'No data'}</p>
+          <p className="text-sm" style={{ color: '#dc2626' }}>Failed to load payroll details</p>
           <button onClick={onClose} className="mt-4 rounded-lg border px-4 py-2 text-sm font-medium">Close</button>
         </div>
       </div>

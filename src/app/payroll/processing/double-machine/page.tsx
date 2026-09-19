@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import * as XLSX from 'xlsx';
+import { useToast } from '@/components/ui';
 import {
   buildDoubleMachineTemplateWorkbook,
   monthName,
@@ -90,6 +91,7 @@ const EMPTY_AMOUNTS: Record<AmountKey, string> = {
 };
 
 export default function DoubleMachineIncentivePage() {
+  const toast = useToast();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -103,8 +105,6 @@ export default function DoubleMachineIncentivePage() {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   // Add / Edit modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -115,14 +115,12 @@ export default function DoubleMachineIncentivePage() {
   const [modalRemarks, setModalRemarks] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [modalSaving, setModalSaving] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
 
   const [importOpen, setImportOpen] = useState(false);
   const [importRows, setImportRows] = useState<(DoubleMachineImportRow & { status: 'ready' | 'failed' })[]>([]);
   const [chosenFile, setChosenFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const yearOptions = useMemo(() => {
@@ -132,7 +130,6 @@ export default function DoubleMachineIncentivePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const qs = new URLSearchParams({
         year: String(year),
@@ -148,12 +145,12 @@ export default function DoubleMachineIncentivePage() {
       setDepartments(json.data?.departments ?? []);
       setSelectedIds(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [year, month, departmentId, statusFilter, search]);
+  }, [year, month, departmentId, statusFilter, search, toast]);
 
   useEffect(() => {
     loadData();
@@ -204,16 +201,14 @@ export default function DoubleMachineIncentivePage() {
   const bulkStatus = async (status: 'hold' | 'complete') => {
     if (selectedRecords.length === 0) return;
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       for (const row of selectedRecords) {
         await postRow(row, status);
       }
-      setSuccess(`${selectedRecords.length} record(s) marked ${status === 'hold' ? 'On Hold' : 'Complete'}.`);
+      toast.success(`${selectedRecords.length} record(s) marked ${status === 'hold' ? 'On Hold' : 'Complete'}.`);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      toast.error(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setBusy(false);
     }
@@ -222,8 +217,6 @@ export default function DoubleMachineIncentivePage() {
   const deleteRecord = async (row: IncentiveRow) => {
     if (!row.recordId) return;
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch('/api/payroll/double-machine', {
         method: 'DELETE',
@@ -232,10 +225,10 @@ export default function DoubleMachineIncentivePage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Delete failed');
-      setSuccess('Record deleted.');
+      toast.success('Record deleted.');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setBusy(false);
     }
@@ -248,7 +241,6 @@ export default function DoubleMachineIncentivePage() {
     setModalMonth(month);
     setModalAmounts({ ...EMPTY_AMOUNTS });
     setModalRemarks('');
-    setModalError(null);
     setModalOpen(true);
   };
 
@@ -265,7 +257,6 @@ export default function DoubleMachineIncentivePage() {
       employeeR: String(row.employeeR || ''),
     });
     setModalRemarks(row.remarks ?? '');
-    setModalError(null);
     setModalOpen(true);
   };
 
@@ -273,11 +264,10 @@ export default function DoubleMachineIncentivePage() {
 
   const saveModal = async () => {
     if (modalEmployeeId === '') {
-      setModalError('Select an employee.');
+      toast.warning('Select an employee.');
       return;
     }
     setModalSaving(true);
-    setModalError(null);
     try {
       const amounts = Object.fromEntries(
         AMOUNT_KEYS.map((k) => [k, modalAmounts[k] === '' ? 0 : Number(modalAmounts[k])])
@@ -297,11 +287,11 @@ export default function DoubleMachineIncentivePage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
-      setSuccess(editingId ? 'Incentive updated.' : 'Incentive added.');
+      toast.success(editingId ? 'Incentive updated.' : 'Incentive added.');
       setModalOpen(false);
       await loadData();
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setModalSaving(false);
     }
@@ -345,21 +335,20 @@ export default function DoubleMachineIncentivePage() {
 
   const handleUploadParse = async () => {
     if (!chosenFile) {
-      setImportError('Choose a file first.');
+      toast.warning('Choose a file first.');
       return;
     }
     setParsing(true);
-    setImportError(null);
     try {
       const parsed = await parseDoubleMachineWorkbookRows(chosenFile, allEmployees);
       if (parsed.length === 0) {
-        setImportError('No records found.');
+        toast.warning('No records found.');
         setImportRows([]);
         return;
       }
       setImportRows(parsed.map((r) => ({ ...r, status: r.error ? 'failed' : 'ready' })));
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Failed to read file');
+      toast.error(err instanceof Error ? err.message : 'Failed to read file');
     } finally {
       setParsing(false);
     }
@@ -368,11 +357,10 @@ export default function DoubleMachineIncentivePage() {
   const confirmImport = async () => {
     const ready = importRows.filter((r) => r.status === 'ready' && r.employeeId);
     if (ready.length === 0) {
-      setImportError('No valid rows to confirm.');
+      toast.warning('No valid rows to confirm.');
       return;
     }
     setConfirming(true);
-    setImportError(null);
     try {
       const res = await fetch('/api/payroll/double-machine/bulk', {
         method: 'POST',
@@ -392,13 +380,13 @@ export default function DoubleMachineIncentivePage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Import failed');
-      setSuccess(json.message ?? 'Import complete.');
+      toast.success(json.message ?? 'Import complete.');
       setImportOpen(false);
       setImportRows([]);
       setChosenFile(null);
       await loadData();
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed');
+      toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setConfirming(false);
     }
@@ -426,17 +414,6 @@ export default function DoubleMachineIncentivePage() {
           Export Excel
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
-          {success}
-        </div>
-      )}
 
       {/* Filters */}
       <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
@@ -497,7 +474,6 @@ export default function DoubleMachineIncentivePage() {
                 setImportOpen(true);
                 setImportRows([]);
                 setChosenFile(null);
-                setImportError(null);
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium"
               style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -732,11 +708,6 @@ export default function DoubleMachineIncentivePage() {
                 </div>
               </div>
 
-              {modalError && (
-                <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-                  {modalError}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -746,7 +717,6 @@ export default function DoubleMachineIncentivePage() {
                   setModalAmounts({ ...EMPTY_AMOUNTS });
                   setModalRemarks('');
                   setModalEmployeeId('');
-                  setModalError(null);
                 }}
                 className="rounded-lg border px-4 py-1.5 text-sm font-medium"
                 style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -802,7 +772,6 @@ export default function DoubleMachineIncentivePage() {
                   const f = e.target.files?.[0] ?? null;
                   setChosenFile(f);
                   setImportRows([]);
-                  setImportError(null);
                   e.target.value = '';
                 }}
               />
@@ -829,12 +798,6 @@ export default function DoubleMachineIncentivePage() {
                 </span>
               )}
             </div>
-
-            {importError && (
-              <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-                {importError}
-              </div>
-            )}
 
             <div className="min-h-[240px] flex-1 overflow-auto p-4">
               <table className="min-w-full text-sm">

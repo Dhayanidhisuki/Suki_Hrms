@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/components/ui';
 
 interface SummaryData {
   period: { year: number; month: number };
@@ -27,26 +28,25 @@ interface SummaryData {
 }
 
 export default function RegularizationSummaryPage() {
+  const toast = useToast();
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState(new Date().getUTCFullYear());
   const [month, setMonth] = useState(new Date().getUTCMonth() + 1);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/attendance/regularization-summary?year=${year}&month=${month}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setData(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -89,8 +89,6 @@ export default function RegularizationSummaryPage() {
           </select>
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading && <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}
 

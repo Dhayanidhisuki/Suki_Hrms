@@ -10,6 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '@/components/ui';
 
 interface Permission {
   id: number;
@@ -38,15 +39,14 @@ export default function RolePermissionsModal({
   onClose,
   onSaved,
 }: RolePermissionsModalProps) {
+  const toast = useToast();
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [grantedIds, setGrantedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [permsRes, grantedRes] = await Promise.all([
         fetch('/api/admin/permissions'),
@@ -58,11 +58,11 @@ export default function RolePermissionsModal({
       setAllPermissions(perms);
       setGrantedIds(new Set(granted));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [roleId]);
+  }, [roleId, toast]);
 
   useEffect(() => {
     if (isOpen) {
@@ -105,7 +105,6 @@ export default function RolePermissionsModal({
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch(`/api/admin/roles/${roleId}/permissions`, {
         method: 'PUT',
@@ -119,7 +118,7 @@ export default function RolePermissionsModal({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
@@ -216,15 +215,6 @@ export default function RolePermissionsModal({
                 })}
               </div>
             ))
-          )}
-
-          {error && (
-            <div
-              className="rounded-lg px-3 py-2 text-sm"
-              style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-            >
-              {error}
-            </div>
           )}
 
           {/* Footer */}

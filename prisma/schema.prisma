@@ -209,6 +209,11 @@ model Company {
   pincode      String? @db.NVarChar(10)
   phone        String? @db.NVarChar(30)
   email        String? @db.NVarChar(120)
+  // Statutory payslip/Form-25B header — printed address and factory
+  // registration number (e.g. "TVR-09353"). Complements the structured
+  // addressLine* fields used on letterheads.
+  address      String? @db.NVarChar(500)
+  factoryRegNo String? @db.NVarChar(50)
 
   isActive  Boolean   @default(true)
   deletedAt DateTime?
@@ -1778,10 +1783,10 @@ model SalaryComponent {
   fnfTaxable        Boolean   @default(true)
   // Which Gross tier this earning component belongs to, for payslip
   // subtotal display: FIXED (Basic, HRA, LTA, Special, Educational…) or
-  // ADDITIONAL (Additional HRA and similar top-up components). Only
-  // meaningful when includeInGross = true; CTC-only components are paid
-  // outside Gross entirely and ignore this field.
-  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL
+  // ADDITIONAL (Additional HRA and similar top-up components).
+  // NON_PAYROLL = never touched by payroll (CTC display-only).
+  // PAYROLL_HIDDEN = deducted in payroll but hidden on Salary Details.
+  grossTier         String    @default("ADDITIONAL") @db.NVarChar(20) // FIXED | ADDITIONAL | NON_PAYROLL | PAYROLL_HIDDEN
   isActive          Boolean   @default(true)
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
@@ -4333,16 +4338,24 @@ model JobDescriptionSequence {
 }
 
 model JobPosting {
-  id              Int       @id @default(autoincrement())
-  title           String    @db.NVarChar(200)
-  departmentId    Int?
-  designationId   Int?
-  jdId            Int?
-  status          String    @default("Open") @db.NVarChar(20)
-  createdByUserId Int?
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  title              String    @db.NVarChar(200)
+  departmentId       Int?
+  designationId      Int?
+  jdId               Int?
+  vacancies          Int       @default(1)
+  employmentType     String?   @db.NVarChar(30)
+  minExperienceYears Decimal?  @db.Decimal(4, 1)
+  maxExperienceYears Decimal?  @db.Decimal(4, 1)
+  minSalary          Decimal?  @db.Decimal(18, 2)
+  maxSalary          Decimal?  @db.Decimal(18, 2)
+  closingDate        DateTime?
+  locationId         Int?
+  status             String    @default("Open") @db.NVarChar(20)
+  createdByUserId    Int?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   department     Department?     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   designation    Designation?    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -5444,4 +5457,21 @@ model RecruitmentApplicationSequence {
 
   @@id([companyId, year])
   @@map("RecruitmentApplicationSequence")
+}
+
+model SkillLevel {
+  id          Int       @id
+  companyId   Int
+  levelNumber Int
+  name        String    @db.NVarChar(50)
+  description String?   @db.NVarChar(500)
+  color       String?   @db.NVarChar(7)
+  isActive    Boolean
+  deletedAt   DateTime? @db.DateTime2
+  createdAt   DateTime  @default(now()) @db.DateTime2
+  updatedAt   DateTime  @db.DateTime2
+
+  @@index([companyId])
+  @@unique([companyId, levelNumber])
+  @@map("SkillLevel")
 }

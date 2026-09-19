@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface EmployeeOption {
   id: number;
@@ -39,11 +39,11 @@ function daysBetweenInclusive(from: string, to: string) {
 }
 
 export default function LeaveEntryPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<LeaveApplicationRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [leaveMasters, setLeaveMasters] = useState<LeaveMasterOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
@@ -59,18 +59,17 @@ export default function LeaveEntryPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/leave/applications');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: LeaveApplicationRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -148,12 +147,6 @@ export default function LeaveEntryPage() {
           + Apply for Leave
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No leave applications yet." />
 

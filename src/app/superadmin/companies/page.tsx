@@ -14,7 +14,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface Company {
   id: number;
@@ -94,9 +94,9 @@ const passwordFields: FieldDef[] = [
 ];
 
 export default function SuperadminCompaniesPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -107,12 +107,10 @@ export default function SuperadminCompaniesPage() {
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [passwordModalRow, setPasswordModalRow] = useState<Company | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [toggleBusyId, setToggleBusyId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/superadmin/companies?${params}`);
@@ -121,11 +119,11 @@ export default function SuperadminCompaniesPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -221,7 +219,7 @@ export default function SuperadminCompaniesPage() {
       );
     }
 
-    setSuccessMessage(`${bootstrapJson.message} (${bootstrapJson.user.email})`);
+    toast.success(`${bootstrapJson.message} (${bootstrapJson.user.email})`);
     fetchData();
   };
 
@@ -229,7 +227,7 @@ export default function SuperadminCompaniesPage() {
     const res = await fetch(`/api/superadmin/companies/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -237,7 +235,6 @@ export default function SuperadminCompaniesPage() {
 
   const handleToggleActive = async (row: Company) => {
     setToggleBusyId(row.id);
-    setError(null);
     try {
       const res = await fetch(`/api/superadmin/companies/${row.id}`, {
         method: 'PUT',
@@ -255,7 +252,7 @@ export default function SuperadminCompaniesPage() {
       }
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setToggleBusyId(null);
     }
@@ -277,7 +274,7 @@ export default function SuperadminCompaniesPage() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? 'Failed to set admin login password');
 
-    setSuccessMessage(`${json.message} (${json.user.email})`);
+    toast.success(`${json.message} (${json.user.email})`);
     fetchData();
   };
 
@@ -341,27 +338,6 @@ export default function SuperadminCompaniesPage() {
           + Add Company
         </button>
       </div>
-
-      {error && (
-        <div
-          className="rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-        >
-          {error}
-        </div>
-      )}
-
-      {successMessage && (
-        <div
-          className="flex items-center justify-between rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}
-        >
-          <span>{successMessage}</span>
-          <button onClick={() => setSuccessMessage(null)} className="text-xs font-medium hover:underline">
-            Dismiss
-          </button>
-        </div>
-      )}
 
       <DataTable
         columns={columns}

@@ -61,6 +61,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return NextResponse.json({ error: 'You are not the designated approver for this stage' }, { status: 403 });
       }
     }
+  } else {
+    // No chain configured (or the stage no longer exists) — mirror the
+    // approve route's single-stage fallback rather than skipping the check
+    // entirely, which previously let any signed-in user reject any request.
+    const fallbackApprover = await resolveOwnEmployeeId(userId);
+    const isManager = fallbackApprover != null && req.employee.reportingManagerId === fallbackApprover;
+    if (!isManager) {
+      const permErr = await checkSpecificPermission(request, 'workforce.attendance.edit');
+      if (permErr) return permErr;
+    }
   }
 
   const updated = await prisma.shiftChangeRequest.update({

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SalaryComponentOption {
@@ -36,16 +36,34 @@ interface ApiResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-const fields: FieldDef[] = [
-  { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. PF-2026' },
-  { name: 'employeeContributionRate', label: 'Employee Rate %', type: 'number', required: true, step: '0.01', min: 0, max: 100 },
-  { name: 'employerContributionRate', label: 'Employer Rate %', type: 'number', required: true, step: '0.01', min: 0, max: 100 },
-  { name: 'pensionContributionRate', label: 'Pension Rate %', type: 'number', step: '0.01', min: 0, max: 100, helpText: 'EPS share, e.g. 8.33' },
-  { name: 'wageCeilingMonthly', label: 'Wage Ceiling (Monthly)', type: 'number', required: true, step: '0.01', min: 0 },
-  { name: 'effectiveFrom', label: 'Effective From', type: 'date', required: true },
-  { name: 'effectiveTo', label: 'Effective To', type: 'date', helpText: 'Leave blank for currently active' },
-  { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
-];
+// Code is auto-generated (PF-<n>), not typed — mirrors Salary Components'
+// auto-code convention.
+function generatePfRateCode(existing: PfRateRecord[]): string {
+  const nums = existing
+    .map((r) => /^PF-(\d+)$/.exec(r.code))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => Number(m[1]));
+  return `PF-${(nums.length ? Math.max(...nums) : 0) + 1}`;
+}
+
+function buildFields(existing: PfRateRecord[], isEditing: boolean): FieldDef[] {
+  return [
+    isEditing
+      ? { name: 'code', label: 'Code', type: 'text', required: true }
+      : { name: 'code', label: 'Code', type: 'text', required: true, hidden: true, compute: () => generatePfRateCode(existing) },
+    { name: 'employeeContributionRate', label: 'Employee Rate %', type: 'number', required: true, step: '0.01', min: 0, max: 100 },
+    { name: 'employerContributionRate', label: 'Employer Rate %', type: 'number', required: true, step: '0.01', min: 0, max: 100 },
+    { name: 'pensionContributionRate', label: 'Pension Rate %', type: 'number', step: '0.01', min: 0, max: 100, helpText: 'EPS share, e.g. 8.33' },
+    // PF no longer applies a wage ceiling (calculated as Actual Gross × the
+    // rate above, on whichever Salary Components are attached below) — the
+    // DB column stays NOT NULL for now, so a harmless large default is sent
+    // silently rather than asking for a value nothing reads anymore.
+    { name: 'wageCeilingMonthly', label: 'Wage Ceiling (Monthly)', type: 'number', required: true, step: '0.01', min: 0, defaultValue: 999999999, hidden: true },
+    { name: 'effectiveFrom', label: 'Effective From', type: 'date', required: true },
+    { name: 'effectiveTo', label: 'Effective To', type: 'date', helpText: 'Leave blank for currently active' },
+    { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
+  ];
+}
 
 const columns: Column<PfRateRecord>[] = [
   { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
@@ -56,9 +74,9 @@ const columns: Column<PfRateRecord>[] = [
 ];
 
 export default function PfRatesPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<PfRateRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -69,27 +87,27 @@ export default function PfRatesPage() {
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  // Components state
+  // Components state — PF's wage base is just "sum of these components'
+  // full amounts", so picking a component is the only input; calculationType/
+  // value are still sent to satisfy the DB's NOT NULL columns, fixed at
+  // 'percentage'/100 (i.e. 100% of the component's amount) since nothing
+  // reads them as a per-component weight anymore.
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponentOption[]>([]);
   const [rateComponents, setRateComponents] = useState<RateComponent[]>([]);
   const [componentModalOpen, setComponentModalOpen] = useState(false);
-  const [newComponent, setNewComponent] = useState<{ salaryComponentId: string; calculationType: 'percentage' | 'inr'; value: string }>({
-    salaryComponentId: '',
-    calculationType: 'percentage',
-    value: '',
-  });
+  const [newComponentId, setNewComponentId] = useState('');
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/pf-rates?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
       setRecords(json.data); setPagination(json.pagination);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unknown error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   const fetchSalaryComponents = useCallback(async () => {
     try {
@@ -115,7 +133,7 @@ export default function PfRatesPage() {
   const handleEdit = (row: PfRateRecord) => {
     setEditingId(row.id);
     const vals: Record<string, string | number | boolean | undefined> = {};
-    for (const f of fields) {
+    for (const f of buildFields(records, true)) {
       let v = row[f.name as keyof PfRateRecord] as string | number | boolean | undefined;
       if (v === undefined || v === null) v = f.defaultValue ?? '';
       if (f.type === 'date' && typeof v === 'string' && v) v = v.slice(0, 10);
@@ -128,7 +146,7 @@ export default function PfRatesPage() {
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
     const payload: Record<string, unknown> = { ...values, components: rateComponents };
-    for (const f of fields) {
+    for (const f of buildFields(records, editingId !== null)) {
       if (!f.required && payload[f.name] === '') payload[f.name] = null;
     }
     const url = editingId ? `/api/masters/pf-rates/${editingId}` : '/api/masters/pf-rates';
@@ -140,24 +158,19 @@ export default function PfRatesPage() {
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/pf-rates/${id}`, { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json(); setError(err.error ?? 'Deactivate failed'); return; }
+    if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Deactivate failed'); return; }
     fetchData();
   };
 
   const addComponent = () => {
-    if (!newComponent.salaryComponentId || !newComponent.value) return;
-    const sc = salaryComponents.find((s) => s.id === Number(newComponent.salaryComponentId));
+    if (!newComponentId) return;
+    const sc = salaryComponents.find((s) => s.id === Number(newComponentId));
     if (!sc) return;
     setRateComponents((prev) => [
       ...prev,
-      {
-        salaryComponentId: sc.id,
-        calculationType: newComponent.calculationType,
-        value: Number(newComponent.value),
-        salaryComponent: sc,
-      },
+      { salaryComponentId: sc.id, calculationType: 'percentage', value: 100, salaryComponent: sc },
     ]);
-    setNewComponent({ salaryComponentId: '', calculationType: 'percentage', value: '' });
+    setNewComponentId('');
     setComponentModalOpen(false);
   };
 
@@ -174,7 +187,7 @@ export default function PfRatesPage() {
         row.components && row.components.length > 0
           ? row.components.map((c, i) => (
               <span key={i} className="mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}>
-                {c.salaryComponent?.code ?? '?'}: {c.calculationType === 'percentage' ? `${c.value}%` : `₹${c.value}`}
+                {c.salaryComponent?.code ?? '?'}
               </span>
             ))
           : '—',
@@ -216,8 +229,6 @@ export default function PfRatesPage() {
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
 
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
-
       <DataTable
         columns={allColumns}
         data={records}
@@ -232,7 +243,7 @@ export default function PfRatesPage() {
 
       <FormModal
         title={editingId ? 'Edit PF Rate' : 'Add PF Rate'}
-        fields={fields}
+        fields={buildFields(records, editingId !== null)}
         initialValues={initialValues}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -261,12 +272,7 @@ export default function PfRatesPage() {
                   <span style={{ color: 'var(--foreground)' }}>
                     <strong>{c.salaryComponent?.code ?? '?'}</strong> — {c.salaryComponent?.name ?? ''}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className="rounded px-1.5 py-0.5 font-medium" style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}>
-                      {c.calculationType === 'percentage' ? `${c.value}%` : `₹${c.value}`}
-                    </span>
-                    <button type="button" onClick={() => removeComponent(i)} className="text-red-600 hover:underline">Remove</button>
-                  </span>
+                  <button type="button" onClick={() => removeComponent(i)} className="text-red-600 hover:underline">Remove</button>
                 </div>
               ))}
             </div>
@@ -283,8 +289,8 @@ export default function PfRatesPage() {
               <div>
                 <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Salary Component</label>
                 <select
-                  value={newComponent.salaryComponentId}
-                  onChange={(e) => setNewComponent((p) => ({ ...p, salaryComponentId: e.target.value }))}
+                  value={newComponentId}
+                  onChange={(e) => setNewComponentId(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                   style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
                 >
@@ -293,32 +299,9 @@ export default function PfRatesPage() {
                     <option key={sc.id} value={sc.id}>{sc.code} — {sc.name}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Calculation Type</label>
-                <select
-                  value={newComponent.calculationType}
-                  onChange={(e) => setNewComponent((p) => ({ ...p, calculationType: e.target.value as 'percentage' | 'inr' }))}
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-                >
-                  <option value="percentage">Percentage (%)</option>
-                  <option value="inr">INR (₹)</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                  {newComponent.calculationType === 'percentage' ? 'Percentage Value (%)' : 'Amount (₹)'}
-                </label>
-                <input
-                  type="number"
-                  value={newComponent.value}
-                  onChange={(e) => setNewComponent((p) => ({ ...p, value: e.target.value }))}
-                  step="0.01"
-                  min="0"
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-                />
+                <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  PF Wage Base = sum of this employee&apos;s full amount for every component added here.
+                </p>
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">

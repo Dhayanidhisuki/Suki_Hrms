@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 import Link from 'next/link';
 
 interface EmployeeOption {
@@ -35,10 +35,10 @@ function todayIso() {
 }
 
 export default function ExitFormPage() {
+  const toast = useToast();
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [separations, setSeparations] = useState<SeparationRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [employeeId, setEmployeeId] = useState<number | ''>('');
   const [exitDate, setExitDate] = useState(todayIso());
@@ -54,7 +54,6 @@ export default function ExitFormPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [empRes, sepRes] = await Promise.all([
         fetch('/api/employees?limit=500'),
@@ -66,11 +65,11 @@ export default function ExitFormPage() {
       setEmployees(empJson.data ?? []);
       setSeparations(sepJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -80,9 +79,8 @@ export default function ExitFormPage() {
   const eligibleEmployees = employees.filter((e) => !separatedEmployeeIds.has(e.id));
 
   const submit = async () => {
-    setError(null);
     if (!employeeId) {
-      setError('Select an employee');
+      toast.warning('Select an employee');
       return;
     }
     setSubmitting(true);
@@ -118,7 +116,7 @@ export default function ExitFormPage() {
       setRehireEligible(true);
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record separation');
+      toast.error(err instanceof Error ? err.message : 'Failed to record separation');
     } finally {
       setSubmitting(false);
     }
@@ -186,12 +184,6 @@ export default function ExitFormPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Exit Form</h1>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <div className="rounded-xl border p-4 space-y-3" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Record a Separation</h2>

@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { DataTable, PageHeader, Alert, StatusBadge, SectionCard, Button, KPICard, KPIGrid, Stepper, type Column } from '@/components/ui';
+import { DataTable, PageHeader, StatusBadge, SectionCard, Button, KPICard, KPIGrid, Stepper, useToast, type Column } from '@/components/ui';
 import PayrollDetailDialog from '@/components/payroll/PayrollDetailDialog';
 
 interface LineComponent {
@@ -165,13 +165,12 @@ function EditableCell({
 }
 
 export default function PayrollSalaryPage() {
+  const toast = useToast();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [run, setRun] = useState<PayrollRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [dialogLine, setDialogLine] = useState<{ runId: number; lineId: number } | null>(null);
 
@@ -192,7 +191,6 @@ export default function PayrollSalaryPage() {
 
   const fetchRun = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const listRes = await fetch('/api/payroll/runs');
       if (!listRes.ok) throw new Error('Failed to fetch runs');
@@ -206,11 +204,11 @@ export default function PayrollSalaryPage() {
       if (!runRes.ok) throw new Error('Failed to fetch run');
       setRun(await runRes.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => {
     fetchRun();
@@ -218,7 +216,6 @@ export default function PayrollSalaryPage() {
 
   const runAction = async (url: string, method: string, body?: Record<string, unknown>) => {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(url, {
         method,
@@ -227,10 +224,10 @@ export default function PayrollSalaryPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Action failed');
-      setSuccessMessage(json.message ?? 'Done');
+      toast.success(json.message ?? 'Done');
       await fetchRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -255,7 +252,7 @@ export default function PayrollSalaryPage() {
         lines: prev.lines.map((l) => l.id === lineId ? { ...l, [field]: String(value) } : l),
       } : null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : 'Update failed');
     }
   };
 
@@ -263,15 +260,14 @@ export default function PayrollSalaryPage() {
   const handleAutoPayroll = async () => {
     if (!run) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${run.id}/auto-payroll`, { method: 'POST' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Auto-payroll failed');
-      setSuccessMessage(json.message ?? 'Auto-payroll complete');
+      toast.success(json.message ?? 'Auto-payroll complete');
       await fetchRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -281,7 +277,6 @@ export default function PayrollSalaryPage() {
   const handleBulkStatus = async (status: 'OK' | 'HOLD' | 'PROCESSED', reason?: string) => {
     if (!run || selectedIds.size === 0) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${run.id}/lines/bulk-status`, {
         method: 'POST',
@@ -290,11 +285,11 @@ export default function PayrollSalaryPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Bulk update failed');
-      setSuccessMessage(json.message ?? 'Updated');
+      toast.success(json.message ?? 'Updated');
       setSelectedIds(new Set());
       await fetchRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -305,15 +300,14 @@ export default function PayrollSalaryPage() {
     if (!run) return;
     if (!confirm(`Remove ${line.employee.firstName} ${line.employee.lastName} (${line.employee.employeeCode}) from this run?`)) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${run.id}/lines/${line.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Delete failed');
-      setSuccessMessage(json.message ?? 'Removed');
+      toast.success(json.message ?? 'Removed');
       await fetchRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -331,14 +325,13 @@ export default function PayrollSalaryPage() {
       setAddEmployeeId('');
       setAddOpen(true);
     } catch {
-      setError('Failed to load employees');
+      toast.error('Failed to load employees');
     }
   };
 
   const handleAddEmployee = async () => {
     if (!run || !addEmployeeId) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${run.id}/lines`, {
         method: 'POST',
@@ -347,11 +340,11 @@ export default function PayrollSalaryPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Add failed');
-      setSuccessMessage(json.message ?? 'Added');
+      toast.success(json.message ?? 'Added');
       setAddOpen(false);
       await fetchRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -582,9 +575,6 @@ export default function PayrollSalaryPage() {
           </>
         }
       />
-
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
-      {successMessage && <Alert tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Alert>}
 
       {/* Pipeline + actions */}
       {run && (

@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Field, type FieldDef } from '@/components/ui';
+import { Field, useToast, type FieldDef } from '@/components/ui';
 
 interface SingleConfigPageProps {
   title: string;
@@ -21,23 +21,21 @@ export default function SingleConfigPage({ title, description, apiPath, fields }
   const [values, setValues] = useState<Record<string, string | number | boolean | null>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(apiPath);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setValues(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [apiPath]);
+  }, [apiPath, toast]);
 
   useEffect(() => {
     fetchData();
@@ -45,8 +43,6 @@ export default function SingleConfigPage({ title, description, apiPath, fields }
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       const res = await fetch(apiPath, {
         method: 'PUT',
@@ -59,10 +55,9 @@ export default function SingleConfigPage({ title, description, apiPath, fields }
       }
       const json = await res.json();
       setValues(json);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      toast.success('Saved successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
@@ -86,17 +81,6 @@ export default function SingleConfigPage({ title, description, apiPath, fields }
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>{title}</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>{description}</p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-      {saved && (
-        <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-700">
-          Saved successfully.
-        </div>
-      )}
 
       <div className="rounded-xl border p-6" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

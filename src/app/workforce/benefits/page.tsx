@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { KPICard, KPIGrid } from '@/components/ui';
+import { KPICard, KPIGrid, useToast } from '@/components/ui';
 
 interface BenefitEmployee {
   id: number;
@@ -28,26 +28,25 @@ interface OverviewResponse {
 }
 
 export default function BenefitsOverviewPage() {
+  const toast = useToast();
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedBenefit, setSelectedBenefit] = useState<BenefitSummary | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/benefits/overview');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: OverviewResponse = await res.json();
       setData(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -76,12 +75,6 @@ export default function BenefitsOverviewPage() {
           <KPICard label="Benefit Components" value={data.totalBenefits} tone="success" />
           <KPICard label="Total Assignments" value={data.totalAssignments} tone="warning" />
         </KPIGrid>
-      )}
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
       )}
 
       <div className="flex items-center gap-2">

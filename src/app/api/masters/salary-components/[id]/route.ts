@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
-import { salaryComponentSchema } from '@/lib/validations/master';
+import { salaryComponentSchema, normalizeSalaryComponentFlags } from '@/lib/validations/master';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const permErr = await checkMasterPermission(request);
@@ -25,9 +25,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const record = await prisma.salaryComponent.findFirst({
     where: { id: parseInt(id), companyId: scope.companyId, deletedAt: null },
+    include: { grossSplitRule: { select: { percentOfGross: true } } },
   });
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(record);
+  return NextResponse.json({ ...record, percentOfGross: record.grossSplitRule?.percentOfGross ?? null, grossSplitRule: undefined });
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -42,10 +43,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const parsed = salaryComponentSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  const rawParsed = salaryComponentSchema.safeParse(await request.json().catch(() => null));
+  if (!rawParsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: rawParsed.error.flatten() }, { status: 400 });
   }
+  const parsed = { ...rawParsed, data: normalizeSalaryComponentFlags(rawParsed.data) };
 
   if (existing.isSystemDefined) {
     // code/name/type/isActive are load-bearing for Payroll/Arrear/Bonus and
@@ -74,7 +76,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         fnfTaxable: parsed.data.fnfTaxable,
       },
     });
-    return NextResponse.json(record);
+    const appliesPercentSystem = record.type === 'earning' && record.grossTier === 'FIXED';
+    if (appliesPercentSystem && parsed.data.percentOfGross !== null && parsed.data.percentOfGross !== undefined) {
+      await prisma.grossSplitRule.upsert({
+        where: { salaryComponentId: record.id },
+        create: { companyId: scope.companyId, salaryComponentId: record.id, percentOfGross: parsed.data.percentOfGross, isActive: true },
+        update: { percentOfGross: parsed.data.percentOfGross },
+      });
+    }
+    return NextResponse.json({ ...record, percentOfGross: appliesPercentSystem ? (parsed.data.percentOfGross ?? null) : null });
   }
 
   if (parsed.data.code !== existing.code) {
@@ -86,8 +96,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const record = await prisma.salaryComponent.update({ where: { id: existing.id }, data: parsed.data });
-  return NextResponse.json(record);
+  const { percentOfGross, ...componentData } = parsed.data;
+  const record = await prisma.salaryComponent.update({ where: { id: existing.id }, data: componentData });
+
+  const appliesPercent = componentData.type === 'earning' && componentData.grossTier === 'FIXED';
+  if (appliesPercent && percentOfGross !== null && percentOfGross !== undefined) {
+    await prisma.grossSplitRule.upsert({
+      where: { salaryComponentId: record.id },
+      create: { companyId: scope.companyId, salaryComponentId: record.id, percentOfGross, isActive: true },
+      update: { percentOfGross },
+    });
+  }
+
+  return NextResponse.json({ ...record, percentOfGross: appliesPercent ? (percentOfGross ?? null) : null });
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

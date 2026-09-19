@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import { fetchVisitorOptions, type VisitorOptions } from '@/lib/visitor-form-fields';
 
 const CATEGORIES: { key: keyof VisitorOptions; label: string }[] = [
@@ -11,6 +12,7 @@ const CATEGORIES: { key: keyof VisitorOptions; label: string }[] = [
 
 export default function VendorPage() {
   const router = useRouter();
+  const toast = useToast();
   const [options, setOptions] = useState<VisitorOptions>({
     visitor_type: [],
     visitor_purpose: [],
@@ -19,7 +21,6 @@ export default function VendorPage() {
     visitor_gadgets: [],
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState<string | null>(null);
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -38,22 +39,22 @@ export default function VendorPage() {
   }, [allowed, router]);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       setOptions(await fetchVisitorOptions());
     } catch {
-      setError('Failed to load options');
+      toast.error('Failed to load options');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { if (allowed) load(); }, [allowed, load]);
 
   const addOption = async (category: string) => {
     const label = newLabel[category]?.trim();
     if (!label) return;
-    setAdding(category); setError(null);
+    setAdding(category);
     try {
       const res = await fetch('/api/visitor/options', {
         method: 'POST',
@@ -67,7 +68,7 @@ export default function VendorPage() {
       setNewLabel((p) => ({ ...p, [category]: '' }));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setAdding(null);
     }
@@ -86,12 +87,6 @@ export default function VendorPage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Vendor</h1>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Manage Visitor Type and Purpose options</p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {CATEGORIES.map((cat) => (

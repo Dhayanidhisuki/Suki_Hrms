@@ -33,6 +33,29 @@ export async function openDocumentRequest(
   return { error: permErr };
 }
 
+/**
+ * Auth-only resolve (no RBAC permission check). Every self-service route
+ * in this file calls this first, then decides — once it knows who the
+ * document/upload target actually is — whether to additionally require an
+ * HR-level RBAC permission via checkSpecificPermission (imported directly
+ * from '@/lib/rbac-employee' by each route), matching the self-service
+ * convention every other ESS endpoint in this codebase uses
+ * (workforce/permission, my-payslips, my-attendance, tds-declaration): a
+ * caller acting on their own employee record never needs the grant; acting
+ * on someone else's does.
+ */
+export async function resolveDocumentContext(
+  request: NextRequest,
+): Promise<{ error: NextResponse } | { ctx: DocumentRequestContext }> {
+  const scope = getCompanyId(request);
+  if ('error' in scope) return { error: scope.error };
+  const resolved = await resolveDocumentActor(request, scope.companyId);
+  if (!resolved.actor.userId) {
+    return { error: NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 }) };
+  }
+  return { ctx: { companyId: scope.companyId, ...resolved } };
+}
+
 export function documentErrorResponse(err: unknown): NextResponse {
   if (err instanceof DocumentError) {
     return NextResponse.json({ error: err.message }, { status: err.status });

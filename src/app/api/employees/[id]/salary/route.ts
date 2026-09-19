@@ -25,12 +25,129 @@ export async function GET(
   const permErr = await checkEmployeePermission(request);
   if (permErr) return permErr;
   const { id } = await params;
-  const data = await prisma.employeeSalaryRevision.findMany({
-    where: { employeeId: parseInt(id) },
-    include: { components: { include: { salaryComponent: { select: { name: true, code: true, type: true } } } } },
-    orderBy: { effectiveFrom: 'desc' },
-  });
-  return NextResponse.json({ data });
+  const employeeId = parseInt(id);
+
+  const [data, employee] = await Promise.all([
+    prisma.employeeSalaryRevision.findMany({
+      where: { employeeId },
+      include: { components: { include: { salaryComponent: { select: { name: true, code: true, type: true, grossTier: true } } } } },
+      orderBy: { effectiveFrom: 'desc' },
+    }),
+    prisma.employee.findFirst({
+      where: { id: employeeId },
+      select: {
+        companyId: true,
+        jobInfos: { where: { effectiveTo: null }, take: 1, select: { pfApplicable: true, esiApplicable: true, pfRestrictionAmount: true, bonusApplicable: true } },
+      },
+    }),
+  ]);
+
+  // deductionContext — everything the Salary Details tab needs to preview
+  // PF/ESI/other-deduction amounts using the SAME formula payrollCalculation.ts
+  // uses for a real run: PF/ESI Rate's own top-level Employee Rate % applied
+  // to a wage base, and active DeductionRate rows (PERCENT of gross, or FLAT)
+  // matched to a SalaryComponent by code for display. This is a live preview
+  // only — the actual payroll run recomputes for real with LOP/attendance
+  // context this page doesn't have.
+  let deductionContext = null;
+  if (employee) {
+    const { companyId } = employee;
+    // PfRate/EsiRate are NOT company-scoped in this schema (no companyId
+    // column — matches how payrollCalculation.ts already queries them);
+    // only DeductionRate is.
+    const [pfRate, esiRate, deductionRates, exclusions, bonusRate] = await Promise.all([
+      prisma.pfRate.findFirst({ where: { isActive: true, effectiveTo: null } }),
+      prisma.esiRate.findFirst({ where: { isActive: true, effectiveTo: null } }),
+      prisma.deductionRate.findMany({ where: { companyId, isActive: true, effectiveTo: null } }),
+      prisma.employeeDeductionExclusion.findMany({ where: { employeeId }, select: { deductionCode: true, excluded: true, overrideAmount: true } }),
+      prisma.bonusRate.findFirst({ where: { companyId, isActive: true, effectiveTo: null } }),
+    ]);
+    const overrideByCode = new Map(exclusions.map((e) => [e.deductionCode, { excluded: e.excluded, overrideAmount: e.overrideAmount != null ? Number(e.overrideAmount) : null }]));
+    const drCodes = deductionRates.map((d) => d.code);
+    const drComponents = drCodes.length
+      ? await prisma.salaryComponent.findMany({ where: { companyId, code: { in: drCodes }, deletedAt: null }, select: { code: true, name: true } })
+      : [];
+    const drNameByCode = new Map(drComponents.map((c) => [c.code, c.name]));
+
+    // PF wage base = sum of the employee's amounts for whichever Salary
+    // Components are attached to this PF Rate (Masters > PF Rates > + Add
+    // Salary Component), not a per-component includeInPf flag and not the
+    // whole Actual Gross.
+    const pfRateComponentIds = pfRate
+      ? (await prisma.pfRateComponent.findMany({ where: { pfRateId: pfRate.id }, select: { salaryComponentId: true } })).map((c) => c.salaryComponentId)
+      : [];
+
+    // Bonus (report) — for each processed payroll month this financial year
+    // (Apr–Mar), take that month's real attendance-prorated Basic pay
+    // (PayrollLineComponent for code BASIC — already reduced for LOP by
+    // payrollCalculation.ts's lopFactor), AVERAGE those monthly figures
+    // (not summed — averaging projects correctly to a full year even when
+    // fewer than 12 months have been processed yet), × 12, × Bonus Rate's
+    // Rate %. Once all 12 months of the year are processed this equals a
+    // straight sum × rate — matches the "Earned Basic Salary Summary"
+    // report in that case, but also gives a sane mid-year estimate.
+    // acYear = the year April fell in for "today" (Jan–Mar counts as the
+    // FY that started the previous April).
+    const now = new Date();
+    const acYear = now.getUTCMonth() + 1 >= 4 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const fyMonths: { year: number; month: number }[] = [];
+    for (let i = 0, y = acYear, m = 4; i < 12; i++, m++) {
+      if (m > 12) { m = 1; y += 1; }
+      fyMonths.push({ year: y, month: m });
+    }
+    const earnedBasicRows = await prisma.payrollLineComponent.findMany({
+      where: {
+        payrollLine: {
+          employeeId,
+          payrollRun: { companyId, status: { in: ['CALCULATED', 'APPROVED', 'LOCKED'] }, OR: fyMonths },
+        },
+        salaryComponent: { code: 'BASIC' },
+      },
+      select: { amount: true },
+    });
+    // null = no processed payroll months this FY yet, don't fabricate a figure
+    const avgMonthlyEarnedBasic = earnedBasicRows.length
+      ? earnedBasicRows.reduce((s, r) => s + Number(r.amount), 0) / earnedBasicRows.length
+      : null;
+
+    deductionContext = {
+      pfApplicable: employee.jobInfos[0]?.pfApplicable ?? true,
+      esiApplicable: employee.jobInfos[0]?.esiApplicable ?? false,
+      bonusApplicable: employee.jobInfos[0]?.bonusApplicable ?? false,
+      // 0 is treated the same as unset (null) — a zero restriction would
+      // otherwise zero out the whole PF wage base instead of meaning "no
+      // restriction, use the statutory ceiling" (the help text's promise).
+      pfRestrictionAmount:
+        employee.jobInfos[0]?.pfRestrictionAmount != null && Number(employee.jobInfos[0].pfRestrictionAmount) > 0
+          ? Number(employee.jobInfos[0].pfRestrictionAmount)
+          : null,
+      pfRateComponentIds,
+      pfRate: pfRate ? { employeeContributionRate: Number(pfRate.employeeContributionRate), wageCeilingMonthly: Number(pfRate.wageCeilingMonthly) } : null,
+      esiRate: esiRate ? { employeeContributionRate: Number(esiRate.employeeContributionRate), wageCeilingMonthly: Number(esiRate.wageCeilingMonthly) } : null,
+      // Bonus (report) = avgMonthlyEarnedBasic × 12 × Rate %. Null
+      // avgMonthlyEarnedBasic (no processed payroll months this FY yet)
+      // means no figure to show, not a fabricated projection.
+      bonusRate: bonusRate ? { ratePercent: Number(bonusRate.ratePercent), calculationWageCeiling: Number(bonusRate.calculationWageCeiling) } : null,
+      avgMonthlyEarnedBasic,
+      deductionRates: deductionRates.map((d) => {
+        const override = overrideByCode.get(d.code);
+        return {
+          code: d.code,
+          name: drNameByCode.get(d.code) ?? d.name,
+          deductionType: d.deductionType,
+          rateValue: Number(d.rateValue),
+          // Per-employee override (Salary Details Deductions panel's Remove/
+          // Edit/Add back) — still returned even when excluded, not filtered
+          // out server-side, so the UI can show it struck through with an
+          // "Add back" action rather than silently hiding it.
+          excluded: override?.excluded ?? false,
+          overrideAmount: override?.excluded ? null : (override?.overrideAmount ?? null),
+        };
+      }),
+    };
+  }
+
+  return NextResponse.json({ data, deductionContext });
 }
 
 export async function POST(

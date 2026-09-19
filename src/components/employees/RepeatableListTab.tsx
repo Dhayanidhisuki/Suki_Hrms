@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef } from '@/components/ui';
 import { SectionCard } from './SectionCard';
 
 interface RecordBase {
@@ -40,9 +40,9 @@ export default function RepeatableListTab<T extends RecordBase>({
   emptyMessage = 'No records yet.',
   deleteConfirmMessage = 'Are you sure you want to delete this record? This cannot be undone.',
 }: RepeatableListTabProps<T>) {
+  const toast = useToast();
   const [records, setRecords] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
@@ -50,18 +50,17 @@ export default function RepeatableListTab<T extends RecordBase>({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(apiBasePath);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setRecords(json.data ?? json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [apiBasePath]);
+  }, [apiBasePath, toast]);
 
   useEffect(() => {
     fetchData();
@@ -104,7 +103,7 @@ export default function RepeatableListTab<T extends RecordBase>({
     const res = await fetch(`${apiBasePath}/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -125,12 +124,6 @@ export default function RepeatableListTab<T extends RecordBase>({
       }
     >
       <div className="space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-
       <DataTable
         columns={columns}
         data={records}

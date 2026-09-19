@@ -29,18 +29,45 @@ export default function FormModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const applyComputedFields = useCallback(
+    (v: Record<string, string | number | boolean | undefined>) => {
+      let next = v;
+      for (const f of fields) {
+        if (!f.compute) continue;
+        const computed = f.compute(next);
+        if (next[f.name] !== computed) next = { ...next, [f.name]: computed };
+      }
+      return next;
+    },
+    [fields]
+  );
+
   useEffect(() => {
     if (isOpen && initialValues) {
-      setValues(initialValues);
+      // A field's defaultValue is a fallback for whatever the caller's
+      // initialValues didn't set — most load-bearing for hidden fields
+      // (e.g. an enum the UI no longer asks about), which would otherwise
+      // submit as undefined and fail required/enum validation server-side.
+      let seeded = initialValues;
+      for (const f of fields) {
+        if (f.defaultValue !== undefined && seeded[f.name] === undefined) {
+          seeded = { ...seeded, [f.name]: f.defaultValue };
+        }
+      }
+      setValues(applyComputedFields(seeded));
       setErrors({});
       setSubmitError(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialValues]);
 
-  const handleChange = useCallback((name: string, value: string | number | boolean) => {
-    setValues((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: '' }));
-  }, []);
+  const handleChange = useCallback(
+    (name: string, value: string | number | boolean) => {
+      setValues((prev) => applyComputedFields({ ...prev, [name]: value }));
+      setErrors((prev) => ({ ...prev, [name]: '' }));
+    },
+    [applyComputedFields]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +77,9 @@ export default function FormModal({
     // Basic required-field validation (Zod validation happens in the API)
     const newErrors: Record<string, string> = {};
     for (const f of fields) {
-      if (f.required) {
+      if (f.showIf && !f.showIf(values)) continue;
+      const isRequired = f.required || Boolean(f.requiredIf?.(values));
+      if (isRequired) {
         const v = values[f.name];
         if (v === undefined || v === '' || v === null) {
           newErrors[f.name] = `${f.label} is required`;
@@ -105,15 +134,17 @@ export default function FormModal({
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          {fields.map((f) => (
-            <Field
-              key={f.name}
-              def={f}
-              value={values[f.name]}
-              error={errors[f.name]}
-              onChange={(v) => handleChange(f.name, v)}
-            />
-          ))}
+          {fields
+            .filter((f) => !f.hidden && (!f.showIf || f.showIf(values)))
+            .map((f) => (
+              <Field
+                key={f.name}
+                def={f.requiredIf ? { ...f, required: f.required || f.requiredIf(values) } : f}
+                value={values[f.name]}
+                error={errors[f.name]}
+                onChange={(v) => handleChange(f.name, v)}
+              />
+            ))}
 
           {children}
 

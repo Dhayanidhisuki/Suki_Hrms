@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { FormModal, type FieldDef } from '@/components/ui';
+import { FormModal, useToast, type FieldDef } from '@/components/ui';
 
 interface ColorConfig {
   zeroHoursColor: string;
@@ -33,9 +33,9 @@ const fields: FieldDef[] = [
 ];
 
 export default function AttendanceColorConfigPage() {
+  const toast = useToast();
   const [config, setConfig] = useState<ColorConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -46,11 +46,11 @@ export default function AttendanceColorConfigPage() {
       const json = await res.json();
       setConfig(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+      toast.error(err instanceof Error ? err.message : 'Error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -61,7 +61,7 @@ export default function AttendanceColorConfigPage() {
       body: JSON.stringify(values),
     });
     if (res.ok) { setModalOpen(false); fetchData(); }
-    else { const j = await res.json().catch(() => ({})); alert(j.error ?? 'Failed'); }
+    else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? 'Failed'); }
   };
 
   const swatches: Array<{ label: string; color: string; threshold?: number }> = config ? [
@@ -90,8 +90,6 @@ export default function AttendanceColorConfigPage() {
           Edit Config
         </button>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading && <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}
 

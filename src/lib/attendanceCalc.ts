@@ -103,19 +103,29 @@ export function computeAttendanceMetrics(
  *
  *   lateAfterGrace = max(0, lateMinutes - shiftGrace)
  *   rawLom = lateAfterGrace + earlyOutMinutes
- *   lomCapped = dailyCap > 0 ? min(rawLom, dailyCap) : rawLom
+ *   afterPermission = max(0, rawLom - permissionExcusedMinutes)
+ *   lomCapped = dailyCap > 0 ? min(afterPermission, dailyCap) : afterPermission
  *
  * Important: grace is applied to late minutes only, not early-out minutes.
+ *
+ * `permissionExcusedMinutes` is the day's APPROVED permission, in minutes.
+ * Permission is granted precisely so the employee can arrive late or leave
+ * early without penalty, so those minutes are deducted from the day's LOM —
+ * but only as many as were granted, so a short request cannot excuse a long
+ * absence. It is deducted after grace rather than before, so grace and
+ * permission both count in the employee's favour instead of one swallowing
+ * the other. Pending requests excuse nothing; callers pass approved only.
  */
 export function computeLomMinutes(
   lateMinutes: number,
   earlyOutMinutes: number,
   shift: ShiftMasterLite | null,
-  lomConfig: LomConfigLite | null
+  lomConfig: LomConfigLite | null,
+  permissionExcusedMinutes = 0
 ): number {
   const shiftGrace = shift?.graceMinutes ?? lomConfig?.graceMinutesExempt ?? 0;
   const lateAfterGrace = Math.max(0, (lateMinutes || 0) - shiftGrace);
-  let lom = lateAfterGrace + (earlyOutMinutes || 0);
+  let lom = Math.max(0, lateAfterGrace + (earlyOutMinutes || 0) - Math.max(0, permissionExcusedMinutes || 0));
   const cap = lomConfig?.dailyLomCap;
   if (cap && cap > 0 && lom > cap) lom = cap;
   return lom;

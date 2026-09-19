@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface EmployeeOption {
   id: number;
@@ -79,6 +79,7 @@ function formatWallClockTime(iso: string | null): string {
 }
 
 export default function DailyAttendancePage() {
+  const toast = useToast();
   const [date, setDate] = useState(todayIso());
 
   // ?date=YYYY-MM-DD deep-links a specific day (the Attendance Overview page
@@ -91,7 +92,6 @@ export default function DailyAttendancePage() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [shiftMasters, setShiftMasters] = useState<ShiftMasterOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<AttendanceRow | null>(null);
@@ -110,18 +110,17 @@ export default function DailyAttendancePage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/attendance/daily?date=${date}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: AttendanceRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [date]);
+  }, [date, toast]);
 
   useEffect(() => {
     fetchData();
@@ -241,12 +240,6 @@ export default function DailyAttendancePage() {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable columns={columns} data={records} loading={loading} onEdit={handleEdit} emptyMessage={`No attendance marked for ${date} yet.`} />
 

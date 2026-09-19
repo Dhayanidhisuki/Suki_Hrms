@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface LeaveApplicationRow {
   id: number;
@@ -20,26 +20,25 @@ interface LeaveApplicationRow {
 const rejectFields: FieldDef[] = [{ name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true }];
 
 export default function LeaveApprovalPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<LeaveApplicationRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/leave/applications?status=pending');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: LeaveApplicationRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -49,7 +48,7 @@ export default function LeaveApprovalPage() {
     const res = await fetch(`/api/workforce/leave/applications/${id}/approve`, { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Approve failed');
+      toast.error(err.error ?? 'Approve failed');
       return;
     }
     fetchData();
@@ -69,12 +68,6 @@ export default function LeaveApprovalPage() {
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
         Leave Approval
       </h1>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

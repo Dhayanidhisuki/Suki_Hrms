@@ -6,7 +6,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ConfirmDialog, DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { ConfirmDialog, DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 import { formatDate } from '@/lib/format-date';
 
 interface JdOption {
@@ -26,9 +26,9 @@ interface JobPosting {
 }
 
 export default function JobPostingsPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -37,7 +37,6 @@ export default function JobPostingsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/recruitment/job-postings?${params}`);
@@ -46,11 +45,11 @@ export default function JobPostingsPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -81,11 +80,6 @@ export default function JobPostingsPage() {
           + Add Job Posting
         </button>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
       <DataTable
         columns={columns}
         data={records}
@@ -127,8 +121,8 @@ function CreatePostingModal({ onClose, onSaved }: { onClose: () => void; onSaved
   const [title, setTitle] = useState('');
   const [jdId, setJdId] = useState<string | number | ''>('');
   const [jds, setJds] = useState<JdOption[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     fetch('/api/masters/jd-master?status=Active&limit=100')
@@ -138,11 +132,10 @@ function CreatePostingModal({ onClose, onSaved }: { onClose: () => void; onSaved
 
   const submit = async () => {
     if (!title.trim()) {
-      setError('Title is required');
+      toast.error('Title is required');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const res = await fetch('/api/recruitment/job-postings', {
         method: 'POST',
@@ -153,7 +146,7 @@ function CreatePostingModal({ onClose, onSaved }: { onClose: () => void; onSaved
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSubmitting(false);
     }
@@ -193,7 +186,6 @@ function CreatePostingModal({ onClose, onSaved }: { onClose: () => void; onSaved
             placeholder="Search Active JDs"
           />
         </label>
-        {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>
             Cancel

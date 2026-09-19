@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, ConfirmDialog, StatusBadge, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, StatusBadge, useToast, type Column } from '@/components/ui';
 
 // BUSINESS_UNIT and LOCATION exist in the data-scope model but have no
 // master screen in this UI (Unit already covers that role) — left out of
@@ -45,11 +45,10 @@ interface CodeOption { code: string; label: string }
 const inputStyle = { borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--foreground)' };
 
 export default function UserScopesPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<ScopeRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const [userId, setUserId] = useState<string>('');
@@ -73,11 +72,10 @@ export default function UserScopesPage() {
         setRows(scopeJson.data);
         setUsers(userJson.data.filter((u) => u.isActive));
         setCompanyId(me?.companyId ?? null);
-        setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Unknown error'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -122,8 +120,6 @@ export default function UserScopesPage() {
 
   const handleAssign = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       if (!userId) throw new Error('Pick a user');
       const res = await fetch('/api/admin/user-scopes', {
@@ -142,11 +138,11 @@ export default function UserScopesPage() {
         const first = fieldErrors && Object.values(fieldErrors).find((m) => m?.length)?.[0];
         throw new Error(first ?? err.error ?? 'Assign failed');
       }
-      setSuccess('Scope assigned.');
+      toast.success('Scope assigned.');
       setValues([]);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Assign failed');
+      toast.error(err instanceof Error ? err.message : 'Assign failed');
     } finally {
       setSaving(false);
     }
@@ -156,7 +152,7 @@ export default function UserScopesPage() {
     const res = await fetch(`/api/admin/user-scopes/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Revoke failed');
+      toast.error(err.error ?? 'Revoke failed');
       return;
     }
     setDeleteId(null);
@@ -207,17 +203,6 @@ export default function UserScopesPage() {
           Access = role (what actions) × data scope (whose records). A user with no scope sees only their own record.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
-          {success}
-        </div>
-      )}
 
       <div className="card space-y-4 p-5">
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>

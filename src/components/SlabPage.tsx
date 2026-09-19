@@ -6,8 +6,8 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SlabRecord {
@@ -27,16 +27,36 @@ interface ApiResponse<T extends SlabRecord> {
 interface SlabPageProps<T extends SlabRecord> {
   title: string;
   apiPath: string;
-  fields: FieldDef[];
+  /** Either a static field list, or a function of (isEditing, records) — for
+   * a field that should only auto-generate on Add and stay stable/editable
+   * on Edit (e.g. an auto-generated Code that shouldn't silently rename an
+   * existing record just because another field changed, and needs the
+   * current record list to pick the next number). */
+  fields: FieldDef[] | ((isEditing: boolean, records: T[]) => FieldDef[]);
   columns: Column<T>[];
   itemLabel: string;
   statsModule?: string;
+  /** Extra per-row action(s) (e.g. an Active/Inactive toggle) rendered
+   * before Edit/Delete — called with the row and a refetch callback. */
+  renderRowActions?: (row: T, refetch: () => void) => ReactNode;
+  /** Override the default "Deactivate" confirm dialog copy — for a page
+   * whose Delete really deletes rather than soft-deactivating. */
+  deleteDialog?: { title: string; message: string; confirmLabel: string };
 }
 
-export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields, columns, itemLabel, statsModule }: SlabPageProps<T>) {
+export default function SlabPage<T extends SlabRecord>({
+  title,
+  apiPath,
+  fields: fieldsProp,
+  columns,
+  itemLabel,
+  statsModule,
+  renderRowActions,
+  deleteDialog,
+}: SlabPageProps<T>) {
   const [records, setRecords] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -47,17 +67,19 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
+  const resolveFields = (isEditing: boolean) => (typeof fieldsProp === 'function' ? fieldsProp(isEditing, records) : fieldsProp);
+
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`${apiPath}?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse<T> = await res.json();
       setRecords(json.data); setPagination(json.pagination);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unknown error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [apiPath, page, search]);
+  }, [apiPath, page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -65,7 +87,7 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
   const handleEdit = (row: T) => {
     setEditingId(row.id);
     const vals: Record<string, string | number | boolean | undefined> = {};
-    for (const f of fields) {
+    for (const f of resolveFields(true)) {
       let v = row[f.name] !== undefined && row[f.name] !== null ? (row[f.name] as string | number | boolean) : (f.defaultValue ?? '');
       // <input type="date"> only accepts a bare YYYY-MM-DD — the API returns
       // a full ISO datetime, which the browser silently rejects (renders blank).
@@ -79,7 +101,7 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
     const payload: Record<string, unknown> = { ...values };
     // Convert empty strings to null for optional fields
-    for (const f of fields) {
+    for (const f of resolveFields(editingId !== null)) {
       if (!f.required && payload[f.name] === '') payload[f.name] = null;
     }
     const url = editingId ? `${apiPath}/${editingId}` : apiPath;
@@ -91,7 +113,7 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`${apiPath}/${id}`, { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json(); setError(err.error ?? 'Deactivate failed'); return; }
+    if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Deactivate failed'); return; }
     fetchData();
   };
 
@@ -138,15 +160,17 @@ export default function SlabPage<T extends SlabRecord>({ title, apiPath, fields,
         </KPIGrid>
       )}
 
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
       <DataTable columns={allColumns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
-        onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />
-      <FormModal title={editingId ? `Edit ${itemLabel}` : `Add ${itemLabel}`} fields={fields}
+        onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)}
+        renderRowActions={renderRowActions ? (row) => renderRowActions(row, fetchData) : undefined} />
+      <FormModal title={editingId ? `Edit ${itemLabel}` : `Add ${itemLabel}`} fields={resolveFields(editingId !== null)}
         initialValues={initialValues} isOpen={modalOpen} onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit} submitLabel={editingId ? 'Update' : 'Create'} />
-      <ConfirmDialog title={`Deactivate ${itemLabel}`} message={`Are you sure you want to deactivate this ${itemLabel.toLowerCase()}? This will set it as inactive.`}
-        confirmLabel="Deactivate"
+      <ConfirmDialog
+        title={deleteDialog?.title ?? `Deactivate ${itemLabel}`}
+        message={deleteDialog?.message ?? `Are you sure you want to deactivate this ${itemLabel.toLowerCase()}? This will set it as inactive.`}
+        confirmLabel={deleteDialog?.confirmLabel ?? 'Deactivate'}
         isOpen={deleteId !== null} onConfirm={() => deleteId && handleDelete(deleteId)} onClose={() => setDeleteId(null)} />
     </div>
   );

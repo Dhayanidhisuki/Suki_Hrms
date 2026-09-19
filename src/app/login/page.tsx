@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui';
 
 const BLUE = '#3f6fd8';
 const BLUE_SOFT = '#dfe7fa';
@@ -22,16 +23,15 @@ const MUTED = '#8a97b8';
 
 export default function LoginPage() {
   const router = useRouter();
+  const toast = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -58,7 +58,7 @@ export default function LoginPage() {
       router.push('/');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -103,12 +103,6 @@ export default function LoginPage() {
           <p className="mb-8 mt-2 text-xs leading-5" style={{ color: MUTED }}>
             Welcome to Suki HRM — sign in to your HR operations workspace.
           </p>
-
-          {error && (
-            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-              {error}
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
