@@ -43,6 +43,7 @@ export async function PUT(
       name: parsed.data.name,
       address: parsed.data.address,
       description: parsed.data.description,
+      gstNumber: parsed.data.gstNumber,
       companyId: parsed.data.companyId,
       isActive: parsed.data.isActive,
       ...(ext.data.businessUnitId !== undefined ? { businessUnitId: ext.data.businessUnitId } : {}),

@@ -115,6 +115,7 @@ export const unitSchema = z.object({
   name: z.string().min(1).max(100),
   address: z.string().max(500).optional().nullable(),
   description: z.string().max(500).optional().nullable(),
+  gstNumber: z.string().max(20).optional().nullable(),
   companyId: z.number().int().positive(),
   isActive: z.boolean().default(true),
 });
@@ -182,6 +183,10 @@ export const otPlanSchema = z.object({
   otRateMultiplier: z.coerce.number().positive().max(10),
   otCalculationBasis: z.enum(['GROSS', 'BASIC', 'BASIC_DA', 'BASIC_DA_HRA', 'FIXED']).default('GROSS'),
   applicableAfterMinutes: z.number().int().min(0).default(0),
+  // Payable OT is floored to the last completed wall-clock mark of this
+  // size (e.g. 60 → the top of the hour), not N minutes from shift-end —
+  // see OTPlan.roundingSlabMinutes in schema.prisma. NULL = no rounding.
+  roundingSlabMinutes: optionalNumber(z.coerce.number().int().positive()),
   maxOtHoursPerDay: z.number().int().positive().optional().nullable(),
   // KUN BRD review (2026-09-10): which SalaryComponent the calculated OT
   // amount pays through.

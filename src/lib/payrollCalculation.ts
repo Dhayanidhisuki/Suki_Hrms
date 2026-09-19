@@ -47,7 +47,7 @@
 
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
-import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes } from './attendanceCalc';
+import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from './attendanceCalc';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from './permissionExcuse';
 
 function daysInMonth(year: number, month: number) {
@@ -344,7 +344,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     if (jobInfo?.overtimeAllowed) {
       const otPlan = otPlans.find((p) => p.isActive) ?? null;
       const otPlanLite = otPlan
-        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay }
+        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes }
         : null;
 
       // Phase 13 — per-day OT calculation with day-type factors.
@@ -368,6 +368,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
             { otApprovalStatus: null, otMinutesCalculated: { gt: 0 } },
           ],
         },
+        include: { shiftMaster: { select: { endTime: true } } },
       });
 
       // Compute the OT hourly rate based on the configured basis.
@@ -413,7 +414,8 @@ export async function calculatePayrollRun(payrollRunId: number) {
         // Threshold (qualification, not deduction) + daily cap. A null
         // maxOtHoursPerDay means no cap — one implementation, shared with
         // the attendance screens.
-        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite);
+        const shiftEndTod = d.shiftMaster ? parseShiftTime(d.shiftMaster.endTime) : undefined;
+        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite, shiftEndTod);
         if (dayOtMinutes <= 0) continue;
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;

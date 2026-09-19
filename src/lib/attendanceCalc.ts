@@ -16,6 +16,10 @@ export interface ShiftMasterLite {
 export interface OtPlanLite {
   applicableAfterMinutes: number;
   maxOtHoursPerDay?: number | null;
+  // Floors payable OT to the last completed wall-clock mark of this size
+  // (e.g. 60 -> the top of the hour), not to N minutes counted from
+  // shift-end — see computeOtPayableMinutes. null/0 = no rounding.
+  roundingSlabMinutes?: number | null;
 }
 
 export interface LomConfigLite {
@@ -133,22 +137,46 @@ export function computeLomMinutes(
 
 /**
  * Compute payable OT minutes for a single attendance day, applying the OT
- * plan's threshold as a qualification condition and the daily cap.
+ * plan's threshold as a qualification condition, then (when a rounding slab
+ * and the shift's end time-of-day are both available) flooring the payable
+ * amount to the last completed WALL-CLOCK mark of that slab size — e.g. a
+ * 60-minute slab floors to the top of the hour (6:00, 7:00, 8:00pm...), not
+ * to 60 minutes counted from shift-end. Example: shift ends 5:30pm, checkout
+ * 6:54pm (84 raw minutes) with a 60-min slab -> the last completed hour mark
+ * before 6:54pm is 6:00pm, so payable OT is 5:30-6:00pm = 30 minutes, not 60.
+ * Finally applies the daily cap.
  *
  *   if otMinutesCalculated < applicableAfterMinutes:
  *     payable = 0
+ *   else if roundingSlabMinutes set and shiftEndTimeOfDayMinutes given:
+ *     checkoutTod = shiftEndTod + otMinutesCalculated
+ *     boundary = floor(checkoutTod / slab) * slab
+ *     payable = max(0, boundary - shiftEndTod)
  *   else:
- *     payable = min(otMinutesCalculated, maxDailyCapMinutes)
+ *     payable = otMinutesCalculated
+ *   payable = min(payable, maxDailyCapMinutes)
  */
 export function computeOtPayableMinutes(
   otMinutesCalculated: number,
-  otPlan: OtPlanLite | null
+  otPlan: OtPlanLite | null,
+  shiftEndTimeOfDayMinutes?: number
 ): number {
   const threshold = otPlan?.applicableAfterMinutes ?? 0;
-  if ((otMinutesCalculated || 0) < threshold) return 0;
+  const raw = otMinutesCalculated || 0;
+  if (raw < threshold) return 0;
+
+  let payable = raw;
+  const slab = otPlan?.roundingSlabMinutes;
+  if (slab && slab > 0 && shiftEndTimeOfDayMinutes != null) {
+    const shiftEndTod = ((shiftEndTimeOfDayMinutes % 1440) + 1440) % 1440;
+    const checkoutTod = shiftEndTod + raw;
+    const boundary = Math.floor(checkoutTod / slab) * slab;
+    payable = Math.max(0, boundary - shiftEndTod);
+  }
+
   const capMin = otPlan?.maxOtHoursPerDay ? otPlan.maxOtHoursPerDay * 60 : 0;
-  if (capMin > 0) return Math.min(otMinutesCalculated || 0, capMin);
-  return otMinutesCalculated || 0;
+  if (capMin > 0) return Math.min(payable, capMin);
+  return payable;
 }
 
 /**

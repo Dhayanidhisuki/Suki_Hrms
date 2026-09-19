@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
+import { computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from '@/lib/attendanceCalc';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 export async function GET(request: NextRequest) {
@@ -114,7 +114,11 @@ export async function GET(request: NextRequest) {
       : null;
     const lom = computeLomMinutes(d.lateMinutes, d.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null, excusedMinutesFor(permissionExcused, d.employeeId, d.date));
     lomByEmp.set(d.employeeId, (lomByEmp.get(d.employeeId) ?? 0) + lom);
-    const otPay = computeOtPayableMinutes(d.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
+    const otPay = computeOtPayableMinutes(
+      d.otMinutesCalculated,
+      otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
+      shift ? parseShiftTime(shift.endTime) : undefined
+    );
     otPayableByEmp.set(d.employeeId, (otPayableByEmp.get(d.employeeId) ?? 0) + otPay);
   }
 

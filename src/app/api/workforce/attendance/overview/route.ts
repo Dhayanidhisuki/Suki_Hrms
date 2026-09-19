@@ -25,7 +25,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveEmployeeShiftConfig, resolveDailyShift } from '@/lib/biometricConversion';
-import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
+import { computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from '@/lib/attendanceCalc';
 import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
     .reduce((acc, p) => acc + Number(p.hours), 0);
   const permissionExcessHours = Math.max(0, permissionApprovedHours - permissionFreeHours);
   const lomCfg = lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null;
-  const otCfg = otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null;
+  const otCfg = otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null;
 
   const today = new Date();
   const todayIso = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString().slice(0, 10);
@@ -217,7 +217,8 @@ export async function GET(request: NextRequest) {
       lomCfg,
       Math.round((perm?.approvedHours ?? 0) * 60)
     );
-    const otPayableMinutes = computeOtPayableMinutes(rec?.otMinutesCalculated ?? 0, otCfg);
+    const shiftEndTod = shiftMasterForCalc ? parseShiftTime(shiftMasterForCalc.endTime) : undefined;
+    const otPayableMinutes = computeOtPayableMinutes(rec?.otMinutesCalculated ?? 0, otCfg, shiftEndTod);
 
     return {
       date: iso,

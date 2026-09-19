@@ -300,6 +300,10 @@ model Unit {
   name        String    @db.NVarChar(100)
   address     String?   @db.NVarChar(500)
   description String?   @db.NVarChar(500)
+  // GSTIN registered against this unit/branch — units are often separate
+  // statutory establishments (see the "Statutory establishment" example
+  // descriptions above), each with its own GST registration.
+  gstNumber   String?   @db.NVarChar(20)
   // Phase 17 — state for state-wise PT lookup via StatePtConfig.
   state       String?   @db.NVarChar(100)
   businessUnitId Int?   // BRD §5.1: Unit sits under a Business Unit
@@ -610,6 +614,12 @@ model OTPlan {
   // BASIC_DA_HRA: hourlyRate = (basic + DA + HRA) / workingDays / 8
   // FIXED: uses JobInfo.overtimeRatePerHour directly (no factor)
   otCalculationBasis   String    @default("GROSS") @db.NVarChar(20)
+  // Payable OT is floored to the last completed wall-clock mark of this
+  // size (e.g. 30 → :00/:30 past the hour, 60 → the top of the hour) —
+  // NOT to N minutes counted from shift-end. Example: shift ends 5:30pm,
+  // checkout 6:54pm, slab=60 → last completed hour mark is 6:00pm, so OT
+  // is 5:30-6:00pm (30 min), not 60. NULL = no rounding (pay raw minutes).
+  roundingSlabMinutes    Int?
   description            String?   @db.NVarChar(500)
   isActive               Boolean   @default(true)
   deletedAt              DateTime?
