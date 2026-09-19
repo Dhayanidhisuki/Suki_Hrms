@@ -1,13 +1,17 @@
 /**
- * GET  /api/employees/[id]/ctc/components — list this employee's CTC-only,
- *      NON_PAYROLL component rows (e.g. "Performance Incentive: 2135") on
- *      the current (effectiveTo = null) CTC revision.
+ * GET  /api/employees/[id]/ctc/components — list this employee's CTC
+ *      component rows (e.g. "Performance Incentive: 2135") on the current
+ *      (effectiveTo = null) CTC revision.
  * POST /api/employees/[id]/ctc/components — upsert one row on the current
- *      CTC revision. Only SalaryComponents with grossTier = NON_PAYROLL may
- *      be attached here — this is the guarantee that nothing added through
- *      this endpoint can ever be picked up by payroll (see
- *      payrollCalculation.ts's NON_PAYROLL skip and the EmployeeSalaryTab's
- *      separate, payroll-wired component picker).
+ *      CTC revision. Only SalaryComponents with grossTier = NON_PAYROLL or
+ *      PAYROLL_HIDDEN may be attached here — this is the one attach point
+ *      for both:
+ *        - NON_PAYROLL: a CTC-quoted, display-only figure — payroll skips it
+ *          entirely (payrollCalculation.ts's NON_PAYROLL skip).
+ *        - PAYROLL_HIDDEN: the opposite — payroll DOES deduct it from Net
+ *          Pay and it shows on Payroll Processing/Payslip, but it's
+ *          deliberately kept off the Salary Details tab's own, separate
+ *          component picker.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -58,8 +62,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     where: { id: parsed.data.salaryComponentId, companyId: employee.companyId, deletedAt: null },
   });
   if (!component) return NextResponse.json({ error: 'Component not found' }, { status: 404 });
-  if (component.grossTier !== 'NON_PAYROLL') {
-    return NextResponse.json({ error: 'Only Non-Payroll components can be attached to CTC here.' }, { status: 400 });
+  if (component.grossTier !== 'NON_PAYROLL' && component.grossTier !== 'PAYROLL_HIDDEN') {
+    return NextResponse.json({ error: 'Only Non-Payroll or Payroll-Hidden components can be attached to CTC here.' }, { status: 400 });
   }
 
   const row = await prisma.employeeCtcComponent.upsert({

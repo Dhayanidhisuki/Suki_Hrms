@@ -489,7 +489,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
       // below the statutory wage ceiling, e.g. PF restricted to 15000 even
       // though actual gross is higher. Read from JobInfo.pfRestrictionAmount
       // when the admin has set one; otherwise only the statutory ceiling applies.
-      const pfWageCap = jobInfo?.pfRestrictionAmount != null
+      // 0 is treated the same as unset — a zero restriction would otherwise
+      // cap PF wage at 0 instead of meaning "no restriction" (see the field's
+      // help text).
+      const pfWageCap = jobInfo?.pfRestrictionAmount != null && Number(jobInfo.pfRestrictionAmount) > 0
         ? Math.min(Number(pfRate.wageCeilingMonthly), Number(jobInfo.pfRestrictionAmount))
         : Number(pfRate.wageCeilingMonthly);
       // PF wage base: sum only components flagged includeInPf = true. Falls

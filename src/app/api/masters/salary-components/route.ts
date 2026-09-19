@@ -27,9 +27,15 @@ export async function GET(request: NextRequest) {
   // opts into seeing inactive rows too, so its eye-icon toggle doesn't make
   // a component vanish from the list — it just flips the Status badge.
   const includeInactive = searchParams.get('includeInactive') === 'true';
+  // Soft-deleted rows still occupy their `code` under the companyId+code
+  // unique constraint, so the Salary Components admin page also needs to
+  // see them (filtered back out client-side before rendering) when it picks
+  // the next auto-generated code — otherwise it can reissue an already-used
+  // code and the create fails with a raw Prisma P2002.
+  const includeDeleted = searchParams.get('includeDeleted') === 'true';
 
   const rows = await prisma.salaryComponent.findMany({
-    where: { companyId: scope.companyId, deletedAt: null, ...(includeInactive ? {} : { isActive: true }), ...(type ? { type } : {}), ...(grossTier ? { grossTier } : {}) },
+    where: { companyId: scope.companyId, ...(includeDeleted ? {} : { deletedAt: null }), ...(includeInactive ? {} : { isActive: true }), ...(type ? { type } : {}), ...(grossTier ? { grossTier } : {}) },
     orderBy: { name: 'asc' },
     include: { grossSplitRule: { select: { percentOfGross: true } } },
   });
