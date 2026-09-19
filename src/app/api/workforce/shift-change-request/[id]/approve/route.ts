@@ -43,7 +43,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
 
   if (chainConfigs.length === 0) {
-    // No chain configured — auto-approve (single-stage default)
+    // No chain configured — fall back to a single stage, but still gated:
+    // the requester's own Reporting Manager, or an HR-level grant. Before
+    // this guard existed the branch approved unconditionally, so in any
+    // company that had not configured a SHIFT_CHANGE chain, any signed-in
+    // user could approve any request — including their own.
+    const fallbackApprover = await resolveOwnEmployeeId(userId);
+    const isManager = fallbackApprover != null && req.employee.reportingManagerId === fallbackApprover;
+    if (!isManager) {
+      const permErr = await checkSpecificPermission(request, 'workforce.attendance.edit');
+      if (permErr) return permErr;
+    }
+
     await prisma.shiftChangeRequest.update({
       where: { id: reqId },
       data: {
@@ -69,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         createdByUserId: userId,
       },
     });
-    return NextResponse.json({ status: 'approved', message: 'Auto-approved (no chain configured), override created' });
+    return NextResponse.json({ status: 'approved', message: 'Approved (no chain configured — single-stage default), override created' });
   }
 
   const currentStage = chainConfigs.find((c) => c.stageOrder === req.currentStageOrder);

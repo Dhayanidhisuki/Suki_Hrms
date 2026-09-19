@@ -23,6 +23,8 @@ import { DataTable, ConfirmDialog, FormModal, PageHeader, Alert, StatusBadge, Se
 
 interface OtRow {
   id: number;
+  otApprovalStatus?: string | null;
+  otMinutesApproved?: number | null;
   date: string;
   otMinutesCalculated: number;
   employee: { employeeCode: string; firstName: string; lastName: string };
@@ -57,7 +59,7 @@ function useHolidaySet(): Set<string> {
   return holidaySet;
 }
 
-function useOtQueue(scope: 'manager' | 'hr') {
+function useOtQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<OtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -437,6 +439,57 @@ function OtQueueSection({
   );
 }
 
+const HIST_TONE: Record<string, { bg: string; fg: string }> = {
+  pending_manager: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_hr: { bg: '#dbeafe', fg: '#1e40af' },
+  approved: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+};
+const HIST_LABEL: Record<string, string> = {
+  pending_manager: 'Pending Manager',
+  pending_hr: 'Pending HR',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+/**
+ * What this approver has already decided. A day leaves both pending queues
+ * the moment it is actioned, so without this the approver has no record of
+ * what they settled.
+ */
+function OtHistorySection() {
+  const { records, loading, visible, error } = useOtQueue('actioned');
+  if (!visible) return null;
+
+  const columns: Column<OtRow>[] = [
+    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'otMinutesCalculated', label: 'OT Hours', render: (r) => formatHoursMinutes(r.otMinutesApproved ?? r.otMinutesCalculated) },
+    {
+      key: 'otApprovalStatus',
+      label: 'Status',
+      render: (r) => {
+        const st = r.otApprovalStatus ?? '';
+        const tone = HIST_TONE[st] ?? { bg: '#f1f5f9', fg: '#475569' };
+        return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{HIST_LABEL[st] ?? st}</span>;
+      },
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Overtime you have already actioned. Read-only.</p>
+      </div>
+      {error && (
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
+      )}
+      <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any overtime yet." />
+    </div>
+  );
+}
+
 export default function OvertimeApprovalPage() {
   const holidaySet = useHolidaySet();
   const [counts, setCounts] = useState<Record<'manager' | 'hr', { count: number; minutes: number }>>({
@@ -478,6 +531,8 @@ export default function OvertimeApprovalPage() {
         holidaySet={holidaySet}
         onCount={onCount}
       />
+
+      <OtHistorySection />
     </div>
   );
 }

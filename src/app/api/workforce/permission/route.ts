@@ -19,6 +19,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { permissionRequestSchema } from '@/lib/validations/workforce';
+import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -37,7 +38,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
     }
     const data = await prisma.permissionRequest.findMany({ where: { employeeId: ownEmployeeId }, include, orderBy: { appliedAt: 'desc' } });
-    return NextResponse.json({ data });
+
+    // The monthly pool is consumed in whatever splits the employee chooses —
+    // 30 minutes one day, an hour the next — so what they need before asking
+    // is how much is left, not just a list of past requests. Pending hours
+    // count against it: two requests that each fit the balance can still
+    // exceed it together, and that should be visible before the second is
+    // raised rather than discovered at HR approval.
+    const freeHoursPerMonth = await getFreeHoursPerMonth(scope.companyId);
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const thisMonth = data.filter(
+      (r) => r.date >= monthStart && r.date < monthEnd && ['pending_manager', 'pending_hr', 'approved'].includes(r.status)
+    );
+    const approvedHours = thisMonth.filter((r) => r.status === 'approved').reduce((sum, r) => sum + Number(r.hours), 0);
+    const pendingHours = thisMonth.filter((r) => r.status !== 'approved').reduce((sum, r) => sum + Number(r.hours), 0);
+    const usedHours = approvedHours + pendingHours;
+
+    return NextResponse.json({
+      data,
+      allowance: {
+        freeHoursPerMonth,
+        approvedHours: Number(approvedHours.toFixed(2)),
+        pendingHours: Number(pendingHours.toFixed(2)),
+        usedHours: Number(usedHours.toFixed(2)),
+        remainingHours: Number(Math.max(0, freeHoursPerMonth - usedHours).toFixed(2)),
+        month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`,
+      },
+    });
   }
 
   if (scopeParam === 'manager') {
@@ -64,7 +94,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
-  return NextResponse.json({ error: 'scope must be one of: mine, manager, hr' }, { status: 400 });
+  // What this caller has already acted on, at either stage. Needs no grant:
+  // it is filtered to their own recorded action, so it can only ever return
+  // requests they personally decided. Without this an approval vanishes the
+  // moment it is actioned, leaving the approver no record of what they did.
+  if (scopeParam === 'actioned') {
+    const data = await prisma.permissionRequest.findMany({
+      where: {
+        employee: { companyId: scope.companyId },
+        OR: [{ managerActionByUserId: userId }, { approvedByUserId: userId }],
+      },
+      include,
+      orderBy: [{ approvedAt: 'desc' }, { managerActionAt: 'desc' }],
+      take: 50,
+    });
+    return NextResponse.json({ data });
+  }
+
+  return NextResponse.json({ error: 'scope must be one of: mine, manager, hr, actioned' }, { status: 400 });
 }
 
 export async function POST(request: NextRequest) {

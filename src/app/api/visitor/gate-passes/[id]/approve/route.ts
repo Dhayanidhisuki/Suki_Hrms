@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
+import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { notifyVisitorEvent } from '@/lib/visitor-notifications';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const permErr = await checkVisitorPermission(request, 'approve');
-  if (permErr) return permErr;
 
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
@@ -22,6 +21,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     },
   });
   if (!pass) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // The host approving a visit to themselves never needs the HR-level
+  // visitor.gate.approve grant — same self-service convention as every other
+  // ESS surface here. Acting on anyone else's pass still requires it.
+  // (Role EMP does not hold that grant, so without this the ESS Visitor Pass
+  // Approval page could list a pass but 403 on the approve button.)
+  const ownEmployeeId = await resolveOwnEmployeeId(Number(request.headers.get('x-user-id')));
+  const isHost = ownEmployeeId != null && ownEmployeeId === pass.personToMeetId;
+  if (!isHost) {
+    const permErr = await checkVisitorPermission(request, 'approve');
+    if (permErr) return permErr;
+  }
   if (pass.status !== 'PENDING_APPROVAL') {
     return NextResponse.json({ error: 'Only PENDING_APPROVAL requests can be approved' }, { status: 400 });
   }

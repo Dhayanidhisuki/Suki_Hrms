@@ -34,7 +34,9 @@ export type IconName =
   | "ess"
   | "compliance"
   | "admin"
-  | "close";
+  | "close"
+  | "services"
+  | "profile";
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" /><path d="M9.5 21v-6h5v6" /></>,
@@ -73,6 +75,8 @@ const paths: Record<IconName, React.ReactNode> = {
   compliance: <><path d="M12 3 4.6 6v5.8c0 4.4 3 7.7 7.4 9.2 4.4-1.5 7.4-4.8 7.4-9.2V6z" /><path d="m9.2 12.2 2 2 3.6-3.8" /></>,
   admin: <><path d="M4 6h8M16.5 6H20M4 12h4.5M13 12h7M4 18h8M16.5 18H20" /><circle cx="14.2" cy="6" r="2.1" /><circle cx="10.7" cy="12" r="2.1" /><circle cx="14.2" cy="18" r="2.1" /></>,
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  services: <><rect x="3" y="3" width="8" height="8" rx="1.8" /><rect x="13" y="3" width="8" height="8" rx="1.8" /><rect x="3" y="13" width="8" height="8" rx="1.8" /><path d="M17 13.5v7M13.5 17h7" /></>,
+  profile: <><circle cx="12" cy="8.2" r="3.7" /><path d="M4.8 20c1-4 3.7-6.2 7.2-6.2s6.2 2.2 7.2 6.2" /></>,
 };
 
 export default function Icon({

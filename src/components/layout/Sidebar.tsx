@@ -16,7 +16,23 @@ interface SidebarProps {
 interface CurrentUser {
   isSuperAdmin: boolean;
   hasAdminAccess: boolean;
+  /** Holds any permission at all — an HR-side role rather than an ESS-only login. */
+  hasHrAccess: boolean;
   roleCode: string | null;
+  hasEmployeeAccess: boolean;
+  isManager: boolean;
+}
+
+/**
+ * Approval Center as a manager sees it: only the queues that actually have a
+ * Reporting-Manager stage. The HR-only groups (Recruitment, Employees,
+ * Payroll, Visitor) are dropped rather than shown empty.
+ */
+function managerApprovalModule(mod: NavModule): NavModule | null {
+  const groups = mod.groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.managerQueue) }))
+    .filter((g) => g.items.length > 0);
+  return groups.length > 0 ? { ...mod, groups } : null;
 }
 
 const readyCount = allNavLeaves.filter((leaf) => leaf.ready).length;
@@ -33,7 +49,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, roleCode: data.roleCode });
+        if (!cancelled && data) setMe({ isSuperAdmin: data.isSuperAdmin, hasAdminAccess: data.hasAdminAccess, hasHrAccess: !!data.hasHrAccess, roleCode: data.roleCode, hasEmployeeAccess: data.hasEmployeeAccess, isManager: !!data.isManager });
       })
       .catch(() => {});
     return () => {
@@ -41,21 +57,45 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
     };
   }, []);
 
-  // Superadmin isn't tied to any company — it has no role, no permissions,
-  // and every company-scoped screen (Masters, Employees, Payroll, ...) would
-  // just 401 for it server-side. So superadmin sees ONLY its own section,
-  // nothing else. Everyone else sees every section except "Superadmin", plus
-  // "Administration" only if they hold any admin.* permission. This is still
-  // a coarse, section-level check — full per-leaf permission filtering isn't
-  // done here (routes still 403 server-side if a page's own action isn't
-  // granted).
+  // Superadmin sees ONLY the Superadmin section. An ESS-only login (an employee
+  // record, no permissions) sees ONLY Dashboard (employee), Services, Profile
+  // and Visitors. An HR-side login sees the HR modules — and if it ALSO has an
+  // employee record, it keeps its own ESS modules too, because an HR manager is
+  // still someone who applies for leave and reads their own payslip.
+  //
+  // The HR test is hasHrAccess (holds any permission), not hasAdminAccess
+  // (admin.* only): an HR Admin has no admin.* grant, and testing the narrow
+  // flag used to strip every HR module the moment that person was given an
+  // employee record.
   const visibleNavigation = useMemo(() => {
+    const employeeModules = ["Dashboard", "Services", "Profile", "Visitors"];
+    const isEmployeeModule = (mod: NavModule) =>
+      mod.label === "Dashboard"
+        ? mod.href.includes("/ess/")
+        : employeeModules.includes(mod.label);
+
     if (me?.isSuperAdmin) {
       return navigation.filter((mod) => mod.label === "Superadmin");
     }
+
+    if (me?.hasEmployeeAccess && !me?.hasHrAccess) {
+      const employeeNav = navigation.filter(isEmployeeModule);
+      // A plain employee who manages someone still has approval queues to
+      // work — the manager stage is gated on the org chart, not on RBAC.
+      if (me.isManager) {
+        const approvals = navigation.find((mod) => mod.label === "Approval Center");
+        const managerView = approvals ? managerApprovalModule(approvals) : null;
+        if (managerView) employeeNav.splice(1, 0, managerView);
+      }
+      return employeeNav;
+    }
+
     return navigation.filter((mod) => {
       if (mod.label === "Superadmin") return false;
       if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
+      // An HR user with no employee record has no self-service data to show,
+      // so those modules stay hidden for them and only for them.
+      if (isEmployeeModule(mod)) return me ? me.hasEmployeeAccess : false;
       return true;
     });
   }, [me]);
@@ -69,7 +109,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       : pathname === mod.href || pathname.startsWith(`${mod.href}/`);
 
   // The module holding the current route opens by default until the user picks another.
-  const activeModule = visibleNavigation.find(isModuleActive)?.label ?? null;
+  const activeModule = visibleNavigation.find(isModuleActive)?.href ?? null;
   const expandedModule = openModule ?? activeModule;
 
   const visibleModuleLabels = useMemo(
@@ -95,10 +135,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
   const handleModuleClick = (mod: NavModule) => {
     if (collapsed) {
       onToggleCollapse();
-      setOpenModule(mod.label);
+      setOpenModule(mod.href);
       return;
     }
-    setOpenModule((current) => (current === mod.label ? "" : mod.label));
+    setOpenModule((current) => (current === mod.href ? "" : mod.href));
   };
 
   const readyDot = (
@@ -111,10 +151,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
 
   const renderModule = (mod: NavModule) => {
     const active = isModuleActive(mod);
-    const expanded = expandedModule === mod.label && !collapsed;
+    const expanded = expandedModule === mod.href && !collapsed;
 
     return (
-      <div key={mod.label}>
+      <div key={mod.href}>
         <button
           type="button"
           onClick={() => handleModuleClick(mod)}

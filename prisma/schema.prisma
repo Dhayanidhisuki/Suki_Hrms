@@ -1042,6 +1042,9 @@ model Employee {
   // NoAction required to break cyclic cascade through child tables
   reportingManager       Employee?  @relation("EmployeeToManager", fields: [reportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   directReports          Employee[] @relation("EmployeeToManager")
+  announcementReads      AnnouncementRead[]
+  onDutyRequests         OnDutyRequest[]
+  wfhRequests            WfhRequest[]
   secondReportingManager Employee?  @relation("EmployeeToSecondManager", fields: [secondReportingManagerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   secondLevelReports     Employee[] @relation("EmployeeToSecondManager")
 
@@ -6559,44 +6562,46 @@ model ExitClearanceCheck {
 }
 
 model ExpenseReimbursement {
-  id Int @id
-  companyId Int
-  employeeId Int
-  status String @db.NVarChar(20)
-  submissionDate DateTime @db.DateTime2
-  purpose String @db.NVarChar(100)
-  description String? @db.NVarChar(Max)
-  totalAmount Decimal @db.Decimal(18, 2)
-  approvedAmount Decimal? @db.Decimal(18, 2)
-  approvedBy Int?
-  approvalDate DateTime? @db.DateTime2
-  rejectionReason String? @db.NVarChar(500)
-  paymentDate DateTime? @db.DateTime2
-  createdByUserId Int?
-  createdAt DateTime @db.DateTime2
-  updatedAt DateTime @db.DateTime2
-  deletedAt DateTime? @db.DateTime2
+  id                    Int       @id @default(autoincrement())
+  companyId             Int
+  employeeId            Int
+  status                String    @default("DRAFT") @db.NVarChar(20) // DRAFT SUBMITTED APPROVED REJECTED PAID CANCELLED
+  submissionDate        DateTime  @default(now())
+  purpose               String    @db.NVarChar(100) // CLIENT_VISIT TRAINING TRAVEL BUSINESS_MEALS OFFICE_SUPPLIES OTHER
+  description           String?   @db.NVarChar(Max)
+  totalAmount           Decimal   @db.Decimal(18, 2)
+  approvedAmount        Decimal?  @db.Decimal(18, 2)
+  approvedBy            Int?
+  approvalDate          DateTime?
+  rejectionReason       String?   @db.NVarChar(500)
+  paymentDate           DateTime?
+  createdByUserId       Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+
+  items                 ExpenseReimbursementItem[]
 
   @@index([companyId, employeeId, status])
   @@index([employeeId, submissionDate])
   @@index([status])
-
   @@map("ExpenseReimbursement")
 }
 
 model ExpenseReimbursementItem {
-  id Int @id
-  expenseReimbursementId Int
-  category String @db.NVarChar(30)
-  description String @db.NVarChar(500)
-  amount Decimal @db.Decimal(18, 2)
-  receiptDate DateTime @db.Date
-  receiptAttachmentPath String? @db.NVarChar(Max)
-  createdAt DateTime @db.DateTime2
-  updatedAt DateTime @db.DateTime2
+  id                        Int       @id @default(autoincrement())
+  expenseReimbursementId    Int
+  category                  String    @db.NVarChar(30) // MEALS TRANSPORT ACCOMMODATION OFFICE_SUPPLIES OTHERS
+  description               String    @db.NVarChar(500)
+  amount                    Decimal   @db.Decimal(18, 2)
+  receiptDate               DateTime  @db.Date
+  receiptAttachmentPath     String?   @db.NVarChar(Max) // Path or reference to uploaded receipt
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  expenseReimbursement      ExpenseReimbursement @relation(fields: [expenseReimbursementId], references: [id], onDelete: Cascade)
 
   @@index([expenseReimbursementId])
-
   @@map("ExpenseReimbursementItem")
 }
 
@@ -6750,28 +6755,32 @@ model OjtAssignment {
 }
 
 model OnDutyRequest {
-  id Int @id
+  id         Int      @id @default(autoincrement())
   employeeId Int
-  fromDate DateTime @db.Date
-  toDate DateTime @db.Date
-  location String @db.NVarChar(200)
-  purpose String @db.NVarChar(500)
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  location   String   @db.NVarChar(200)
+  purpose    String   @db.NVarChar(500)
   customerProject String? @db.NVarChar(200)
-  remarks String? @db.NVarChar(500)
-  status String @db.NVarChar(20)
-  managerActionByUserId Int?
-  managerActionAt DateTime? @db.DateTime2
-  managerRejectionReason String? @db.NVarChar(500)
-  approvedByUserId Int?
-  approvedAt DateTime? @db.DateTime2
-  rejectionReason String? @db.NVarChar(500)
-  appliedAt DateTime @db.DateTime2
-  createdAt DateTime @db.DateTime2
-  updatedAt DateTime @db.DateTime2
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@index([status])
-
   @@map("OnDutyRequest")
 }
 
@@ -7281,26 +7290,84 @@ model TrainingVenue {
 }
 
 model WfhRequest {
-  id Int @id
+  id         Int      @id @default(autoincrement())
   employeeId Int
-  fromDate DateTime @db.Date
-  toDate DateTime @db.Date
-  reason String @db.NVarChar(500)
-  remarks String? @db.NVarChar(500)
-  status String @db.NVarChar(20)
-  managerActionByUserId Int?
-  managerActionAt DateTime? @db.DateTime2
-  managerRejectionReason String? @db.NVarChar(500)
-  approvedByUserId Int?
-  approvedAt DateTime? @db.DateTime2
-  rejectionReason String? @db.NVarChar(500)
-  appliedAt DateTime @db.DateTime2
-  createdAt DateTime @db.DateTime2
-  updatedAt DateTime @db.DateTime2
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  reason     String   @db.NVarChar(500)
+  remarks    String?  @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status                 String    @default("pending_manager") @db.NVarChar(20)
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+  approvedByUserId       Int?
+  approvedAt             DateTime?
+  rejectionReason        String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@index([status])
-
   @@map("WfhRequest")
 }
 
+// ── Announcements ────────────────────────────────────────────────────────────
+
+// Company announcements and internal circulars shown on the employee portal
+// (KUN MoM 23/June/2025: "Enable announcement notifications on the employee
+// portal (e.g., policy updates, internal circulars)").
+//
+// An announcement is DRAFT until published; publishing stamps publishedAt and
+// fans out an ANNOUNCEMENT_PUBLISHED notification. Employees read it on
+// /ess/announcements. Read receipts live in AnnouncementRead so HR can show
+// who has actually seen a policy update — the reason this is a separate table
+// rather than a boolean.
+model Announcement {
+  id          Int    @id @default(autoincrement())
+  companyId   Int
+  title       String @db.NVarChar(200)
+  body        String @db.NVarChar(Max)
+  // POLICY | CIRCULAR | GENERAL — the three kinds the MoM names.
+  category    String @default("GENERAL") @db.NVarChar(20)
+  // NORMAL | IMPORTANT — IMPORTANT pins the item to the top of the ESS list.
+  priority    String @default("NORMAL") @db.NVarChar(10)
+  // DRAFT | PUBLISHED | ARCHIVED
+  status      String @default("DRAFT") @db.NVarChar(12)
+
+  publishedAt DateTime?
+  // Optional end of relevance; past this the item drops off the ESS list but
+  // stays readable in the HR archive.
+  expiresAt   DateTime?
+
+  createdByUserId Int?
+  publishedByUserId Int?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  reads AnnouncementRead[]
+
+  @@index([companyId, status, publishedAt])
+  @@map("Announcement")
+}
+
+model AnnouncementRead {
+  id             Int      @id @default(autoincrement())
+  announcementId Int
+  employeeId     Int
+  readAt         DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([announcementId, employeeId])
+  @@index([employeeId])
+  @@map("AnnouncementRead")
+}

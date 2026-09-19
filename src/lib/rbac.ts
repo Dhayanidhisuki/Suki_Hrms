@@ -79,3 +79,22 @@ export async function hasAnyPermissionInModule(
 
   return count > 0;
 }
+
+/**
+ * Coarsest check of all: does this role hold ANY active permission?
+ *
+ * A role with none is an ESS-only login — an ordinary employee who should
+ * see their own self-service dashboard, not the company-wide HR one. Used
+ * by the landing page to pick which dashboard to render.
+ */
+export async function hasAnyPermission(roleId: number): Promise<boolean> {
+  const count = await prisma.rolePermission.count({
+    where: {
+      roleId,
+      role: { isActive: true, deletedAt: null },
+      permission: { isActive: true, deletedAt: null },
+    },
+  });
+
+  return count > 0;
+}

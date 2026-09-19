@@ -8,6 +8,7 @@
  * - /api/masters/*       — master setup API routes (JWT here, permission in handler)
  * - /api/org-options     — org master dropdown data (JWT here, permission in handler)
  * - /api/admin/*         — user/role/permission admin API routes (JWT here, permission in handler)
+ * - /api/stats/*         — dashboard KPI counts (JWT here, permission + company-scope in handler)
  * - /api/workforce/*     — attendance/leave API routes (JWT here, permission + company-scope in handler)
  * - /api/biometric/*     — biometric attendance import API routes (JWT here, permission + company-scope in handler)
  * - /api/payroll/*       — payroll run API routes (JWT here, permission + company-scope in handler)
@@ -38,6 +39,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/uploads') ||
     pathname.startsWith('/api/org-options') ||
     pathname.startsWith('/api/admin/') ||
+    pathname.startsWith('/api/stats/') ||
     pathname.startsWith('/api/superadmin/') ||
     pathname.startsWith('/api/workforce/') ||
     pathname.startsWith('/api/biometric/') ||
@@ -49,7 +51,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/manager/') ||
     pathname.startsWith('/api/jd-master') ||
     pathname.startsWith('/api/recruitment/') ||
-    pathname.startsWith('/api/stats/') ||
+    pathname.startsWith('/api/platform/') ||
     pathname === '/api/auth/me';
   const isUiRoute =
     pathname.startsWith('/masters/') ||
@@ -62,6 +64,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/visitor/') ||
     pathname.startsWith('/manager/') ||
     pathname.startsWith('/recruitment/') ||
+    pathname.startsWith('/ess/') ||
     pathname.startsWith('/dashboard/');
 
   if (!isApiRoute && !isUiRoute) {
@@ -135,6 +138,7 @@ export const config = {
     '/api/org-options',
     '/api/admin/:path*',
     '/admin/:path*',
+    '/api/stats/:path*',
     '/api/superadmin/:path*',
     '/superadmin/:path*',
     '/api/workforce/:path*',
@@ -154,8 +158,9 @@ export const config = {
     '/api/jd-master',
     '/api/recruitment/:path*',
     '/recruitment/:path*',
+    '/api/platform/:path*',
+    '/ess/:path*',
     '/dashboard/:path*',
     '/api/auth/me',
-    '/api/stats/:path*',
   ],
 };

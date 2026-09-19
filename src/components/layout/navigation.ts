@@ -17,6 +17,12 @@ export type NavLeaf = {
   ready?: boolean;
   /** Restrict to a specific role code (e.g. 'company-admin'). */
   requiredRole?: string;
+  /**
+   * This queue has a Reporting-Manager stage, so a plain employee who manages
+   * someone should see it. Everything without this flag is HR-only and stays
+   * hidden from manager logins, which would otherwise just get an empty list.
+   */
+  managerQueue?: boolean;
 };
 
 export type NavGroup = {
@@ -68,7 +74,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Headcount (Department-wise)", short: "Headcount by Dept", href: "/dashboard/headcount" },
           { label: "Attrition", href: "/dashboard/attrition" },
-          { label: "Attendance Summary", href: "/dashboard/attendance-summary" },
+          { label: "Attendance Summary", href: "/dashboard/attendance-summary", ready: true },
           { label: "Leave Summary", href: "/dashboard/leave-summary" },
           { label: "Payroll Status", href: "/dashboard/payroll-status" },
         ],
@@ -333,7 +339,7 @@ export const navigation: NavModule[] = [
         label: "Requests",
         items: [
           { label: "Comp-Off Approval", href: "/workforce/leave/approval", ready: true },
-          { label: "Permission Entry", href: "/ess/permission", ready: true },
+          { label: "Permission Policy & Usage", short: "Permission", href: "/workforce/permission", ready: true },
         ],
       },
       {
@@ -496,7 +502,7 @@ export const navigation: NavModule[] = [
       {
         label: "Employees",
         items: [
-          { label: "Confirmation", href: "/approvals/employees/confirmation" },
+          { label: "Confirmation", href: "/approvals/employees/confirmation", ready: true },
           { label: "Transfer", href: "/approvals/employees/transfer" },
           { label: "Promotion", href: "/approvals/employees/promotion" },
           { label: "Designation Change", href: "/approvals/employees/designation-change" },
@@ -506,24 +512,33 @@ export const navigation: NavModule[] = [
       {
         label: "Workforce",
         items: [
-          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave" },
-          { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true },
-          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true },
+          { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave", ready: true, managerQueue: true },
+          { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true, managerQueue: true },
+          { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true, managerQueue: true },
+          { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true, managerQueue: true },
+          { label: "OT Approval", short: "Overtime", href: "/approvals/workforce/overtime", ready: true, managerQueue: true },
+          // LOM is an HR determination, not an employee request — no manager stage.
           { label: "LOM Approval", short: "LOM", href: "/approvals/workforce/lom", ready: true },
           // Comp-Off has no separate approval queue: it's earned via OT Approval
           // (settling Sunday/holiday OT as Comp-Off instead of paid overtime) and
           // spent as a normal leave application against the "Compensatory Off"
           // leave type, reviewed on the existing Leave Approval page.
           { label: "Comp-Off Approval", short: "Comp-Off", href: "/workforce/leave/approval" },
-          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission", ready: true },
+          { label: "Permission Approval", short: "Permission", href: "/approvals/workforce/permission", ready: true, managerQueue: true },
+        ],
+      },
+      {
+        label: "Audit",
+        items: [
+          { label: "Approval History", short: "History", href: "/approvals/history", ready: true },
         ],
       },
       {
         label: "Payroll",
         items: [
-          { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing" },
-          { label: "Salary Revision Approval", short: "Salary Revision", href: "/approvals/payroll/salary-revision" },
-          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final" },
+          { label: "Salary Processing Approval", short: "Salary Processing", href: "/approvals/payroll/salary-processing", ready: true },
+          { label: "Salary Revision Approval", short: "Salary Revision", href: "/approvals/payroll/salary-revision", ready: true },
+          { label: "Full & Final Settlement Approval", short: "Full & Final", href: "/approvals/payroll/full-and-final", ready: true },
         ],
       },
       {
@@ -534,34 +549,74 @@ export const navigation: NavModule[] = [
   },
 
   {
-    label: "Employee Self Service",
-    icon: "ess",
-    short: "Self Service",
-    href: "/ess",
+    label: "Dashboard",
+    icon: "home",
+    href: "/ess/dashboard",
+    short: "My Dashboard",
     groups: [
       {
-        label: "Services",
+        label: "Overview",
         items: [
-          { label: "Attendance", href: "/ess/attendance" },
-          { label: "Leave Management", short: "Leave", href: "/ess/leave" },
+          { label: "Employee Dashboard", href: "/ess/dashboard", ready: true },
+          { label: "Announcements", href: "/ess/announcements", ready: true },
+        ],
+      },
+    ],
+  },
+
+  {
+    label: "Services",
+    icon: "services",
+    href: "/ess/services",
+    groups: [
+      {
+        label: "Request & Approval",
+        items: [
+          { label: "Attendance", href: "/ess/attendance", ready: true },
+          { label: "Leave Management", short: "Leave", href: "/ess/leave", ready: true },
           { label: "Permission Requests", short: "Permission", href: "/ess/permission", ready: true },
           { label: "Mis-Punch Requests", short: "Mis-Punch", href: "/ess/mis-punch", ready: true },
+          { label: "On-Duty (OD)", short: "On-Duty", href: "/ess/on-duty", ready: true },
+          { label: "Work From Home", short: "WFH", href: "/ess/wfh", ready: true },
+          { label: "Shift Change Request", short: "Shift Change", href: "/ess/shift-change", ready: true },
+          { label: "Comp-Off Request", short: "Comp-Off", href: "/ess/comp-off", ready: true },
+          { label: "Leave Encashment", short: "Encashment", href: "/ess/leave-encashment", ready: true },
+          { label: "Holiday Calendar", short: "Holidays", href: "/ess/holiday-calendar", ready: true },
         ],
       },
+    ],
+  },
+
+  {
+    label: "Profile",
+    icon: "profile",
+    href: "/ess/profile",
+    groups: [
       {
-        label: "Profile",
+        label: "My Information",
         items: [
-          { label: "Employee Dashboard", short: "Dashboard", href: "/ess/dashboard" },
-          { label: "Profile Update", href: "/ess/profile" },
-          { label: "Document Download", short: "Documents", href: "/ess/documents" },
-          { label: "Payslip Download", short: "Payslip", href: "/ess/payslip" },
+          { label: "Profile Update", href: "/ess/profile", ready: true },
+          { label: "Document Download", short: "Documents", href: "/ess/documents", ready: true },
+          { label: "Payslip Download", short: "Payslip", href: "/ess/payslip", ready: true },
+          { label: "OT Slip", short: "OT Slip", href: "/ess/ot-slip", ready: true },
+          { label: "Income Tax", short: "Income Tax", href: "/ess/income-tax", ready: true },
+          { label: "My Loans", short: "Loans", href: "/ess/loans", ready: true },
+          { label: "My Benefits", short: "Benefits", href: "/ess/benefits", ready: true },
         ],
       },
+    ],
+  },
+
+  {
+    label: "Visitors",
+    icon: "visitor",
+    href: "/ess/visitor-request",
+    groups: [
       {
-        label: "Visitor",
+        label: "Visitor Pass",
         items: [
-          { label: "Visitor Pass Request", short: "Pass Request", href: "/ess/visitor-request" },
-          { label: "Visitor Pass Approval", short: "Pass Approval", href: "/ess/visitor-approval" },
+          { label: "Visitor Pass Request", short: "Pass Request", href: "/ess/visitor-request", ready: true },
+          { label: "Visitor Pass Approval", short: "Pass Approval", href: "/ess/visitor-approval", ready: true },
         ],
       },
     ],
@@ -696,6 +751,12 @@ export const navigation: NavModule[] = [
           { label: "Branch Configuration", short: "Branch Config", href: "/admin/branch-configuration" },
           { label: "Salary Logic", href: "/admin/salary-logic" },
           { label: "Organization Chart", short: "Org Chart", href: "/admin/organization-chart", ready: true },
+        ],
+      },
+      {
+        label: "Communication",
+        items: [
+          { label: "Announcements & Circulars", short: "Announcements", href: "/admin/announcements", ready: true },
         ],
       },
       {
