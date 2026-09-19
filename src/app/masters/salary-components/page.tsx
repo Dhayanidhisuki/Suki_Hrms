@@ -207,7 +207,6 @@ export default function SalaryComponentsPage() {
   };
 
   const setGrossTier = async (row: SalaryComponentRow, tier: 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL' | 'PAYROLL_HIDDEN') => {
-    setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
