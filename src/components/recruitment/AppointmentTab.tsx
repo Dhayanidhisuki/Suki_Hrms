@@ -5,7 +5,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
 interface OfferOption { id: number; offerNo: string; candidate: { firstName: string; lastName: string } }
@@ -23,9 +23,9 @@ interface ApptRow {
 }
 
 export default function AppointmentTab() {
+  const toast = useToast();
   const [records, setRecords] = useState<ApptRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [offers, setOffers] = useState<OfferOption[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -39,11 +39,11 @@ export default function AppointmentTab() {
       const json = await res.json();
       setRecords(json.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchRecords();
@@ -55,9 +55,8 @@ export default function AppointmentTab() {
   const offerOptions = offers.filter((o) => o.candidate).map((o) => ({ label: `${o.offerNo} — ${o.candidate.firstName} ${o.candidate.lastName}`, value: o.id }));
 
   const submit = async () => {
-    if (!form.candidateId) { setError('Candidate is required'); return; }
+    if (!form.candidateId) { toast.error('Candidate is required'); return; }
     setSubmitting(true);
-    setError(null);
     try {
       const payload: Record<string, unknown> = { candidateId: Number(form.candidateId) };
       if (form.offerLetterId) payload.offerLetterId = Number(form.offerLetterId);
@@ -72,7 +71,7 @@ export default function AppointmentTab() {
       setForm({ candidateId: '', offerLetterId: '' });
       fetchRecords();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate');
+      toast.error(e instanceof Error ? e.message : 'Failed to generate');
     } finally {
       setSubmitting(false);
     }
@@ -88,7 +87,7 @@ export default function AppointmentTab() {
       if (!res.ok) throw new Error('Failed to update');
       fetchRecords();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update');
+      toast.error(e instanceof Error ? e.message : 'Failed to update');
     }
   };
 
@@ -113,13 +112,6 @@ export default function AppointmentTab() {
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Appointment Orders</h2>
         <button onClick={() => setFormOpen(true)} className="rounded-lg px-4 py-2 text-sm font-medium text-white" style={{ backgroundColor: 'var(--accent)' }}>+ Generate Appointment</button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
 
       <DataTable
         columns={columns}

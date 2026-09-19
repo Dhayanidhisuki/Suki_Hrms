@@ -9,6 +9,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
@@ -39,13 +40,12 @@ export default function OtherDocumentsTab() {
 
 function OtherDocumentsInner() {
   const searchParams = useSearchParams();
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState(searchParams.get('candidateId') ?? '');
   const [docTypes, setDocTypes] = useState<DocTypeOption[]>([]);
   const [documents, setDocuments] = useState<OtherDocRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [newDoc, setNewDoc] = useState({ otherDocTypeId: '', documentName: '', fileName: '', filePath: '', remarks: '' });
@@ -68,11 +68,11 @@ function OtherDocumentsInner() {
       const json: { data: OtherDocRow[] } = await res.json();
       setDocuments(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchDocuments(selectedCandidate);
@@ -80,11 +80,10 @@ function OtherDocumentsInner() {
 
   const handleAdd = async () => {
     if (!selectedCandidate || !newDoc.otherDocTypeId || !newDoc.documentName) {
-      setError('Please select a document type and enter a document name.');
+      toast.error('Please select a document type and enter a document name.');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const res = await fetch(`/api/recruitment/candidates/${selectedCandidate}/other-documents`, {
         method: 'POST',
@@ -98,12 +97,12 @@ function OtherDocumentsInner() {
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to add document');
-      setSuccess('Document added successfully.');
+      toast.success('Document added successfully.');
       setFormOpen(false);
       setNewDoc({ otherDocTypeId: '', documentName: '', fileName: '', filePath: '', remarks: '' });
       fetchDocuments(selectedCandidate);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSubmitting(false);
     }
@@ -117,7 +116,7 @@ function OtherDocumentsInner() {
     });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Update failed');
+      toast.error(err.error ?? 'Update failed');
       return;
     }
     fetchDocuments(selectedCandidate);
@@ -128,7 +127,7 @@ function OtherDocumentsInner() {
     const res = await fetch(`/api/recruitment/candidates/${selectedCandidate}/other-documents/${docId}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchDocuments(selectedCandidate);
@@ -196,17 +195,6 @@ function OtherDocumentsInner() {
           <button onClick={handleAdd} disabled={submitting} className="rounded-lg px-4 py-2 text-sm font-medium text-white" style={{ backgroundColor: 'var(--accent)', opacity: submitting ? 0.6 : 1 }}>
             {submitting ? 'Saving...' : 'Save Document'}
           </button>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
-          {success}
         </div>
       )}
 

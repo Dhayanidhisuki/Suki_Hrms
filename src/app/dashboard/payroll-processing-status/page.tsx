@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { KPIGrid, KPICard, DataTable, Spinner } from '@/components/ui';
+import { KPIGrid, KPICard, DataTable, Spinner, useToast } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
 interface PayrollRunRow {
@@ -21,20 +21,20 @@ interface PayrollRunRow {
 }
 
 export default function PayrollProcessingStatusPage() {
+  const toast = useToast();
   const [runs, setRuns] = useState<PayrollRunRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const res = await fetch('/api/payroll/runs?limit=50');
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setRuns(json.data ?? []);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Error'); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -69,7 +69,6 @@ export default function PayrollProcessingStatusPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Payroll Processing Status</h1>
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {loading ? <Spinner /> : (
         <>
           <KPIGrid>

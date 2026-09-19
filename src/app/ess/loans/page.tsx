@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useToast } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 interface LoanType {
@@ -57,16 +58,14 @@ export default function EssLoansPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [types, setTypes] = useState<LoanType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const toast = useToast();
 
   const [form, setForm] = useState({ loanTypeId: '', principal: '', tenureMonths: '', remarks: '' });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [loansRes, typesRes] = await Promise.all([
         fetch('/api/workforce/my-loans'),
@@ -79,11 +78,11 @@ export default function EssLoansPage() {
       setLoans(loansJson.data ?? []);
       setTypes(typesJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchAll();
@@ -113,7 +112,6 @@ export default function EssLoansPage() {
   async function applyForLoan(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/workforce/my-loans', {
         method: 'POST',
@@ -130,10 +128,10 @@ export default function EssLoansPage() {
         throw new Error(j.error ?? 'Failed to submit application');
       }
       setForm({ loanTypeId: '', principal: '', tenureMonths: '', remarks: '' });
-      setMessage('Loan application submitted for approval.');
+      toast.success('Loan application submitted for approval.');
       await fetchAll();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to submit application');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit application');
     } finally {
       setSubmitting(false);
     }
@@ -180,9 +178,6 @@ export default function EssLoansPage() {
           </button>
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-700">{message}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

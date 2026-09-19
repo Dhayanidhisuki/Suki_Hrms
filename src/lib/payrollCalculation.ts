@@ -48,6 +48,7 @@
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
 import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes } from './attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from './permissionExcuse';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -741,13 +742,17 @@ export async function calculatePayrollRun(payrollRunId: number) {
         },
         include: { shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } } },
       });
+      // Approved permission excuses the late/early time it was granted for,
+      // so payroll must not deduct those minutes either.
+      const permissionExcused = await getApprovedPermissionMinutes([emp.id], lomMonthStart, lomMonthEnd);
       lomMinutes = 0;
       for (const d of lomDays) {
         lomMinutes += computeLomMinutes(
           Number(d.lateMinutes ?? 0),
           Number(d.earlyOutMinutes ?? 0),
           d.shiftMaster,
-          lomCfgLite
+          lomCfgLite,
+          excusedMinutesFor(permissionExcused, emp.id, d.date)
         );
       }
     }

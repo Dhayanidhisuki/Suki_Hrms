@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 const REPORT_TABS = [
   { key: 'pipeline', label: 'Applicant Pipeline' },
@@ -106,23 +107,22 @@ export default function RecruitmentReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportKey>('pipeline');
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async (report: ReportKey) => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/recruitment/reports?type=${report}`);
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
       const json: { data: Record<string, unknown>[] } = await res.json();
       setData(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData(activeReport);
@@ -153,12 +153,6 @@ export default function RecruitmentReportsPage() {
           </button>
         ))}
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
         <table className="w-full text-sm">

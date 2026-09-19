@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/ui';
 
 interface MyBenefit {
   id: number;
@@ -24,12 +25,11 @@ const money = (v: number) =>
 export default function EssBenefitsPage() {
   const [benefits, setBenefits] = useState<MyBenefit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     const fetchBenefits = async () => {
       setLoading(true);
-      setError(null);
       try {
         const res = await fetch('/api/workforce/my-benefits');
         if (!res.ok) {
@@ -39,13 +39,13 @@ export default function EssBenefitsPage() {
         const json: { data: MyBenefit[] } = await res.json();
         setBenefits(json.data ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load benefits');
+        toast.error(err instanceof Error ? err.message : 'Failed to load benefits');
       } finally {
         setLoading(false);
       }
     };
     fetchBenefits();
-  }, []);
+  }, [toast]);
 
   const total = benefits.reduce((sum, b) => sum + b.amount, 0);
 
@@ -57,10 +57,6 @@ export default function EssBenefitsPage() {
           The benefit components you are currently enrolled in. Enrolment is managed by HR.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading benefits…</div>

@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import * as XLSX from 'xlsx';
+import { useToast } from '@/components/ui';
 import { buildPmsTemplateWorkbook, parsePmsWorkbookRows, monthName, type PmsImportRow } from '@/lib/pms-bulk-import';
 
 interface UserAccess {
@@ -125,6 +126,7 @@ function yearMonthForDate(d: string | Date | null | undefined): { year: number; 
 }
 
 export default function PerformanceIncentivePage() {
+  const toast = useToast();
   const [access, setAccess] = useState<UserAccess | null>(null);
   const [config, setConfig] = useState<PmsConfig>(() => {
     const now = new Date();
@@ -155,13 +157,10 @@ export default function PerformanceIncentivePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string | number>('');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importRows, setImportRows] = useState<(PmsImportRow & { status: 'ready' | 'applying' | 'applied' | 'failed' })[]>([]);
   const [importing, setImporting] = useState(false);
   const [parsingImport, setParsingImport] = useState(false);
-  const [importFileError, setImportFileError] = useState<string | null>(null);
   const [duplicatePopup, setDuplicatePopup] = useState<{ code: string; name: string; reason: string }[] | null>(null);
   const [chosenFile, setChosenFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -172,7 +171,6 @@ export default function PerformanceIncentivePage() {
   const [modalMonth, setModalMonth] = useState<number>(0);
   const [modalForm, setModalForm] = useState<RowEdit>({});
   const [modalSaving, setModalSaving] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -186,7 +184,6 @@ export default function PerformanceIncentivePage() {
     if (!config.financialYear) return;
     const { year, month } = yearMonthForDate(config.effectiveFrom);
     setLoading(true);
-    setError(null);
     try {
       const [configRes, listRes] = await Promise.all([
         fetch(`/api/payroll/pms?scope=config&financialYear=${config.financialYear}`),
@@ -222,11 +219,11 @@ export default function PerformanceIncentivePage() {
       }
       setSelectedIds(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      toast.error(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [config.financialYear, config.effectiveFrom, search, statusFilter]);
+  }, [config.financialYear, config.effectiveFrom, search, statusFilter, toast]);
 
   useEffect(() => {
     const t = setTimeout(() => loadData(), 250);
@@ -274,7 +271,6 @@ export default function PerformanceIncentivePage() {
   const saveConfig = async () => {
     if (!access?.canManageConfig) return;
     setSavingConfig(true);
-    setError(null);
     try {
       const res = await fetch('/api/payroll/pms/config', {
         method: 'POST',
@@ -288,10 +284,10 @@ export default function PerformanceIncentivePage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
-      setSuccess('Configuration saved.');
+      toast.success('Configuration saved.');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingConfig(false);
     }
@@ -341,26 +337,24 @@ export default function PerformanceIncentivePage() {
   const bulkApplyCompany = async () => {
     if (!access?.canApprove) return;
     if (filteredRows.length === 0) {
-      setError('No employees to apply.');
+      toast.warning('No employees to apply.');
       return;
     }
     if (config.companyPercent > 50) {
-      setError('Company % cannot exceed 50.');
+      toast.warning('Company % cannot exceed 50.');
       return;
     }
     setLoading(true);
-    setError(null);
-    setSuccess(null);
     try {
       await Promise.all(
         filteredRows.map((row) =>
           apiSaveRow(row, buildRowPayload(row, { companyPercent: config.companyPercent }, false))
         )
       );
-      setSuccess(`Company % applied to ${filteredRows.length} employee(s).`);
+      toast.success(`Company % applied to ${filteredRows.length} employee(s).`);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Bulk apply failed');
+      toast.error(err instanceof Error ? err.message : 'Bulk apply failed');
     } finally {
       setLoading(false);
     }
@@ -386,16 +380,15 @@ export default function PerformanceIncentivePage() {
   const handleImportFile = async () => {
     const file = chosenFile;
     if (!file) {
-      setImportFileError('Choose a file first.');
+      toast.warning('Choose a file first.');
       return;
     }
-    setImportFileError(null);
     setImportRows([]);
     setParsingImport(true);
     try {
       const parsed = await parsePmsWorkbookRows(file, rows, access?.canApprove === true);
       if (parsed.length === 0) {
-        setImportFileError('No rows found in the uploaded file.');
+        toast.warning('No rows found in the uploaded file.');
         return;
       }
       setImportRows(parsed.map((r) => ({ ...r, status: r.error ? 'failed' : 'ready' })));
@@ -404,7 +397,7 @@ export default function PerformanceIncentivePage() {
         setDuplicatePopup(dups.map((p) => ({ code: p.employeeCode, name: p.employeeName ?? '', reason: p.error ?? '' })));
       }
     } catch (err) {
-      setImportFileError(err instanceof Error ? err.message : 'Failed to read the uploaded file');
+      toast.error(err instanceof Error ? err.message : 'Failed to read the uploaded file');
     } finally {
       setParsingImport(false);
     }
@@ -430,7 +423,7 @@ export default function PerformanceIncentivePage() {
           setImportRows((prev) => prev.map((row, idx) => (idx === i ? { ...row, status: 'failed', error: err instanceof Error ? err.message : 'Failed' } : row)));
         }
       }
-      setSuccess('Import complete.');
+      toast.success('Import complete.');
       await loadData();
     } finally {
       setImporting(false);
@@ -439,7 +432,7 @@ export default function PerformanceIncentivePage() {
 
   const uploadFile = async (row: IncentiveRow, file: File) => {
     if (!row.recordId) {
-      setError('Save the incentive record before uploading a file.');
+      toast.warning('Save the incentive record before uploading a file.');
       return;
     }
     const form = new FormData();
@@ -448,10 +441,10 @@ export default function PerformanceIncentivePage() {
       const res = await fetch(`/api/payroll/pms/${row.recordId}/upload`, { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Upload failed');
-      setSuccess('Supporting document uploaded.');
+      toast.success('Supporting document uploaded.');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     }
   };
 
@@ -460,8 +453,6 @@ export default function PerformanceIncentivePage() {
   const deleteRecord = async (row: IncentiveRow) => {
     if (!row.recordId) return;
     setBulkBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch('/api/payroll/pms', {
         method: 'DELETE',
@@ -470,10 +461,10 @@ export default function PerformanceIncentivePage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Delete failed');
-      setSuccess('Record deleted.');
+      toast.success('Record deleted.');
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setBulkBusy(false);
     }
@@ -486,7 +477,6 @@ export default function PerformanceIncentivePage() {
     setModalYear(configYearMonth.year);
     setModalMonth(configYearMonth.month);
     setModalForm({ individualPercent: '', individualValue: null, remarks: null });
-    setModalError(null);
     setModalOpen(true);
   };
 
@@ -502,7 +492,6 @@ export default function PerformanceIncentivePage() {
       individualValue: row.individualValue,
       remarks: row.remarks,
     });
-    setModalError(null);
     setModalOpen(true);
   };
 
@@ -511,11 +500,10 @@ export default function PerformanceIncentivePage() {
   const saveModal = async () => {
     const row = modalRow;
     if (!row) {
-      setModalError('Select an employee.');
+      toast.warning('Select an employee.');
       return;
     }
     setModalSaving(true);
-    setModalError(null);
     try {
       const payload = {
         ...buildRowPayload(row, modalForm, true),
@@ -524,11 +512,11 @@ export default function PerformanceIncentivePage() {
         financialYear: financialYearForDate(new Date(modalYear, modalMonth - 1, 1)),
       };
       await apiSaveRow(row, payload);
-      setSuccess(editingRow ? 'Incentive updated.' : 'Incentive added.');
+      toast.success(editingRow ? 'Incentive updated.' : 'Incentive added.');
       setModalOpen(false);
       await loadData();
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setModalSaving(false);
     }
@@ -570,8 +558,6 @@ export default function PerformanceIncentivePage() {
   const bulkAction = async (path: 'hold' | 'approve') => {
     if (selectedIds.size === 0) return;
     setBulkBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const results = await Promise.allSettled(
         Array.from(selectedIds).map(async (employeeId) => {
@@ -595,9 +581,9 @@ export default function PerformanceIncentivePage() {
       const failed = results.filter((r) => r.status === 'rejected');
       setSelectedIds(new Set());
       if (failed.length > 0) {
-        setError(`${failed.length} of ${selectedIds.size} row(s) failed — ${(failed[0] as PromiseRejectedResult).reason?.message ?? 'see console'}`);
+        toast.error(`${failed.length} of ${selectedIds.size} row(s) failed — ${(failed[0] as PromiseRejectedResult).reason?.message ?? 'see console'}`);
       } else {
-        setSuccess(path === 'approve' ? `${selectedIds.size} employee(s) marked Complete.` : `${selectedIds.size} employee(s) put on Hold.`);
+        toast.success(path === 'approve' ? `${selectedIds.size} employee(s) marked Complete.` : `${selectedIds.size} employee(s) put on Hold.`);
       }
       await loadData();
     } finally {
@@ -636,17 +622,6 @@ export default function PerformanceIncentivePage() {
           </span>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
-          {success}
-        </div>
-      )}
 
       {/* Incentive Configuration */}
       {access.canManageConfig && (
@@ -756,7 +731,7 @@ export default function PerformanceIncentivePage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-            onClick={() => { setImportOpen(true); setImportRows([]); setChosenFile(null); setImportFileError(null); }}
+            onClick={() => { setImportOpen(true); setImportRows([]); setChosenFile(null); }}
             className="rounded-lg border px-3 py-1.5 text-sm font-medium"
             style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
           >
@@ -1049,11 +1024,6 @@ export default function PerformanceIncentivePage() {
                 </div>
               </div>
 
-              {modalError && (
-                <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-                  {modalError}
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -1062,7 +1032,6 @@ export default function PerformanceIncentivePage() {
                 onClick={() => {
                   setModalForm({});
                   setModalEmployeeId('');
-                  setModalError(null);
                 }}
                 className="rounded-lg border px-4 py-1.5 text-sm font-medium"
                 style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -1126,7 +1095,6 @@ export default function PerformanceIncentivePage() {
                 onChange={(e) => {
                   setChosenFile(e.target.files?.[0] ?? null);
                   setImportRows([]);
-                  setImportFileError(null);
                   e.target.value = '';
                 }}
               />
@@ -1155,12 +1123,6 @@ export default function PerformanceIncentivePage() {
                 </span>
               )}
             </div>
-
-            {importFileError && (
-              <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-                {importFileError}
-              </div>
-            )}
 
             <div className="min-h-[240px] flex-1 overflow-auto p-4">
               {importRows.length === 0 ? (

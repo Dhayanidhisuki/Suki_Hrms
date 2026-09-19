@@ -14,7 +14,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface PermissionRow {
   id: number;
@@ -42,7 +42,7 @@ function usePermissionQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<PermissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -56,21 +56,22 @@ function usePermissionQueue(scope: 'manager' | 'hr' | 'actioned') {
       const json: { data: PermissionRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, visible, error, refetch: fetchData };
+  return { records, loading, visible, refetch: fetchData };
 }
 
 function PermissionQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
-  const { records, loading, visible, error, refetch } = usePermissionQueue(scope);
+  const { records, loading, visible, refetch } = usePermissionQueue(scope);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   // Rows this approver has just actioned, and the status each moved to.
@@ -79,23 +80,20 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
   // confirmation. Keep it in place showing its new status; it leaves the
   // queue on the next load, and "My Approval History" holds it after that.
   const [actioned, setActioned] = useState<Record<number, string>>({});
-  const [approveResult, setApproveResult] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!visible) return null;
 
   const handleApprove = async (id: number) => {
-    setActionError(null);
     const res = await fetch(`/api/workforce/permission/${id}/approve`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setActionError(data.error ?? 'Approve failed');
+      toast.error(data.error ?? 'Approve failed');
       return;
     }
     // Only the HR stage reports the allowance overshoot; the manager stage
     // just advances the request, so there is nothing to warn about there.
     if (data.exceedsAllowance) {
-      setApproveResult(`Approved — this pushes the employee ${Number(data.excessHours).toFixed(2)}h over their monthly free allowance. Handle the excess as an LOP adjustment.`);
+      toast.warning(`Approved — this pushes the employee ${Number(data.excessHours).toFixed(2)}h over their monthly free allowance. Handle the excess as an LOP adjustment.`);
     }
     setActioned((prev) => ({ ...prev, [id]: data?.status ?? data?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
   };
@@ -130,17 +128,6 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>{title}</h2>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>{description}</p>
       </div>
-
-      {(error || actionError) && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {actionError ?? error}
-        </div>
-      )}
-      {approveResult && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef9c3', color: '#854d0e' }}>
-          {approveResult}
-        </div>
-      )}
 
       <DataTable
         columns={[...columns, outcomeColumn]}
@@ -218,7 +205,7 @@ const HIST_LABEL: Record<string, string> = {
  * record of it — only the employee sees the outcome, on their own page.
  */
 function PermissionHistorySection() {
-  const { records, loading, visible, error } = usePermissionQueue('actioned');
+  const { records, loading, visible } = usePermissionQueue('actioned');
   if (!visible) return null;
 
   const columns: Column<PermissionRow>[] = [
@@ -243,9 +230,6 @@ function PermissionHistorySection() {
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Permission requests you have already actioned. Read-only.</p>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
-      )}
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any permission requests yet." />
     </div>
   );

@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface OrgOption { id: number; name: string; code: string; }
 interface StatusOption { id: number; statusCode: string; statusName: string; color: string | null; }
@@ -38,9 +38,9 @@ interface ApiResponse {
 
 export default function PipelineTab() {
   const router = useRouter();
+  const toast = useToast();
   const [records, setRecords] = useState<CandidateRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -76,11 +76,11 @@ export default function PipelineTab() {
       setRecords(json.data ?? []);
       setPagination(json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [page, search, filterDept, filterStatus]);
+  }, [page, search, filterDept, filterStatus, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -112,13 +112,6 @@ export default function PipelineTab() {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
-
       <DataTable
         columns={columns}
         data={records}

@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface SalaryRevision {
   id: number;
@@ -33,7 +33,7 @@ const rejectFields: FieldDef[] = [{ name: 'reason', label: 'Rejection Reason', t
 export default function SalaryRevisionApprovalPage() {
   const [revisions, setRevisions] = useState<SalaryRevision[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
@@ -41,7 +41,6 @@ export default function SalaryRevisionApprovalPage() {
 
   const fetchRevisions = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/payroll/revisions?status=SUBMITTED');
       if (!res.ok) {
@@ -51,11 +50,11 @@ export default function SalaryRevisionApprovalPage() {
       const json = await res.json();
       setRevisions(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load salary revisions');
+      toast.error(err instanceof Error ? err.message : 'Failed to load salary revisions');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchRevisions();
@@ -71,7 +70,7 @@ export default function SalaryRevisionApprovalPage() {
       }
       fetchRevisions();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
       setApproving(false);
     }
@@ -92,7 +91,7 @@ export default function SalaryRevisionApprovalPage() {
       setRejectId(null);
       fetchRevisions();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reject');
+      toast.error(err instanceof Error ? err.message : 'Failed to reject');
     } finally {
       setRejecting(false);
     }
@@ -136,12 +135,6 @@ export default function SalaryRevisionApprovalPage() {
           Review and approve salary revision requests from HR.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

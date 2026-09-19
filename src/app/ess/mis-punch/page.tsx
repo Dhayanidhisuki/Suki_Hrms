@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface MispunchRow {
   id: number;
@@ -72,23 +72,22 @@ function toTimeInput(iso: string | null): string {
 export default function MisPunchRequestsPage() {
   const [records, setRecords] = useState<MispunchRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/mispunch?scope=mine');
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
       const json: { data: MispunchRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -159,12 +158,6 @@ export default function MisPunchRequestsPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No mis-punch requests yet." />
 
       <MisPunchModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />
@@ -188,14 +181,13 @@ function MisPunchModal({
   const [lookedUp, setLookedUp] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (isOpen) {
       setForm(EMPTY_FORM);
       setRecorded(null);
       setLookedUp(false);
-      setError(null);
     }
   }, [isOpen]);
 
@@ -208,7 +200,6 @@ function MisPunchModal({
     if (!date) return;
 
     setLookingUp(true);
-    setError(null);
     try {
       const [year, month] = date.split('-');
       const res = await fetch(`/api/workforce/my-attendance?year=${Number(year)}&month=${Number(month)}`);
@@ -225,7 +216,7 @@ function MisPunchModal({
         }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load that day');
+      toast.error(err instanceof Error ? err.message : 'Could not load that day');
     } finally {
       setLookingUp(false);
     }
@@ -234,31 +225,30 @@ function MisPunchModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.date || !form.reason.trim()) {
-      setError('Date and reason are required.');
+      toast.error('Date and reason are required.');
       return;
     }
     if (!form.inTime && !form.outTime) {
-      setError('Enter at least one of In Time or Out Time.');
+      toast.error('Enter at least one of In Time or Out Time.');
       return;
     }
     // Both times are composed against the same picked date, so an out that
     // reads earlier than the in can only be a mistake here — a night shift
     // ending next morning cannot currently be expressed on this form.
     if (form.inTime && form.outTime && !form.outNextDay && form.outTime <= form.inTime) {
-      setError('Out time is earlier than in time — tick "Out time is on the next day" if this was a night shift.');
+      toast.error('Out time is earlier than in time — tick "Out time is on the next day" if this was a night shift.');
       return;
     }
     if (form.date > new Date().toISOString().slice(0, 10)) {
-      setError('Cannot request a correction for a future date.');
+      toast.error('Cannot request a correction for a future date.');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       await onSubmit(form);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -412,12 +402,6 @@ function MisPunchModal({
               style={inputStyle}
             />
           </div>
-
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-              {error}
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

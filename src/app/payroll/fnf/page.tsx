@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface FnFSettlement {
   id: number;
@@ -43,9 +43,9 @@ const columns: Column<FnFSettlement>[] = [
 ];
 
 export default function FnFPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<FnFSettlement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<FnFSettlement | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -64,24 +64,24 @@ export default function FnFPage() {
       })) as FnFSettlement[];
       setRecords(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleCalculate = async (id: number) => {
     const res = await fetch(`/api/payroll/fnf/${id}/calculate`, { method: 'POST' });
     if (res.ok) fetchData();
-    else { const j = await res.json().catch(() => ({})); alert(j.error ?? 'Failed to calculate'); }
+    else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? 'Failed to calculate'); }
   };
 
   const handleApprove = async (id: number) => {
     const res = await fetch(`/api/payroll/fnf/${id}/approve`, { method: 'POST' });
     if (res.ok) fetchData();
-    else alert('Failed to approve');
+    else toast.error('Failed to approve');
   };
 
   const handleReject = async (id: number) => {
@@ -93,7 +93,7 @@ export default function FnFPage() {
       body: JSON.stringify({ rejectionReason: reason }),
     });
     if (res.ok) fetchData();
-    else alert('Failed to reject');
+    else toast.error('Failed to reject');
   };
 
   const handleMarkPaid = async (id: number) => {
@@ -105,7 +105,7 @@ export default function FnFPage() {
       body: JSON.stringify({ paymentReference: ref || undefined }),
     });
     if (res.ok) fetchData();
-    else alert('Failed to mark as paid');
+    else toast.error('Failed to mark as paid');
   };
 
   const fmt = (v: string) => Number(v).toFixed(2);
@@ -118,8 +118,6 @@ export default function FnFPage() {
           Calculate, approve, and pay terminal settlements for exiting employees.
         </p>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

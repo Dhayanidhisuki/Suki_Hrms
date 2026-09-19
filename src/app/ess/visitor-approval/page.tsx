@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
+import { useToast } from '@/components/ui';
 
 interface VisitorPass {
   id: number;
@@ -31,9 +32,9 @@ const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
 };
 
 export default function VisitorApprovalPage() {
+  const toast = useToast();
   const [passes, setPasses] = useState<VisitorPass[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [approving, setApproving] = useState(false);
@@ -41,7 +42,6 @@ export default function VisitorApprovalPage() {
 
   const fetchPasses = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/my-visitor-approvals');
       if (!res.ok) {
@@ -51,11 +51,11 @@ export default function VisitorApprovalPage() {
       const json = await res.json();
       setPasses(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load visitor passes');
+      toast.error(err instanceof Error ? err.message : 'Failed to load visitor passes');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchPasses();
@@ -76,7 +76,7 @@ export default function VisitorApprovalPage() {
       }
       fetchPasses();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
       setApproving(false);
     }
@@ -84,7 +84,7 @@ export default function VisitorApprovalPage() {
 
   const handleReject = async (passId: number) => {
     if (!rejectReason.trim()) {
-      alert('Please provide a rejection reason');
+      toast.warning('Please provide a rejection reason');
       return;
     }
     setRejecting(true);
@@ -102,7 +102,7 @@ export default function VisitorApprovalPage() {
       setRejectReason('');
       fetchPasses();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reject');
+      toast.error(err instanceof Error ? err.message : 'Failed to reject');
     } finally {
       setRejecting(false);
     }
@@ -118,12 +118,6 @@ export default function VisitorApprovalPage() {
           Approve or reject visitor requests to meet you.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>

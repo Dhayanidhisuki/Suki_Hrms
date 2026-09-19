@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface AnnualCalc {
   regime: string;
@@ -37,27 +38,26 @@ interface Projection {
 }
 
 export default function TdsAnnualSummaryPage() {
+  const toast = useToast();
   const [employeeId, setEmployeeId] = useState('');
   const [financialYear, setFinancialYear] = useState(new Date().getUTCFullYear());
   const [projection, setProjection] = useState<Projection | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchProjection = useCallback(async () => {
     if (!employeeId) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/tds/projection?employeeId=${employeeId}&financialYear=${financialYear}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setProjection(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [employeeId, financialYear]);
+  }, [employeeId, financialYear, toast]);
 
   useEffect(() => { if (employeeId) fetchProjection(); }, [fetchProjection]);
 
@@ -103,8 +103,6 @@ export default function TdsAnnualSummaryPage() {
           Calculate
         </button>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading && <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Calculating…</div>}
 

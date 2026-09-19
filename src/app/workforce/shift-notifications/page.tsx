@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid } from '@/components/ui';
+import { PageHeader, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast } from '@/components/ui';
 
 interface ShiftChangeNotification {
   id: number;
@@ -44,9 +44,9 @@ const BellIcon = () => (
 );
 
 export default function ShiftChangeNotificationsPage() {
+  const toast = useToast();
   const [notifications, setNotifications] = useState<ShiftChangeNotification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('unread');
 
   const fetchData = useCallback(async () => {
@@ -57,11 +57,11 @@ export default function ShiftChangeNotificationsPage() {
       const json = await res.json();
       setNotifications(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -74,7 +74,7 @@ export default function ShiftChangeNotificationsPage() {
       });
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
 
@@ -87,7 +87,7 @@ export default function ShiftChangeNotificationsPage() {
       });
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
 
@@ -120,8 +120,6 @@ export default function ShiftChangeNotificationsPage() {
         <KPICard label="Upcoming Changes" value={upcoming} subtitle="shift dates from today" tone="info" />
         <KPICard label="Total Notifications" value={notifications.length} tone="info" />
       </KPIGrid>
-
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
 
       <SectionCard
         title="Notifications"

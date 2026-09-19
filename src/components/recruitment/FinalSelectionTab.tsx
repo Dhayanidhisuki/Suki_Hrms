@@ -6,6 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
@@ -16,6 +17,7 @@ const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground
 const labelClass = 'block text-sm font-medium mb-1';
 
 export default function FinalSelectionTab() {
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [form, setForm] = useState({
@@ -23,8 +25,6 @@ export default function FinalSelectionTab() {
     reportingManagerId: '', remarks: '',
   });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [proposals, setProposals] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
@@ -42,12 +42,10 @@ export default function FinalSelectionTab() {
 
   const submit = async () => {
     if (!form.candidateId || !form.proposedSalary || !form.joiningDate) {
-      setError('Candidate, salary, and joining date are required');
+      toast.error('Candidate, salary, and joining date are required');
       return;
     }
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
     try {
       const payload: Record<string, unknown> = {
         candidateId: Number(form.candidateId),
@@ -65,10 +63,10 @@ export default function FinalSelectionTab() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to propose');
-      setSuccess(`Final selection proposed — ${json.offerNo}. Approval: ${json.approvalMatrix ? json.approvalMatrix.process : 'Auto-Approved'}`);
+      toast.success(`Final selection proposed — ${json.offerNo}. Approval: ${json.approvalMatrix ? json.approvalMatrix.process : 'Auto-Approved'}`);
       setForm({ candidateId: '', proposedSalary: '', joiningDate: '', employmentType: 'Full-time', reportingManagerId: '', remarks: '' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to propose');
+      toast.error(e instanceof Error ? e.message : 'Failed to propose');
     } finally {
       setSubmitting(false);
     }
@@ -76,13 +74,6 @@ export default function FinalSelectionTab() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>{success}</div>
-      )}
-
       <div className="card space-y-4 p-5">
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Final Selection Proposal</h2>
         <div>

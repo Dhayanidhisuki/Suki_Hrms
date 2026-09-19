@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 import DataTable, { type Column, type Pagination } from '@/components/ui/DataTable';
 
 interface Notification {
@@ -28,14 +29,14 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 export default function VisitorNotifications() {
+  const toast = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
   const [statusFilter, setStatusFilter] = useState('');
 
   const fetchNotifications = async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pagination.page));
@@ -47,7 +48,7 @@ export default function VisitorNotifications() {
       setNotifications(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -87,8 +88,6 @@ export default function VisitorNotifications() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Notifications</h1>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Visitor and gate event notifications</p>
       </div>
-
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>}
 
       <DataTable
         variant="card"

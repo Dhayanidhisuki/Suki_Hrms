@@ -11,7 +11,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 interface UsageRow {
@@ -42,6 +42,7 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => ({
 const hrs = (n: number) => `${Number(n).toFixed(2).replace(/\.00$/, '')}h`;
 
 export default function PermissionPolicyPage() {
+  const toast = useToast();
   const now = new Date();
   const [year, setYear] = useState(now.getUTCFullYear());
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
@@ -50,15 +51,12 @@ export default function PermissionPolicyPage() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [allowance, setAllowance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/permission/summary?year=${year}&month=${month}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to load');
@@ -68,11 +66,11 @@ export default function PermissionPolicyPage() {
       setAllowance(json.freeHoursPerMonth);
       setDraft(String(json.freeHoursPerMonth));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => {
     void fetchData();
@@ -80,8 +78,6 @@ export default function PermissionPolicyPage() {
 
   const saveAllowance = async () => {
     setSaving(true);
-    setSaved(null);
-    setError(null);
     try {
       const res = await fetch('/api/masters/permission-policy', {
         method: 'PUT',
@@ -93,10 +89,10 @@ export default function PermissionPolicyPage() {
         const fe = body?.details?.fieldErrors as Record<string, string[]> | undefined;
         throw new Error(fe ? Object.values(fe).flat().join(', ') : body.error ?? 'Could not save');
       }
-      setSaved(`Allowance set to ${hrs(Number(draft))} per month.`);
+      toast.success(`Allowance set to ${hrs(Number(draft))} per month.`);
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save');
+      toast.error(err instanceof Error ? err.message : 'Could not save');
     } finally {
       setSaving(false);
     }
@@ -162,16 +158,7 @@ export default function PermissionPolicyPage() {
             Applies to every employee in the company. Quarter-hour steps.
           </span>
         </div>
-        {saved && (
-          <div className="mt-3 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>{saved}</div>
-        )}
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

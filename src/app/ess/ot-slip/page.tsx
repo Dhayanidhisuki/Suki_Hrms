@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface OTRecord {
   id: number;
@@ -23,13 +24,12 @@ export default function OTSlipPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<OTRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
+  const toast = useToast();
 
   const fetchOTRecords = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/my-ot-slips?month=${month}&year=${year}`);
       if (!res.ok) {
@@ -39,12 +39,12 @@ export default function OTSlipPage() {
       const json = await res.json();
       setRecords(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load OT slips');
+      toast.error(err instanceof Error ? err.message : 'Failed to load OT slips');
       setRecords([]);
     } finally {
       setLoading(false);
     }
-  }, [month, year]);
+  }, [month, year, toast]);
 
   useEffect(() => {
     void fetchOTRecords();
@@ -194,8 +194,6 @@ export default function OTSlipPage() {
           ))}
         </select>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

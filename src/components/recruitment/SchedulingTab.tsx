@@ -6,7 +6,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
 interface LevelOption { id: number; levelName: string; levelCode: string; }
@@ -33,9 +33,9 @@ const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground
 const labelClass = 'block text-sm font-medium mb-1';
 
 export default function SchedulingTab() {
+  const toast = useToast();
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -61,11 +61,11 @@ export default function SchedulingTab() {
       setSchedules(json.data ?? []);
       setPagination(json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, toast]);
 
   useEffect(() => {
     fetchSchedules();
@@ -89,11 +89,10 @@ export default function SchedulingTab() {
 
   const submit = async () => {
     if (!form.candidateId || !form.interviewLevelId || !form.interviewTypeId || !form.interviewerId) {
-      setError('All fields are required');
+      toast.error('All fields are required');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const payload: Record<string, unknown> = {
         candidateId: Number(form.candidateId),
@@ -118,7 +117,7 @@ export default function SchedulingTab() {
       setForm({ candidateId: '', interviewLevelId: '', interviewTypeId: '', interviewerId: '', scheduledDate: new Date().toISOString().slice(0, 10), startTime: '10:00', endTime: '', mode: 'Online', locationOrLink: '' });
       fetchSchedules();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to schedule');
+      toast.error(e instanceof Error ? e.message : 'Failed to schedule');
     } finally {
       setSubmitting(false);
     }
@@ -158,13 +157,6 @@ export default function SchedulingTab() {
           + Schedule Interview
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
 
       <DataTable
         columns={columns}

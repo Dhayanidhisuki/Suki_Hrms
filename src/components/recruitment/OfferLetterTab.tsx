@@ -5,7 +5,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
 interface TemplateOption { id: number; templateName: string; }
@@ -29,9 +29,9 @@ const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground
 const labelClass = 'block text-sm font-medium mb-1';
 
 export default function OfferLetterTab() {
+  const toast = useToast();
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -48,11 +48,11 @@ export default function OfferLetterTab() {
       const json = await res.json();
       setOffers(json.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchOffers();
@@ -70,11 +70,10 @@ export default function OfferLetterTab() {
 
   const submit = async () => {
     if (!form.candidateId || !form.proposedSalary || !form.joiningDate) {
-      setError('Candidate, salary, and joining date are required');
+      toast.error('Candidate, salary, and joining date are required');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const payload: Record<string, unknown> = {
         candidateId: Number(form.candidateId),
@@ -97,7 +96,7 @@ export default function OfferLetterTab() {
       setForm({ candidateId: '', offerTemplateId: '', proposedSalary: '', joiningDate: '', employmentType: 'Full-time', probationMonths: '6', remarks: '' });
       fetchOffers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate');
+      toast.error(e instanceof Error ? e.message : 'Failed to generate');
     } finally {
       setSubmitting(false);
     }
@@ -113,7 +112,7 @@ export default function OfferLetterTab() {
       if (!res.ok) throw new Error('Failed to update');
       fetchOffers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update');
+      toast.error(e instanceof Error ? e.message : 'Failed to update');
     }
   };
 
@@ -139,13 +138,6 @@ export default function OfferLetterTab() {
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Offer Letters</h2>
         <button onClick={() => setFormOpen(true)} className="rounded-lg px-4 py-2 text-sm font-medium text-white" style={{ backgroundColor: 'var(--accent)' }}>+ Generate Offer</button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
 
       <DataTable
         columns={columns}

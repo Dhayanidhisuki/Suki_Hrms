@@ -9,6 +9,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useToast } from '@/components/ui';
 
 interface PayslipSummaryRow {
   employeeId: number;
@@ -34,7 +35,7 @@ export default function PayslipReportPage() {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<PayslipSummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const yearOptions = (() => {
     const y = now.getFullYear();
@@ -43,7 +44,6 @@ export default function PayslipReportPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
       const res = await fetch(`/api/reports/payroll/payslip?${qs.toString()}`);
@@ -51,12 +51,12 @@ export default function PayslipReportPage() {
       if (!res.ok) throw new Error(json.error ?? 'Failed to load');
       setRows(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => {
     loadData();
@@ -80,10 +80,6 @@ export default function PayslipReportPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Payslip Report</h1>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>{error}</div>
-      )}
 
       <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">

@@ -10,7 +10,9 @@
  *        hours) on one of their own days. Self-service: employeeId is
  *        resolved from the session, never taken from the request body.
  *        New requests start at status 'pending_manager' (two-stage
- *        approval: Manager → HR).
+ *        approval: Manager → HR). A request that would take the month
+ *        past PermissionPolicy.freeHoursPerMonth is refused outright —
+ *        the slab is a hard cap, not a threshold that converts to LOP.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,7 +21,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { permissionRequestSchema } from '@/lib/validations/workforce';
-import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
+import { getFreeHoursPerMonth, getFreeHoursPerMonthForEmployee } from '@/lib/permissionPolicy';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -131,6 +133,43 @@ export async function POST(request: NextRequest) {
   }
 
   const hours = Math.round(((parsed.data.toTime.getTime() - parsed.data.fromTime.getTime()) / 3600000) * 100) / 100;
+
+  // Hard cap at the company's monthly slab: a request that would take the
+  // month past the allowance is refused here rather than filed and later
+  // turned into LOP. Anything not yet rejected counts against the balance —
+  // two requests that each fit on their own must not be allowed to exceed
+  // it together, and a request still awaiting approval has already claimed
+  // those hours.
+  const monthStart = new Date(Date.UTC(parsed.data.date.getUTCFullYear(), parsed.data.date.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(parsed.data.date.getUTCFullYear(), parsed.data.date.getUTCMonth() + 1, 1));
+  const [freeHoursPerMonth, claimed] = await Promise.all([
+    getFreeHoursPerMonthForEmployee(ownEmployeeId),
+    prisma.permissionRequest.findMany({
+      where: {
+        employeeId: ownEmployeeId,
+        date: { gte: monthStart, lt: monthEnd },
+        status: { in: ['pending_manager', 'pending_hr', 'approved'] },
+      },
+      select: { hours: true },
+    }),
+  ]);
+  const usedHours = claimed.reduce((sum, r) => sum + Number(r.hours), 0);
+  const remainingHours = Math.round(Math.max(0, freeHoursPerMonth - usedHours) * 100) / 100;
+  if (hours > remainingHours) {
+    return NextResponse.json(
+      {
+        error:
+          remainingHours === 0
+            ? `Monthly permission allowance of ${freeHoursPerMonth} h is already used up for ${monthStart.toISOString().slice(0, 7)} — this request cannot be applied.`
+            : `Only ${remainingHours} h of the ${freeHoursPerMonth} h monthly permission allowance is left — this request of ${hours} h cannot be applied.`,
+        freeHoursPerMonth,
+        usedHours: Math.round(usedHours * 100) / 100,
+        remainingHours,
+        requestedHours: hours,
+      },
+      { status: 400 }
+    );
+  }
 
   const record = await prisma.permissionRequest.create({
     data: {

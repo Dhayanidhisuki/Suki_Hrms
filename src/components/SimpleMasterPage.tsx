@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SimpleMaster {
@@ -74,7 +74,7 @@ export default function SimpleMasterPage({
 }: SimpleMasterPageProps) {
   const [records, setRecords] = useState<SimpleMaster[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -92,7 +92,6 @@ export default function SimpleMasterPage({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`${apiPath}?${params}`);
@@ -101,11 +100,11 @@ export default function SimpleMasterPage({
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, search]);
+  }, [apiPath, page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -145,7 +144,7 @@ export default function SimpleMasterPage({
     const res = await fetch(`${apiPath}/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -200,15 +199,6 @@ export default function SimpleMasterPage({
           <KPICard label={`Total ${title}`} value={stats.total} tone="info" />
           <KPICard label="Active" value={stats.active ?? 0} tone="success" />
         </KPIGrid>
-      )}
-
-      {error && (
-        <div
-          className="rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-        >
-          {error}
-        </div>
       )}
 
       <DataTable

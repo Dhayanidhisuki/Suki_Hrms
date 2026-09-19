@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 interface LeaveType {
@@ -65,15 +66,13 @@ export default function EssLeavePage() {
   const [balances, setBalances] = useState<LeaveBalanceRow[]>([]);
   const [applications, setApplications] = useState<LeaveApplicationRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
 
   const [form, setForm] = useState({ leaveMasterId: '', fromDate: '', toDate: '', isHalfDay: false, reason: '' });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [typesRes, leaveRes] = await Promise.all([
         fetch('/api/workforce/my-leave/types'),
@@ -87,11 +86,11 @@ export default function EssLeavePage() {
       setBalances(leaveJson.balances ?? []);
       setApplications(leaveJson.applications ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, toast]);
 
   useEffect(() => {
     void fetchAll();
@@ -109,7 +108,6 @@ export default function EssLeavePage() {
   async function applyForLeave(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setMessage(null);
     try {
       const numberOfDays = computeDays(form.fromDate, form.toDate, form.isHalfDay);
       const res = await fetch('/api/workforce/my-leave', {
@@ -129,10 +127,10 @@ export default function EssLeavePage() {
         throw new Error(j.error ?? 'Failed to submit application');
       }
       setForm({ leaveMasterId: '', fromDate: '', toDate: '', isHalfDay: false, reason: '' });
-      setMessage('Leave application submitted for approval.');
+      toast.success('Leave application submitted for approval.');
       await fetchAll();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to submit application');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit application');
     } finally {
       setSubmitting(false);
     }
@@ -140,17 +138,16 @@ export default function EssLeavePage() {
 
   async function cancelApplication(id: number) {
     if (!confirm('Cancel this leave application?')) return;
-    setMessage(null);
     try {
       const res = await fetch(`/api/workforce/my-leave/${id}/cancel`, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? 'Failed to cancel');
       }
-      setMessage('Leave application cancelled.');
+      toast.success('Leave application cancelled.');
       await fetchAll();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to cancel');
+      toast.error(err instanceof Error ? err.message : 'Failed to cancel');
     }
   }
 
@@ -219,9 +216,6 @@ export default function EssLeavePage() {
           />
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-700">{message}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

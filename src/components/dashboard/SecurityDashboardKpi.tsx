@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 import Icon from '@/components/layout/NavIcons';
 
 interface DashboardData {
@@ -34,9 +35,9 @@ function MiniStat({ label, value, tone = 'default' }: { label: string; value: nu
 }
 
 export default function SecurityDashboardKpi() {
+  const toast = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/visitor/dashboard')
@@ -46,10 +47,10 @@ export default function SecurityDashboardKpi() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load');
+        toast.error(err instanceof Error ? err.message : 'Failed to load');
         setLoading(false);
       });
-  }, []);
+  }, [toast]);
 
   if (loading) return (
     <div className="card p-5" style={{ backgroundColor: 'var(--surface)' }}>
@@ -57,7 +58,7 @@ export default function SecurityDashboardKpi() {
     </div>
   );
 
-  if (error || !data) return (
+  if (!data) return (
     <a href="/dashboard/security" className="card block p-5 transition hover:opacity-80" style={{ backgroundColor: 'var(--surface)' }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

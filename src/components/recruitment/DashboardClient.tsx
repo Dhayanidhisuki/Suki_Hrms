@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { KPICard, KPIGrid } from '@/components/ui';
+import { KPICard, KPIGrid, useToast } from '@/components/ui';
 
 interface DashboardData {
   pipeline: {
@@ -27,20 +27,19 @@ interface DashboardData {
 }
 
 export default function DashboardClient() {
+  const toast = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/recruitment/dashboard-stats')
       .then((r) => r.json())
       .then((d) => setData(d))
-      .catch(() => setError('Failed to load dashboard'))
+      .catch(() => toast.error('Failed to load dashboard'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [toast]);
 
   if (loading) return <div className="p-4 text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading dashboard...</div>;
-  if (error) return <div className="p-4 text-sm text-red-600">{error}</div>;
   if (!data) return null;
 
   const p = data.pipeline;

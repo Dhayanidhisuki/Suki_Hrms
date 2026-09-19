@@ -8,6 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from '@/components/ui';
 
 interface DocType {
   code: string;
@@ -60,8 +61,7 @@ export default function EssDocumentsPage() {
   const [types, setTypes] = useState<DocType[]>([]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const toast = useToast();
 
   const [selectedType, setSelectedType] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -74,7 +74,6 @@ export default function EssDocumentsPage() {
   // /api/workforce/me rather than trusted from anywhere else client-side.
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const meRes = await fetch('/api/workforce/me').catch(() => null);
       let employeeId: number | null = null;
@@ -96,14 +95,14 @@ export default function EssDocumentsPage() {
       if (docsRes?.ok) setDocs((await docsRes.json()).data ?? []);
       else if (docsRes) {
         const j = await docsRes.json().catch(() => ({}));
-        setError(j.error ?? 'Failed to load documents');
+        toast.error(j.error ?? 'Failed to load documents');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load documents');
+      toast.error(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchAll();
@@ -115,8 +114,6 @@ export default function EssDocumentsPage() {
     const file = fileInputRef.current?.files?.[0];
     if (!file || !selectedType || !ownEmployeeId) return;
     setUploading(true);
-    setError(null);
-    setSaved(null);
     try {
       const form = new FormData();
       form.set('file', file);
@@ -129,24 +126,23 @@ export default function EssDocumentsPage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? 'Upload failed');
       }
-      setSaved('Document uploaded.');
+      toast.success('Document uploaded.');
       setSelectedType('');
       setExpiryDate('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
   };
 
   const handleWithdraw = async (id: number) => {
-    setError(null);
     const res = await fetch(`/api/platform/document/${id}/withdraw`, { method: 'POST' });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      setError(j.error ?? 'Withdraw failed');
+      toast.error(j.error ?? 'Withdraw failed');
       return;
     }
     await fetchAll();
@@ -155,9 +151,6 @@ export default function EssDocumentsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Documents</h1>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {saved && <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-700">{saved}</div>}
 
       <div className="rounded-lg border p-5" style={{ borderColor: 'var(--border)' }}>
         <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Upload a document</h2>

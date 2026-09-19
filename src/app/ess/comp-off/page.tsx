@@ -13,7 +13,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface CompOffRow {
   id: number;
@@ -41,23 +41,22 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { tim
 export default function EssCompOffPage() {
   const [records, setRecords] = useState<CompOffRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/comp-off-request');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
       const json: { data: CompOffRow[] } = await res.json();
       setRecords(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -117,12 +116,6 @@ export default function EssCompOffPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No comp-off requests yet." />
 
       <CompOffModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />
@@ -143,37 +136,35 @@ function CompOffModal({
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (isOpen) {
       setForm(EMPTY_FORM);
-      setError(null);
     }
   }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.workedDate || !form.requestedDate) {
-      setError('Both the worked date and the comp-off date are required.');
+      toast.error('Both the worked date and the comp-off date are required.');
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
     if (form.workedDate > today) {
-      setError('The worked date cannot be in the future.');
+      toast.error('The worked date cannot be in the future.');
       return;
     }
     if (form.requestedDate <= form.workedDate) {
-      setError('The comp-off date must be after the day you worked.');
+      toast.error('The comp-off date must be after the day you worked.');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       await onSubmit(form);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -244,12 +235,6 @@ function CompOffModal({
               style={inputStyle}
             />
           </div>
-
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-              {error}
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

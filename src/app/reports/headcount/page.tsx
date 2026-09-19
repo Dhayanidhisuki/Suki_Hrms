@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface ReportData {
   asOfDate: string;
@@ -19,17 +20,17 @@ interface ReportData {
 export default function HeadcountReportPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const res = await fetch('/api/reports/headcount');
       if (!res.ok) throw new Error('Failed');
       setData(await res.json());
-    } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Error'); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   const handleExport = () => { window.open('/api/reports/headcount?format=csv', '_blank'); };
@@ -57,7 +58,6 @@ export default function HeadcountReportPage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Headcount Report</h1>
         <button onClick={handleExport} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
       </div>
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {loading ? <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div> : data ? (
         <div className="space-y-6">
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>

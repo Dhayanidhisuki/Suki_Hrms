@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface ArrearRow {
   id: number;
@@ -60,15 +60,14 @@ function ApplyModal({
   onApply: (payrollRunId: number) => Promise<void>;
   runs: RunOption[];
 }) {
+  const toast = useToast();
   const editableRuns = runs.filter((r) => r.status === 'DRAFT' || r.status === 'CALCULATED');
   const [runId, setRunId] = useState<number | ''>('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setRunId('');
-      setError(null);
     }
   }, [isOpen]);
 
@@ -99,7 +98,6 @@ function ApplyModal({
               </select>
             </div>
           )}
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -109,12 +107,11 @@ function ApplyModal({
               onClick={async () => {
                 if (!runId) return;
                 setSubmitting(true);
-                setError(null);
                 try {
                   await onApply(runId);
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -191,16 +188,15 @@ function MonthDetailModal({ arrearId, onClose }: { arrearId: number | null; onCl
 }
 
 export default function SalaryArrearPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<ArrearRow[]>([]);
   const [runs, setRuns] = useState<RunOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [applyRow, setApplyRow] = useState<ArrearRow | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [arrearsRes, runsRes] = await Promise.all([fetch('/api/payroll/arrears'), fetch('/api/payroll/runs')]);
       if (!arrearsRes.ok) throw new Error('Failed to fetch arrears');
@@ -209,22 +205,21 @@ export default function SalaryArrearPage() {
       const runsJson: { data: RunOption[] } = await runsRes.json();
       setRuns(runsJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   const recalculate = async (id: number) => {
-    setError(null);
     const res = await fetch(`/api/payroll/arrears/${id}/recalculate`, { method: 'POST' });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? 'Recalculate failed');
+      toast.error(json.error ?? 'Recalculate failed');
       return;
     }
     await fetchData();
@@ -277,12 +272,6 @@ export default function SalaryArrearPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Salary Arrear</h1>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No arrears — approve a retroactive salary revision to generate one." />
 

@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid,
+  DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast,
   type Column, type FieldDef,
 } from '@/components/ui';
 
@@ -92,9 +92,9 @@ const inputStyle = { backgroundColor: 'var(--background)', color: 'var(--foregro
 // ─── Tab 1: Declared Holidays ───────────────────────────────────────────
 
 function DeclaredHolidaysTab() {
+  const toast = useToast();
   const [records, setRecords] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -115,7 +115,6 @@ function DeclaredHolidaysTab() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/holidays?${params}`);
@@ -124,11 +123,11 @@ function DeclaredHolidaysTab() {
       setRecords(resp.data);
       setPagination(resp.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -166,7 +165,7 @@ function DeclaredHolidaysTab() {
     const res = await fetch(`/api/masters/holidays/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -212,7 +211,6 @@ function DeclaredHolidaysTab() {
       actions={<Button variant="primary" size="sm" onClick={handleAdd}>+ Add Holiday</Button>}
       flush
     >
-      {error && <div className="p-3"><Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
       <DataTable
         variant="card"
         columns={columns}
@@ -236,10 +234,10 @@ function DeclaredHolidaysTab() {
 // ─── Tab 2: Department Weekly Off ───────────────────────────────────────
 
 function DepartmentWeeklyOffTab() {
+  const toast = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [configs, setConfigs] = useState<DepartmentWeeklyOff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -255,11 +253,11 @@ function DepartmentWeeklyOffTab() {
       setDepartments(deptJson.data ?? []);
       setConfigs(configJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -273,12 +271,12 @@ function DepartmentWeeklyOffTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to toggle');
+        toast.error(err.error ?? 'Failed to toggle');
         return;
       }
       await fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setBusyKey(null);
     }
@@ -294,12 +292,12 @@ function DepartmentWeeklyOffTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to remove');
+        toast.error(err.error ?? 'Failed to remove');
         return;
       }
       await fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setBusyKey(null);
     }
@@ -345,8 +343,6 @@ function DepartmentWeeklyOffTab() {
           />
         }
       >
-        {error && <div className="p-3"><Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
-
         {/* Column headers */}
         <div className="hidden items-center gap-3 border-b px-4 py-2 md:flex" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-hover)' }}>
           <div className="w-64 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Department</div>
@@ -425,11 +421,10 @@ function DepartmentWeeklyOffTab() {
 // ─── Tab 3: Yearly Leave Calendar ────────────────────────────────────────
 
 function YearlyLeaveCalendarTab() {
+  const toast = useToast();
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [entries, setEntries] = useState<YearlyLeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
   const [year, setYear] = useState(new Date().getUTCFullYear());
   const [month, setMonth] = useState(new Date().getUTCMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -451,11 +446,11 @@ function YearlyLeaveCalendarTab() {
       setLeaveTypes(ltJson.data ?? []);
       setEntries(calJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -505,15 +500,15 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to save');
+        toast.error(err.error ?? 'Failed to save');
         return;
       }
-      setResult(`Saved leave entry for ${new Date(selectedDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`);
+      toast.success(`Saved leave entry for ${new Date(selectedDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`);
       setSelectedDate(null);
       setEntryName('');
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setSaving(false);
     }
@@ -528,14 +523,14 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to delete');
+        toast.error(err.error ?? 'Failed to delete');
         return;
       }
-      setResult('Leave entry deleted');
+      toast.success('Leave entry deleted');
       setSelectedDate(null);
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
 
@@ -549,15 +544,15 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to create leave type');
+        toast.error(err.error ?? 'Failed to create leave type');
         return;
       }
-      setResult(`Leave type "${ltForm.name}" created`);
+      toast.success(`Leave type "${ltForm.name}" created`);
       setLtModalOpen(false);
       setLtForm({ code: '', name: '', color: '#3b82f6', description: '' });
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setSaving(false);
     }
@@ -570,9 +565,6 @@ function YearlyLeaveCalendarTab() {
 
   return (
     <div className="space-y-4">
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
-      {result && <Alert tone="success" onDismiss={() => setResult(null)}>{result}</Alert>}
-
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
         {/* Calendar */}
         <SectionCard flush>

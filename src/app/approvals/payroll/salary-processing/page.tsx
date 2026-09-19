@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, useToast, type Column } from '@/components/ui';
 
 interface PayrollRun {
   id: number;
@@ -33,13 +33,12 @@ const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 export default function SalaryProcessingApprovalPage() {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/payroll/runs');
       if (!res.ok) {
@@ -53,11 +52,11 @@ export default function SalaryProcessingApprovalPage() {
       );
       setRuns(approvable);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load payroll runs');
+      toast.error(err instanceof Error ? err.message : 'Failed to load payroll runs');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchRuns();
@@ -73,7 +72,7 @@ export default function SalaryProcessingApprovalPage() {
       }
       fetchRuns();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
       setApproving(false);
     }
@@ -124,12 +123,6 @@ export default function SalaryProcessingApprovalPage() {
           Review and approve payroll runs before final processing.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

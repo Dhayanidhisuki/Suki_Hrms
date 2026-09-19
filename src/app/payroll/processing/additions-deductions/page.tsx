@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface SalaryComponentOption {
   id: number;
@@ -59,6 +59,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 };
 
 function AdditionsDeductionsContent() {
+  const toast = useToast();
   const search = useSearchParams();
   const initialRunId = Number(search.get('runId')) || undefined;
 
@@ -68,18 +69,10 @@ function AdditionsDeductionsContent() {
   const [components, setComponents] = useState<SalaryComponentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [selectedLine, setSelectedLine] = useState<PayrollLine | null>(null);
   const [componentId, setComponentId] = useState('');
   const [amount, setAmount] = useState('');
-
-  const showToast = (type: 'success' | 'error', text: string) => {
-    if (type === 'success') setSuccess(text);
-    else setError(text);
-    setTimeout(() => { setSuccess(null); setError(null); }, 5000);
-  };
 
   const fetchRuns = useCallback(async () => {
     try {
@@ -89,9 +82,9 @@ function AdditionsDeductionsContent() {
       setRuns(data);
       if (!selectedRunId && data.length > 0) setSelectedRunId(data[0].id);
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to load runs');
+      toast.error(err instanceof Error ? err.message : 'Failed to load runs');
     }
-  }, [selectedRunId]);
+  }, [selectedRunId, toast]);
 
   const fetchRun = useCallback(async () => {
     if (!selectedRunId) return;
@@ -107,11 +100,11 @@ function AdditionsDeductionsContent() {
       setComponents((compJson.data ?? []).filter((c: SalaryComponentOption) => c.type === 'earning' || c.type === 'deduction'));
       setSelectedLine(null);
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to load run');
+      toast.error(err instanceof Error ? err.message : 'Failed to load run');
     } finally {
       setLoading(false);
     }
-  }, [selectedRunId]);
+  }, [selectedRunId, toast]);
 
   useEffect(() => { fetchRuns(); }, [fetchRuns]);
   useEffect(() => { fetchRun(); }, [fetchRun]);
@@ -124,8 +117,6 @@ function AdditionsDeductionsContent() {
     if (!component) return;
 
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch(`/api/payroll/runs/${selectedRunId}/lines/${selectedLine.id}/adhoc`, {
         method: 'POST',
@@ -134,12 +125,12 @@ function AdditionsDeductionsContent() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Add failed');
-      showToast('success', `${component.name} added for ${selectedLine.employee.firstName}`);
+      toast.success(`${component.name} added for ${selectedLine.employee.firstName}`);
       setAmount('');
       setComponentId('');
       await fetchRun();
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Add failed');
+      toast.error(err instanceof Error ? err.message : 'Add failed');
     } finally {
       setBusy(false);
     }
@@ -149,14 +140,13 @@ function AdditionsDeductionsContent() {
     if (!isEditable) return;
     if (!confirm(`Remove ${row.salaryComponent.name} (${row.amount})?`)) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${selectedRunId}/lines/${lineId}/adhoc?componentId=${row.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Delete failed');
-      showToast('success', 'Entry removed');
+      toast.success('Entry removed');
       await fetchRun();
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Delete failed');
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setBusy(false);
     }
@@ -200,17 +190,6 @@ function AdditionsDeductionsContent() {
           Back to Salary Processing
         </Link>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-          {success}
-        </div>
-      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         <select

@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface FnFSettlement {
   id: number;
@@ -29,7 +29,7 @@ const rejectFields: FieldDef[] = [{ name: 'reason', label: 'Rejection Reason', t
 export default function FullAndFinalApprovalPage() {
   const [settlements, setSettlements] = useState<FnFSettlement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
@@ -37,7 +37,6 @@ export default function FullAndFinalApprovalPage() {
 
   const fetchSettlements = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/payroll/fnf?status=pending');
       if (!res.ok) {
@@ -47,11 +46,11 @@ export default function FullAndFinalApprovalPage() {
       const json = await res.json();
       setSettlements(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load FnF settlements');
+      toast.error(err instanceof Error ? err.message : 'Failed to load FnF settlements');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchSettlements();
@@ -67,7 +66,7 @@ export default function FullAndFinalApprovalPage() {
       }
       fetchSettlements();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
       setApproving(false);
     }
@@ -88,7 +87,7 @@ export default function FullAndFinalApprovalPage() {
       setRejectId(null);
       fetchSettlements();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reject');
+      toast.error(err instanceof Error ? err.message : 'Failed to reject');
     } finally {
       setRejecting(false);
     }
@@ -132,12 +131,6 @@ export default function FullAndFinalApprovalPage() {
           Review and approve Full & Final settlements for exiting employees.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

@@ -14,6 +14,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useToast } from '@/components/ui';
 
 type Regime = 'OLD' | 'NEW';
 
@@ -66,8 +67,7 @@ export default function IncomeTaxPage() {
   const [declarations, setDeclarations] = useState<Declaration[]>([]);
   const [currentFinancialYear, setCurrentFinancialYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   const [regime, setRegime] = useState<Regime>('NEW');
   const [form, setForm] = useState(INITIAL_FORM);
@@ -75,7 +75,6 @@ export default function IncomeTaxPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/tds-declaration?scope=mine');
       if (!res.ok) {
@@ -87,11 +86,11 @@ export default function IncomeTaxPage() {
       setCurrentFinancialYear(json.currentFinancialYear ?? null);
       setRegime(json.defaultRegime === 'OLD' ? 'OLD' : 'NEW');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -104,8 +103,6 @@ export default function IncomeTaxPage() {
   const handleSubmit = async () => {
     if (!currentFinancialYear) return;
     setSubmitting(true);
-    setError(null);
-    setSaved(false);
     try {
       const body: Record<string, unknown> = {
         financialYear: currentFinancialYear,
@@ -125,11 +122,11 @@ export default function IncomeTaxPage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? 'Submission failed');
       }
-      setSaved(true);
+      toast.success('Declaration submitted for HR approval.');
       setForm(INITIAL_FORM);
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -138,9 +135,6 @@ export default function IncomeTaxPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Income Tax — Regime &amp; Investment Declaration</h1>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {saved && <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-700">Declaration submitted for HR approval.</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>
@@ -336,7 +330,7 @@ function ProofSection({ declarationId, editable }: { declarationId: number; edit
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -352,8 +346,8 @@ function ProofSection({ declarationId, editable }: { declarationId: number; edit
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || Number(amount) < 0) { setErr('Enter the amount this proof covers.'); return; }
-    setBusy(true); setErr(null);
+    if (!amount || Number(amount) < 0) { toast.error('Enter the amount this proof covers.'); return; }
+    setBusy(true);
     try {
       const fd = new FormData();
       fd.set('declarationId', String(declarationId));
@@ -368,7 +362,7 @@ function ProofSection({ declarationId, editable }: { declarationId: number; edit
       if (fileRef.current) fileRef.current.value = '';
       await load();
     } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : 'Upload failed');
+      toast.error(e2 instanceof Error ? e2.message : 'Upload failed');
     } finally { setBusy(false); }
   };
 
@@ -428,8 +422,6 @@ function ProofSection({ declarationId, editable }: { declarationId: number; edit
           This declaration has already been reviewed — proofs can no longer be added to it.
         </p>
       )}
-
-      {err && <div className="mt-2 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{err}</div>}
     </div>
   );
 }

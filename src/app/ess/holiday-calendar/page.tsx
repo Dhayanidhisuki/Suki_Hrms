@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface Holiday {
   id: number;
@@ -42,11 +43,10 @@ export default function EssHolidayCalendarPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [yearlyLeave, setYearlyLeave] = useState<YearlyLeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/my-holidays?year=${year}`);
       if (!res.ok) {
@@ -57,11 +57,11 @@ export default function EssHolidayCalendarPage() {
       setHolidays(json.holidays ?? []);
       setYearlyLeave(json.yearlyLeave ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load holidays');
+      toast.error(err instanceof Error ? err.message : 'Failed to load holidays');
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, toast]);
 
   useEffect(() => {
     void fetchData();
@@ -81,8 +81,6 @@ export default function EssHolidayCalendarPage() {
           style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
         />
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

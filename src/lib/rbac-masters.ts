@@ -46,7 +46,6 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/masters/lwf-rates': 'statutory',
   '/api/masters/state-pt-configs': 'statutory',
   '/api/masters/tds-regime-config': 'statutory',
-  '/api/masters/health-insurance-config': 'statutory',
   '/api/masters/leave-encashment-config': 'statutory',
   '/api/masters/full-and-final-config': 'statutory',
   '/api/masters/bank-file-templates': 'statutory',
@@ -61,8 +60,6 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/jd-master': 'org',
   '/api/masters/jd-master': 'org',
   '/api/recruitment/job-postings': 'org',
-  '/api/masters/incentive-policies': 'definition',
-  '/api/masters/allowance-configs': 'definition',
   '/api/masters/attendance-color-config': 'definition',
   // Recruitment masters (BRD v6.4) — grouped under 'definition' for RBAC.
   '/api/masters/recruitment-status': 'definition',

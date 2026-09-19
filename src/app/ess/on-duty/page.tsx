@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface OnDutyRow {
   id: number;
@@ -39,23 +39,22 @@ const STATUS_LABEL: Record<string, string> = {
 export default function OnDutyPage() {
   const [records, setRecords] = useState<OnDutyRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/on-duty?scope=mine');
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
       const json: { data: OnDutyRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -135,12 +134,6 @@ export default function OnDutyPage() {
           + Apply for On-Duty
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No On-Duty applications yet." />
 

@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface Permission {
   id: number;
@@ -21,25 +21,24 @@ interface Permission {
 }
 
 export default function PermissionsPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/admin/permissions');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: Permission[] = await res.json();
       setRecords(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -75,15 +74,6 @@ export default function PermissionsPage() {
         The permission catalog is defined by the seed script and cannot be edited here. Assign
         permissions to roles from the Roles page.
       </p>
-
-      {error && (
-        <div
-          className="rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-        >
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

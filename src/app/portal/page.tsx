@@ -8,6 +8,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 
 interface CandidateInfo {
   id: number;
@@ -97,6 +98,7 @@ export default function PortalPage() {
 }
 
 function PortalInner() {
+  const toast = useToast();
   const searchParams = useSearchParams();
   const token = searchParams.get('t') ?? '';
   const [loading, setLoading] = useState(true);
@@ -173,7 +175,7 @@ function PortalInner() {
       setNewMessage('');
       fetchMessages();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSendingMessage(false);
     }
@@ -196,7 +198,7 @@ function PortalInner() {
       setNewDoc({ documentName: '', filePath: '', remarks: '' });
       fetchDocuments();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setUploadingDoc(false);
     }
@@ -214,7 +216,7 @@ function PortalInner() {
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed');
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setActionLoading(null);
     }

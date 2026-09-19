@@ -6,7 +6,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ConfirmDialog, DataTable, type Column } from '@/components/ui';
+import { ConfirmDialog, DataTable, useToast, type Column } from '@/components/ui';
 
 interface OrgOption { id: number; name: string; code: string; }
 interface InterviewTypeOpt { id: number; typeCode: string; typeName: string; }
@@ -48,9 +48,9 @@ const inputClass = 'w-full rounded-lg border px-3 py-2 text-sm focus:outline-non
 const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' } as const;
 
 export default function InterviewProcessPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<ProcessRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -92,11 +92,11 @@ export default function InterviewProcessPage() {
       setRecords(json.data ?? []);
       setPagination(json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -136,7 +136,7 @@ export default function InterviewProcessPage() {
 
   const submit = async () => {
     if (!processName.trim() || !departmentId || !designationId) {
-      setError('Process name, department, and designation are required');
+      toast.error('Process name, department, and designation are required');
       return;
     }
     const payload = {
@@ -151,7 +151,7 @@ export default function InterviewProcessPage() {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Save failed');
+      toast.error(err.error ?? 'Save failed');
       return;
     }
     setFormOpen(false);
@@ -160,7 +160,7 @@ export default function InterviewProcessPage() {
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/interview-processes/${id}`, { method: 'DELETE' });
-    if (!res.ok) { setError('Delete failed'); return; }
+    if (!res.ok) { toast.error('Delete failed'); return; }
     fetchData();
   };
 
@@ -185,13 +185,6 @@ export default function InterviewProcessPage() {
           + Add Process
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
 
       <DataTable
         columns={columns}

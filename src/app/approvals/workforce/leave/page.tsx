@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface LeaveRow {
   id: number;
@@ -31,7 +31,7 @@ function useLeaveQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -45,21 +45,22 @@ function useLeaveQueue(scope: 'manager' | 'hr' | 'actioned') {
       const json: { data: LeaveRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, visible, error, refetch: fetchData };
+  return { records, loading, visible, refetch: fetchData };
 }
 
 function LeaveQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
-  const { records, loading, visible, error, refetch } = useLeaveQueue(scope);
+  const { records, loading, visible, refetch } = useLeaveQueue(scope);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   // Rows this approver has just actioned, and the status each moved to.
@@ -79,7 +80,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
       const res = await fetch(`/api/workforce/leave/applications/${id}/approve`, { method: 'POST' });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        alert(body?.error ?? 'Approve failed');
+        toast.error(body?.error ?? 'Approve failed');
         return;
       }
       setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
@@ -98,7 +99,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Reject failed');
+        toast.error(err.error ?? 'Reject failed');
         return;
       }
       setRejectId(null);
@@ -166,12 +167,6 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
           {description}
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={[...columns, outcomeColumn]}
@@ -256,7 +251,7 @@ const HIST_LABEL: Record<string, string> = {
  * record of it — only the employee sees the outcome, on their own page.
  */
 function LeaveHistorySection() {
-  const { records, loading, visible, error } = useLeaveQueue('actioned');
+  const { records, loading, visible } = useLeaveQueue('actioned');
   if (!visible) return null;
 
   const columns: Column<LeaveRow>[] = [
@@ -281,9 +276,6 @@ function LeaveHistorySection() {
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
         <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Leave requests you have already actioned. Read-only.</p>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
-      )}
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any leave requests yet." />
     </div>
   );

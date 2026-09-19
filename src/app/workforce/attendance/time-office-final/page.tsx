@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface TimeOfficeRow {
   id: number;
@@ -51,26 +51,25 @@ const columns: Column<TimeOfficeRow>[] = [
 ];
 
 export default function TimeOfficeFinalPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<TimeOfficeRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState(new Date().getUTCFullYear());
   const [month, setMonth] = useState(new Date().getUTCMonth() + 1);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/attendance/time-office-final?year=${year}&month=${month}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setRows(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -114,8 +113,6 @@ export default function TimeOfficeFinalPage() {
           </select>
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

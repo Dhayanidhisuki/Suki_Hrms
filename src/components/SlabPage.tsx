@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SlabRecord {
@@ -56,7 +56,7 @@ export default function SlabPage<T extends SlabRecord>({
 }: SlabPageProps<T>) {
   const [records, setRecords] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -70,16 +70,16 @@ export default function SlabPage<T extends SlabRecord>({
   const resolveFields = (isEditing: boolean) => (typeof fieldsProp === 'function' ? fieldsProp(isEditing, records) : fieldsProp);
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`${apiPath}?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse<T> = await res.json();
       setRecords(json.data); setPagination(json.pagination);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unknown error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [apiPath, page, search]);
+  }, [apiPath, page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -113,7 +113,7 @@ export default function SlabPage<T extends SlabRecord>({
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`${apiPath}/${id}`, { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json(); setError(err.error ?? 'Deactivate failed'); return; }
+    if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Deactivate failed'); return; }
     fetchData();
   };
 
@@ -160,7 +160,6 @@ export default function SlabPage<T extends SlabRecord>({
         </KPIGrid>
       )}
 
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
       <DataTable columns={allColumns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)}

@@ -15,7 +15,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { SearchableSelect } from '@/components/ui';
+import { SearchableSelect, useToast } from '@/components/ui';
 
 interface EmployeeOption {
   id: number;
@@ -45,6 +45,10 @@ interface DayRow {
   lomMinutes: number;
   otMinutesApproved: number | null;
   otApprovalStatus: string | null;
+  permissionHours: number;
+  permissionPendingHours: number;
+  permissionStatus: string | null;
+  permissionDetail: string | null;
   source: string | null;
   remarks: string | null;
 }
@@ -60,6 +64,11 @@ interface Summary {
   onDutyDays: number;
   halfDays: number;
   permissionDays: number;
+  permissionRequestDays: number;
+  permissionApprovedHours: number;
+  permissionPendingHours: number;
+  permissionFreeHours: number;
+  permissionExcessHours: number;
   missingPunchDays: number;
   invalidPunchPairDays: number;
   paidDays: number;
@@ -133,6 +142,27 @@ const STATUS_STYLE: Record<string, { label: string; bg: string; fg: string }> = 
   Upcoming: { label: '', bg: 'transparent', fg: '#9ca3af' },
 };
 
+/**
+ * Permission is a short-leave request, not a day status: a day can have an
+ * approved hour and still be a normal Present day. Approved hours read as
+ * the day's figure; anything still awaiting approval shows in brackets so
+ * the two are never added up by eye.
+ */
+function PermissionCell({ row }: { row: DayRow }) {
+  if (row.permissionHours > 0) {
+    return (
+      <span style={{ color: '#92400e' }}>
+        {row.permissionHours.toFixed(2)}
+        {row.permissionPendingHours > 0 ? ` (+${row.permissionPendingHours.toFixed(2)}?)` : ''}
+      </span>
+    );
+  }
+  if (row.permissionPendingHours > 0) {
+    return <span style={{ color: 'var(--foreground-muted)' }}>({row.permissionPendingHours.toFixed(2)})</span>;
+  }
+  return <span style={{ color: 'var(--foreground-muted)' }}>0</span>;
+}
+
 function StatusPill({ row }: { row: DayRow }) {
   const s = STATUS_STYLE[row.status] ?? { label: row.status, bg: '#e5e7eb', fg: '#374151' };
   if (!s.label) return null;
@@ -202,11 +232,11 @@ const now = new Date();
 function OverviewInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const toast = useToast();
 
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // The URL is the single source of truth for the selection, so the page is
   // linkable from the Monthly grid, survives a hard reload, and needs no
@@ -246,19 +276,18 @@ function OverviewInner() {
       return;
     }
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/attendance/overview?employeeId=${employeeId}&year=${year}&month=${month}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to fetch');
       setData(json as OverviewResponse);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [employeeId, year, month]);
+  }, [employeeId, year, month, toast]);
 
   useEffect(() => {
     fetchData();
@@ -350,12 +379,6 @@ function OverviewInner() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       {!employeeId && !loading && (
         <div className="rounded-lg border px-4 py-10 text-center text-sm" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)', backgroundColor: 'var(--surface)' }}>
           Pick an employee to see their {monthLabel} attendance.
@@ -390,16 +413,25 @@ function OverviewInner() {
             <Stat label="Late come" value={s.lateComeCount} sub={`${hm(s.lateComeMinutes)} h total`} />
             <Stat label="Working time" value={`${hm(s.workingMinutes)} h`} sub={`expected ${hm(s.expectedWorkingMinutes)} h`} />
             <Stat label="Approved OT" value={`${hm(s.otApprovedMinutes)} h`} sub={`system ${hm(s.otCalculatedMinutes)} h`} />
+            <Stat
+              label="Permission"
+              value={`${s.permissionApprovedHours.toFixed(2)} h`}
+              sub={
+                s.permissionExcessHours > 0
+                  ? `${s.permissionExcessHours.toFixed(2)} h over the ${s.permissionFreeHours.toFixed(2)} h allowance`
+                  : `free ${s.permissionFreeHours.toFixed(2)} h · pending ${s.permissionPendingHours.toFixed(2)} h`
+              }
+            />
           </div>
 
           <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }}>
-                  {['#', 'Date', 'Day', 'Status', 'In', 'Out', 'Work (min)', 'Late (min)', 'Early (min)', 'OT Raw (min)', 'OT Pay (min)', 'LOM (min)', 'Shift', ''].map((h, i) => (
+                  {['#', 'Date', 'Day', 'Status', 'In', 'Out', 'Work (min)', 'Late (min)', 'Early (min)', 'Permission (h)', 'OT Raw (min)', 'OT Pay (min)', 'LOM (min)', 'Shift', ''].map((h, i) => (
                     <th
                       key={h || i}
-                      className={`whitespace-nowrap px-2 py-2 font-medium ${i >= 4 && i <= 11 ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-2 py-2 font-medium ${i >= 4 && i <= 12 ? 'text-right' : 'text-left'}`}
                     >
                       {h}
                     </th>
@@ -409,7 +441,7 @@ function OverviewInner() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={14} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
+                    <td colSpan={15} className="px-4 py-8 text-center" style={{ color: 'var(--foreground-muted)' }}>
                       Loading...
                     </td>
                   </tr>
@@ -448,6 +480,9 @@ function OverviewInner() {
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums" style={{ color: d.earlyOutMinutes > 0 ? '#b45309' : undefined }}>
                           {minutesCell(d.earlyOutMinutes)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums" title={d.permissionDetail ?? undefined}>
+                          <PermissionCell row={d} />
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums" title={d.otApprovalStatus ? `OT ${d.otApprovalStatus}` : undefined}>
                           {minutesCell(d.otMinutesCalculated)}
@@ -494,7 +529,7 @@ function OverviewInner() {
                 ['Present', s.presentDays],
                 ['Half day', s.halfDays],
                 ['On duty', s.onDutyDays],
-                ['Permission', s.permissionDays],
+                ['Permission (status)', s.permissionDays],
                 ['Weekly off', s.weeklyOffDays],
                 ['Holiday', s.holidayDays],
                 ['Leave', s.leaveDays],
@@ -535,6 +570,17 @@ function OverviewInner() {
                 ['System OT', hm(s.otCalculatedMinutes)],
                 ['Approved OT', hm(s.otApprovedMinutes)],
                 ['Pending / rejected', `${s.otPendingCount} / ${s.otRejectedCount}`],
+              ]}
+            />
+            <SummaryList
+              title="Permission"
+              rows={[
+                ['Days with permission', s.permissionRequestDays],
+                ['Approved hours', `${s.permissionApprovedHours.toFixed(2)} h`],
+                ['Pending hours', `${s.permissionPendingHours.toFixed(2)} h`],
+                ['Free allowance', `${s.permissionFreeHours.toFixed(2)} h / month`],
+                ['Balance', `${Math.max(0, s.permissionFreeHours - s.permissionApprovedHours).toFixed(2)} h`],
+                ['Excess (over allowance)', `${s.permissionExcessHours.toFixed(2)} h`],
               ]}
             />
           </div>

@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PayslipView, fmt, type PayrollLineDetail } from '@/components/payroll/PayslipView';
+import { useToast } from '@/components/ui';
 
 interface PayslipListRow {
   id: number;
@@ -31,11 +32,10 @@ export default function EssPayslipPage() {
   const [line, setLine] = useState<PayrollLineDetail | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingLine, setLoadingLine] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchList = useCallback(async () => {
     setLoadingList(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/my-payslips');
       if (!res.ok) {
@@ -45,11 +45,11 @@ export default function EssPayslipPage() {
       const json = await res.json();
       setList(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load payslips');
+      toast.error(err instanceof Error ? err.message : 'Failed to load payslips');
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchList();
@@ -57,7 +57,6 @@ export default function EssPayslipPage() {
 
   const fetchLine = useCallback(async (id: number) => {
     setLoadingLine(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/my-payslips/${id}`);
       if (!res.ok) {
@@ -66,11 +65,11 @@ export default function EssPayslipPage() {
       }
       setLine(await res.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load payslip');
+      toast.error(err instanceof Error ? err.message : 'Failed to load payslip');
     } finally {
       setLoadingLine(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (selectedId) void fetchLine(selectedId);
@@ -94,8 +93,6 @@ export default function EssPayslipPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Payslips</h1>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loadingList || loadingLine ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

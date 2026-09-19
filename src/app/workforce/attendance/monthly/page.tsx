@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { FormModal, type FieldDef, KPICard } from '@/components/ui';
+import { FormModal, useToast, type FieldDef, KPICard } from '@/components/ui';
 
 interface DayRecord {
   id: number;
@@ -147,12 +147,11 @@ function classNames(...c: (string | false | undefined)[]) {
 const now = new Date();
 
 export default function MonthlyAttendancePage() {
+  const toast = useToast();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [data, setData] = useState<EmployeeMonth[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   // Phase 18 — grid filters.
@@ -170,18 +169,17 @@ export default function MonthlyAttendancePage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/attendance/monthly?year=${year}&month=${month}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: GridResponse = await res.json();
       setData(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   const fetchMasters = useCallback(async () => {
     try {
@@ -258,15 +256,14 @@ export default function MonthlyAttendancePage() {
 
   const runAction = async (url: string, body: Record<string, unknown>, successMsg: string) => {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Action failed');
-      setSuccessMessage(json.message ?? successMsg);
+      toast.success(json.message ?? successMsg);
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -393,20 +390,6 @@ export default function MonthlyAttendancePage() {
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
           Reopened by <strong>{reopenInfo.reopenedByName ?? 'Unknown'}</strong> on {new Date(reopenInfo.reopenedAt).toLocaleString()}
           {reopenInfo.reopenReason ? <> — {reopenInfo.reopenReason}</> : null}
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {successMessage && (
-        <div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-          <span>{successMessage}</span>
-          <button onClick={() => setSuccessMessage(null)} className="text-xs font-medium hover:underline">
-            Dismiss
-          </button>
         </div>
       )}
 

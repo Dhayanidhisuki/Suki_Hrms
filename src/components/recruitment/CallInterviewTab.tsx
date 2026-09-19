@@ -5,6 +5,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; mobile: string; }
@@ -24,6 +25,7 @@ const OUTCOMES = [
 ];
 
 export default function CallInterviewTab() {
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState('');
   const [form, setForm] = useState({
@@ -38,8 +40,6 @@ export default function CallInterviewTab() {
     nextAction: '',
   });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const fetchCandidates = useCallback(async (search: string) => {
     const params = new URLSearchParams({ limit: '20' });
@@ -57,11 +57,9 @@ export default function CallInterviewTab() {
   }));
 
   const submit = async () => {
-    if (!selectedCandidate) { setError('Select a candidate'); return; }
-    if (!form.callOutcome) { setError('Call outcome is required'); return; }
+    if (!selectedCandidate) { toast.error('Select a candidate'); return; }
+    if (!form.callOutcome) { toast.error('Call outcome is required'); return; }
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
     try {
       const payload: Record<string, unknown> = {
         candidateId: Number(selectedCandidate),
@@ -83,11 +81,11 @@ export default function CallInterviewTab() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to log call');
-      setSuccess(`Call logged for ${json.candidate?.firstName} ${json.candidate?.lastName}`);
+      toast.success(`Call logged for ${json.candidate?.firstName} ${json.candidate?.lastName}`);
       setForm({ callDate: new Date().toISOString().slice(0, 10), callTime: '', callOutcome: '', candidateInterested: false, expectedSalary: '', noticePeriod: '', availableJoiningDate: '', remarks: '', nextAction: '' });
       setSelectedCandidate('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to log call');
+      toast.error(e instanceof Error ? e.message : 'Failed to log call');
     } finally {
       setSubmitting(false);
     }
@@ -95,17 +93,6 @@ export default function CallInterviewTab() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-          {success}
-        </div>
-      )}
-
       <div className="card space-y-4 p-5">
         <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Select Candidate</h2>
         <div>

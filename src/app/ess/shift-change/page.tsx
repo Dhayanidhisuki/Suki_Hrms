@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/ui';
 
 interface ShiftChangeRequest {
   id: number;
@@ -31,16 +32,15 @@ function getStatusColor(status: string) {
 }
 
 export default function ShiftChangePage() {
+  const toast = useToast();
   const [requests, setRequests] = useState<ShiftChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     const fetchRequests = async () => {
       try {
         setLoading(true);
-        setError(null);
         const res = await fetch('/api/workforce/shift-change-request?scope=my');
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -49,14 +49,14 @@ export default function ShiftChangePage() {
         const data = await res.json();
         setRequests(data.data ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load requests');
+        toast.error(err instanceof Error ? err.message : 'Failed to load requests');
       } finally {
         setLoading(false);
       }
     };
 
     fetchRequests();
-  }, []);
+  }, [toast]);
 
   return (
     <div className="space-y-6">
@@ -85,12 +85,6 @@ export default function ShiftChangePage() {
           <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
             Feature coming soon. Contact HR to request a shift change.
           </p>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
         </div>
       )}
 

@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 const MODULES = [
@@ -65,7 +65,7 @@ export default function ApprovalHistoryPage() {
   const [total, setTotal] = useState(0);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const [modules, setModules] = useState<string[]>([]);
   const [status, setStatus] = useState('');
@@ -74,7 +74,6 @@ export default function ApprovalHistoryPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const qs = new URLSearchParams();
       for (const m of modules) qs.append('module', m);
@@ -88,11 +87,11 @@ export default function ApprovalHistoryPage() {
       setTotal(json.total ?? 0);
       setTruncated(!!json.truncated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [modules, status, from, to]);
+  }, [modules, status, from, to, toast]);
 
   useEffect(() => {
     void fetchData();
@@ -236,12 +235,6 @@ export default function ApprovalHistoryPage() {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       {!loading && (
         <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>

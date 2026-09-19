@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FormModal, type FieldDef } from '@/components/ui';
+import { FormModal, useToast, type FieldDef } from '@/components/ui';
 import { PayslipView, type PayrollLineDetail } from '@/components/payroll/PayslipView';
 
 interface ComponentOption {
@@ -23,6 +23,7 @@ interface ComponentOption {
 }
 
 function PayslipContent() {
+  const toast = useToast();
   const searchParams = useSearchParams();
   const runId = searchParams.get('runId');
   const lineId = searchParams.get('lineId');
@@ -30,7 +31,6 @@ function PayslipContent() {
   const [line, setLine] = useState<PayrollLineDetail | null>(null);
   const [components, setComponents] = useState<ComponentOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
@@ -43,17 +43,16 @@ function PayslipContent() {
   const fetchLine = useCallback(async () => {
     if (!runId || !lineId) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${runId}/lines/${lineId}`);
       if (!res.ok) throw new Error('Failed to fetch payslip');
       setLine(await res.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [runId, lineId]);
+  }, [runId, lineId, toast]);
 
   useEffect(() => {
     fetchLine();
@@ -74,7 +73,7 @@ function PayslipContent() {
       } else {
         err = { error: `Remove failed (${res.status})` };
       }
-      setError(err.error ?? 'Remove failed');
+      toast.error(err.error ?? 'Remove failed');
       return;
     }
     fetchLine();
@@ -100,19 +99,13 @@ function PayslipContent() {
     return <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading...</p>;
   }
   if (!line) {
-    return <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>{error ?? 'Not found'}</p>;
+    return <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Not found</p>;
   }
 
   const editable = line.payrollRun.status === 'DRAFT' || line.payrollRun.status === 'CALCULATED';
 
   return (
     <>
-      {error && (
-        <div className="mx-auto mb-4 max-w-2xl rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <PayslipView
         line={line}
         canEdit={editable}

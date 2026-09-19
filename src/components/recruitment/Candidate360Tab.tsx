@@ -8,6 +8,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface Candidate360 {
@@ -60,13 +61,13 @@ export default function Candidate360Tab() {
 
 function Candidate360Inner() {
   const searchParams = useSearchParams();
+  const toast = useToast();
   const candidateId = searchParams.get('candidateId') ?? '';
 
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedId, setSelectedId] = useState(candidateId);
   const [data, setData] = useState<Candidate360 | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('Overview');
   const [statuses, setStatuses] = useState<StatusOption[]>([]);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -87,10 +88,10 @@ function Candidate360Inner() {
     setLoading(true);
     fetch(`/api/recruitment/candidates/${selectedId}/360`)
       .then((r) => r.json())
-      .then((d) => { if (d.id) setData(d); else setError('Candidate not found'); })
-      .catch(() => setError('Failed to load'))
+      .then((d) => { if (d.id) setData(d); else toast.error('Candidate not found'); })
+      .catch(() => toast.error('Failed to load'))
       .finally(() => setLoading(false));
-  }, [selectedId]);
+  }, [selectedId, toast]);
 
   const candidateOptions = candidates.map((c) => ({
     label: `${c.applicationNo} — ${c.firstName} ${c.lastName}`,
@@ -135,7 +136,6 @@ function Candidate360Inner() {
   }
 
   if (loading) return <div className="p-4 text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading 360°...</div>;
-  if (error) return <div className="p-4 text-sm text-red-600">{error}</div>;
   if (!data) return null;
 
   const s = data.currentStatus;
@@ -247,7 +247,7 @@ function Candidate360Inner() {
                       const json = await res.json();
                       setPortalLink(json.portalLink);
                     } catch (err) {
-                      alert(err instanceof Error ? err.message : 'Failed to generate link');
+                      toast.error(err instanceof Error ? err.message : 'Failed to generate link');
                     } finally {
                       setPortalLoading(false);
                     }
@@ -269,7 +269,7 @@ function Candidate360Inner() {
                     onFocus={(e) => e.currentTarget.select()}
                   />
                   <button
-                    onClick={() => { navigator.clipboard.writeText(portalLink); alert('Link copied to clipboard'); }}
+                    onClick={() => { navigator.clipboard.writeText(portalLink); toast.success('Link copied to clipboard'); }}
                     className="rounded px-2 py-1 text-xs font-medium"
                     style={{ backgroundColor: 'var(--accent)', color: '#fff' }}
                   >

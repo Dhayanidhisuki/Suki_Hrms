@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface JoiningRow {
   id: number;
@@ -26,7 +26,7 @@ const actionFields: FieldDef[] = [{ name: 'remarks', label: 'Remarks', type: 'te
 export default function EmployeeJoiningApprovalPage() {
   const [records, setRecords] = useState<JoiningRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [actionRow, setActionRow] = useState<{ row: JoiningRow; action: 'Approved' | 'Rejected' | 'Hold' } | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -37,11 +37,11 @@ export default function EmployeeJoiningApprovalPage() {
       const json: { data: JoiningRow[] } = await res.json();
       setRecords(json.data.filter((r) => ['Joining Pending', 'Joining Approval'].includes(r.joiningStatus) || r.approvalStatus === 'Pending'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -76,12 +76,6 @@ export default function EmployeeJoiningApprovalPage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Employee Joining Approval</h1>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Joining records awaiting approval before employee creation (BRD §8).</p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

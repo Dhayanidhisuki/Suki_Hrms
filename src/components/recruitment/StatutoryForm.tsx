@@ -6,6 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
@@ -16,14 +17,13 @@ const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground
 const labelClass = 'block text-sm font-medium mb-1';
 
 export default function StatutoryForm({ formType }: { formType: string }) {
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/recruitment/candidates?limit=50').then((r) => r.json()).then((j) => setCandidates(j.data ?? []));
@@ -35,18 +35,16 @@ export default function StatutoryForm({ formType }: { formType: string }) {
     fetch(`/api/recruitment/statutory-forms?candidateId=${selectedCandidate}&formType=${formType}`)
       .then((r) => r.json())
       .then((j) => setData(j.data))
-      .catch(() => setError('Failed to load'))
+      .catch(() => toast.error('Failed to load'))
       .finally(() => setLoading(false));
-  }, [selectedCandidate, formType]);
+  }, [selectedCandidate, formType, toast]);
 
   const candidateOptions = candidates.map((c) => ({ label: `${c.applicationNo} — ${c.firstName} ${c.lastName}`, value: c.id }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const save = async (formData: any) => {
-    if (!selectedCandidate) { setError('Select a candidate'); return; }
+    if (!selectedCandidate) { toast.error('Select a candidate'); return; }
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch('/api/recruitment/statutory-forms', {
         method: 'POST',
@@ -56,9 +54,9 @@ export default function StatutoryForm({ formType }: { formType: string }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
       setData(json);
-      setSuccess('Saved successfully');
+      toast.success('Saved successfully');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -75,9 +73,6 @@ export default function StatutoryForm({ formType }: { formType: string }) {
 
   return (
     <div className="space-y-4">
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
-      {success && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>{success}</div>}
-
       <div className="max-w-md">
         <label className={labelClass} style={{ color: 'var(--foreground)' }}>Select Candidate</label>
         <SearchableSelect value={selectedCandidate} options={candidateOptions} onChange={(v) => setSelectedCandidate(String(v))} placeholder="Search candidate..." />

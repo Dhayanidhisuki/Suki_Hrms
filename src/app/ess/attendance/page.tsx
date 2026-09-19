@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 interface DayRow {
@@ -66,11 +67,10 @@ export default function EssAttendancePage() {
   const [days, setDays] = useState<DayRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/workforce/my-attendance?year=${year}&month=${month}`);
       if (!res.ok) {
@@ -81,11 +81,11 @@ export default function EssAttendancePage() {
       setDays(json.data ?? []);
       setSummary(json.summary);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load attendance');
+      toast.error(err instanceof Error ? err.message : 'Failed to load attendance');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => {
     void fetchData();
@@ -163,8 +163,6 @@ export default function EssAttendancePage() {
           />
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface ContactDetails {
   permanentAddressLine1: string;
@@ -80,16 +81,14 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 export default function EssProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const toast = useToast();
 
   const [contactForm, setContactForm] = useState<ContactDetails>(EMPTY_CONTACT);
   const [newContact, setNewContact] = useState(EMPTY_EMERGENCY);
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/my-profile');
       if (!res.ok) {
@@ -100,11 +99,11 @@ export default function EssProfilePage() {
       setProfile(json);
       setContactForm(json.contactDetails ?? EMPTY_CONTACT);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
+      toast.error(err instanceof Error ? err.message : 'Failed to load profile');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchProfile();
@@ -113,7 +112,6 @@ export default function EssProfilePage() {
   async function saveContact(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/workforce/my-profile/contact', {
         method: 'PUT',
@@ -124,10 +122,10 @@ export default function EssProfilePage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? 'Failed to save');
       }
-      setMessage('Address/contact updated.');
+      toast.success('Address/contact updated.');
       await fetchProfile();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to save');
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -136,7 +134,6 @@ export default function EssProfilePage() {
   async function addEmergencyContact(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/workforce/my-profile/emergency-contacts', {
         method: 'POST',
@@ -148,10 +145,10 @@ export default function EssProfilePage() {
         throw new Error(j.error ?? 'Failed to add contact');
       }
       setNewContact(EMPTY_EMERGENCY);
-      setMessage('Emergency contact added.');
+      toast.success('Emergency contact added.');
       await fetchProfile();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to add contact');
+      toast.error(err instanceof Error ? err.message : 'Failed to add contact');
     } finally {
       setSaving(false);
     }
@@ -159,7 +156,6 @@ export default function EssProfilePage() {
 
   async function deleteEmergencyContact(id: number) {
     setSaving(true);
-    setMessage(null);
     try {
       const res = await fetch(`/api/workforce/my-profile/emergency-contacts?id=${id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -168,7 +164,7 @@ export default function EssProfilePage() {
       }
       await fetchProfile();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to delete contact');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete contact');
     } finally {
       setSaving(false);
     }
@@ -180,9 +176,6 @@ export default function EssProfilePage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>My Profile</h1>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-700">{message}</div>}
 
       {loading || !profile ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

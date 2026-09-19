@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface EncashRow {
   id: number;
@@ -69,12 +69,11 @@ export default function EssLeaveEncashmentPage() {
   const [records, setRecords] = useState<EncashRow[]>([]);
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/my-leave-encashment');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
@@ -82,11 +81,11 @@ export default function EssLeaveEncashmentPage() {
       setRecords(json.data ?? []);
       setEligibility(json.eligibility);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -147,12 +146,6 @@ export default function EssLeaveEncashmentPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       {!loading && eligibility && !eligibility.configured && (
         <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
           Leave encashment is not configured for your company yet — contact HR.
@@ -209,12 +202,11 @@ function EncashModal({
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (isOpen) {
       setForm(EMPTY_FORM);
-      setError(null);
     }
   }, [isOpen]);
 
@@ -227,24 +219,23 @@ function EncashModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.leaveMasterId || !form.daysRequested) {
-      setError('Choose a leave type and the number of days.');
+      toast.error('Choose a leave type and the number of days.');
       return;
     }
     if (!(days > 0)) {
-      setError('Days must be greater than zero.');
+      toast.error('Days must be greater than zero.');
       return;
     }
     if (selected && days > selected.available) {
-      setError(`You have only ${selected.available} day(s) of ${selected.name} available.`);
+      toast.error(`You have only ${selected.available} day(s) of ${selected.name} available.`);
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       await onSubmit(form);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -319,12 +310,6 @@ function EncashModal({
               style={inputStyle}
             />
           </div>
-
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-              {error}
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

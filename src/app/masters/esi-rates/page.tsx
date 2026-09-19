@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface EsiRateRecord {
@@ -52,9 +52,9 @@ const columns: Column<EsiRateRecord>[] = [
 ];
 
 export default function EsiRatesPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<EsiRateRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -66,16 +66,16 @@ export default function EsiRatesPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/esi-rates?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
       setRecords(json.data); setPagination(json.pagination);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unknown error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -112,7 +112,7 @@ export default function EsiRatesPage() {
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/esi-rates/${id}`, { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json(); setError(err.error ?? 'Deactivate failed'); return; }
+    if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Deactivate failed'); return; }
     fetchData();
   };
 
@@ -154,8 +154,6 @@ export default function EsiRatesPage() {
         <KPICard label="Total ESI Rates" value={stats.total} tone="info" />
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
-
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
 
       <DataTable
         columns={allColumns}

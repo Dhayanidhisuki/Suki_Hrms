@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type Column, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, type Column, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface ExpirySummary {
@@ -152,9 +152,9 @@ function FilterSelect({
 /* ── Page ─────────────────────────────────────────────────────────────── */
 
 export default function EmployeeListPage() {
+  const toast = useToast();
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
@@ -197,7 +197,6 @@ export default function EmployeeListPage() {
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = filterParams();
       params.set('page', String(page));
@@ -208,11 +207,11 @@ export default function EmployeeListPage() {
       setEmployees(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, filterParams]);
+  }, [page, filterParams, toast]);
 
   useEffect(() => {
     fetchEmployees();
@@ -351,15 +350,6 @@ export default function EmployeeListPage() {
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
         <KPICard label="Inactive" value={stats.inactive ?? 0} tone="danger" />
       </KPIGrid>
-
-      {error && (
-        <div
-          className="rounded-lg px-3 py-2 text-sm"
-          style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}
-        >
-          {error}
-        </div>
-      )}
 
       <DataTable
         variant="card"

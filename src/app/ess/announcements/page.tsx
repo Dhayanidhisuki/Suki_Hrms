@@ -10,6 +10,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 
 interface Announcement {
   id: number;
@@ -34,6 +35,7 @@ function fullDate(iso: string | null) {
 }
 
 function AnnouncementsList() {
+  const toast = useToast();
   const searchParams = useSearchParams();
   // Deep link from the notification bell: /ess/announcements?id=12
   const linkedId = Number(searchParams.get('id')) || null;
@@ -45,11 +47,9 @@ function AnnouncementsList() {
   const [canMarkRead, setCanMarkRead] = useState(true);
   const [openId, setOpenId] = useState<number | null>(linkedId);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/my-announcements');
       if (!res.ok) {
@@ -61,11 +61,11 @@ function AnnouncementsList() {
       setUnreadCount(json.unreadCount ?? 0);
       setCanMarkRead(json.canMarkRead !== false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load announcements');
+      toast.error(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -112,8 +112,6 @@ function AnnouncementsList() {
           </span>
         )}
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {!loading && !canMarkRead && (
         <div

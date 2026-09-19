@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface Announcement {
   id: number;
@@ -40,10 +41,10 @@ function fullDate(iso: string | null) {
 }
 
 export default function AdminAnnouncementsPage() {
+  const toast = useToast();
   const [items, setItems] = useState<Announcement[]>([]);
   const [audienceSize, setAudienceSize] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -51,7 +52,6 @@ export default function AdminAnnouncementsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/platform/announcement');
       if (!res.ok) {
@@ -62,11 +62,11 @@ export default function AdminAnnouncementsPage() {
       setItems(json.data ?? []);
       setAudienceSize(json.audienceSize ?? 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load announcements');
+      toast.error(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -80,7 +80,6 @@ export default function AdminAnnouncementsPage() {
 
   const save = async () => {
     setBusy(true);
-    setError(null);
     try {
       const payload = {
         title: form.title,
@@ -105,7 +104,7 @@ export default function AdminAnnouncementsPage() {
       resetForm();
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setBusy(false);
     }
@@ -114,7 +113,6 @@ export default function AdminAnnouncementsPage() {
   const publish = async (a: Announcement) => {
     if (!confirm(`Publish "${a.title}" to all ${audienceSize} employees? It cannot be edited afterwards.`)) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/platform/announcement/${a.id}/publish`, { method: 'POST' });
       if (!res.ok) {
@@ -123,7 +121,7 @@ export default function AdminAnnouncementsPage() {
       }
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Publish failed');
+      toast.error(err instanceof Error ? err.message : 'Publish failed');
     } finally {
       setBusy(false);
     }
@@ -133,7 +131,6 @@ export default function AdminAnnouncementsPage() {
     const isDraft = a.status === 'DRAFT';
     if (!confirm(isDraft ? `Delete draft "${a.title}"?` : `Archive "${a.title}"? Employees will stop seeing it.`)) return;
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/platform/announcement/${a.id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -142,7 +139,7 @@ export default function AdminAnnouncementsPage() {
       }
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setBusy(false);
     }
@@ -181,8 +178,6 @@ export default function AdminAnnouncementsPage() {
           {showForm ? 'Cancel' : '+ New Announcement'}
         </button>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {showForm && (
         <div className="space-y-3 rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>

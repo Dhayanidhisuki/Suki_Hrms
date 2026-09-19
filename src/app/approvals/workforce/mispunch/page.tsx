@@ -12,7 +12,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface MispunchRow {
   id: number;
@@ -55,7 +55,7 @@ function useMispunchQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<MispunchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -69,21 +69,22 @@ function useMispunchQueue(scope: 'manager' | 'hr' | 'actioned') {
       const json: { data: MispunchRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, visible, error, refetch: fetchData };
+  return { records, loading, visible, refetch: fetchData };
 }
 
 function MispunchQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
-  const { records, loading, visible, error } = useMispunchQueue(scope);
+  const { records, loading, visible } = useMispunchQueue(scope);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   // Rows this approver has just actioned, and the status each moved to.
@@ -92,16 +93,14 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
   // confirmation. Keep it in place showing its new status; it leaves the
   // queue on the next load, and "My Approval History" holds it after that.
   const [actioned, setActioned] = useState<Record<number, string>>({});
-  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!visible) return null;
 
   const handleApprove = async (id: number) => {
-    setActionError(null);
     const res = await fetch(`/api/workforce/mispunch/${id}/approve`, { method: 'POST' });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      setActionError(body?.error ?? 'Approve failed');
+      toast.error(body?.error ?? 'Approve failed');
       return;
     }
     setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
@@ -141,12 +140,6 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
           {description}
         </p>
       </div>
-
-      {(error || actionError) && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {actionError ?? error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}
@@ -215,7 +208,7 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
  * what they did — only the employee can see the outcome, on their own page.
  */
 function MispunchHistorySection() {
-  const { records, loading, visible, error } = useMispunchQueue('actioned');
+  const { records, loading, visible } = useMispunchQueue('actioned');
   if (!visible) return null;
 
   const columns: Column<MispunchRow>[] = [
@@ -253,11 +246,6 @@ function MispunchHistorySection() {
           Requests you have already actioned, newest first. Read-only.
         </p>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any requests yet." />
     </div>
   );

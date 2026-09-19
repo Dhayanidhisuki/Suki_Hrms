@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface InterviewerOption { id: number; firstName: string; lastName: string; employeeCode: string; }
 
@@ -28,12 +28,12 @@ const STATUS_FILTERS = ['Pending', 'Scheduled', 'Completed', 'Cancelled'];
 
 export default function MyInterviewsTab() {
   const router = useRouter();
+  const toast = useToast();
   const [interviewers, setInterviewers] = useState<InterviewerOption[]>([]);
   const [selectedInterviewer, setSelectedInterviewer] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [records, setRecords] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -54,11 +54,11 @@ export default function MyInterviewsTab() {
       setRecords(json.data ?? []);
       setPagination(json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [selectedInterviewer, statusFilter, page]);
+  }, [selectedInterviewer, statusFilter, page, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -101,13 +101,6 @@ export default function MyInterviewsTab() {
           {STATUS_FILTERS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
 
       {!selectedInterviewer ? (
         <div className="card p-8 text-center">

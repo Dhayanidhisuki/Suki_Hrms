@@ -12,7 +12,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface OnDutyRow {
   id: number;
@@ -32,7 +32,7 @@ function useOnDutyQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<OnDutyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -46,21 +46,22 @@ function useOnDutyQueue(scope: 'manager' | 'hr' | 'actioned') {
       const json: { data: OnDutyRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, visible, error, refetch: fetchData };
+  return { records, loading, visible, refetch: fetchData };
 }
 
 function OnDutyQueueSection({ title, scope, description }: { title: string; scope: 'manager' | 'hr'; description: string }) {
-  const { records, loading, visible, error, refetch } = useOnDutyQueue(scope);
+  const { records, loading, visible, refetch } = useOnDutyQueue(scope);
+  const toast = useToast();
   const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   // Rows this approver has just actioned, and the status each moved to.
@@ -76,7 +77,7 @@ function OnDutyQueueSection({ title, scope, description }: { title: string; scop
     const res = await fetch(`/api/workforce/on-duty/${id}/approve`, { method: 'POST' });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      alert(body?.error ?? 'Approve failed');
+      toast.error(body?.error ?? 'Approve failed');
       return;
     }
     setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
@@ -116,12 +117,6 @@ function OnDutyQueueSection({ title, scope, description }: { title: string; scop
           {description}
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={[...columns, outcomeColumn]}
@@ -203,7 +198,7 @@ const HIST_LABEL: Record<string, string> = {
  * record of it — only the employee sees the outcome, on their own page.
  */
 function OnDutyHistorySection() {
-  const { records, loading, visible, error } = useOnDutyQueue('actioned');
+  const { records, loading, visible } = useOnDutyQueue('actioned');
   if (!visible) return null;
 
   const columns: Column<OnDutyRow>[] = [
@@ -227,9 +222,6 @@ function OnDutyHistorySection() {
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
         <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Requests you have already actioned. Read-only.</p>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
-      )}
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any requests yet." />
     </div>
   );

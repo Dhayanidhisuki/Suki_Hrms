@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface LeaveMaster {
@@ -65,9 +65,9 @@ function Stepper({ value, onChange, min = 0, max = 365 }: { value: number; onCha
 }
 
 export default function LeaveMastersPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<LeaveMaster[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -86,18 +86,13 @@ export default function LeaveMastersPage() {
   const [carryForwardMaxDays, setCarryForwardMaxDays] = useState<number | ''>('');
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const [accrualYear, setAccrualYear] = useState(new Date().getFullYear());
   const [accrualRunning, setAccrualRunning] = useState(false);
-  const [accrualResult, setAccrualResult] = useState<string | null>(null);
-  const [accrualError, setAccrualError] = useState<string | null>(null);
 
   const runAccrual = async () => {
     setAccrualRunning(true);
-    setAccrualError(null);
-    setAccrualResult(null);
     try {
       const res = await fetch('/api/workforce/leave/accrual', {
         method: 'POST',
@@ -106,11 +101,11 @@ export default function LeaveMastersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Accrual run failed');
-      setAccrualResult(
+      toast.success(
         `Credited ${data.employeesProcessed} employee(s) across ${data.leaveTypesProcessed} leave type(s) for ${data.year} — ${data.balancesWritten} balance row(s) written.`
       );
     } catch (err) {
-      setAccrualError(err instanceof Error ? err.message : 'Accrual run failed');
+      toast.error(err instanceof Error ? err.message : 'Accrual run failed');
     } finally {
       setAccrualRunning(false);
     }
@@ -118,7 +113,6 @@ export default function LeaveMastersPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/leave-masters?${params}`);
@@ -127,11 +121,11 @@ export default function LeaveMastersPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -148,7 +142,6 @@ export default function LeaveMastersPage() {
     setCarryForwardAllowed(false);
     setCarryForwardMaxDays('');
     setIsActive(true);
-    setSaveError(null);
     setModalOpen(true);
   };
 
@@ -163,7 +156,6 @@ export default function LeaveMastersPage() {
     setCarryForwardAllowed(row.carryForwardAllowed);
     setCarryForwardMaxDays(row.carryForwardMaxDays ?? '');
     setIsActive(row.isActive);
-    setSaveError(null);
     setModalOpen(true);
   };
 
@@ -171,14 +163,13 @@ export default function LeaveMastersPage() {
     const res = await fetch(`/api/masters/leave-masters/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
   };
 
   const handleSave = async () => {
-    setSaveError(null);
     setSaving(true);
     try {
       const url = editingId ? `/api/masters/leave-masters/${editingId}` : '/api/masters/leave-masters';
@@ -205,7 +196,7 @@ export default function LeaveMastersPage() {
       setModalOpen(false);
       fetchData();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -266,12 +257,6 @@ export default function LeaveMastersPage() {
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: 'var(--border)' }}>
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Annual Leave Credit</h2>
         <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
@@ -296,16 +281,6 @@ export default function LeaveMastersPage() {
             {accrualRunning ? 'Running…' : `Run Credit for ${accrualYear}`}
           </button>
         </div>
-        {accrualResult && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
-            {accrualResult}
-          </div>
-        )}
-        {accrualError && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
-            {accrualError}
-          </div>
-        )}
       </div>
 
       <DataTable
@@ -423,12 +398,6 @@ export default function LeaveMastersPage() {
               <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded" style={{ accentColor: 'var(--accent)' }} />
               <span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Active</span>
             </label>
-
-            {saveError && (
-              <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                {saveError}
-              </div>
-            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <button

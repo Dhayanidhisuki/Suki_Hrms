@@ -5,7 +5,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
 interface DocTypeOption { id: number; documentName: string; documentCode: string; }
@@ -22,13 +22,12 @@ interface DocRow {
 }
 
 export default function DocVerificationTab() {
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [docTypes, setDocTypes] = useState<DocTypeOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState('');
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   // Upload form
   const [uploadDocType, setUploadDocType] = useState('');
@@ -54,11 +53,11 @@ export default function DocVerificationTab() {
       const json = await res.json();
       setDocs(json.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [selectedCandidate]);
+  }, [selectedCandidate, toast]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
@@ -67,12 +66,10 @@ export default function DocVerificationTab() {
 
   const upload = async () => {
     if (!selectedCandidate || !uploadDocType || !uploadFile) {
-      setError('Candidate, document type, and file are required');
+      toast.error('Candidate, document type, and file are required');
       return;
     }
     setUploading(true);
-    setError(null);
-    setSuccess(null);
     try {
       const formData = new FormData();
       formData.set('documentTypeId', uploadDocType);
@@ -84,20 +81,19 @@ export default function DocVerificationTab() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Upload failed');
-      setSuccess('Document uploaded');
+      toast.success('Document uploaded');
       setUploadDocType('');
       setUploadFile(null);
       setUploadRemarks('');
       fetchDocs();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed');
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
   };
 
   const verifyDoc = async (docId: number, status: string) => {
-    setError(null);
     try {
       const res = await fetch(`/api/recruitment/candidates/${selectedCandidate}/documents/${docId}`, {
         method: 'PATCH',
@@ -107,7 +103,7 @@ export default function DocVerificationTab() {
       if (!res.ok) throw new Error('Failed to update');
       fetchDocs();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update');
+      toast.error(e instanceof Error ? e.message : 'Failed to update');
     }
   };
 
@@ -129,16 +125,6 @@ export default function DocVerificationTab() {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>{success}</div>
-      )}
-
       <div className="max-w-md">
         <label className="block text-sm font-medium mb-1" style={{ color: 'var(--foreground)' }}>Select Candidate</label>
         <SearchableSelect value={selectedCandidate} options={candidateOptions} onChange={(v) => setSelectedCandidate(String(v))} placeholder="Search candidate..." />

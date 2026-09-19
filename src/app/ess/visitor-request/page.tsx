@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/ui';
 
 interface VisitorPass {
   id: number;
@@ -36,9 +37,9 @@ function formatStatus(status: string) {
 }
 
 export default function VisitorPassRequestPage() {
+  const toast = useToast();
   const [passes, setPasses] = useState<VisitorPass[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     visitorName: '',
@@ -59,7 +60,6 @@ export default function VisitorPassRequestPage() {
     const fetchPasses = async () => {
       try {
         setLoading(true);
-        setError(null);
         const res = await fetch('/api/workforce/visitor-pass-request');
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -68,14 +68,14 @@ export default function VisitorPassRequestPage() {
         const data = await res.json();
         setPasses(data.data ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load visitor passes');
+        toast.error(err instanceof Error ? err.message : 'Failed to load visitor passes');
       } finally {
         setLoading(false);
       }
     };
 
     fetchPasses();
-  }, []);
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +117,7 @@ export default function VisitorPassRequestPage() {
         noOfPersons: 1,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create visitor pass');
+      toast.error(err instanceof Error ? err.message : 'Failed to create visitor pass');
     } finally {
       setSubmitting(false);
     }
@@ -260,12 +260,6 @@ export default function VisitorPassRequestPage() {
             Your visitor pass request will be reviewed and approved by HR. Check back here for status updates.
           </p>
         </form>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
       )}
 
       {loading ? (

@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { computeLomMinutes, type LomConfigLite } from '@/lib/attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 const bodySchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, 'At least one ID required'),
@@ -49,6 +50,16 @@ export async function POST(request: NextRequest) {
     lomConfigs.map((c) => [c.companyId, { graceMinutesExempt: c.graceMinutesExempt, dailyLomCap: c.dailyLomCap }])
   );
 
+  // Approved permission across every date in the batch, in one query.
+  const batchDates = records.map((r) => r.date.getTime());
+  const permissionExcused = batchDates.length
+    ? await getApprovedPermissionMinutes(
+        records.map((r) => r.employeeId),
+        new Date(Math.min(...batchDates)),
+        new Date(Math.max(...batchDates) + 24 * 60 * 60 * 1000)
+      )
+    : new Map<string, number>();
+
   const results: { id: number; status: 'ok' | 'skipped' | 'error'; message?: string }[] = [];
   let approved = 0;
   let skipped = 0;
@@ -59,7 +70,8 @@ export async function POST(request: NextRequest) {
         record.lateMinutes,
         record.earlyOutMinutes,
         record.shiftMaster,
-        lomConfigByCompany.get(record.employee.companyId) ?? null
+        lomConfigByCompany.get(record.employee.companyId) ?? null,
+        excusedMinutesFor(permissionExcused, record.employeeId, record.date)
       );
 
       await prisma.dailyAttendance.update({

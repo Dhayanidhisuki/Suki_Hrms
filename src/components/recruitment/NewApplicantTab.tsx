@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface OrgOption { id: number; name: string; code: string; }
@@ -19,6 +20,7 @@ const labelClass = 'block text-sm font-medium mb-1';
 
 export default function NewApplicantTab() {
   const router = useRouter();
+  const toast = useToast();
   const [departments, setDepartments] = useState<OrgOption[]>([]);
   const [designations, setDesignations] = useState<OrgOption[]>([]);
   const [jobPostings, setJobPostings] = useState<JobPostingOption[]>([]);
@@ -30,10 +32,8 @@ export default function NewApplicantTab() {
     jobPostingId: '', sourceChannelId: '', referenceComments: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -73,7 +73,6 @@ export default function NewApplicantTab() {
   const submit = async (acknowledge = false) => {
     if (!validate()) return;
     setSubmitting(true);
-    setSubmitError(null);
     setDuplicateWarning(null);
     try {
       const payload: Record<string, unknown> = {
@@ -103,11 +102,11 @@ export default function NewApplicantTab() {
         return;
       }
       if (!res.ok) throw new Error(json.error ?? 'Registration failed');
-      setSuccess(`Candidate ${json.applicationNo} registered successfully`);
+      toast.success(`Candidate ${json.applicationNo} registered successfully`);
       setForm({ title: '', firstName: '', lastName: '', mobile: '', email: '', dateOfBirth: '', aadhaar: '', departmentId: '', designationId: '', jobPostingId: '', sourceChannelId: '', referenceComments: '' });
       setTimeout(() => router.push(`/recruitment/applicants?tab=candidate-360&candidateId=${json.id}`), 1500);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : 'Registration failed');
+      toast.error(e instanceof Error ? e.message : 'Registration failed');
     } finally {
       setSubmitting(false);
     }
@@ -115,16 +114,6 @@ export default function NewApplicantTab() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-          {success}
-        </div>
-      )}
-      {submitError && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {submitError}
-        </div>
-      )}
       {duplicateWarning && (
         <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
           {duplicateWarning}

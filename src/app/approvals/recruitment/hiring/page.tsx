@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface JobPostingRow {
   id: number;
@@ -29,7 +29,7 @@ const rejectFields: FieldDef[] = [{ name: 'rejectionReason', label: 'Rejection R
 export default function HiringApprovalPage() {
   const [records, setRecords] = useState<JobPostingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [approveRow, setApproveRow] = useState<JobPostingRow | null>(null);
   const [rejectRow, setRejectRow] = useState<JobPostingRow | null>(null);
 
@@ -41,11 +41,11 @@ export default function HiringApprovalPage() {
       const json: { data: JobPostingRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -60,7 +60,7 @@ export default function HiringApprovalPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Approve failed');
+      toast.error(err.error ?? 'Approve failed');
       return;
     }
     setApproveRow(null);
@@ -83,12 +83,6 @@ export default function HiringApprovalPage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Hiring Approval</h1>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Job postings awaiting approval before being published (BRD §16.3.3).</p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

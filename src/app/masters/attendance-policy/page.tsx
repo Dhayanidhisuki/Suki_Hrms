@@ -6,8 +6,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 export default function AttendancePolicyPage() {
+  const toast = useToast();
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,8 +41,8 @@ export default function AttendancePolicyPage() {
     const res = await fetch('/api/masters/attendance-policy', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
     });
-    if (res.ok) { setConfig(await res.json()); alert('Saved'); }
-    else alert('Failed');
+    if (res.ok) { setConfig(await res.json()); toast.success('Saved'); }
+    else toast.error('Failed');
     setSaving(false);
   };
 

@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface Row {
   id: number;
@@ -52,9 +52,9 @@ const fields: FieldDef[] = [
 ];
 
 export default function ManualArrearsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -70,9 +70,9 @@ export default function ManualArrearsPage() {
         arrearPeriod: `${r.arrearYear}-${String(r.arrearMonth).padStart(2, '0')}`,
       })) as Row[];
       setRows(mapped);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Error'); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -81,12 +81,12 @@ export default function ManualArrearsPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values),
     });
     if (res.ok) { setModalOpen(false); fetchData(); }
-    else { const j = await res.json().catch(() => ({})); alert(j.error ?? 'Failed'); }
+    else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? 'Failed'); }
   };
 
   const handleApprove = async (id: number) => {
     const res = await fetch(`/api/payroll/manual-arrears/${id}/approve`, { method: 'POST' });
-    if (res.ok) fetchData(); else alert('Failed to approve');
+    if (res.ok) fetchData(); else toast.error('Failed to approve');
   };
 
   const handleReject = async (id: number) => {
@@ -95,7 +95,7 @@ export default function ManualArrearsPage() {
     const res = await fetch(`/api/payroll/manual-arrears/${id}/reject`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
     });
-    if (res.ok) fetchData(); else alert('Failed to reject');
+    if (res.ok) fetchData(); else toast.error('Failed to reject');
   };
 
   const handleApply = async (id: number) => {
@@ -104,7 +104,7 @@ export default function ManualArrearsPage() {
     const res = await fetch(`/api/payroll/manual-arrears/${id}/apply`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payrollRunId: parseInt(runId) }),
     });
-    if (res.ok) fetchData(); else { const j = await res.json().catch(() => ({})); alert(j.error ?? 'Failed to apply'); }
+    if (res.ok) fetchData(); else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? 'Failed to apply'); }
   };
 
   return (
@@ -118,7 +118,6 @@ export default function ManualArrearsPage() {
         </div>
         <button onClick={() => setModalOpen(true)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Add Arrear</button>
       </div>
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {loading ? <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div> : (
         <DataTable
           data={rows}

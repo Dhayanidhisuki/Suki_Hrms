@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface PendingEmployee {
   id: number;
@@ -45,7 +45,7 @@ const approveFields: FieldDef[] = [
 export default function ConfirmationApprovalPage() {
   const [employees, setEmployees] = useState<PendingEmployee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [recommendId, setRecommendId] = useState<number | null>(null);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [recommending, setRecommending] = useState(false);
@@ -54,12 +54,11 @@ export default function ConfirmationApprovalPage() {
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/employees/confirmation-pending');
       if (!res.ok) {
         if (res.status === 403) {
-          setError('Insufficient permissions to view confirmation pending employees');
+          toast.error('Insufficient permissions to view confirmation pending employees');
           return;
         }
         const data = await res.json().catch(() => ({}));
@@ -71,11 +70,11 @@ export default function ConfirmationApprovalPage() {
       const canRecommend = res.status !== 403;
       setUserRole(canRecommend ? 'manager' : 'hr');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load pending employees');
+      toast.error(err instanceof Error ? err.message : 'Failed to load pending employees');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchEmployees();
@@ -99,7 +98,7 @@ export default function ConfirmationApprovalPage() {
       setRecommendId(null);
       fetchEmployees();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to submit recommendation');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit recommendation');
     } finally {
       setRecommending(false);
     }
@@ -120,7 +119,7 @@ export default function ConfirmationApprovalPage() {
       setApproveId(null);
       fetchEmployees();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve confirmation');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve confirmation');
     } finally {
       setApproving(false);
     }
@@ -171,12 +170,6 @@ export default function ConfirmationApprovalPage() {
           Probation confirmation — two-stage: Manager recommendation, then HR approval.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

@@ -25,7 +25,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 /* ── Icons (inline; no icon library in this project) ──────────────────── */
 const Icon = {
@@ -318,10 +318,10 @@ interface ImportSummary {
 }
 
 export default function BiometricAttendancePage() {
+  const toast = useToast();
   const [date, setDate] = useState(todayIso());
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [monthStatus, setMonthStatus] = useState<'OPEN' | 'FINALIZED' | 'FROZEN'>('OPEN');
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
 
@@ -329,7 +329,6 @@ export default function BiometricAttendancePage() {
   const [fromWhere, setFromWhere] = useState<'MANUAL' | 'BIOMETRIC'>('MANUAL');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
 
   const [year, month] = useMemo(() => {
     const [y, m] = date.split('-').map(Number);
@@ -338,7 +337,6 @@ export default function BiometricAttendancePage() {
 
   const fetchViewer = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [bioRes, monthlyRes] = await Promise.all([
         fetch(`/api/biometric/import?date=${date}`),
@@ -353,39 +351,38 @@ export default function BiometricAttendancePage() {
         setMonthStatus(monthlyJson.data[0]?.summary?.status ?? 'OPEN');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [date, year, month]);
+  }, [date, year, month, toast]);
 
   useEffect(() => {
     fetchViewer();
   }, [fetchViewer]);
 
   const handleImport = async () => {
-    setImportError(null);
     setImportResult(null);
     if (!uploadedFile) {
-      setImportError('Choose a filled-in template file first.');
+      toast.error('Choose a filled-in template file first.');
       return;
     }
     let text: string;
     try {
       text = await uploadedFile.text();
     } catch {
-      setImportError('Could not read the selected file.');
+      toast.error('Could not read the selected file.');
       return;
     }
     const parsedRows = parseCsv(text);
     if (parsedRows.length === 0) {
-      setImportError('No data rows found in the uploaded file — make sure the header row and at least one filled-in row are present.');
+      toast.error('No data rows found in the uploaded file — make sure the header row and at least one filled-in row are present.');
       return;
     }
 
     const { groups, rowErrors } = buildMonthGroups(parsedRows);
     if (groups.length === 0) {
-      setImportError('No usable rows found — every row needs EMP_ID, DATE, and at least one of IN_TIME/OUT_TIME.');
+      toast.error('No usable rows found — every row needs EMP_ID, DATE, and at least one of IN_TIME/OUT_TIME.');
       return;
     }
 
@@ -435,7 +432,7 @@ export default function BiometricAttendancePage() {
       setUploadedFile(null);
       fetchViewer();
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed');
+      toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setImporting(false);
     }
@@ -486,7 +483,6 @@ export default function BiometricAttendancePage() {
   // ── Device sync (automatic every N hours + manual catch-up) ──────────────
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncRange, setSyncRange] = useState(() => {
     const end = todayIso();
     const start = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
@@ -495,22 +491,20 @@ export default function BiometricAttendancePage() {
   const [showAllUnmatched, setShowAllUnmatched] = useState(false);
   const UNMATCHED_PREVIEW = 6;
   const [testBusy, setTestBusy] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   /** One probe to the device API — tells HR whether the box is reachable before they hit Sync Now. */
   const testConnection = async () => {
     setTestBusy(true);
-    setTestResult(null);
     try {
       const res = await fetch('/api/biometric/sync?test=1');
       const json = (await res.json()) as { ok: boolean; url: string; httpStatus: number | null; ms: number; rows?: number; error?: string };
-      setTestResult(
-        json.ok
-          ? { ok: true, text: `Device API at ${json.url} is reachable (HTTP ${json.httpStatus}, ${json.ms} ms${json.rows !== undefined ? `, ${json.rows} rows today` : ''}).` }
-          : { ok: false, text: json.error ?? 'Device API is not reachable.' }
-      );
+      if (json.ok) {
+        toast.success(`Device API at ${json.url} is reachable (HTTP ${json.httpStatus}, ${json.ms} ms${json.rows !== undefined ? `, ${json.rows} rows today` : ''}).`);
+      } else {
+        toast.error(json.error ?? 'Device API is not reachable.');
+      }
     } catch (err) {
-      setTestResult({ ok: false, text: err instanceof Error ? err.message : 'Connection test failed' });
+      toast.error(err instanceof Error ? err.message : 'Connection test failed');
     } finally {
       setTestBusy(false);
     }
@@ -532,7 +526,6 @@ export default function BiometricAttendancePage() {
 
   const runSyncNow = async () => {
     setSyncBusy(true);
-    setSyncMsg(null);
     try {
       const res = await fetch('/api/biometric/sync', {
         method: 'POST',
@@ -541,15 +534,15 @@ export default function BiometricAttendancePage() {
       });
       const json = await res.json();
       if (!res.ok && !json.runId) throw new Error(json.error ?? 'Sync failed');
-      setSyncMsg(
-        json.status === 'success'
-          ? `Synced: ${json.rowsFetched} device rows → ${json.daysCreated} new, ${json.daysUpdated} updated, ${json.daysUnchanged} unchanged, ${json.skippedFrozen} frozen-skipped, ${json.unmatched.length} unmatched IDs.`
-          : `Sync failed: ${json.error}`
-      );
+      if (json.status === 'success') {
+        toast.success(`Synced: ${json.rowsFetched} device rows → ${json.daysCreated} new, ${json.daysUpdated} updated, ${json.daysUnchanged} unchanged, ${json.skippedFrozen} frozen-skipped, ${json.unmatched.length} unmatched IDs.`);
+      } else {
+        toast.error(`Sync failed: ${json.error}`);
+      }
       await loadSync();
       fetchViewer();
     } catch (err) {
-      setSyncMsg(err instanceof Error ? err.message : 'Sync failed');
+      toast.error(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setSyncBusy(false);
     }
@@ -619,12 +612,6 @@ export default function BiometricAttendancePage() {
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       {/* ── Device Sync ─────────────────────────────────────────────────── */}
       <Card
@@ -699,29 +686,6 @@ export default function BiometricAttendancePage() {
           </div>
         }
       >
-        {testResult && (
-          <div
-            className="mb-4 rounded-lg px-3 py-2 text-sm"
-            style={{
-              backgroundColor: testResult.ok ? 'var(--success-soft)' : 'var(--danger-soft)',
-              color: testResult.ok ? 'var(--success)' : 'var(--danger)',
-            }}
-          >
-            {testResult.text}
-          </div>
-        )}
-        {syncMsg && (
-          <div
-            className="mb-4 rounded-lg px-3 py-2 text-sm"
-            style={{
-              backgroundColor: syncMsg.startsWith('Sync failed') ? 'var(--danger-soft)' : 'var(--success-soft)',
-              color: syncMsg.startsWith('Sync failed') ? 'var(--danger)' : 'var(--success)',
-            }}
-          >
-            {syncMsg}
-          </div>
-        )}
-
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_1fr]">
           {/* Sync history */}
           <div className="rounded-xl border" style={{ borderColor: 'var(--border)' }}>
@@ -918,11 +882,6 @@ export default function BiometricAttendancePage() {
           </div>
         </div>
 
-        {importError && (
-          <div className="mt-4 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-            {importError}
-          </div>
-        )}
         {importResult && (
           <div className="mt-4 space-y-1 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
             <div>

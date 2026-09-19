@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface PermissionRow {
   id: number;
@@ -54,12 +54,11 @@ export default function PermissionRequestsPage() {
   const [records, setRecords] = useState<PermissionRow[]>([]);
   const [allowance, setAllowance] = useState<Allowance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/permission?scope=mine');
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
@@ -67,11 +66,11 @@ export default function PermissionRequestsPage() {
       setRecords(json.data);
       setAllowance(json.allowance ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -174,12 +173,6 @@ export default function PermissionRequestsPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
         </div>
       )}
 

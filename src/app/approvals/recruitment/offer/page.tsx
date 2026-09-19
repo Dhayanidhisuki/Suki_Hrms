@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface OfferRow {
   id: number;
@@ -26,7 +26,7 @@ interface OfferRow {
 export default function OfferApprovalPage() {
   const [records, setRecords] = useState<OfferRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -37,11 +37,11 @@ export default function OfferApprovalPage() {
       // Show offers that need HR attention: Sent (awaiting candidate) and Accepted (needs confirmation)
       setRecords(json.data.filter((r) => ['Sent', 'Accepted', 'Rejected', 'Expired'].includes(r.status)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -55,7 +55,7 @@ export default function OfferApprovalPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Update failed');
+      toast.error(err.error ?? 'Update failed');
       return;
     }
     fetchData();
@@ -76,12 +76,6 @@ export default function OfferApprovalPage() {
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Offer Approval</h1>
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Offers awaiting candidate response and accepted offers pending HR confirmation (BRD §5.15).</p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

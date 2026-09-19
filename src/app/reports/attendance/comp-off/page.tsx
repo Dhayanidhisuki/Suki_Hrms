@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface TxnRow {
   id: number;
@@ -112,12 +113,11 @@ export default function CompOffReportPage() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/reports/attendance/comp-off?year=${year}&month=${month}`);
       if (!res.ok) {
@@ -127,11 +127,11 @@ export default function CompOffReportPage() {
       setData(await res.json());
     } catch (err) {
       setData(null);
-      setError(err instanceof Error ? err.message : 'Failed to load report');
+      toast.error(err instanceof Error ? err.message : 'Failed to load report');
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -170,8 +170,6 @@ export default function CompOffReportPage() {
           <button onClick={() => handleExport(true)} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>Export Detail CSV</button>
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div> : data ? (
         <div className="space-y-6">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ConfirmDialog, DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { ConfirmDialog, DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 import { formatDate } from '@/lib/format-date';
 
 interface InternshipRow {
@@ -59,9 +59,9 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_OPTIONS = ['Applied', 'Accepted', 'Active', 'Completed', 'Terminated', 'Converted', 'Closed'];
 
 export default function InternshipPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<InternshipRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [statusEdit, setStatusEdit] = useState<{ id: number; status: string } | null>(null);
@@ -70,7 +70,6 @@ export default function InternshipPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/recruitment/internships');
       if (!res.ok) throw new Error('Failed to fetch internships');
@@ -88,11 +87,11 @@ export default function InternshipPage() {
       }
       setRecords(rows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -176,11 +175,6 @@ export default function InternshipPage() {
           + New Internship
         </button>
       </div>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
       <DataTable
         columns={columns}
         data={records}
@@ -276,8 +270,8 @@ function CreateInternshipModal({ onClose, onSaved }: { onClose: () => void; onSa
   const [trainingEnd, setTrainingEnd] = useState('');
   const [stipend, setStipend] = useState('');
   const [policyId, setPolicyId] = useState<string | number | ''>('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
 
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
@@ -294,11 +288,10 @@ function CreateInternshipModal({ onClose, onSaved }: { onClose: () => void; onSa
   }, []);
 
   const submit = async () => {
-    if (!candidateId) { setError('Candidate is required'); return; }
-    if (!trainingStart || !trainingEnd) { setError('Training start and end dates are required'); return; }
-    if (new Date(trainingEnd) <= new Date(trainingStart)) { setError('End date must be after start date'); return; }
+    if (!candidateId) { toast.error('Candidate is required'); return; }
+    if (!trainingStart || !trainingEnd) { toast.error('Training start and end dates are required'); return; }
+    if (new Date(trainingEnd) <= new Date(trainingStart)) { toast.error('End date must be after start date'); return; }
     setSubmitting(true);
-    setError(null);
     try {
       const res = await fetch('/api/recruitment/internships', {
         method: 'POST',
@@ -320,7 +313,7 @@ function CreateInternshipModal({ onClose, onSaved }: { onClose: () => void; onSa
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSubmitting(false);
     }
@@ -411,7 +404,6 @@ function CreateInternshipModal({ onClose, onSaved }: { onClose: () => void; onSa
           </label>
         </div>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>
             Cancel

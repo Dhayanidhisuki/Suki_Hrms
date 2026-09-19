@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface EmployeeOption {
   id: number;
@@ -94,6 +94,7 @@ function AddRevisionModal({
   onCreated: () => void;
   employees: EmployeeOption[];
 }) {
+  const toast = useToast();
   const [employeeId, setEmployeeId] = useState<number | ''>('');
   const [revisionType, setRevisionType] = useState('ANNUAL_INCREMENT');
   const [revisionMethod, setRevisionMethod] = useState<'PERCENTAGE' | 'FIXED_AMOUNT' | 'REVISED_GROSS'>('PERCENTAGE');
@@ -105,7 +106,6 @@ function AddRevisionModal({
   const [current, setCurrent] = useState<CurrentSalary | null>(null);
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [loadingSalary, setLoadingSalary] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Company's Gross % Split rules (Masters > Common Logic), keyed by
   // salaryComponentId. When a component has an active rule, its revised
@@ -125,7 +125,6 @@ function AddRevisionModal({
     setRemarks('');
     setCurrent(null);
     setComponentRows([]);
-    setError(null);
     fetch('/api/masters/gross-split-rules')
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((json: { data: GrossSplitRuleRow[] }) => {
@@ -229,13 +228,12 @@ function AddRevisionModal({
   }, [current, revisedGross, splitPercents]);
 
   const submit = async (asSubmit: boolean) => {
-    setError(null);
     if (!employeeId) {
-      setError('Select an employee');
+      toast.warning('Select an employee');
       return;
     }
     if (!current) {
-      setError('This employee has no current salary structure to revise.');
+      toast.warning('This employee has no current salary structure to revise.');
       return;
     }
     setSubmitting(true);
@@ -263,7 +261,7 @@ function AddRevisionModal({
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create revision');
+      toast.error(err instanceof Error ? err.message : 'Failed to create revision');
     } finally {
       setSubmitting(false);
     }
@@ -457,12 +455,6 @@ function AddRevisionModal({
             </>
           )}
 
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-              {error}
-            </div>
-          )}
-
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -505,14 +497,13 @@ function ReasonModal({
   onClose: () => void;
   onSubmit: (reason: string) => Promise<void>;
 }) {
+  const toast = useToast();
   const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setReason('');
-      setError(null);
     }
   }, [isOpen]);
 
@@ -533,7 +524,6 @@ function ReasonModal({
               style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
             />
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -542,7 +532,7 @@ function ReasonModal({
               disabled={submitting}
               onClick={async () => {
                 if (!reason.trim()) {
-                  setError(`${label} is required`);
+                  toast.warning(`${label} is required`);
                   return;
                 }
                 setSubmitting(true);
@@ -550,7 +540,7 @@ function ReasonModal({
                   await onSubmit(reason.trim());
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -568,11 +558,11 @@ function ReasonModal({
 }
 
 export default function SalaryRevisionPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<RevisionRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [confirm, setConfirm] = useState<{ row: RevisionRow; action: 'approve' | 'cancel' | 'release-hold' } | null>(null);
   const [reasonModal, setReasonModal] = useState<{ row: RevisionRow; action: 'reject' | 'hold' } | null>(null);
@@ -586,18 +576,17 @@ export default function SalaryRevisionPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/revisions${statusFilter ? `?status=${statusFilter}` : ''}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: RevisionRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   useEffect(() => {
     fetchData();
@@ -655,7 +644,7 @@ export default function SalaryRevisionPage() {
         <div className="flex gap-2 justify-end">
           {r.status === 'DRAFT' && (
             <>
-              <button onClick={() => callAction(r.id, 'submit').catch((e) => setError(e.message))} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+              <button onClick={() => callAction(r.id, 'submit').catch((e) => toast.error(e.message))} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
                 Submit
               </button>
               <button onClick={() => setConfirm({ row: r, action: 'cancel' })} className="text-xs font-medium hover:underline text-red-500">
@@ -720,12 +709,6 @@ export default function SalaryRevisionPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <DataTable columns={columns} data={records} loading={loading} emptyMessage="No salary revisions yet." />
 
       <AddRevisionModal isOpen={addOpen} onClose={() => setAddOpen(false)} onCreated={fetchData} employees={employees} />
@@ -747,7 +730,7 @@ export default function SalaryRevisionPage() {
         onConfirm={() => {
           if (!confirm) return;
           const path = confirm.action;
-          callAction(confirm.row.id, path).catch((e) => setError(e.message));
+          callAction(confirm.row.id, path).catch((e) => toast.error(e.message));
           setConfirm(null);
         }}
       />

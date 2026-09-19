@@ -12,7 +12,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SalaryComponentRow {
@@ -126,9 +126,9 @@ function buildFields(isEditing: boolean, existing: SalaryComponentRow[]): FieldD
 }
 
 export default function SalaryComponentsPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<SalaryComponentRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
@@ -139,18 +139,17 @@ export default function SalaryComponentsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/masters/salary-components?includeInactive=true');
       if (!res.ok) throw new Error('Failed to fetch');
       const json: { data: SalaryComponentRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -194,14 +193,13 @@ export default function SalaryComponentsPage() {
     const res = await fetch(`/api/masters/salary-components/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
   };
 
   const setGrossTier = async (row: SalaryComponentRow, tier: 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL') => {
-    setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -219,14 +217,13 @@ export default function SalaryComponentsPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Failed to update');
+      toast.error(err.error ?? 'Failed to update');
       return;
     }
     fetchData();
   };
 
   const setPercentOfGross = async (row: SalaryComponentRow, percent: string) => {
-    setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -245,14 +242,13 @@ export default function SalaryComponentsPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Failed to update');
+      toast.error(err.error ?? 'Failed to update');
       return;
     }
     fetchData();
   };
 
   const toggleActive = async (row: SalaryComponentRow) => {
-    setError(null);
     const res = await fetch(`/api/masters/salary-components/${row.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -270,7 +266,7 @@ export default function SalaryComponentsPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Failed to update');
+      toast.error(err.error ?? 'Failed to update');
       return;
     }
     fetchData();
@@ -411,12 +407,6 @@ export default function SalaryComponentsPage() {
         <KPICard label="Total Components" value={stats.total} tone="info" />
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

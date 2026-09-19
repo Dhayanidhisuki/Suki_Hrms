@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 import DataTable, { type Column, type Pagination } from '@/components/ui/DataTable';
 import { fetchEmployeeRefs, toReportingManagerOptions } from '@/lib/employee-form-fields';
 import { formatStatus, statusTone, STATUS_OPTIONS } from '@/lib/visitor-form-fields';
@@ -98,9 +99,9 @@ function toDateTimeLocal(iso: string | null | undefined): string {
 }
 
 export default function GatePassList({ title, subtitle, defaultStatus = '', primaryAction = 'none', readOnly = false, showAdd = true, showExport = false, headerAction }: GatePassListProps) {
+  const toast = useToast();
   const [passes, setPasses] = useState<Pass[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(defaultStatus);
@@ -135,7 +136,7 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
   }, [pagination.page, search, statusFilter, passType, personToMeetId, dateFrom, dateTo]);
 
   const fetchPasses = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const res = await fetch(`/api/visitor/gate-passes?${filterParams()}`);
       if (!res.ok) throw new Error('Failed to fetch');
@@ -143,11 +144,11 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
       setPasses(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [filterParams]);
+  }, [filterParams, toast]);
 
   useEffect(() => { fetchPasses(); }, [fetchPasses]);
 
@@ -215,7 +216,7 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Action failed');
+      toast.error(err.error ?? 'Action failed');
       return;
     }
     fetchPasses();
@@ -226,7 +227,7 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
     const res = await fetch(`/api/visitor/gate-passes/${deleteId}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     setDeleteId(null);
@@ -306,12 +307,6 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         variant="card"

@@ -6,6 +6,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
@@ -38,13 +39,12 @@ export default function JoiningTab() {
 
 function JoiningInner() {
   const searchParams = useSearchParams();
+  const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState(searchParams.get('candidateId') ?? '');
   const [joinings, setJoinings] = useState<JoiningRow[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [joinForm, setJoinForm] = useState({ joiningDate: '', remarks: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -72,18 +72,17 @@ function JoiningInner() {
       setJoinings(joinJson.data ?? []);
       setChecklist(checkJson.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
       setLoading(false);
     }
-  }, [selectedCandidate]);
+  }, [selectedCandidate, toast]);
 
   useEffect(() => { fetchJoinings(); }, [fetchJoinings]);
 
   const createJoining = async () => {
     if (!selectedCandidate) return;
     setSubmitting(true);
-    setError(null);
     try {
       const payload: Record<string, unknown> = { candidateId: Number(selectedCandidate) };
       if (joinForm.joiningDate) payload.joiningDate = joinForm.joiningDate;
@@ -99,7 +98,7 @@ function JoiningInner() {
       setJoinForm({ joiningDate: '', remarks: '' });
       fetchJoinings();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create joining');
+      toast.error(e instanceof Error ? e.message : 'Failed to create joining');
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +114,7 @@ function JoiningInner() {
       if (!res.ok) throw new Error('Failed to update');
       fetchJoinings();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update');
+      toast.error(e instanceof Error ? e.message : 'Failed to update');
     }
   };
 
@@ -128,10 +127,10 @@ function JoiningInner() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed');
-      setSuccess(`Joining ${action}`);
+      toast.success(`Joining ${action}`);
       fetchJoinings();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      toast.error(e instanceof Error ? e.message : 'Failed');
     }
   };
 
@@ -139,8 +138,6 @@ function JoiningInner() {
     const joining = joinings[0];
     if (!joining) return;
     setPushing(true);
-    setError(null);
-    setSuccess(null);
     try {
       const payload: Record<string, unknown> = {
         candidateId: Number(selectedCandidate),
@@ -155,11 +152,11 @@ function JoiningInner() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed');
-      setSuccess(`Converted to Employee — ${json.employeeCode}`);
+      toast.success(`Converted to Employee — ${json.employeeCode}`);
       setPushOpen(false);
       setEmployeeCode('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      toast.error(e instanceof Error ? e.message : 'Failed');
     } finally {
       setPushing(false);
     }
@@ -167,16 +164,6 @@ function JoiningInner() {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-          <button className="ml-2 underline" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>{success}</div>
-      )}
-
       <div className="max-w-md">
         <label className={labelClass} style={{ color: 'var(--foreground)' }}>Select Candidate</label>
         <SearchableSelect value={selectedCandidate} options={candidateOptions} onChange={(v) => setSelectedCandidate(String(v))} placeholder="Search candidate..." />

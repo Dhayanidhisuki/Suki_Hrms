@@ -8,6 +8,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CriteriaItem {
@@ -59,13 +60,13 @@ export default function EvaluationTab() {
 
 function EvaluationInner() {
   const searchParams = useSearchParams();
+  const toast = useToast();
   const scheduleIdParam = searchParams.get('scheduleId') ?? '';
 
   const [scheduleId, setScheduleId] = useState(scheduleIdParam);
   const [schedules, setSchedules] = useState<ScheduleOption[]>([]);
   const [data, setData] = useState<EvalData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [scores, setScores] = useState<Record<number, number>>({});
   const [remarks, setRemarks] = useState<Record<number, string>>({});
@@ -74,7 +75,6 @@ function EvaluationInner() {
   const [weaknesses, setWeaknesses] = useState('');
   const [finalRemarks, setFinalRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/recruitment/interview-schedules?limit=50').then((r) => r.json()).then((j) => setSchedules(j.data ?? []));
@@ -105,7 +105,7 @@ function EvaluationInner() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
+      toast.error(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -139,12 +139,10 @@ function EvaluationInner() {
   const submit = async () => {
     if (!scheduleId || !data) return;
     if (data.criteria.some((c) => scores[c.criteriaId] == null)) {
-      setError('Please score all criteria');
+      toast.error('Please score all criteria');
       return;
     }
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
     try {
       const payload = {
         evaluations: data.criteria.map((c) => ({
@@ -165,10 +163,10 @@ function EvaluationInner() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Submission failed');
-      setSuccess(`Evaluation submitted — ${json.evaluationSummary?.result} (${Number(json.evaluationSummary?.weightedScore).toFixed(1)}%)`);
+      toast.success(`Evaluation submitted — ${json.evaluationSummary?.result} (${Number(json.evaluationSummary?.weightedScore).toFixed(1)}%)`);
       fetchData(scheduleId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Submission failed');
+      toast.error(e instanceof Error ? e.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -185,13 +183,6 @@ function EvaluationInner() {
         <label className={labelClass} style={{ color: 'var(--foreground)' }}>Select Interview Schedule</label>
         <SearchableSelect value={scheduleId} options={scheduleOptions} onChange={(v) => setScheduleId(String(v))} placeholder="Search by candidate or schedule..." />
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>{success}</div>
-      )}
 
       {loading && <div className="p-4 text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading scorecard...</div>}
 

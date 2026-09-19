@@ -6,6 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 
 interface Config {
   id: number;
@@ -21,25 +22,22 @@ const inputClass = 'w-full rounded-lg border px-3 py-2 text-sm focus:outline-non
 const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' } as const;
 
 export default function EmployeeIdConfigPage() {
+  const toast = useToast();
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/masters/employee-id-config')
       .then((r) => r.json())
       .then((data) => setConfig(data))
-      .catch(() => setError('Failed to load config'))
+      .catch(() => toast.error('Failed to load config'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [toast]);
 
   const submit = async () => {
     if (!config) return;
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch('/api/masters/employee-id-config', {
         method: 'PUT',
@@ -48,9 +46,9 @@ export default function EmployeeIdConfigPage() {
       });
       if (!res.ok) throw new Error('Save failed');
       setConfig(await res.json());
-      setSuccess('Configuration saved');
+      toast.success('Configuration saved');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      toast.error(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -70,17 +68,6 @@ export default function EmployeeIdConfigPage() {
   return (
     <div className="space-y-4 max-w-xl">
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Employee ID Configuration</h1>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-          {success}
-        </div>
-      )}
 
       {config && (
         <div className="space-y-4 rounded-xl border p-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>

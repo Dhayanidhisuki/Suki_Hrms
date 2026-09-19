@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Field, DataTable, FormModal, ConfirmDialog, type FieldDef, type Column } from '@/components/ui';
+import { Field, DataTable, FormModal, ConfirmDialog, useToast, type FieldDef, type Column } from '@/components/ui';
 import RepeatableListTab from '@/components/employees/RepeatableListTab';
 import EmployeeAvatarUpload from '@/components/employees/EmployeeAvatarUpload';
 import { SectionCard, DetailGrid, EditButton, SectionIcon } from '@/components/employees/SectionCard';
@@ -167,13 +167,12 @@ function ProfileTabForm({
   /** Extra read-only content rendered under the grid (view mode only). */
   children?: ReactNode;
 }) {
+  const toast = useToast();
   const [values, setValues] = useState<FormValues>({});
   const [savedValues, setSavedValues] = useState<FormValues>({});
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -204,7 +203,7 @@ function ProfileTabForm({
         setValues(normalized);
         setSavedValues(normalized);
       })
-      .catch(() => setError('Failed to load'))
+      .catch(() => toast.error('Failed to load'))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -218,14 +217,12 @@ function ProfileTabForm({
   const handleChange = (name: string, value: string | number | boolean) => {
     setValues((v) => applyEmployeeFieldChange(v, name, value));
     setDirty(true);
-    setSaved(false);
   };
 
   const resolvedFields = typeof fields === 'function' ? fields(values) : fields;
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch(saveUrl, {
         method: 'PUT',
@@ -241,12 +238,12 @@ function ProfileTabForm({
         throw new Error(firstFieldError ? `${firstFieldError[0]}: ${firstFieldError[1][0]}` : (err.error ?? 'Save failed'));
       }
       setDirty(false);
-      setSaved(true);
+      toast.success('Saved.');
       setSavedValues(values);
       setEditing(false);
       onSaved?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -256,7 +253,6 @@ function ProfileTabForm({
     if (dirty && !window.confirm('Discard unsaved changes?')) return;
     setValues(savedValues);
     setDirty(false);
-    setError(null);
     setEditing(false);
   };
 
@@ -298,24 +294,9 @@ function ProfileTabForm({
               <Field key={f.name} def={f} value={values[f.name]} onChange={(v) => handleChange(f.name, v)} />
             ))}
           </div>
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-              {error}
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-6">
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-              {error}
-            </div>
-          )}
-          {saved && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
-              Saved.
-            </div>
-          )}
           <DetailGrid items={resolvedFields.map((f) => ({ label: f.label, value: displayValue(f, values[f.name]) }))} />
           {children}
         </div>
@@ -330,9 +311,9 @@ function ProfileTabForm({
  * since ctcSchema has no nested arrays, unlike Salary Details below.
  */
 function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
+  const toast = useToast();
   const [rows, setRows] = useState<CtcRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [viewRow, setViewRow] = useState<CtcRow | null>(null);
   // Live figures pulled from Salary Details / CTC-only Components — CTC no
   // longer asks for Basic/HRA/allowances/PF/ESI manually; Payroll ("all of
@@ -415,7 +396,6 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = async () => {
     setRefreshing(true);
-    setError(null);
     // Full timestamp, not just a date — the server requires strictly-after
     // the current revision's own effectiveFrom, so a same-day Refresh (e.g.
     // clicking it twice today) would otherwise always 409 against a row
@@ -438,7 +418,7 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
       fetchData();
       fetchLiveFigures();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setRefreshing(false);
     }
@@ -479,9 +459,6 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
       }
     >
       <div className="space-y-4">
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
-      )}
       <DataTable columns={columns} data={rows} loading={loading} emptyMessage="No CTC fixed yet." />
       {hasCurrentRevision && <EmployeeCtcComponentsSection employeeId={employeeId} onChange={fetchLiveFigures} />}
 
@@ -655,10 +632,10 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
  * never read by payroll; they only feed the Performance Incentive Report.
  */
 function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: string; onChange?: () => void }) {
+  const toast = useToast();
   const [rows, setRows] = useState<CtcComponentRow[]>([]);
   const [options, setOptions] = useState<OptionList>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [amount, setAmount] = useState('');
 
@@ -680,7 +657,6 @@ function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: st
   }, [fetchData]);
 
   const handleAdd = async () => {
-    setError(null);
     if (!selectedId || !amount) return;
     const res = await fetch(`/api/employees/${employeeId}/ctc/components`, {
       method: 'POST',
@@ -689,7 +665,7 @@ function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: st
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Failed to save');
+      toast.error(err.error ?? 'Failed to save');
       return;
     }
     setSelectedId('');
@@ -699,11 +675,10 @@ function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: st
   };
 
   const handleRemove = async (rowId: number) => {
-    setError(null);
     const res = await fetch(`/api/employees/${employeeId}/ctc/components/${rowId}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Failed to remove');
+      toast.error(err.error ?? 'Failed to remove');
       return;
     }
     fetchData();
@@ -718,9 +693,6 @@ function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: st
       <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
         Non-payroll figures quoted in this employee&apos;s CTC — never part of Gross, PF, ESI, or any payroll run. Used only by the Performance Incentive Report.
       </p>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm mb-2" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
-      )}
       {!loading && rows.length > 0 && (
         <table className="w-full text-sm mb-3">
           <tbody>
@@ -875,6 +847,7 @@ function computeDeductionsShared(
 }
 
 function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
+  const toast = useToast();
   const [rows, setRows] = useState<SalaryRevisionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewRevision, setViewRevision] = useState<SalaryRevisionRow | null>(null);
@@ -890,7 +863,6 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
   // components never appear here at all, only on the Employee CTC tab.
   const [compRows, setCompRows] = useState<{ salaryComponentId: string; amount: string; source: 'fixed' | 'manual' }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [deductionContext, setDeductionContext] = useState<DeductionContext | null>(null);
   // Deduction code currently being edited (Edit button on an "other
   // deduction" row) and its in-progress typed override amount.
@@ -1058,12 +1030,10 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
     setNetSalary('');
     setEffectiveFrom('');
     setCompRows([]);
-    setError(null);
   };
 
   const handleSubmit = async () => {
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch(`/api/employees/${employeeId}/salary`, {
         method: 'POST',
@@ -1086,7 +1056,7 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
       setFormOpen(false);
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -1451,10 +1421,6 @@ function EmployeeSalaryTab({ employeeId }: { employeeId: string }) {
             );
           })()}
 
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
-          )}
-
           <div className="flex justify-end">
             <button
               onClick={handleSubmit}
@@ -1609,15 +1575,14 @@ function EmployeeBenefitsTab({
   employeeId: string;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const toast = useToast();
   const [available, setAvailable] = useState<EmployeeBenefitRow[]>([]);
   const [selected, setSelected] = useState<EmployeeBenefitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchBenefits = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/employees/${employeeId}/benefits`);
       if (!res.ok) throw new Error('Failed to fetch benefits');
@@ -1625,11 +1590,11 @@ function EmployeeBenefitsTab({
       setAvailable(json.available ?? []);
       setSelected(json.selected ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [employeeId]);
+  }, [employeeId, toast]);
 
   useEffect(() => {
     fetchBenefits();
@@ -1646,7 +1611,6 @@ function EmployeeBenefitsTab({
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch(`/api/employees/${employeeId}/benefits`, {
         method: 'PUT',
@@ -1658,7 +1622,7 @@ function EmployeeBenefitsTab({
       setSelected(json.selected ?? []);
       onDirtyChange?.(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -1667,12 +1631,6 @@ function EmployeeBenefitsTab({
   return (
     <SectionCard title="Benefits" icon={<SectionIcon.Gift />}>
       <div className="space-y-3">
-        {error && (
-          <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-            {error}
-          </div>
-        )}
-
         {loading ? (
           <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</p>
         ) : available.length === 0 ? (
@@ -2219,12 +2177,11 @@ function JobHistorySection({
     employeeTypes: OptionList; categories: OptionList; units: OptionList; reportingManagers: EmployeeRef[];
   };
 }) {
+  const toast = useToast();
   const [rows, setRows] = useState<JobHistoryRow[]>([]);
   const [reporting, setReporting] = useState<ReportingHistoryRow[]>([]);
   const [costCentres, setCostCentres] = useState<CodedRef[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -2242,11 +2199,10 @@ function JobHistorySection({
         setRows(hist.data);
         setReporting(hist.reporting);
         setCostCentres(ccs);
-        setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load job history'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job history'))
       .finally(() => setLoading(false));
-  }, [employeeId]);
+  }, [employeeId, toast]);
 
   useEffect(() => {
     load();
@@ -2292,7 +2248,7 @@ function JobHistorySection({
       const first = fieldErrors && Object.entries(fieldErrors).find(([, m]) => m?.length);
       throw new Error(first ? `${first[0]}: ${first[1][0]}` : (err.error ?? 'Job change failed'));
     }
-    setSaved(true);
+    toast.success('Job change recorded.');
     load();
   };
 
@@ -2305,7 +2261,7 @@ function JobHistorySection({
       action={
         <button
           type="button"
-          onClick={() => { setSaved(false); setModalOpen(true); }}
+          onClick={() => { setModalOpen(true); }}
           className="rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
@@ -2317,13 +2273,6 @@ function JobHistorySection({
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading...</div>
       ) : (
         <div className="space-y-6">
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{error}</div>
-          )}
-          {saved && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>Job change recorded.</div>
-          )}
-
           <div>
             <h3 className="mb-3 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Current posting &amp; notice period</h3>
             <DetailGrid
@@ -2408,6 +2357,7 @@ function JobHistorySection({
 }
 
 export default function EmployeeProfilePage() {
+  const toast = useToast();
   const params = useParams<{ id: string }>();
   const employeeId = params.id;
 
@@ -2418,7 +2368,6 @@ export default function EmployeeProfilePage() {
   const [activeTabDirty, setActiveTabDirty] = useState(false);
   const [confirmToggle, setConfirmToggle] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [toggleError, setToggleError] = useState<string | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleInfo | null>(null);
   const [changeStateOpen, setChangeStateOpen] = useState(false);
 
@@ -2557,7 +2506,6 @@ export default function EmployeeProfilePage() {
   const handleToggleActive = async () => {
     if (!header) return;
     setToggling(true);
-    setToggleError(null);
     try {
       const res = await fetch(`/api/employees/${employeeId}${header.isActive ? '' : '/reactivate'}`, {
         method: header.isActive ? 'DELETE' : 'POST',
@@ -2569,7 +2517,7 @@ export default function EmployeeProfilePage() {
       setConfirmToggle(false);
       fetchHeader();
     } catch (err) {
-      setToggleError(err instanceof Error ? err.message : 'Action failed');
+      toast.error(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setToggling(false);
     }
@@ -2735,12 +2683,6 @@ export default function EmployeeProfilePage() {
           </div>
         </div>
       </div>
-
-      {toggleError && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {toggleError}
-        </div>
-      )}
 
       <ConfirmDialog
         title={header.isActive ? 'Deactivate Employee' : 'Reactivate Employee'}

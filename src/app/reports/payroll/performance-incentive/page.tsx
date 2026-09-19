@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import * as XLSX from 'xlsx';
+import { useToast } from '@/components/ui';
 
 interface Row {
   employeeId: number;
@@ -81,7 +82,7 @@ export default function PerformanceIncentiveReportPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const yearOptions = (() => {
     const y = now.getFullYear();
@@ -90,7 +91,6 @@ export default function PerformanceIncentiveReportPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
       const res = await fetch(`/api/reports/payroll/performance-incentive?${qs.toString()}`);
@@ -99,12 +99,12 @@ export default function PerformanceIncentiveReportPage() {
       setRows(json.data ?? []);
       setSelectedIds(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
+      toast.error(err instanceof Error ? err.message : 'Failed to load');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => {
     loadData();
@@ -189,10 +189,6 @@ export default function PerformanceIncentiveReportPage() {
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>{error}</div>
-      )}
 
       <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end">
