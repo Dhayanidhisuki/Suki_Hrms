@@ -81,6 +81,8 @@ const templateKpiLine = z.object({
   kpiId: z.coerce.number().int().positive(),
   target: z.coerce.number(),
   weightage,
+  minThreshold: z.coerce.number().nullish(),
+  maxTarget: z.coerce.number().nullish(),
 });
 
 const templateKraLine = z.object({
@@ -90,13 +92,24 @@ const templateKraLine = z.object({
 });
 
 export const goalTemplateSchema = z.object({
-  code,
+  code: code.optional(),
   name: z.string().trim().min(1).max(150),
   description: z.string().trim().max(1000).nullish(),
   departmentId: optionalId,
   designationId: optionalId,
-  status: status.default('ACTIVE'),
+  jobRole: z.string().trim().max(100).nullish(),
+  status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']).default('DRAFT'),
   kras: z.array(templateKraLine).min(1),
+});
+
+export const goalTemplateStatusSchema = z.object({
+  status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']),
+});
+
+export const bulkAssignSchema = z.object({
+  cycleId: z.coerce.number().int().positive(),
+  templateId: z.coerce.number().int().positive(),
+  employeeIds: z.array(z.coerce.number().int().positive()).min(1),
 });
 
 // ── BRD §17. Goal assignment ─────────────────────────────────────────────────
