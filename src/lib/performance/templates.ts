@@ -15,6 +15,7 @@
 
 import { prisma } from '@/lib/prisma';
 import type { WeightageKra } from './weightage';
+import { findIneffectiveKras } from './weightage';
 
 type SubmittedLine = {
   kraId: number;
@@ -77,7 +78,13 @@ function nullableNumber(value: unknown): number | null {
 
 export async function resolveTemplateLines(
   companyId: number,
-  lines: SubmittedLine[]
+  lines: SubmittedLine[],
+  /**
+   * Date the KRAs are being used *for* — today when saving a template, the
+   * cycle start when assigning goals. Omit to skip the check (callers with no
+   * meaningful date should not silently pick one).
+   */
+  asOf?: Date
 ): Promise<ResolvedMasters | { error: string; status: number }> {
   const kraIds = lines.map((l) => l.kraId);
   if (new Set(kraIds).size !== kraIds.length) {
@@ -91,10 +98,22 @@ export async function resolveTemplateLines(
 
   const kras = await prisma.kra.findMany({
     where: { id: { in: kraIds }, companyId },
-    select: { id: true, code: true, name: true },
+    select: { id: true, code: true, name: true, effectiveFrom: true, effectiveTo: true },
   });
   if (kras.length !== kraIds.length) {
     return { error: 'One or more KRAs were not found', status: 404 };
+  }
+
+  // BRD §8 effective dating. Without this the dates were decoration: a KRA
+  // whose window closed could still be built into a template and assigned.
+  if (asOf) {
+    const expired = findIneffectiveKras(kras, asOf);
+    if (expired.length) {
+      return {
+        error: `Not effective on ${asOf.toISOString().slice(0, 10)}: ${expired.join(', ')}`,
+        status: 400,
+      };
+    }
   }
 
   const kpis = await prisma.kpi.findMany({

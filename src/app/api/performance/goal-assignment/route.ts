@@ -4,7 +4,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { bulkAssignSchema } from '@/lib/validations/performance';
 import { canManageGoalsFor, isGoalOwner, resolveActor } from '@/lib/performance/access';
 import { canReissueAssignment, goalSetCreateFromTemplate } from '@/lib/performance/copyTemplate';
-import { validateWeightages } from '@/lib/performance/weightage';
+import { findIneffectiveKras, validateWeightages } from '@/lib/performance/weightage';
 
 /**
  * Bulk goal assignment — copy an Active template onto one or more employees
@@ -144,6 +144,26 @@ export async function POST(request: NextRequest) {
     }
     if (template.kras.length === 0) {
       return NextResponse.json({ error: 'This template has no KRAs' }, { status: 409 });
+    }
+
+    // BRD §8 effective dating, checked against the cycle the goals are for —
+    // a KRA whose window closed before the cycle starts must not be assigned
+    // into it, even if the template was valid when it was built.
+    const expired = findIneffectiveKras(
+      template.kras.map((k) => ({
+        code: k.kra.code,
+        effectiveFrom: k.kra.effectiveFrom,
+        effectiveTo: k.kra.effectiveTo,
+      })),
+      cycle.startDate
+    );
+    if (expired.length) {
+      return NextResponse.json(
+        {
+          error: `This template has KRAs that are not effective for ${cycle.code}: ${expired.join(', ')}. Clone it and replace them.`,
+        },
+        { status: 409 }
+      );
     }
 
     const weight = validateWeightages(

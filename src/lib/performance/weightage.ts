@@ -97,3 +97,40 @@ export function validateKpiDates(
   }
   return errors;
 }
+
+/**
+ * BRD §8 effective dating for a KRA.
+ *
+ * effectiveFrom/effectiveTo were captured on the KRA master and then never
+ * read — a KRA whose window closed last year still appeared in the template
+ * picker and could be assigned into a new cycle. These make the dates mean
+ * something: `asOf` is the date the KRA is being used *for* (today when
+ * building a template, the cycle start when assigning goals).
+ *
+ * The window is inclusive at both ends; effectiveTo === null is open-ended.
+ * Dates are compared by calendar day, since these are @db.Date columns and a
+ * time component would otherwise make the last day behave inconsistently.
+ */
+export type KraWindow = {
+  effectiveFrom: Date;
+  effectiveTo?: Date | null;
+};
+
+function dayStamp(d: Date): number {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+export function isKraEffective(kra: KraWindow, asOf: Date): boolean {
+  const at = dayStamp(asOf);
+  if (at < dayStamp(kra.effectiveFrom)) return false;
+  if (kra.effectiveTo && at > dayStamp(kra.effectiveTo)) return false;
+  return true;
+}
+
+/** Names the KRAs that are out of window, for an actionable error message. */
+export function findIneffectiveKras<T extends KraWindow & { code: string }>(
+  kras: T[],
+  asOf: Date
+): string[] {
+  return kras.filter((k) => !isKraEffective(k, asOf)).map((k) => k.code);
+}
