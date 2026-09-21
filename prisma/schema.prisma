@@ -5307,19 +5307,24 @@ model Kpi {
 }
 
 /// A reusable named bundle of KRA+KPI with default weightages. departmentId /
-/// designationId are a *suggestion filter* (which templates surface first for
-/// an employee), not an auto-assignment rule — templates are applied manually.
+/// designationId / jobRole are a *suggestion filter* (which templates surface
+/// first for an employee), not an auto-assignment rule — templates are applied
+/// explicitly. Codes are auto-generated (GT-0001). In-place line edits are
+/// refused once the template has been assigned; clone instead.
 model GoalTemplate {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  code          String   @db.NVarChar(30)
-  name          String   @db.NVarChar(150)
-  description   String?  @db.NVarChar(1000)
-  departmentId  Int?
-  designationId Int?
-  status        String   @default("ACTIVE") @db.NVarChar(20)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  code            String   @db.NVarChar(30)
+  name            String   @db.NVarChar(150)
+  description     String?  @db.NVarChar(1000)
+  departmentId    Int?
+  designationId   Int?
+  jobRole         String?  @db.NVarChar(100)
+  status          String   @default("DRAFT") @db.NVarChar(20) // DRAFT | ACTIVE | INACTIVE
+  createdByUserId Int?
+  clonedFromId    Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   kras GoalTemplateKra[]
 
@@ -5345,11 +5350,19 @@ model GoalTemplateKra {
 }
 
 model GoalTemplateKpi {
-  id            Int     @id @default(autoincrement())
-  templateKraId Int
-  kpiId         Int
-  target        Decimal @db.Decimal(18, 4)
-  weightage     Decimal @db.Decimal(5, 2) // Model A: Σ per KRA = 100
+  id              Int      @id @default(autoincrement())
+  templateKraId   Int
+  kpiId           Int
+  // Snapshot of the KPI master at the moment this line was saved — later
+  // master edits must not silently rewrite an existing template.
+  description     String   @db.NVarChar(1000)
+  measurementType String   @db.NVarChar(30)
+  unit            String   @db.NVarChar(30)
+  target          Decimal  @db.Decimal(18, 4)
+  minThreshold    Decimal? @db.Decimal(18, 4)
+  maxTarget       Decimal? @db.Decimal(18, 4)
+  weightage       Decimal  @db.Decimal(5, 2) // Model A: Σ per KRA = 100
+  frequency       String   @db.NVarChar(20)
 
   templateKra GoalTemplateKra @relation(fields: [templateKraId], references: [id], onDelete: Cascade)
   kpi         Kpi             @relation(fields: [kpiId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -5368,7 +5381,7 @@ model EmployeeGoalSet {
   employeeId       Int
   cycleId          Int
   templateId       Int? // provenance only — a set stays editable after apply
-  status           String    @default("DRAFT") @db.NVarChar(30) // DRAFT | PENDING_ACCEPTANCE | ACCEPTED | RETURNED
+  status           String    @default("DRAFT") @db.NVarChar(30) // DRAFT | PENDING_ACCEPTANCE | ACCEPTED | RETURNED | COMPLETED
   assignedByUserId Int?
   submittedAt      DateTime?
   acceptedAt       DateTime?

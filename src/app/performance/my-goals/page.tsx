@@ -37,7 +37,7 @@ interface GoalKra {
 }
 interface GoalSet {
   id: number;
-  status: 'DRAFT' | 'PENDING_ACCEPTANCE' | 'ACCEPTED' | 'RETURNED';
+  status: 'DRAFT' | 'PENDING_ACCEPTANCE' | 'ACCEPTED' | 'RETURNED' | 'COMPLETED';
   employeeRemark: string | null;
   cycle: { id: number; code: string; name: string; startDate: string; endDate: string };
   kras: GoalKra[];
@@ -49,12 +49,14 @@ const STATUS_TONE: Record<GoalSet['status'], BadgeTone> = {
   PENDING_ACCEPTANCE: 'warning',
   ACCEPTED: 'success',
   RETURNED: 'danger',
+  COMPLETED: 'success',
 };
 const STATUS_LABEL: Record<GoalSet['status'], string> = {
   DRAFT: 'Being prepared by your manager',
   PENDING_ACCEPTANCE: 'Awaiting your acceptance',
   ACCEPTED: 'Accepted',
   RETURNED: 'Returned to your manager',
+  COMPLETED: 'Completed',
 };
 
 const TYPE_LABEL = new Map(MEASUREMENT_TYPE_OPTIONS.map((o) => [o.value, o.label]));
@@ -71,13 +73,27 @@ export default function MyGoalsPage() {
     setLoading(true);
     setError(null);
     try {
-      const listRes = await fetch('/api/performance/goals?mine=true');
+      // The goal-assignment list filters by employeeId rather than a "mine"
+      // flag, so resolve the viewer's own employee row first — same approach
+      // as the KPI/KRA tab on the employee profile. Passing the id explicitly
+      // also keeps this page scoped to self for an HR user, who would
+      // otherwise match the unfiltered branch and see the whole company.
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) throw new Error('Could not load your profile');
+      const me = await meRes.json();
+      if (typeof me.employeeId !== 'number') {
+        setSets([]);
+        setError('No employee record is linked to this login, so goals are not available.');
+        return;
+      }
+
+      const listRes = await fetch(`/api/performance/goal-assignment?employeeId=${me.employeeId}`);
       if (!listRes.ok) throw new Error((await listRes.json().catch(() => ({}))).error ?? 'Failed to load your goals');
       const rows: Array<{ id: number }> = (await listRes.json()).data ?? [];
-      // The list endpoint returns headers only; the KRA/KPI detail is per-set.
+      // The list returns headers only; the KRA/KPI detail is per-set.
       const details = await Promise.all(
         rows.map(async (r) => {
-          const res = await fetch(`/api/performance/goals/${r.id}`);
+          const res = await fetch(`/api/performance/goal-assignment/${r.id}`);
           return res.ok ? ((await res.json()) as GoalSet) : null;
         })
       );
@@ -105,10 +121,14 @@ export default function MyGoalsPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/performance/goals/${setId}/respond`, {
-        method: 'POST',
+      const url =
+        action === 'ACCEPT'
+          ? `/api/performance/goal-assignment/${setId}/accept`
+          : `/api/performance/goal-assignment/${setId}/return`;
+      const res = await fetch(url, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, employeeRemark: remark.trim() || null }),
+        body: JSON.stringify({ employeeRemarks: remark.trim() || null }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error ?? 'Request failed');

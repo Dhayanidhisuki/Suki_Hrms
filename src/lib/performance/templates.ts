@@ -27,9 +27,53 @@ export type ResolvedMasters = {
   kraById: Map<number, { id: number; code: string; name: string }>;
   kpiById: Map<
     number,
-    { id: number; kraId: number; code: string; name: string; unit: string; measurementType: string; target: unknown; minThreshold: unknown; maxTarget: unknown; frequency: string; description: string }
+    {
+      id: number;
+      kraId: number;
+      code: string;
+      name: string;
+      unit: string;
+      measurementType: string;
+      target: unknown;
+      minThreshold: unknown;
+      maxTarget: unknown;
+      frequency: string;
+      description: string;
+    }
   >;
 };
+
+export function snapshotTemplateKpis(
+  lines: Array<{ kraId: number; weightage: number; kpis: Array<{ kpiId: number; target: number; weightage: number; minThreshold?: number | null; maxTarget?: number | null }> }>,
+  kpiById: ResolvedMasters['kpiById']
+) {
+  return lines.map((k) => ({
+    kraId: k.kraId,
+    weightage: k.weightage,
+    kpis: {
+      create: k.kpis.map((p) => {
+        const master = kpiById.get(p.kpiId)!;
+        return {
+          kpiId: p.kpiId,
+          description: master.description,
+          measurementType: master.measurementType,
+          unit: master.unit,
+          target: p.target,
+          minThreshold: nullableNumber(p.minThreshold ?? master.minThreshold),
+          maxTarget: nullableNumber(p.maxTarget ?? master.maxTarget),
+          weightage: p.weightage,
+          frequency: master.frequency,
+        };
+      }),
+    },
+  }));
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 export async function resolveTemplateLines(
   companyId: number,

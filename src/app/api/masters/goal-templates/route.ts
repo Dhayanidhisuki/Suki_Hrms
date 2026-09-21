@@ -4,12 +4,25 @@ import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
 import { goalTemplateSchema } from '@/lib/validations/performance';
 import { validateWeightages } from '@/lib/performance/weightage';
-import { resolveTemplateLines } from '@/lib/performance/templates';
+import { resolveTemplateLines, snapshotTemplateKpis } from '@/lib/performance/templates';
+import { allocateTemplateCode } from '@/lib/performance/templateCode';
+
+const LIST_INCLUDE = {
+  kras: {
+    include: {
+      kra: { select: { id: true, code: true, name: true } },
+      kpis: {
+        include: { kpi: { select: { id: true, code: true, name: true } } },
+        orderBy: { id: 'asc' as const },
+      },
+    },
+    orderBy: { id: 'asc' as const },
+  },
+};
 
 /**
- * Goal templates — a reusable KRA+KPI bundle with default weightages.
- * departmentId/designationId are a suggestion filter for which templates
- * surface first on an employee, not an auto-assignment rule.
+ * Goal templates — reusable KRA+KPI bundles. Filter is exact on the
+ * header's department/designation when those query params are set.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -28,21 +41,11 @@ export async function GET(request: NextRequest) {
       where: {
         companyId: scope.companyId,
         ...(status ? { status } : {}),
-        // A template with no scope applies anywhere, so a scoped search must
-        // still surface the unscoped ones.
-        ...(departmentId ? { OR: [{ departmentId: Number(departmentId) }, { departmentId: null }] } : {}),
-        ...(designationId ? { AND: [{ OR: [{ designationId: Number(designationId) }, { designationId: null }] }] } : {}),
-        ...(search ? { AND: [{ OR: [{ code: { contains: search } }, { name: { contains: search } }] }] } : {}),
+        ...(departmentId ? { departmentId: Number(departmentId) } : {}),
+        ...(designationId ? { designationId: Number(designationId) } : {}),
+        ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
       },
-      include: {
-        kras: {
-          include: {
-            kra: { select: { id: true, code: true, name: true } },
-            kpis: { include: { kpi: { select: { id: true, code: true, name: true, unit: true, measurementType: true } } } },
-          },
-          orderBy: { id: 'asc' },
-        },
-      },
+      include: { ...LIST_INCLUDE, _count: { select: { kras: true } } },
       orderBy: { code: 'asc' },
     });
 
@@ -71,32 +74,29 @@ export async function POST(request: NextRequest) {
     const resolved = await resolveTemplateLines(scope.companyId, parsed.data.kras);
     if ('error' in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
-    // BRD §17 Model A — same check the goal-assignment API runs.
     const weight = validateWeightages(resolved.forValidation);
     if (!weight.valid) {
       return NextResponse.json({ error: 'Weightage validation failed', details: weight.errors }, { status: 400 });
     }
 
+    const code = parsed.data.code ?? (await allocateTemplateCode(scope.companyId));
     const duplicate = await prisma.goalTemplate.findFirst({
-      where: { companyId: scope.companyId, code: parsed.data.code },
+      where: { companyId: scope.companyId, code },
       select: { id: true },
     });
     if (duplicate) return NextResponse.json({ error: 'A template with this code already exists' }, { status: 409 });
 
-    const { kras, ...header } = parsed.data;
+    const createdByUserId = Number(request.headers.get('x-user-id')) || null;
+    const { kras, code: _ignored, ...header } = parsed.data;
     const row = await prisma.goalTemplate.create({
       data: {
         companyId: scope.companyId,
         ...header,
-        kras: {
-          create: kras.map((k) => ({
-            kraId: k.kraId,
-            weightage: k.weightage,
-            kpis: { create: k.kpis.map((p) => ({ kpiId: p.kpiId, target: p.target, weightage: p.weightage })) },
-          })),
-        },
+        code,
+        createdByUserId,
+        kras: { create: snapshotTemplateKpis(kras, resolved.kpiById) },
       },
-      include: { kras: { include: { kpis: true } } },
+      include: LIST_INCLUDE,
     });
     return NextResponse.json(row, { status: 201 });
   } catch (err) {

@@ -216,7 +216,6 @@ export const navigation: NavModule[] = [
           { label: "Performance Cycles", href: "/masters/performance-cycles", ready: true },
           { label: "KRA Master", href: "/masters/kra", ready: true },
           { label: "KPI Master", href: "/masters/kpi", ready: true },
-          { label: "Goal Templates", href: "/masters/goal-templates", ready: true },
         ],
       },
       {
@@ -426,7 +425,8 @@ export const navigation: NavModule[] = [
       {
         label: "Goal Setting",
         items: [
-          { label: "Goal Assignment", href: "/performance/goals", ready: true },
+          { label: "Goal Templates", href: "/performance/goal-templates", ready: true },
+          { label: "Goal Assignment", href: "/performance/goal-assignment", ready: true },
           { label: "My Goals", href: "/performance/my-goals", ready: true },
         ],
       },
