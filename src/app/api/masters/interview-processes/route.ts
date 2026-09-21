@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { interviewProcessSchema } from '@/lib/validations/recruitment';
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
 
-  const where: any = {
+  const where: Prisma.InterviewProcessWhereInput = {
     deletedAt: null,
     ...(search ? { OR: [{ processName: { contains: search } }] } : {}),
   };
