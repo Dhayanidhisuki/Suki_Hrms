@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 export interface ExportOptions {
   filename: string;
@@ -70,7 +70,7 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
 
   const tableData = data.map(row => keys.map(key => row[key]));
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     head: [keys],
     body: tableData,
     startY: title ? 25 : 15,

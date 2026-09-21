@@ -200,15 +200,13 @@ function DeclaredHolidaysTab() {
     exportToPDF({
       filename: `Declared-Holidays-${year}`,
       title: `Declared Holidays — ${year}`,
-      columns: ['Date', 'Day', 'Name', 'Type', 'Description'],
+      columns: ['Date', 'Day', 'Name'],
       data: mergedRows.map((r) => {
         const d = new Date(r.date);
         return {
           Date: d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' }),
           Day: d.toLocaleDateString('en-IN', { weekday: 'long' }),
           Name: r.name,
-          Type: r.typeLabel + (r.source === 'yearly' ? ' (Yearly Leave Calendar)' : ''),
-          Description: r.description ?? '',
         };
       }),
     });
@@ -325,7 +323,7 @@ function DeclaredHolidaysTab() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <Button size="sm" onClick={handleDownloadPdf}>⬇ Download PDF</Button>
+          <Button size="sm" onClick={handleDownloadPdf}>Download PDF</Button>
           <Button variant="primary" size="sm" onClick={handleAdd}>+ Add Holiday</Button>
         </div>
       }

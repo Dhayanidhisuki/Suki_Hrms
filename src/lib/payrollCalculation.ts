@@ -706,6 +706,30 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
+    // PAYROLL_HIDDEN CTC components (e.g. "Medical") — attached per-employee
+    // via the CTC tab's "+ Add Component" picker (the same table NON_PAYROLL
+    // components use), but unlike NON_PAYROLL these DO reduce Net Pay: a
+    // real, flat (not LOP-prorated) monthly deduction that's deliberately
+    // kept off the Salary Details tab. Read here — not from revision.components
+    // — since that picker never lets them be attached to a Salary Revision.
+    let payrollHiddenCtcDeductionAmount = 0;
+    const currentEmployeeCtc = await prisma.employeeCtc.findFirst({
+      where: { employeeId: emp.id, effectiveTo: null },
+      select: {
+        components: {
+          include: { salaryComponent: { select: { id: true, type: true, grossTier: true } } },
+        },
+      },
+    });
+    for (const c of currentEmployeeCtc?.components ?? []) {
+      if (c.salaryComponent.grossTier !== 'PAYROLL_HIDDEN' || c.salaryComponent.type !== 'deduction') continue;
+      const amount = round(Number(c.amount));
+      if (amount !== 0) {
+        autoComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount });
+        payrollHiddenCtcDeductionAmount += amount;
+      }
+    }
+
     // LOM (Loss of Minutes) — only APPROVED LOM minutes are deducted.
     // The LOM approval workflow (Phase TimeOffice) queues late/early-out
     // minutes for HR/Admin approval. Only rows with lomApprovalStatus=
@@ -838,6 +862,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoDeductionsTotal += lwfAmount;
     autoDeductionsTotal += healthInsuranceAmount;
     autoDeductionsTotal += licDeduction;
+    autoDeductionsTotal += payrollHiddenCtcDeductionAmount;
 
     // Loan EMI deduction — for each active loan of this employee, deduct the
     // next pending installment. The deduction is split into principal and
