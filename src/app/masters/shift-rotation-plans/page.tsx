@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, SearchableSelect, ConfirmDialog, useToast, type Column } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface ShiftRef {
   id: number;
@@ -186,6 +187,7 @@ export default function ShiftRotationPlansPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Shift Rotation Plans</h1>
         <button

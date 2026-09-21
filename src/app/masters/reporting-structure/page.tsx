@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { KPIGrid, KPICard, useToast } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface EmployeeNode {
   id: number;
@@ -497,6 +498,7 @@ export default function ReportingStructurePage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <MasterGroupTabs groupLabel="Organization" />
       {/* Header & Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>

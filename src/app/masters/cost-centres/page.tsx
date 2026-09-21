@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import SimpleMasterPage from '@/components/SimpleMasterPage';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import type { FieldDef, FieldOption } from '@/components/ui';
 
 interface DepartmentRef { id: number; code: string; name: string }
@@ -40,34 +41,37 @@ export default function CostCentresPage() {
   ];
 
   return (
-    <SimpleMasterPage
-      title="Cost Centres"
-      apiPath="/api/masters/cost-centres"
-      addLabel="Add Cost Centre"
-      codeLabel="CC Code"
-      extraFields={extraFields}
-      extraColumns={[
-        {
-          key: 'department',
-          label: 'Department',
-          render: (row) => {
-            const d = row.department as DepartmentRef | null;
-            return d ? d.name : '—';
+    <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Organization" />
+      <SimpleMasterPage
+        title="Cost Centres"
+        apiPath="/api/masters/cost-centres"
+        addLabel="Add Cost Centre"
+        codeLabel="CC Code"
+        extraFields={extraFields}
+        extraColumns={[
+          {
+            key: 'department',
+            label: 'Department',
+            render: (row) => {
+              const d = row.department as DepartmentRef | null;
+              return d ? d.name : '—';
+            },
           },
-        },
-        {
-          key: 'owner',
-          label: 'Budget Owner',
-          render: (row) => {
-            const o = row.owner as { firstName: string; lastName: string; employeeCode: string } | null;
-            return o ? `${o.firstName} ${o.lastName} (${o.employeeCode})` : '—';
+          {
+            key: 'owner',
+            label: 'Budget Owner',
+            render: (row) => {
+              const o = row.owner as { firstName: string; lastName: string; employeeCode: string } | null;
+              return o ? `${o.firstName} ${o.lastName} (${o.employeeCode})` : '—';
+            },
           },
-        },
-      ]}
-      extraInitialValues={(row) => ({
-        departmentId: (row.departmentId as number | null) ?? '',
-        ownerEmpId: (row.ownerEmpId as number | null) ?? '',
-      })}
-    />
+        ]}
+        extraInitialValues={(row) => ({
+          departmentId: (row.departmentId as number | null) ?? '',
+          ownerEmpId: (row.ownerEmpId as number | null) ?? '',
+        })}
+      />
+    </div>
   );
 }

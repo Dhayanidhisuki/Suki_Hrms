@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface Department {
   id: number;
@@ -207,6 +208,7 @@ export default function DepartmentPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Organization" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
           Departments

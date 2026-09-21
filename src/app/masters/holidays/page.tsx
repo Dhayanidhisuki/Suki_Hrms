@@ -17,6 +17,7 @@ import {
   type Column, type FieldDef,
 } from '@/components/ui';
 import { exportToPDF } from '@/lib/export-utils';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 // ─── Shared types ───────────────────────────────────────────────────────
 
@@ -926,6 +927,7 @@ export default function HolidaysPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <PageHeader
         eyebrow="Masters · Time Office"
         title="Holiday Master"

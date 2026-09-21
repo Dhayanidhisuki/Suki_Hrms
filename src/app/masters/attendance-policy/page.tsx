@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 export default function AttendancePolicyPage() {
   const toast = useToast();
@@ -50,6 +51,7 @@ export default function AttendancePolicyPage() {
 
   return (
     <div className="space-y-6">
+      <MasterGroupTabs groupLabel="Workforce" />
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Attendance Policy</h1>
       <form onSubmit={handleSave} className="max-w-md space-y-4 rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
         <div>

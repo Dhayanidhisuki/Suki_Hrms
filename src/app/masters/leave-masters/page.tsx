@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid, useToast } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface LeaveMaster {
@@ -240,6 +241,7 @@ export default function LeaveMastersPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Leave Masters</h1>
         <button

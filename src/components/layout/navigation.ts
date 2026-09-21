@@ -117,8 +117,19 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Employee Types", href: "/masters/employee-types", ready: true },
           { label: "Employee Categories", href: "/masters/categories", ready: true },
-          // Designations + Grades are tabs on one page; their old routes redirect there.
-          { label: "Designations & Grades", href: "/masters/designations-grades", ready: true },
+        ],
+      },
+      {
+        // Designation -> Grade -> Level is a real dependency chain (a Grade
+        // sits under a Designation, migration 000022) — its own group so it
+        // reads top-to-bottom instead of sitting flat among unrelated
+        // Employee items. Split back into separate sidebar entries
+        // (2026-09-21) — each goes straight to its own page instead of a
+        // shared tab strip.
+        label: "Designation",
+        items: [
+          { label: "Designations", href: "/masters/designations", ready: true },
+          { label: "Grades", href: "/masters/grades", ready: true },
           { label: "Levels", href: "/masters/levels", ready: true },
         ],
       },
@@ -132,7 +143,6 @@ export const navigation: NavModule[] = [
           { label: "Leave Master", href: "/masters/leave-masters", ready: true },
           { label: "Holiday Master", href: "/masters/holidays", ready: true },
           { label: "Attendance Policy", href: "/masters/attendance-policy", ready: true },
-          { label: "Attendance Color Config", short: "Color Config", href: "/masters/attendance-color-config", ready: true },
           { label: "Comp-Off Policy", href: "/masters/comp-off-policy", ready: true },
         ],
       },

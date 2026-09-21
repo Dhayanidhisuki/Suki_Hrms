@@ -60,7 +60,6 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/jd-master': 'org',
   '/api/masters/jd-master': 'org',
   '/api/recruitment/job-postings': 'org',
-  '/api/masters/attendance-color-config': 'definition',
   // Recruitment masters (BRD v6.4) — grouped under 'definition' for RBAC.
   '/api/masters/recruitment-status': 'definition',
   '/api/masters/sourcing-channels': 'definition',

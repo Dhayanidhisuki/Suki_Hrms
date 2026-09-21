@@ -141,7 +141,7 @@ export default function DesignationJdUploadPage() {
           </p>
         </div>
         <Link
-          href="/masters/designations-grades"
+          href="/masters/designations"
           className="shrink-0 rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
           style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
         >
