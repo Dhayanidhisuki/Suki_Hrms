@@ -152,7 +152,7 @@ export default function ExitFormPage() {
                   });
                   if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
-                    setError(err.error ?? 'Clearance update failed');
+                    toast.error(err.error ?? 'Clearance update failed');
                     return;
                   }
                   await fetchData();

@@ -341,8 +341,10 @@ export const exitInterviewSchema = z.object({
   interviewedBy: z.string().max(100).optional().nullable(),
   resignationDate: z.coerce.date().optional().nullable(),
   noticePeriodDays: z.coerce.number().int().min(0).optional().nullable(),
-  noticeServedDays: z.coerce.number().int().min(0).optional().nullable(),
-  noticeWaivedDays: z.coerce.number().int().min(0).optional().nullable(),
+  // Both columns are Int NOT NULL with a default, so an explicit null would
+  // fail the insert — omit the field instead of nulling it.
+  noticeServedDays: z.coerce.number().int().min(0).optional(),
+  noticeWaivedDays: z.coerce.number().int().min(0).optional(),
   approvedLastWorkingDay: z.coerce.date().optional().nullable(),
   rehireEligible: z.boolean().optional(),
 });

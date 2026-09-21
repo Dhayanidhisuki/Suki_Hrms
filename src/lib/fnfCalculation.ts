@@ -105,6 +105,7 @@ export async function persistFnFCalculation(settlementId: number, calc: FnFCalcu
         tdsDeduction: fields.tdsDeduction,
         pfDeduction: fields.pfDeduction,
         esiDeduction: fields.esiDeduction,
+        ptDeduction: fields.ptDeduction,
         payableDays: fields.payableDays,
         salaryDivisor: fields.salaryDivisor,
         noticeServedDays: fields.noticeServedDays,

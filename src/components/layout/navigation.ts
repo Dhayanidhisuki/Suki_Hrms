@@ -701,6 +701,7 @@ export const navigation: NavModule[] = [
           { label: "Salary Reconciliation", short: "Reconciliation", href: "/reports/payroll/reconciliation" },
           { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive", ready: true },
           { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
+          { label: "F&F Settlement Register", short: "F&F Register", href: "/reports/payroll/full-and-final", ready: true },
           { label: "Arrear Report", short: "Arrears", href: "/reports/payroll/arrears" },
           { label: "Salary Revision Report", short: "Salary Revision", href: "/reports/payroll/salary-revision" },
         ],

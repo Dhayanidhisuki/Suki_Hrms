@@ -37,6 +37,7 @@ export type FnFCalculation = {
   tdsDeduction: number;
   pfDeduction: number;
   esiDeduction: number;
+  ptDeduction: number;
   payableDays: number;
   salaryDivisor: number;
   noticeServedDays: number;
