@@ -20,14 +20,14 @@ beforeAll(async () => {
       where: { module: 'payroll', submodule: 'processing', action: 'manage', isActive: true, deletedAt: null },
     })) ??
     (await prisma.permission.create({
-      data: { code: 'payroll.processing.manage', module: 'payroll', submodule: 'processing', action: 'manage', name: 'Payroll processing manage' },
+      data: { code: 'payroll.processing.manage', module: 'payroll', submodule: 'processing', action: 'manage', description: 'Payroll processing manage' },
     }));
   const viewPerm =
     (await prisma.permission.findFirst({
       where: { module: 'payroll', submodule: 'processing', action: 'view', isActive: true, deletedAt: null },
     })) ??
     (await prisma.permission.create({
-      data: { code: 'payroll.processing.view', module: 'payroll', submodule: 'processing', action: 'view', name: 'Payroll processing view' },
+      data: { code: 'payroll.processing.view', module: 'payroll', submodule: 'processing', action: 'view', description: 'Payroll processing view' },
     }));
   for (const p of [perm, viewPerm]) {
     const existing = await prisma.rolePermission.findFirst({ where: { roleId: auth.roleId, permissionId: p.id } });

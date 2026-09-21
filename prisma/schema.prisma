@@ -4012,6 +4012,10 @@ model FnFSettlement {
   tdsDeduction        Decimal @default(0) @db.Decimal(18, 2)
   pfDeduction         Decimal @default(0) @db.Decimal(18, 2)
   esiDeduction        Decimal @default(0) @db.Decimal(18, 2)
+  // Professional tax. The engine has always pushed a PT line (so net pay was
+  // right), but there was no column for it — a report reading the per-component
+  // breakdown under-reported deductions by the PT amount.
+  ptDeduction         Decimal @default(0) @db.Decimal(18, 2)
 
   payableDays             Decimal @default(0) @db.Decimal(8, 2)
   salaryDivisor           Int     @default(30)

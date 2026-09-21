@@ -10,6 +10,10 @@ const EVENTS: { code: string; name: string; recipients: string }[] = [
   { code: 'FNF_PAID', name: 'F&F marked paid', recipients: 'SUBJECT_EMPLOYEE' },
   { code: 'FNF_COMPLETED', name: 'F&F completed', recipients: 'SUBJECT_EMPLOYEE' },
   { code: 'FNF_CANCELLED', name: 'F&F cancelled', recipients: 'ROLE:hr-admin' },
+  // The employee is waiting on their money, so a hold or a reopen is exactly
+  // the kind of change they should hear about rather than discover.
+  { code: 'FNF_ON_HOLD', name: 'F&F put on hold', recipients: 'SUBJECT_EMPLOYEE,ROLE:hr-admin' },
+  { code: 'FNF_REOPENED', name: 'F&F reopened', recipients: 'SUBJECT_EMPLOYEE,ROLE:hr-admin' },
 ];
 
 async function ensureFnfNotificationCatalog(companyId: number) {

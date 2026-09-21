@@ -128,7 +128,12 @@ export async function loadKunFnfStatement(settlementId: number): Promise<KunFnfS
   const lwd = s.lastWorkingDay;
   const fy = fyBounds(lwd);
   const last = freeze?.lastPayroll;
-  const freezeComponents = (
+  // The raw snapshot and the parsed freeze describe components slightly
+  // differently — only one of them carries `type`. Declaring it optional here
+  // says what the reader below already assumes: a component with no type is an
+  // earning. Without this the `.type` read was a type error and, on the arm
+  // that lacks it, silently undefined.
+  const freezeComponents: Array<{ code: string; name: string; amount: number; type?: string }> = (
     (freezeRaw.salaryAsOfLwd as { components?: { code: string; name: string; amount: number; type?: string }[] } | undefined)
       ?.components ?? freeze?.salaryAsOfLwd.components ?? []
   );

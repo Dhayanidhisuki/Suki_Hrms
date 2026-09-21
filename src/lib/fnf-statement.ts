@@ -204,7 +204,11 @@ export async function generateFnfStatementPdf(settlementId: number): Promise<Uin
   left(page, font, 'Date:', C.d + 6, y - 18, 8, BLACK);
   page.drawLine({ start: { x: C.d + 36, y: y - 20 }, end: { x: R - 10, y: y - 20 }, thickness: 0.5, color: LINE });
 
-  void stmt satisfies KunFnfStatement;
+  // Compile-time guard that the loader's return still matches the template's
+  // shape. Parenthesised because `void` binds tighter than `satisfies`:
+  // `void stmt satisfies T` asserts `undefined satisfies T`, which is both
+  // meaningless and a type error.
+  void (stmt satisfies KunFnfStatement);
   return doc.save();
 }
 

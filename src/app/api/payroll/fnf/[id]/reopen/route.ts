@@ -6,6 +6,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
 import { FNF_REOPENABLE, assertStatus } from '@/lib/fnf/workflow';
+import { emitFnfEvent } from '@/lib/fnf/notify';
 
 const bodySchema = z.object({
   remark: z.string().min(3).max(500),
@@ -63,6 +64,8 @@ export async function POST(
     });
     return rec;
   });
+
+  await emitFnfEvent(scope.companyId, 'FNF_REOPENED', updated);
 
   return NextResponse.json(updated);
 }

@@ -6,6 +6,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
 import { FNF_HOLDABLE, assertStatus } from '@/lib/fnf/workflow';
+import { emitFnfEvent } from '@/lib/fnf/notify';
 
 const bodySchema = z.object({
   reason: z.string().min(3).max(500),
@@ -50,6 +51,8 @@ export async function POST(
     });
     return rec;
   });
+
+  await emitFnfEvent(scope.companyId, 'FNF_ON_HOLD', updated);
 
   return NextResponse.json(updated);
 }

@@ -193,7 +193,7 @@ export async function calculateFnFFromFreeze(freeze: FnFFreezeContent, employeeI
   const ratio = divisor > 0 ? payableDays / divisor : 0;
   let pfDeduction = 0;
   let esiDeduction = 0;
-  const ptDeduction = 0;
+  let ptDeduction = 0;
   if (freeze.lastPayroll && payableDays > 0 && unpaidSalary > 0) {
     if (cfg.includePf) {
       pfDeduction = round2(freeze.lastPayroll.pf * ratio);
@@ -219,6 +219,7 @@ export async function calculateFnFFromFreeze(freeze: FnFFreezeContent, employeeI
     }
     if (cfg.includePt) {
       const pt = round2(freeze.lastPayroll.pt * ratio);
+      ptDeduction = pt;
       pushLine(lines, {
         kind: 'DEDUCTION',
         code: 'PT',
@@ -270,6 +271,7 @@ export async function calculateFnFFromFreeze(freeze: FnFFreezeContent, employeeI
       tdsDeduction,
       pfDeduction,
       esiDeduction,
+      ptDeduction,
       payableDays,
       salaryDivisor: divisor,
       noticeServedDays: freeze.noticeServedDays,
