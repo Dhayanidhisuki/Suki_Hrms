@@ -58,7 +58,10 @@ const MODULE_PERMISSION: Record<string, string> = {
  */
 async function countSimpleMaster(model: string) {
   try {
-    const table = prisma[model as keyof typeof prisma] as any;
+    // Model is chosen at runtime; only .count is called on it.
+    const table = prisma[model as keyof typeof prisma] as unknown as {
+      count(args?: object): Promise<number>;
+    };
     const [active, inactive] = await Promise.all([
       table.count({ where: { isActive: true, deletedAt: null } }),
       table.count({ where: { isActive: false, deletedAt: null } }),
@@ -73,7 +76,10 @@ async function countSimpleMaster(model: string) {
 /** Counts for a company-scoped master that carries isActive/deletedAt. */
 async function countScopedMaster(model: string, companyId: number) {
   try {
-    const table = prisma[model as keyof typeof prisma] as any;
+    // Model is chosen at runtime; only .count is called on it.
+    const table = prisma[model as keyof typeof prisma] as unknown as {
+      count(args?: object): Promise<number>;
+    };
     const [active, inactive] = await Promise.all([
       table.count({ where: { companyId, isActive: true, deletedAt: null } }),
       table.count({ where: { companyId, isActive: false, deletedAt: null } }),

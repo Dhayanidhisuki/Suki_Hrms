@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const qrValidMinutes = Math.round(data.qrValidHours * 60);
 
     const pass = await prisma.$transaction(async (tx) => {
-      const gatePassNo = await generateGatePassNo(tx as any, employee.companyId, data.visitorTypeValue);
+      const gatePassNo = await generateGatePassNo(tx, employee.companyId, data.visitorTypeValue);
       const qrToken = generateQrToken();
 
       return await tx.visitorGatePass.create({
