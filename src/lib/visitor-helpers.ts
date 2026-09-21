@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Shared validation for visitor gate pass create/update.
@@ -48,7 +49,9 @@ export type GatePassInput = z.infer<typeof gatePassSchema>;
  * scoped to the company. e.g. GPN/CONSULTANT/0001
  */
 export async function generateGatePassNo(
-  tx: { visitorGatePass: { findMany: (args: object) => Promise<{ gatePassNo: string }[]> } },
+  // Prisma's own transaction client, so callers pass `tx` straight through
+  // instead of casting it away.
+  tx: Prisma.TransactionClient,
   companyId: number,
   visitorTypeValue: string
 ): Promise<string> {
