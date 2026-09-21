@@ -1,10 +1,10 @@
 export interface CSVExportOptions {
   filename: string;
-  data: Record<string, any>[];
-  columns?: (keyof Record<string, any>)[];
+  data: Record<string, unknown>[];
+  columns?: string[];
 }
 
-function escapeCSV(value: any): string {
+function escapeCSV(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {

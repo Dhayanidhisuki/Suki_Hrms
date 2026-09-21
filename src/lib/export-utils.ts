@@ -4,13 +4,13 @@ import 'jspdf-autotable';
 
 export interface ExportOptions {
   filename: string;
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   columns?: string[];
   title?: string;
   format: 'csv' | 'excel' | 'pdf';
 }
 
-function escapeCSV(value: any): string {
+function escapeCSV(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -70,7 +70,9 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
 
   const tableData = data.map(row => keys.map(key => row[key]));
 
-  (doc as any).autoTable({
+  // jspdf-autotable augments jsPDF at runtime; its type augmentation is not
+  // picked up here, so name the one method this file calls.
+  (doc as jsPDF & { autoTable: (options: object) => void }).autoTable({
     head: [keys],
     body: tableData,
     startY: title ? 25 : 15,

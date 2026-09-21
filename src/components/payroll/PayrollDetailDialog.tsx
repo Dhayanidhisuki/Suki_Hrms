@@ -99,9 +99,13 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         if (!lineRes.ok) throw new Error('Failed to fetch payroll line');
         const line = await lineRes.json();
         const attJson = await attRes.json();
-        const att = (attJson.data ?? []).find((r: any) => r.employeeId === line.employeeId);
+        const att = ((attJson.data ?? []) as Array<{ employeeId: number; summary?: AttendanceSummary | null }>)
+          .find((r) => r.employeeId === line.employeeId);
         const balJson = await balRes.json();
-        const balances: LeaveBalance[] = (balJson.balances ?? []).filter((b: any) => b.employeeCode === line.employee.employeeCode);
+        // The endpoint returns balances for several employees, so the rows
+        // carry an employeeCode that LeaveBalance itself does not.
+        const balances: LeaveBalance[] = ((balJson.balances ?? []) as Array<LeaveBalance & { employeeCode: string }>)
+          .filter((b) => b.employeeCode === line.employee.employeeCode);
         if (!cancelled) {
           setData({ line, attendance: att?.summary ?? null, leaveBalances: balances });
         }

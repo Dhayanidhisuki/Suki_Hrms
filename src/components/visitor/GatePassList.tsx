@@ -236,7 +236,7 @@ export default function GatePassList({ title, subtitle, defaultStatus = '', prim
 
   const exportCSV = () => {
     const headers = ['gatePassNo', 'passType', 'status', 'visitorName', 'mobileNo', 'visitorTypeValue', 'partyName', 'purposeValue', 'visitDate', 'validFrom', 'validTo', 'checkInTime', 'checkOutTime'];
-    const rows = passes.map((p) => headers.map((h) => `"${String((p as any)[h] ?? '').replace(/"/g, "'")}"`).join(','));
+    const rows = passes.map((p) => headers.map((h) => `"${String((p as unknown as Record<string, unknown>)[h] ?? '').replace(/"/g, "'")}"`).join(','));
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

@@ -124,9 +124,11 @@ export default function InterviewProcessPage() {
     setLevels([...levels, { interviewLevelId: 0, interviewTypeId: 0, sequence: levels.length + 1, mandatory: true, passScore: null }]);
   };
 
-  const updateLevel = (idx: number, field: keyof ProcessLevel, value: any) => {
+  // Generic so the value has to match the field being written, instead of
+  // both sides being `any` and agreeing by luck.
+  const updateLevel = <K extends keyof ProcessLevel>(idx: number, field: K, value: ProcessLevel[K]) => {
     const next = [...levels];
-    (next[idx] as any)[field] = value;
+    next[idx] = { ...next[idx], [field]: value };
     setLevels(next);
   };
 
