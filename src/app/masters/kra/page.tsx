@@ -47,6 +47,8 @@ export default function KraMasterPage() {
   const [departmentId, setDepartmentId] = useState('');
   const [designationId, setDesignationId] = useState('');
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -58,6 +60,8 @@ export default function KraMasterPage() {
     setError(null);
     try {
       const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
         ...(search ? { search } : {}),
         ...(departmentId ? { departmentId } : {}),
         ...(designationId ? { designationId } : {}),
@@ -65,13 +69,15 @@ export default function KraMasterPage() {
       });
       const res = await fetch(`/api/masters/kra?${params}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to load KRAs');
-      setRows((await res.json()).data ?? []);
+      const body = await res.json();
+      setRows(body.data ?? []);
+      setPagination(body.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 1 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [search, departmentId, designationId, status]);
+  }, [search, departmentId, designationId, status, page]);
 
   // This page loads its data in an effect, the pattern every list screen in
   // this app uses. react-hooks/set-state-in-effect flags any setState
@@ -234,20 +240,22 @@ export default function KraMasterPage() {
           columns={columns}
           data={rows}
           loading={loading}
+          pagination={pagination}
+          onPageChange={setPage}
           searchValue={search}
           searchPlaceholder="Search code, name or category…"
-          onSearchChange={setSearch}
+          onSearchChange={(v) => { setSearch(v); setPage(1); }}
           filters={
             <>
-              <select className={inputCls} style={inputStyle} value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <select className={inputCls} style={inputStyle} value={departmentId} onChange={(e) => { setDepartmentId(e.target.value); setPage(1); }}>
                 <option value="">All departments</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              <select className={inputCls} style={inputStyle} value={designationId} onChange={(e) => setDesignationId(e.target.value)}>
+              <select className={inputCls} style={inputStyle} value={designationId} onChange={(e) => { setDesignationId(e.target.value); setPage(1); }}>
                 <option value="">All designations</option>
                 {designations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              <select className={inputCls} style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select className={inputCls} style={inputStyle} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">All statuses</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>

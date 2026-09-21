@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { MAX_ALL } from '@/lib/pagination';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveActor } from '@/lib/performance/access';
 
@@ -32,9 +33,11 @@ export async function GET(request: NextRequest) {
         _count: { select: { kras: true } },
       },
       orderBy: { code: 'asc' },
+      // Picker source: no paging, but still capped so the query is bounded.
+      take: MAX_ALL,
     });
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data, truncated: data.length === MAX_ALL });
   } catch (err) {
     console.error('[performance/goal-templates] GET failed', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to load templates' }, { status: 500 });

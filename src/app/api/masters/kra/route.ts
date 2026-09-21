@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { buildPagination, parsePageRequest } from '@/lib/pagination';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
 import { kraSchema } from '@/lib/validations/performance';
@@ -30,29 +32,34 @@ export async function GET(request: NextRequest) {
           }
         : {};
 
-    const data = await prisma.kra.findMany({
-      where: {
-        companyId: scope.companyId,
-        ...(status ? { status } : {}),
-        ...(departmentId ? { departmentId: Number(departmentId) } : {}),
-        ...(designationId ? { designationId: Number(designationId) } : {}),
-        ...effectiveFilter,
-        ...(search
-          ? {
-              AND: [
-                { OR: [{ code: { contains: search } }, { name: { contains: search } }, { category: { contains: search } }] },
-              ],
-            }
-          : {}),
-      },
-      include: { _count: { select: { kpis: true } } },
-      orderBy: { code: 'asc' },
-    });
+    const pageReq = parsePageRequest(sp);
+    const where: Prisma.KraWhereInput = {
+      companyId: scope.companyId,
+      ...(status ? { status } : {}),
+      ...(departmentId ? { departmentId: Number(departmentId) } : {}),
+      ...(designationId ? { designationId: Number(designationId) } : {}),
+      ...effectiveFilter,
+      ...(search
+        ? {
+            AND: [
+              { OR: [{ code: { contains: search } }, { name: { contains: search } }, { category: { contains: search } }] },
+            ],
+          }
+        : {}),
+    };
 
-    return NextResponse.json({
-      data,
-      pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 },
-    });
+    const [data, total] = await Promise.all([
+      prisma.kra.findMany({
+        where,
+        include: { _count: { select: { kpis: true } } },
+        orderBy: { code: 'asc' },
+        skip: pageReq.skip,
+        take: pageReq.take,
+      }),
+      prisma.kra.count({ where }),
+    ]);
+
+    return NextResponse.json({ data, pagination: buildPagination(pageReq, total, data.length) });
   } catch (err) {
     console.error('[kra] GET failed', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to load KRAs' }, { status: 500 });

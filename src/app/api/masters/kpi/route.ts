@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { buildPagination, parsePageRequest } from '@/lib/pagination';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
 import { kpiSchema } from '@/lib/validations/performance';
@@ -18,21 +20,26 @@ export async function GET(request: NextRequest) {
     const kraId = sp.get('kraId');
     const status = sp.get('status');
 
-    const data = await prisma.kpi.findMany({
-      where: {
-        companyId: scope.companyId,
-        ...(kraId ? { kraId: Number(kraId) } : {}),
-        ...(status ? { status } : {}),
-        ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
-      },
-      include: { kra: { select: { id: true, code: true, name: true } } },
-      orderBy: [{ kraId: 'asc' }, { code: 'asc' }],
-    });
+    const pageReq = parsePageRequest(sp);
+    const where: Prisma.KpiWhereInput = {
+      companyId: scope.companyId,
+      ...(kraId ? { kraId: Number(kraId) } : {}),
+      ...(status ? { status } : {}),
+      ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
+    };
 
-    return NextResponse.json({
-      data,
-      pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 },
-    });
+    const [data, total] = await Promise.all([
+      prisma.kpi.findMany({
+        where,
+        include: { kra: { select: { id: true, code: true, name: true } } },
+        orderBy: [{ kraId: 'asc' }, { code: 'asc' }],
+        skip: pageReq.skip,
+        take: pageReq.take,
+      }),
+      prisma.kpi.count({ where }),
+    ]);
+
+    return NextResponse.json({ data, pagination: buildPagination(pageReq, total, data.length) });
   } catch (err) {
     console.error('[kpi] GET failed', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to load KPIs' }, { status: 500 });

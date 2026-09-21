@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { currentFinancialYear } from '@/lib/performance/kra';
 import { achievementPct, validateTargetForType } from '@/lib/performance/measurement';
 import { findIneffectiveKras, isKraEffective, validateKpiDates, validateWeightages } from '@/lib/performance/weightage';
+import { DEFAULT_LIMIT, MAX_ALL, MAX_LIMIT, buildPagination, parsePageRequest } from '@/lib/pagination';
 
 describe('currentFinancialYear', () => {
   it('uses April start', () => {
@@ -163,5 +164,44 @@ describe('isKraEffective — BRD §8 effective dating', () => {
       { code: 'KRA-FUTURE', effectiveFrom: new Date('2030-01-01'), effectiveTo: null },
     ];
     expect(findIneffectiveKras(rows, new Date('2026-09-15'))).toEqual(['KRA-OLD', 'KRA-FUTURE']);
+  });
+});
+
+describe('parsePageRequest / buildPagination', () => {
+  const sp = (q: string) => new URLSearchParams(q);
+
+  it('defaults to page 1 with the default limit', () => {
+    const r = parsePageRequest(sp(''));
+    expect(r).toMatchObject({ page: 1, limit: DEFAULT_LIMIT, skip: 0, take: DEFAULT_LIMIT, all: false });
+  });
+
+  it('computes skip from the page', () => {
+    expect(parsePageRequest(sp('page=3&limit=20')).skip).toBe(40);
+  });
+
+  it('clamps an oversized limit and ignores junk', () => {
+    expect(parsePageRequest(sp('limit=99999')).limit).toBe(MAX_LIMIT);
+    expect(parsePageRequest(sp('page=0&limit=-5')).limit).toBe(DEFAULT_LIMIT);
+    expect(parsePageRequest(sp('page=abc')).page).toBe(1);
+  });
+
+  it('never leaves a query unbounded, even for all=true', () => {
+    const r = parsePageRequest(sp('all=true'));
+    expect(r.all).toBe(true);
+    expect(r.skip).toBeUndefined();
+    expect(r.take).toBe(MAX_ALL);
+  });
+
+  it('reports totalPages from the total', () => {
+    const r = parsePageRequest(sp('page=1&limit=20'));
+    expect(buildPagination(r, 41, 20).totalPages).toBe(3);
+    expect(buildPagination(r, 0, 0).totalPages).toBe(1);
+  });
+
+  it('flags truncation when all=true hit the cap, and not otherwise', () => {
+    const r = parsePageRequest(sp('all=true'));
+    // A picker must never present a capped list as if it were complete.
+    expect(buildPagination(r, MAX_ALL + 5, MAX_ALL).truncated).toBe(true);
+    expect(buildPagination(r, 12, 12).truncated).toBeUndefined();
   });
 });

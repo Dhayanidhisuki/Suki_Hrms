@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { buildPagination, parsePageRequest } from '@/lib/pagination';
 import { checkMasterPermission } from '@/lib/rbac-masters';
 import { getCompanyId } from '@/lib/companyScope';
 import { goalTemplateSchema } from '@/lib/validations/performance';
@@ -37,22 +39,27 @@ export async function GET(request: NextRequest) {
     const departmentId = sp.get('departmentId');
     const designationId = sp.get('designationId');
 
-    const data = await prisma.goalTemplate.findMany({
-      where: {
-        companyId: scope.companyId,
-        ...(status ? { status } : {}),
-        ...(departmentId ? { departmentId: Number(departmentId) } : {}),
-        ...(designationId ? { designationId: Number(designationId) } : {}),
-        ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
-      },
-      include: { ...LIST_INCLUDE, _count: { select: { kras: true } } },
-      orderBy: { code: 'asc' },
-    });
+    const pageReq = parsePageRequest(sp);
+    const where: Prisma.GoalTemplateWhereInput = {
+      companyId: scope.companyId,
+      ...(status ? { status } : {}),
+      ...(departmentId ? { departmentId: Number(departmentId) } : {}),
+      ...(designationId ? { designationId: Number(designationId) } : {}),
+      ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }] } : {}),
+    };
 
-    return NextResponse.json({
-      data,
-      pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 },
-    });
+    const [data, total] = await Promise.all([
+      prisma.goalTemplate.findMany({
+        where,
+        include: { ...LIST_INCLUDE, _count: { select: { kras: true } } },
+        orderBy: { code: 'asc' },
+        skip: pageReq.skip,
+        take: pageReq.take,
+      }),
+      prisma.goalTemplate.count({ where }),
+    ]);
+
+    return NextResponse.json({ data, pagination: buildPagination(pageReq, total, data.length) });
   } catch (err) {
     console.error('[goal-templates] GET failed', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to load templates' }, { status: 500 });

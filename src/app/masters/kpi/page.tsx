@@ -55,6 +55,8 @@ function KpiMasterInner() {
   const [search, setSearch] = useState('');
   const [kraId, setKraId] = useState(kraIdFromUrl);
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -66,19 +68,23 @@ function KpiMasterInner() {
     setError(null);
     try {
       const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
         ...(search ? { search } : {}),
         ...(kraId ? { kraId } : {}),
         ...(status ? { status } : {}),
       });
       const res = await fetch(`/api/masters/kpi?${params}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to load KPIs');
-      setRows((await res.json()).data ?? []);
+      const body = await res.json();
+      setRows(body.data ?? []);
+      setPagination(body.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 1 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [search, kraId, status]);
+  }, [search, kraId, status, page]);
 
   // This page loads its data in an effect, the pattern every list screen in
   // this app uses. react-hooks/set-state-in-effect flags any setState
@@ -90,7 +96,8 @@ function KpiMasterInner() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch('/api/masters/kra?status=ACTIVE');
+      // Dropdown source — needs the whole set, not page 1.
+      const res = await fetch('/api/masters/kra?status=ACTIVE&all=true');
       if (res.ok) setKras((await res.json()).data ?? []);
     })();
   }, []);
@@ -234,16 +241,18 @@ function KpiMasterInner() {
           columns={columns}
           data={rows}
           loading={loading}
+          pagination={pagination}
+          onPageChange={setPage}
           searchValue={search}
           searchPlaceholder="Search KPI code or name…"
-          onSearchChange={setSearch}
+          onSearchChange={(v) => { setSearch(v); setPage(1); }}
           filters={
             <>
-              <select className={inputCls} style={inputStyle} value={kraId} onChange={(e) => setKraId(e.target.value)}>
+              <select className={inputCls} style={inputStyle} value={kraId} onChange={(e) => { setKraId(e.target.value); setPage(1); }}>
                 <option value="">All KRAs</option>
                 {kras.map((k) => <option key={k.id} value={k.id}>{k.code} — {k.name}</option>)}
               </select>
-              <select className={inputCls} style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select className={inputCls} style={inputStyle} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">All statuses</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
