@@ -118,7 +118,9 @@ export default function GoalTemplatesPage() {
   useEffect(() => {
     void (async () => {
       const [k, p, d, g] = await Promise.all([
-        fetch('/api/masters/kra?status=ACTIVE'),
+        // Only KRAs effective today — the save would be rejected otherwise
+        // (BRD §8), so don't offer them in the picker.
+        fetch(`/api/masters/kra?status=ACTIVE&effectiveOn=${new Date().toISOString().slice(0, 10)}`),
         fetch('/api/masters/kpi?status=ACTIVE'),
         fetch('/api/masters/departments?limit=500'),
         fetch('/api/masters/designations?limit=500'),

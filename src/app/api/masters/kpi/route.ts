@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const targetErr = validateTargetForType(parsed.data.measurementType, parsed.data.target);
+    const targetErr = validateTargetForType(parsed.data.measurementType, parsed.data.target, {
+      minThreshold: parsed.data.minThreshold,
+      maxTarget: parsed.data.maxTarget,
+    });
     if (targetErr) return NextResponse.json({ error: targetErr }, { status: 400 });
 
     // Confirm the parent KRA is this company's — the FK alone is cross-tenant.

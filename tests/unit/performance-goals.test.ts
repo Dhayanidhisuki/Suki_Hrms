@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { currentFinancialYear } from '@/lib/performance/kra';
 import { achievementPct, validateTargetForType } from '@/lib/performance/measurement';
-import { validateKpiDates, validateWeightages } from '@/lib/performance/weightage';
+import { findIneffectiveKras, isKraEffective, validateKpiDates, validateWeightages } from '@/lib/performance/weightage';
 
 describe('currentFinancialYear', () => {
   it('uses April start', () => {
@@ -99,5 +99,69 @@ describe('validateKpiDates — BRD §41', () => {
   it('rejects an inverted window', () => {
     const errs = validateKpiDates([{ label: 'A', startDate: new Date('2026-06-01'), endDate: new Date('2026-05-01') }], cycle);
     expect(errs[0]).toMatch(/end date is before start date/);
+  });
+});
+
+describe('validateTargetForType — target vs its own thresholds', () => {
+  it('rejects a target below the minimum threshold', () => {
+    expect(validateTargetForType('HIGHER_IS_BETTER', 50, { minThreshold: 80, maxTarget: 100 }))
+      .toMatch(/cannot be below the minimum threshold/);
+  });
+
+  it('rejects a target above the maximum target', () => {
+    // The regression: min 80 / max 100 / target 150 used to save happily.
+    expect(validateTargetForType('HIGHER_IS_BETTER', 150, { minThreshold: 80, maxTarget: 100 }))
+      .toMatch(/cannot exceed the maximum target/);
+  });
+
+  it('accepts a target inside the band, and on either boundary', () => {
+    const bounds = { minThreshold: 80, maxTarget: 100 };
+    expect(validateTargetForType('HIGHER_IS_BETTER', 95, bounds)).toBeNull();
+    expect(validateTargetForType('HIGHER_IS_BETTER', 80, bounds)).toBeNull();
+    expect(validateTargetForType('HIGHER_IS_BETTER', 100, bounds)).toBeNull();
+  });
+
+  it('ignores thresholds that are not set', () => {
+    expect(validateTargetForType('HIGHER_IS_BETTER', 150, {})).toBeNull();
+    expect(validateTargetForType('HIGHER_IS_BETTER', 150, { minThreshold: null, maxTarget: null })).toBeNull();
+    expect(validateTargetForType('HIGHER_IS_BETTER', 150)).toBeNull();
+  });
+
+  it('still applies the rating scale before the threshold check', () => {
+    expect(validateTargetForType('RATING_1_5', 9, { minThreshold: 1, maxTarget: 10 }))
+      .toMatch(/between 1 and 5/);
+  });
+});
+
+describe('isKraEffective — BRD §8 effective dating', () => {
+  const kra = { effectiveFrom: new Date('2026-04-01'), effectiveTo: new Date('2027-03-31') };
+
+  it('is effective inside the window, inclusive of both ends', () => {
+    expect(isKraEffective(kra, new Date('2026-04-01'))).toBe(true);
+    expect(isKraEffective(kra, new Date('2026-09-15'))).toBe(true);
+    expect(isKraEffective(kra, new Date('2027-03-31'))).toBe(true);
+  });
+
+  it('is not effective before it starts or after it ends', () => {
+    expect(isKraEffective(kra, new Date('2026-03-31'))).toBe(false);
+    expect(isKraEffective(kra, new Date('2027-04-01'))).toBe(false);
+  });
+
+  it('treats a null effectiveTo as open-ended', () => {
+    const open = { effectiveFrom: new Date('2026-04-01'), effectiveTo: null };
+    expect(isKraEffective(open, new Date('2099-01-01'))).toBe(true);
+  });
+
+  it('compares by calendar day, so a time component cannot clip the last day', () => {
+    expect(isKraEffective(kra, new Date('2027-03-31T23:59:59Z'))).toBe(true);
+  });
+
+  it('names the out-of-window KRAs for the error message', () => {
+    const rows = [
+      { code: 'KRA-OK', effectiveFrom: new Date('2026-01-01'), effectiveTo: null },
+      { code: 'KRA-OLD', effectiveFrom: new Date('2024-01-01'), effectiveTo: new Date('2025-03-31') },
+      { code: 'KRA-FUTURE', effectiveFrom: new Date('2030-01-01'), effectiveTo: null },
+    ];
+    expect(findIneffectiveKras(rows, new Date('2026-09-15'))).toEqual(['KRA-OLD', 'KRA-FUTURE']);
   });
 });

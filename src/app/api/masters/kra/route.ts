@@ -17,6 +17,18 @@ export async function GET(request: NextRequest) {
     const departmentId = sp.get('departmentId');
     const designationId = sp.get('designationId');
     const status = sp.get('status');
+    // BRD §8 effective dating. Opt-in: the master list shows every KRA so HR
+    // can still see and edit expired ones — callers that are *using* a KRA
+    // (the template builder) pass the date they need it effective on.
+    const effectiveOn = sp.get('effectiveOn');
+    const effectiveAt = effectiveOn ? new Date(effectiveOn) : null;
+    const effectiveFilter =
+      effectiveAt && !Number.isNaN(effectiveAt.getTime())
+        ? {
+            effectiveFrom: { lte: effectiveAt },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveAt } }],
+          }
+        : {};
 
     const data = await prisma.kra.findMany({
       where: {
@@ -24,8 +36,13 @@ export async function GET(request: NextRequest) {
         ...(status ? { status } : {}),
         ...(departmentId ? { departmentId: Number(departmentId) } : {}),
         ...(designationId ? { designationId: Number(designationId) } : {}),
+        ...effectiveFilter,
         ...(search
-          ? { OR: [{ code: { contains: search } }, { name: { contains: search } }, { category: { contains: search } }] }
+          ? {
+              AND: [
+                { OR: [{ code: { contains: search } }, { name: { contains: search } }, { category: { contains: search } }] },
+              ],
+            }
           : {}),
       },
       include: { _count: { select: { kpis: true } } },

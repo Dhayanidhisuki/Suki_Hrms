@@ -83,11 +83,26 @@ export function achievementPct(
   return Number(capped.toFixed(2));
 }
 
+/** The optional floor/ceiling a KPI can carry alongside its target. */
+export type TargetBounds = {
+  minThreshold?: number | null;
+  maxTarget?: number | null;
+};
+
 /**
  * Per-type target validation, shared by KPI master, template and goal
  * assignment so a rating KPI cannot be given a target of 250 anywhere.
+ *
+ * Also checks the target against its own thresholds when they are set. The
+ * schema already rejects maxTarget < minThreshold, but nothing previously
+ * stopped a target falling outside that band — min 80 / max 100 / target 150
+ * saved happily and would have scored against a range it could never sit in.
  */
-export function validateTargetForType(type: MeasurementType, target: number): string | null {
+export function validateTargetForType(
+  type: MeasurementType,
+  target: number,
+  bounds?: TargetBounds
+): string | null {
   const strategy = getStrategy(type);
   if (!Number.isFinite(target)) return 'Target must be a number';
   if (strategy.targetRange) {
@@ -99,6 +114,15 @@ export function validateTargetForType(type: MeasurementType, target: number): st
     // Both achievement formulas divide by target or actual; a non-positive
     // target makes achievement undefined.
     return 'Target must be greater than 0';
+  }
+
+  const min = bounds?.minThreshold;
+  const max = bounds?.maxTarget;
+  if (min != null && Number.isFinite(min) && target < min) {
+    return `Target (${target}) cannot be below the minimum threshold (${min})`;
+  }
+  if (max != null && Number.isFinite(max) && target > max) {
+    return `Target (${target}) cannot exceed the maximum target (${max})`;
   }
   return null;
 }

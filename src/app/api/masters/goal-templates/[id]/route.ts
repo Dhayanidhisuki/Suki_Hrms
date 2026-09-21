@@ -72,7 +72,9 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const resolved = await resolveTemplateLines(scope.companyId, parsed.data.kras);
+    // A template is built today, so today is the date its KRAs must be
+    // effective on.
+    const resolved = await resolveTemplateLines(scope.companyId, parsed.data.kras, new Date());
     if ('error' in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
     const weight = validateWeightages(resolved.forValidation);
