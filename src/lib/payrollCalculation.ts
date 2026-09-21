@@ -708,11 +708,14 @@ export async function calculatePayrollRun(payrollRunId: number) {
 
     // PAYROLL_HIDDEN CTC components (e.g. "Medical") — attached per-employee
     // via the CTC tab's "+ Add Component" picker (the same table NON_PAYROLL
-    // components use), but unlike NON_PAYROLL these DO reduce Net Pay: a
-    // real, flat (not LOP-prorated) monthly deduction that's deliberately
-    // kept off the Salary Details tab. Read here — not from revision.components
-    // — since that picker never lets them be attached to a Salary Revision.
+    // components use), but unlike NON_PAYROLL these DO move Net Pay: a real,
+    // flat (not LOP-prorated) monthly earning or deduction that's
+    // deliberately kept off the Salary Details tab. Read here — not from
+    // revision.components — since that picker never lets them be attached
+    // to a Salary Revision. Neither side touches Gross/PF/ESI/PT/TDS bases,
+    // same treatment as the other auto-applied earnings/deductions below.
     let payrollHiddenCtcDeductionAmount = 0;
+    let payrollHiddenCtcEarningAmount = 0;
     const currentEmployeeCtc = await prisma.employeeCtc.findFirst({
       where: { employeeId: emp.id, effectiveTo: null },
       select: {
@@ -722,12 +725,13 @@ export async function calculatePayrollRun(payrollRunId: number) {
       },
     });
     for (const c of currentEmployeeCtc?.components ?? []) {
-      if (c.salaryComponent.grossTier !== 'PAYROLL_HIDDEN' || c.salaryComponent.type !== 'deduction') continue;
+      if (c.salaryComponent.grossTier !== 'PAYROLL_HIDDEN') continue;
+      if (c.salaryComponent.type !== 'deduction' && c.salaryComponent.type !== 'earning') continue;
       const amount = round(Number(c.amount));
-      if (amount !== 0) {
-        autoComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount });
-        payrollHiddenCtcDeductionAmount += amount;
-      }
+      if (amount === 0) continue;
+      autoComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount });
+      if (c.salaryComponent.type === 'deduction') payrollHiddenCtcDeductionAmount += amount;
+      else payrollHiddenCtcEarningAmount += amount;
     }
 
     // LOM (Loss of Minutes) — only APPROVED LOM minutes are deducted.
@@ -863,6 +867,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoDeductionsTotal += healthInsuranceAmount;
     autoDeductionsTotal += licDeduction;
     autoDeductionsTotal += payrollHiddenCtcDeductionAmount;
+    autoEarningsTotal += payrollHiddenCtcEarningAmount;
 
     // Loan EMI deduction — for each active loan of this employee, deduct the
     // next pending installment. The deduction is split into principal and

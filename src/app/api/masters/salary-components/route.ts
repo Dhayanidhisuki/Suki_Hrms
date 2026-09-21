@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
-  const grossTier = searchParams.get('grossTier');
+  // Accepts a comma-separated list (e.g. "NON_PAYROLL,PAYROLL_HIDDEN") so the
+  // CTC-only Components picker can offer both tiers it's allowed to attach.
+  const grossTierParam = searchParams.get('grossTier');
+  const grossTiers = grossTierParam ? grossTierParam.split(',').map((t) => t.trim()).filter(Boolean) : null;
   // Every picker (Salary Details, Payslip ad-hoc, Salary Revision…) wants
   // active-only, the default. Only the Salary Components admin page itself
   // opts into seeing inactive rows too, so its eye-icon toggle doesn't make
@@ -35,7 +38,13 @@ export async function GET(request: NextRequest) {
   const includeDeleted = searchParams.get('includeDeleted') === 'true';
 
   const rows = await prisma.salaryComponent.findMany({
-    where: { companyId: scope.companyId, ...(includeDeleted ? {} : { deletedAt: null }), ...(includeInactive ? {} : { isActive: true }), ...(type ? { type } : {}), ...(grossTier ? { grossTier } : {}) },
+    where: {
+      companyId: scope.companyId,
+      ...(includeDeleted ? {} : { deletedAt: null }),
+      ...(includeInactive ? {} : { isActive: true }),
+      ...(type ? { type } : {}),
+      ...(grossTiers ? (grossTiers.length === 1 ? { grossTier: grossTiers[0] } : { grossTier: { in: grossTiers } }) : {}),
+    },
     orderBy: { name: 'asc' },
     include: { grossSplitRule: { select: { percentOfGross: true } } },
   });

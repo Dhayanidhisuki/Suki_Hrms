@@ -618,10 +618,14 @@ function EmployeeCtcTab({ employeeId }: { employeeId: string }) {
 }
 
 /**
- * CTC-only, non-payroll components (e.g. "Performance Incentive: 2135") on
- * the employee's current CTC revision. Restricted to SalaryComponents with
- * grossTier = NON_PAYROLL — the API refuses anything else. These amounts are
- * never read by payroll; they only feed the Performance Incentive Report.
+ * CTC-only components (e.g. "Performance Incentive: 2135") on the employee's
+ * current CTC revision. Restricted to SalaryComponents with grossTier =
+ * NON_PAYROLL or PAYROLL_HIDDEN — the API refuses anything else.
+ * NON_PAYROLL amounts are never read by payroll; they only feed the
+ * Performance Incentive Report. PAYROLL_HIDDEN amounts are the opposite —
+ * real earnings/deductions payroll DOES apply to Net Pay (see
+ * payrollCalculation.ts) — kept off the Salary Details tab on purpose, but
+ * still attached and shown here, same as NON_PAYROLL.
  */
 function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: string; onChange?: () => void }) {
   const toast = useToast();
@@ -635,7 +639,7 @@ function EmployeeCtcComponentsSection({ employeeId, onChange }: { employeeId: st
     setLoading(true);
     Promise.all([
       fetch(`/api/employees/${employeeId}/ctc/components`).then((r) => r.json()),
-      fetch('/api/masters/salary-components?grossTier=NON_PAYROLL').then((r) => r.json()),
+      fetch('/api/masters/salary-components?grossTier=NON_PAYROLL,PAYROLL_HIDDEN').then((r) => r.json()),
     ])
       .then(([compRes, optRes]) => {
         setRows(compRes.data ?? []);
