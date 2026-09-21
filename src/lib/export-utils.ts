@@ -68,7 +68,15 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
     doc.text(title, 15, 15);
   }
 
-  const tableData = data.map(row => keys.map(key => row[key]));
+  // jspdf-autotable's RowInput only accepts string/number/boolean/null cells,
+  // not arbitrary unknown values — stringify anything else (dates, etc.).
+  const tableData = data.map((row) =>
+    keys.map((key) => {
+      const v = row[key];
+      if (v === null || v === undefined) return null;
+      return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? v : String(v);
+    })
+  );
 
   autoTable(doc, {
     head: [keys],
