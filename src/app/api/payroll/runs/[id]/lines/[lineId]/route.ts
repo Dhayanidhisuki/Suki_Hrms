@@ -98,7 +98,9 @@ export async function PATCH(
 
   // Recalculate netSalary if component fields changed but netSalary wasn't explicitly set
   if (!('netSalary' in updateData)) {
-    const updated = { ...line, ...updateData } as any;
+    // Merge of a Prisma row and a partial patch; every field below is read
+    // through Number(), so the values need no narrower type.
+    const updated: Record<string, unknown> = { ...line, ...updateData };
     const totalDeductions =
       Number(updated.pfEmployee) + Number(updated.esiEmployee) +
       Number(updated.professionalTax) + Number(updated.tds) +

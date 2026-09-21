@@ -35,19 +35,32 @@ interface CrudOptions extends ListOptions {
   uniqueField?: string; // for duplicate check on create/update (default: 'code')
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- generic CRUD factory delegates to Prisma dynamically */
-function getModel(name: ModelName) {
-  return prisma[name] as unknown as {
-    findMany(args?: any): Promise<any[]>;
-    count(args?: any): Promise<number>;
-    findUnique(args?: any): Promise<any>;
-    findFirst(args?: any): Promise<any>;
-    create(args?: any): Promise<any>;
-    update(args?: any): Promise<any>;
-    delete(args?: any): Promise<any>;
-  };
+/**
+ * The delegate surface this factory uses, narrowed to what the handlers below
+ * actually touch.
+ *
+ * The cast stays — the model is chosen at runtime, and Prisma's per-model
+ * delegates are not uniformly indexable — but nothing here needs `any`:
+ * arguments are plain objects, rows are returned to the client as-is, and the
+ * only field ever read off a row is `deletedAt` for the duplicate check.
+ * Keeping the shape honest means a handler that starts reading some other
+ * field fails to compile instead of silently trusting `any`.
+ */
+type RowWithSoftDelete = { deletedAt: Date | null };
+
+type CrudDelegate = {
+  findMany(args?: object): Promise<unknown[]>;
+  count(args?: object): Promise<number>;
+  findUnique(args?: object): Promise<RowWithSoftDelete | null>;
+  findFirst(args?: object): Promise<RowWithSoftDelete | null>;
+  create(args?: object): Promise<unknown>;
+  update(args?: object): Promise<unknown>;
+  delete(args?: object): Promise<unknown>;
+};
+
+function getModel(name: ModelName): CrudDelegate {
+  return prisma[name] as unknown as CrudDelegate;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function createListHandler(model: ModelName, options: ListOptions = {}) {
   const { searchFields = ['code', 'name'], include, defaultLimit = 20, softDelete = true } = options;
@@ -59,8 +72,11 @@ export function createListHandler(model: ModelName, options: ListOptions = {}) {
     const limit = parseInt(searchParams.get('limit') ?? String(defaultLimit));
     const search = searchParams.get('search') ?? '';
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = softDelete ? { deletedAt: null } : {};
+    // Only two shapes are ever built here, so neither needs to be `any`.
+    const where: {
+      deletedAt?: null;
+      OR?: Array<Record<string, { contains: string }>>;
+    } = softDelete ? { deletedAt: null } : {};
     if (search && searchFields.length) {
       where.OR = searchFields.map((f) => ({ [f]: { contains: search } }));
     }

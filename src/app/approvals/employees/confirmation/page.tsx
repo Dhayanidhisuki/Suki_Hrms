@@ -80,7 +80,7 @@ export default function ConfirmationApprovalPage() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  const handleRecommend = async (id: number, values: Record<string, any>) => {
+  const handleRecommend = async (id: number, values: Record<string, string | number | boolean>) => {
     setRecommending(true);
     try {
       const res = await fetch(`/api/employees/${id}/confirmation/manager-recommend`, {
@@ -104,7 +104,7 @@ export default function ConfirmationApprovalPage() {
     }
   };
 
-  const handleApprove = async (id: number, values: Record<string, any>) => {
+  const handleApprove = async (id: number, values: Record<string, string | number | boolean>) => {
     setApproving(true);
     try {
       const res = await fetch(`/api/employees/${id}/confirmation/approve`, {

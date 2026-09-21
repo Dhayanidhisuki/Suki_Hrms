@@ -1,5 +1,5 @@
 /**
- * Employee Profile — header + 15-tab shell.
+ * Employee Profile — header + tab shell.
  *
  * Phase 1 wires 4 tabs end-to-end (Basic, Personal, Contact, Job Profile)
  * with real lazy-loaded data and atomic per-tab saves. The remaining 11 tabs
@@ -9,11 +9,13 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Field, DataTable, FormModal, ConfirmDialog, useToast, type FieldDef, type Column } from '@/components/ui';
 import RepeatableListTab from '@/components/employees/RepeatableListTab';
+import EmployeeDocumentsTab from '@/components/employees/EmployeeDocumentsTab';
+import EmployeeKraTab from '@/components/employees/EmployeeKraTab';
 import EmployeeAvatarUpload from '@/components/employees/EmployeeAvatarUpload';
 import { SectionCard, DetailGrid, EditButton, SectionIcon } from '@/components/employees/SectionCard';
 import { formatDate } from '@/lib/format-date';
@@ -58,7 +60,7 @@ interface ActivityRow { id: number; activityAt: string; module: string; activity
  */
 type TabKey =
   | 'basic' | 'personal' | 'job_profile' | 'salary' | 'education'
-  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'activity' | 'benefits';
+  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'documents' | 'kra' | 'activity' | 'benefits';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'basic', label: 'Basic Details' },
@@ -72,6 +74,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'assets', label: 'Assets' },
   { key: 'skills', label: 'Skill Matrix' },
   { key: 'kyc', label: 'KYC & Statutory' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'kra', label: 'KPI / KRA' },
   { key: 'activity', label: 'Activity' },
 ];
 
@@ -1742,13 +1746,9 @@ function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
 }
 
 /**
- * Reveals the real PAN/Aadhaar values for the KYC tab, gated server-side by
- * employee.kyc.reveal — a permission distinct from employee.kyc.view (the
- * base tab only ever sees masked values). Every reveal is server-logged.
- *
- * Also doubles as a document upload center for signature and government
- * documents (PDF/images), stored as EmployeeDocument rows and served through
- * the permission-gated /api/uploads/[...path] route.
+ * Reveals the real PAN/Aadhaar values for the KYC tab (numbers only).
+ * File scans live on the Documents tab (PlatformDocument) — this panel
+ * may still list legacy EmployeeDocument rows as read-only.
  */
 
 interface EmployeeDoc {
@@ -1778,15 +1778,6 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
   const [docs, setDocs] = useState<EmployeeDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsError, setDocsError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [docType, setDocType] = useState('government');
-  const [docNumber, setDocNumber] = useState('');
-  const [issuedDate, setIssuedDate] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
   const [previewDoc, setPreviewDoc] = useState<EmployeeDoc | null>(null);
 
   const fetchDocs = useCallback(async () => {
@@ -1807,141 +1798,23 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
     fetchDocs();
   }, [fetchDocs]);
 
-  const handleUpload = async () => {
-    setUploadError(null);
-    if (!selectedFile) {
-      setUploadError('Choose a file first.');
-      return;
-    }
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('docType', docType);
-      if (docNumber.trim()) formData.append('docNumber', docNumber.trim());
-      if (issuedDate) formData.append('issuedDate', issuedDate);
-      if (expiryDate) formData.append('expiryDate', expiryDate);
-      const res = await fetch(`/api/employees/${employeeId}/documents`, { method: 'POST', body: formData });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Upload failed');
-      setSelectedFile(null);
-      setDocNumber('');
-      setIssuedDate('');
-      setExpiryDate('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await fetchDocs();
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDelete = async (docId: number) => {
-    if (!window.confirm('Delete this document?')) return;
-    try {
-      const res = await fetch(`/api/employees/${employeeId}/documents/${docId}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Delete failed');
-      await fetchDocs();
-    } catch (err) {
-      setDocsError(err instanceof Error ? err.message : 'Delete failed');
-    }
-  };
-
   return (
     <SectionCard
-      title="Document Upload Center"
+      title="Legacy file list"
       icon={<SectionIcon.Shield />}
+      action={
+        <Link href="?tab=documents" className="text-sm font-medium" style={{ color: 'var(--accent)' }}>
+          Open Documents tab
+        </Link>
+      }
     >
       <div className="space-y-5">
+        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+          Upload identity scans (Aadhaar, PAN, passport) on the Documents tab. This list is older files only, if any remain.
+        </p>
         <div className="space-y-3">
           <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-            Upload a new document
-          </h4>
-          {uploadError && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-              {uploadError}
-            </div>
-          )}
-          <div className="grid grid-cols-1 gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                Document type
-                <select
-                  value={docType}
-                  onChange={(e) => setDocType(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                >
-                  <option value="signature">Signature</option>
-                  <option value="government">Government Document</option>
-                  <option value="aadhaar">Aadhaar</option>
-                  <option value="pan">PAN</option>
-                  <option value="passport">Passport</option>
-                  <option value="driving_license">Driving Licence</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                Document number
-                <input
-                  type="text"
-                  value={docNumber}
-                  onChange={(e) => setDocNumber(e.target.value)}
-                  placeholder="e.g. PAN / Aadhaar number"
-                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                />
-              </label>
-              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                Issued on
-                <input
-                  type="date"
-                  value={issuedDate}
-                  onChange={(e) => setIssuedDate(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                />
-              </label>
-              <label className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                Expires on
-                <input
-                  type="date"
-                  value={expiryDate}
-                  onChange={(e) => setExpiryDate(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                File (PDF or image, max 5 MB)
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                  className="mt-1 block w-full rounded-lg border bg-transparent px-2 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-[var(--accent)] file:px-2 file:py-1 file:text-xs file:text-white"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                />
-              </label>
-              <button
-                onClick={handleUpload}
-                disabled={uploading || !selectedFile}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                style={{ backgroundColor: 'var(--accent)' }}
-              >
-                {uploading ? 'Uploading...' : 'Upload'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <h4 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-            Uploaded documents
+            Older files (read-only)
           </h4>
           {docsLoading ? (
             <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading documents...</p>
@@ -1950,7 +1823,7 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
               {docsError}
             </div>
           ) : docs.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No documents uploaded yet.</p>
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No older files on this tab. Use Documents for new uploads.</p>
           ) : (
             <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--border)' }}>
               {docs.map((d) => (
@@ -1981,13 +1854,6 @@ function KycRevealPanel({ employeeId }: { employeeId: string }) {
                         View
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDelete(d.id)}
-                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90"
-                      style={{ backgroundColor: 'var(--danger)' }}
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               ))}
@@ -2393,6 +2259,7 @@ function JobHistorySection({
 export default function EmployeeProfilePage() {
   const toast = useToast();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const employeeId = params.id;
 
   const [header, setHeader] = useState<ProfileHeader | null>(null);
@@ -2404,6 +2271,11 @@ export default function EmployeeProfilePage() {
   const [toggling, setToggling] = useState(false);
   const [lifecycle, setLifecycle] = useState<LifecycleInfo | null>(null);
   const [changeStateOpen, setChangeStateOpen] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && TABS.some((t) => t.key === tab)) setActiveTab(tab as TabKey);
+  }, [employeeId, searchParams]);
 
   const handleTabClick = useCallback(
     (key: TabKey) => {
@@ -2970,8 +2842,18 @@ export default function EmployeeProfilePage() {
             fields={buildKycFields()}
           />
           <KycRevealPanel employeeId={employeeId} />
+          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+            Identity file scans (Aadhaar, PAN, passport) should be uploaded on the Documents tab. This tab keeps the numbers on file.
+          </p>
         </div>
       )}
+      {activeTab === 'documents' && header && (
+        <EmployeeDocumentsTab
+          employeeId={employeeId}
+          employeeLabel={`${header.employeeCode} — ${header.firstName} ${header.lastName}`}
+        />
+      )}
+      {activeTab === 'kra' && <EmployeeKraTab employeeId={employeeId} />}
       {activeTab === 'activity' && <EmployeeActivityTab employeeId={employeeId} />}
     </div>
   );

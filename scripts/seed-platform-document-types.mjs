@@ -1,5 +1,5 @@
 /**
- * Seeds the BRD §15.3 Document Type Master (25 rows) into every active
+ * Seeds the BRD §15.3 Document Type Master plus letter types into every active
  * company. Idempotent: upserts on (companyId, code) and refreshes the
  * configured values each run; never touches PlatformDocument rows.
  *
@@ -38,7 +38,10 @@ const ROWS = [
   ["BANK_PROOF", "Cancelled cheque or bank passbook", "EMPLOYEE", "FINANCIAL", "RESTRICTED", true, true, false, "pdf,jpg,png", 5, false, 8],
   ["PHOTO", "Passport photograph", "EMPLOYEE", "IDENTITY", "INTERNAL", true, false, false, "jpg,png", 2, false, 8],
   ["ADDRESS_PROOF", "Address proof", "EMPLOYEE", "IDENTITY", "CONFIDENTIAL", true, true, false, "pdf,jpg,png", 5, true, 8],
-  ["SSLC", "10th standard certificate", "CANDIDATE", "EDUCATION", "CONFIDENTIAL", true, true, false, "pdf,jpg", 5, false, 3],
+  ["CANDIDATE_AADHAAR", "Candidate Aadhaar", "CANDIDATE", "IDENTITY", "RESTRICTED", true, true, false, "pdf,jpg,png", 5, false, 3],
+  ["CANDIDATE_PAN", "Candidate PAN", "CANDIDATE", "IDENTITY", "RESTRICTED", true, true, false, "pdf,jpg,png", 5, false, 3],
+  ["RESUME", "Resume / CV", "CANDIDATE", "EMPLOYMENT", "CONFIDENTIAL", true, false, false, "pdf,doc,docx", 10, false, 3],
+  ["CANDIDATE_PHOTO", "Candidate photograph", "CANDIDATE", "IDENTITY", "INTERNAL", true, false, false, "jpg,png", 2, false, 3],
   ["HSC", "12th standard certificate", "CANDIDATE", "EDUCATION", "CONFIDENTIAL", false, true, false, "pdf,jpg", 5, false, 3],
   ["DEGREE_CERT", "Degree or diploma certificate", "CANDIDATE", "EDUCATION", "CONFIDENTIAL", true, true, false, "pdf,jpg", 10, true, 3],
   ["EXPERIENCE_CERT", "Experience certificate", "CANDIDATE", "EMPLOYMENT", "CONFIDENTIAL", false, true, false, "pdf", 10, true, 3],
@@ -58,7 +61,67 @@ const ROWS = [
   ["FORM16", "Form 16", "EMPLOYEE", "STATUTORY", "RESTRICTED", true, false, false, "pdf", 10, false, 8],
   ["ASSET_HANDOVER", "Asset issue and return acknowledgement", "ASSET", "ASSET", "INTERNAL", true, true, false, "pdf,jpg", 5, true, 5],
   ["HR_POLICY", "Company policy document", "COMPANY", "COMPANY", "PUBLIC", false, false, true, "pdf", 25, false, 8],
+  ["SERVICE_LETTER", "Service letter", "EMPLOYEE", "EMPLOYMENT", "CONFIDENTIAL", false, false, false, "pdf", 10, true, 8],
+  ["BONAFIDE", "Bonafide certificate", "EMPLOYEE", "EMPLOYMENT", "INTERNAL", false, false, false, "pdf", 10, true, 8],
+  ["WARNING_LETTER", "Warning letter", "EMPLOYEE", "EMPLOYMENT", "CONFIDENTIAL", false, false, false, "pdf", 10, true, 8],
+  ["SHOW_CAUSE", "Show-cause notice", "EMPLOYEE", "EMPLOYMENT", "CONFIDENTIAL", false, false, false, "pdf", 10, true, 8],
+  ["COMPANY_RELIEVING", "Relieving letter issued by company", "EMPLOYEE", "EXIT", "CONFIDENTIAL", false, false, false, "pdf", 10, true, 8],
+  ["CONFIRMATION_LETTER", "Confirmation letter", "EMPLOYEE", "EMPLOYMENT", "CONFIDENTIAL", false, false, false, "pdf", 10, false, 8],
 ];
+
+const HR_ONLY = new Set([
+  "OFFER_LETTER",
+  "APPOINTMENT_LETTER",
+  "FNF_STATEMENT",
+  "FORM16",
+  "HR_POLICY",
+  "CONTRACT_AGREEMENT",
+  "TRAINING_MATERIAL",
+  "SERVICE_LETTER",
+  "BONAFIDE",
+  "WARNING_LETTER",
+  "SHOW_CAUSE",
+  "COMPANY_RELIEVING",
+  "CONFIRMATION_LETTER",
+]);
+
+const BUSINESS = {
+  CANDIDATE_AADHAAR: "RECRUITMENT",
+  CANDIDATE_PAN: "RECRUITMENT",
+  RESUME: "RECRUITMENT",
+  CANDIDATE_PHOTO: "RECRUITMENT",
+  SSLC: "RECRUITMENT",
+  HSC: "RECRUITMENT",
+  DEGREE_CERT: "RECRUITMENT",
+  EXPERIENCE_CERT: "RECRUITMENT",
+  RELIEVING_LETTER: "RECRUITMENT",
+  PAYSLIP_PREV: "RECRUITMENT",
+  OFFER_LETTER: "RECRUITMENT",
+  APPOINTMENT_LETTER: "RECRUITMENT",
+  MEDICAL_FITNESS: "RECRUITMENT",
+  AADHAAR: "EMPLOYEE",
+  PAN: "EMPLOYEE",
+  BANK_PROOF: "EMPLOYEE",
+  PHOTO: "EMPLOYEE",
+  ADDRESS_PROOF: "EMPLOYEE",
+  SERVICE_LETTER: "LETTERS_CERTIFICATES",
+  BONAFIDE: "LETTERS_CERTIFICATES",
+  WARNING_LETTER: "LETTERS_CERTIFICATES",
+  SHOW_CAUSE: "LETTERS_CERTIFICATES",
+  COMPANY_RELIEVING: "LETTERS_CERTIFICATES",
+  CONFIRMATION_LETTER: "LIFECYCLE",
+  SAFETY_INDUCTION: "LIFECYCLE",
+  SKILL_CERT: "LIFECYCLE",
+  TRAINING_MATERIAL: "LIFECYCLE",
+  TRAINING_CERT: "LIFECYCLE",
+  EXIT_CLEARANCE: "LIFECYCLE",
+  RESIGNATION_LETTER: "LIFECYCLE",
+  ASSET_HANDOVER: "LIFECYCLE",
+  FNF_STATEMENT: "PAYROLL",
+  FORM16: "PAYROLL",
+  CONTRACT_AGREEMENT: "COMPLIANCE",
+  HR_POLICY: "COMPLIANCE",
+};
 
 function toData(row) {
   const [code, name, appliesToEntity, category, documentClass, mandatoryFlag, verify, expiryRequired, allowedFileTypes, maxFileSizeMb, multi, retentionYears] = row;
@@ -66,6 +129,8 @@ function toData(row) {
     code,
     name,
     category,
+    businessCategory: BUSINESS[code] ?? "EMPLOYEE",
+    uploadMode: HR_ONLY.has(code) ? "HR_ONLY" : "EMPLOYEE_WITH_HR_VERIFICATION",
     appliesToEntity,
     documentClass,
     mandatoryFlag,

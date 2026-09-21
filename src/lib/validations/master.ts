@@ -369,6 +369,9 @@ export const salaryComponentSchema = z.object({
   // deduction), but is attached per-employee via the CTC Components picker
   // and deliberately not offered/shown on the Salary Details tab.
   grossTier: z.enum(['FIXED', 'ADDITIONAL', 'NON_PAYROLL', 'PAYROLL_HIDDEN']).default('ADDITIONAL'),
+  fnfPayable: z.boolean().default(true),
+  fnfProration: z.enum(['PRO_RATA', 'FULL', 'EXCLUDE']).default('PRO_RATA'),
+  fnfTaxable: z.boolean().default(true),
   isActive: z.boolean().default(true),
   // Optional convenience: setting this here upserts the same GrossSplitRule
   // row the Common Logic > Gross % Split page manages, so an earning
@@ -552,11 +555,19 @@ export const fullAndFinalConfigSchema = z.object({
   includeUnpaidSalary: z.boolean().default(true),
   includeLeaveEncashment: z.boolean().default(true),
   includeGratuity: z.boolean().default(true),
-  includeBonusProportion: z.boolean().default(false),
+  includeBonusProportion: z.boolean().default(true),
   includeNoticePay: z.boolean().default(true),
   noticePeriodDays: z.coerce.number().int().min(0).default(30),
   includeLoanRecovery: z.boolean().default(true),
   includeAssetRecovery: z.boolean().default(true),
+  salaryDivisor: z.coerce.number().int().min(1).max(31).default(30),
+  salaryDivisorMode: z.enum(['DAYS_30', 'CALENDAR', 'PAYROLL', 'WORKING']).default('CALENDAR'),
+  noticeRateBasis: z.enum(['GROSS', 'BASIC', 'BASIC_DA']).default('GROSS'),
+  includeTds: z.boolean().default(true),
+  includePf: z.boolean().default(true),
+  includeEsi: z.boolean().default(true),
+  includePt: z.boolean().default(true),
+  clearanceRequired: z.boolean().default(true),
   approvalStages: z.enum(['HR', 'HR_FINANCE', 'MANAGER_HR_FINANCE']).default('HR_FINANCE'),
   isActive: z.boolean().default(true),
 });

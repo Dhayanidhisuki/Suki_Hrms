@@ -220,7 +220,13 @@ export const navigation: NavModule[] = [
       },
       {
         label: "HR Masters",
-        items: [{ label: "JD Master", href: "/masters/jd-master", ready: true }],
+        items: [
+          { label: "Interview Criteria", href: "/masters/interview-criteria" },
+          { label: "JD Master", href: "/masters/jd-master", ready: true },
+          { label: "Performance Cycles", href: "/masters/performance-cycles", ready: true },
+          { label: "KRA Master", href: "/masters/kra", ready: true },
+          { label: "KPI Master", href: "/masters/kpi", ready: true },
+        ],
       },
       {
         // Not in the BRD sidebar list, but these pages already exist and work.
@@ -288,10 +294,10 @@ export const navigation: NavModule[] = [
       {
         label: "Letters & Certificates",
         items: [
-          { label: "Service Letter", href: "/employees/letters/service-letter" },
-          { label: "Bonafide Certificate", href: "/employees/letters/bonafide-certificate" },
-          { label: "Warning Letter", href: "/employees/letters/warning-letter" },
-          { label: "Show Cause Notice", href: "/employees/letters/show-cause-notice" },
+          { label: "Service Letter", href: "/employees/letters/service-letter", ready: true },
+          { label: "Bonafide Certificate", href: "/employees/letters/bonafide-certificate", ready: true },
+          { label: "Warning Letter", href: "/employees/letters/warning-letter", ready: true },
+          { label: "Show Cause Notice", href: "/employees/letters/show-cause-notice", ready: true },
         ],
       },
       {
@@ -300,7 +306,7 @@ export const navigation: NavModule[] = [
           { label: "Exit Form", href: "/employees/separation/exit-form", ready: true },
           { label: "Exit Interview Details", short: "Exit Interview", href: "/employees/separation/exit-interview" },
           { label: "No Due Form", href: "/employees/separation/no-due-form" },
-          { label: "Relieving Letter", href: "/employees/separation/relieving-letter" },
+          { label: "Relieving Letter", href: "/employees/separation/relieving-letter", ready: true },
         ],
       },
     ],
@@ -379,7 +385,7 @@ export const navigation: NavModule[] = [
           { label: "Gratuity", href: "/payroll/processing/gratuity", ready: true },
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
-          { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final" },
+          { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final", ready: true },
           { label: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
@@ -413,6 +419,25 @@ export const navigation: NavModule[] = [
           { label: "Payroll Summary", href: "/payroll/outputs/summary" },
           { label: "Bank Transfer File", short: "Bank Transfer", href: "/payroll/outputs/bank-transfer" },
           { label: "Payroll Reconciliation", short: "Reconciliation", href: "/payroll/outputs/reconciliation" },
+        ],
+      },
+    ],
+  },
+
+  {
+    // KPI/KRA Performance Management — BRD §17 goal setting. Assessment,
+    // scoring and dashboards are later phases; the masters live under
+    // Masters > HR Masters.
+    label: "Performance",
+    icon: "award",
+    href: "/performance",
+    groups: [
+      {
+        label: "Goal Setting",
+        items: [
+          { label: "Goal Templates", href: "/performance/goal-templates", ready: true },
+          { label: "Goal Assignment", href: "/performance/goal-assignment", ready: true },
+          { label: "My Goals", href: "/performance/my-goals", ready: true },
         ],
       },
     ],
@@ -479,12 +504,13 @@ export const navigation: NavModule[] = [
       {
         label: "Repository",
         items: [
-          { label: "Recruitment Documents", short: "Recruitment", href: "/documents/recruitment" },
-          { label: "Employee Documents", short: "Employee", href: "/documents/employee" },
-          { label: "Letters & Certificates", short: "Letters", href: "/documents/letters" },
-          { label: "Lifecycle Documents", short: "Lifecycle", href: "/documents/lifecycle" },
-          { label: "Payroll Documents", short: "Payroll", href: "/documents/payroll" },
-          { label: "Compliance Documents", short: "Compliance", href: "/documents/compliance" },
+          { label: "Recruitment Documents", short: "Recruitment", href: "/documents/recruitment", ready: true },
+          { label: "Employee Documents", short: "Employee", href: "/documents/employee", ready: true },
+          { label: "Letters & Certificates", short: "Letters", href: "/documents/letters", ready: true },
+          { label: "Lifecycle Documents", short: "Lifecycle", href: "/documents/lifecycle", ready: true },
+          { label: "Payroll Documents", short: "Payroll", href: "/documents/payroll", ready: true },
+          { label: "Compliance Documents", short: "Compliance", href: "/documents/compliance", ready: true },
+          { label: "Document Types", short: "Types", href: "/documents/types", ready: true },
         ],
       },
     ],
@@ -608,6 +634,7 @@ export const navigation: NavModule[] = [
           { label: "Income Tax", short: "Income Tax", href: "/ess/income-tax", ready: true },
           { label: "My Loans", short: "Loans", href: "/ess/loans", ready: true },
           { label: "My Benefits", short: "Benefits", href: "/ess/benefits", ready: true },
+          { label: "Full & Final Statement", short: "F&F", href: "/ess/fnf", ready: true },
         ],
       },
     ],
@@ -684,6 +711,7 @@ export const navigation: NavModule[] = [
           { label: "Salary Reconciliation", short: "Reconciliation", href: "/reports/payroll/reconciliation" },
           { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive", ready: true },
           { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
+          { label: "F&F Settlement Register", short: "F&F Register", href: "/reports/payroll/full-and-final", ready: true },
           { label: "Arrear Report", short: "Arrears", href: "/reports/payroll/arrears" },
           { label: "Salary Revision Report", short: "Salary Revision", href: "/reports/payroll/salary-revision" },
         ],

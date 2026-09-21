@@ -194,7 +194,7 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
   const exportCSV = () => {
     const headers = ['gnrNo', 'dcNo', 'dcDate', 'movementType', 'status', 'counterpartyName', 'vehicleNumber', 'lineItems'];
     const rows = gnrs.map((g) => headers.map((h) => {
-      const v = h === 'lineItems' ? (g.lineItems?.length ?? 0) : (g as any)[h];
+      const v = h === 'lineItems' ? (g.lineItems?.length ?? 0) : (g as unknown as Record<string, unknown>)[h];
       return `"${String(v ?? '').replace(/"/g, "'")}"`;
     }).join(','));
     const csv = [headers.join(','), ...rows].join('\n');

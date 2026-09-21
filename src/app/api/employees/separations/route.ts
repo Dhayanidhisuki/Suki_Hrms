@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     include: {
       employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
       gratuityRecord: { select: { id: true, status: true } },
+      clearanceChecks: true,
     },
     orderBy: { exitDate: 'desc' },
   });

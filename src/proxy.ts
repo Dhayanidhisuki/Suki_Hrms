@@ -52,6 +52,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/jd-master') ||
     pathname.startsWith('/api/recruitment/') ||
     pathname.startsWith('/api/platform/') ||
+    pathname.startsWith('/api/letters') ||
+    pathname.startsWith('/api/ess/') ||
+    pathname.startsWith('/api/performance/') ||
     pathname === '/api/auth/me';
   const isUiRoute =
     pathname.startsWith('/masters/') ||
@@ -64,8 +67,11 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/visitor/') ||
     pathname.startsWith('/manager/') ||
     pathname.startsWith('/recruitment/') ||
-    pathname.startsWith('/ess/') ||
-    pathname.startsWith('/dashboard/');
+    pathname.startsWith('/dashboard/') ||
+    pathname.startsWith('/documents') ||
+    pathname.startsWith('/ess') ||
+    pathname.startsWith('/performance/') ||
+    pathname.startsWith('/approvals');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();
@@ -156,11 +162,19 @@ export const config = {
     '/manager/:path*',
     '/api/jd-master/:path*',
     '/api/jd-master',
+    '/api/performance/:path*',
+    '/performance/:path*',
     '/api/recruitment/:path*',
     '/recruitment/:path*',
     '/api/platform/:path*',
+    '/api/letters',
+    '/api/letters/:path*',
+    '/api/ess/:path*',
+    '/documents',
+    '/documents/:path*',
     '/ess/:path*',
     '/dashboard/:path*',
+    '/approvals/:path*',
     '/api/auth/me',
   ],
 };

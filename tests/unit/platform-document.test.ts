@@ -126,6 +126,9 @@ describe('platform-document rules: state machine table (§16.1)', () => {
     expect(isTransitionAllowed(DOC_STATUS.UnderVerification, DOC_STATUS.Verified)).toBe(true);
     expect(isTransitionAllowed(DOC_STATUS.UnderVerification, DOC_STATUS.Rejected)).toBe(true);
     expect(isTransitionAllowed(DOC_STATUS.Rejected, DOC_STATUS.ReuploadRequired)).toBe(true);
+    // Third review verdict: HR can ask for a fresh copy straight from review,
+    // without first recording a rejection.
+    expect(isTransitionAllowed(DOC_STATUS.UnderVerification, DOC_STATUS.ReuploadRequired)).toBe(true);
     expect(isTransitionAllowed(DOC_STATUS.Verified, DOC_STATUS.Revoked)).toBe(true);
     expect(isTransitionAllowed(DOC_STATUS.Verified, DOC_STATUS.Expired)).toBe(true);
     expect(isTransitionAllowed(DOC_STATUS.Verified, DOC_STATUS.Superseded)).toBe(true);

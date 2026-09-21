@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const roleCode = request.headers.get('x-role-code');
   const companyId = request.headers.get('x-company-id');
 
-  const [hasAdminAccess, hasHrAccess, user, employeeId] = await Promise.all([
+  const [hasAdminAccess, hasHrAccess, user, employee] = await Promise.all([
     isSuperAdmin
       ? Promise.resolve(false) // superadmin doesn't use the company-scoped Administration section
       : roleId
@@ -42,8 +42,14 @@ export async function GET(request: NextRequest) {
       where: { id: Number(userId) },
       select: { email: true, company: { select: { name: true } } },
     }),
-    resolveOwnEmployeeId(Number(userId)),
+    companyId
+      ? prisma.employee.findFirst({
+          where: { userId: Number(userId), companyId: Number(companyId), deletedAt: null },
+          select: { id: true, employeeCode: true, firstName: true, lastName: true },
+        })
+      : Promise.resolve(null),
   ]);
+  const employeeId = employee?.id ?? (await resolveOwnEmployeeId(Number(userId)));
 
   // Whether this login manages anyone. The manager approval stage is gated
   // on the org chart rather than RBAC, so a plain employee with reports still
@@ -67,5 +73,8 @@ export async function GET(request: NextRequest) {
     hasHrAccess,
     hasEmployeeAccess: !!employeeId,
     isManager,
+    employeeId,
+    employeeCode: employee?.employeeCode ?? null,
+    employeeName: employee ? `${employee.firstName} ${employee.lastName}`.trim() : null,
   });
 }

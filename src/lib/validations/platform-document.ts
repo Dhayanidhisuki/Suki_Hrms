@@ -10,6 +10,7 @@ import {
   OWNER_ENTITY_TYPES,
   REJECTION_REASON_CODES,
 } from '@/lib/platform/document/rules';
+import { DOCUMENT_BUSINESS_CATEGORIES, DOCUMENT_UPLOAD_MODES } from '@/lib/platform/document/categories';
 
 const csvList = z.string().max(200).nullable().optional();
 
@@ -17,6 +18,8 @@ const pdocTypeBase = z.object({
   code: z.string().trim().min(2).max(30).regex(/^[A-Z0-9_]+$/, 'Upper-case letters, digits and underscore only'),
   name: z.string().trim().min(1).max(120),
   category: z.enum(DOCUMENT_CATEGORIES),
+  businessCategory: z.enum(DOCUMENT_BUSINESS_CATEGORIES).default('EMPLOYEE'),
+  uploadMode: z.enum(DOCUMENT_UPLOAD_MODES).default('EMPLOYEE_WITH_HR_VERIFICATION'),
   appliesToEntity: z.enum(OWNER_ENTITY_TYPES),
   documentClass: z.enum(DOCUMENT_CLASSES).default('INTERNAL'),
   mandatoryFlag: z.boolean().default(false),
@@ -50,6 +53,17 @@ export const pdocOwnerQuerySchema = z.object({
   ownerEntityId: z.coerce.number().int().positive(),
 });
 
+export const pdocSearchQuerySchema = z.object({
+  q: z.string().trim().max(80).optional(),
+  businessCategory: z.enum(DOCUMENT_BUSINESS_CATEGORIES).optional(),
+  verificationStatus: z.string().trim().max(24).optional(),
+  documentTypeCode: z.string().trim().min(1).max(30).optional(),
+  includeSuperseded: z.enum(['0', '1']).optional(),
+  expiry: z.enum(['expired', 'soon']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 const isoDate = z
   .string()
   .trim()
@@ -76,6 +90,11 @@ export const pdocVerifySchema = z.object({
 
 export const pdocRejectSchema = z.object({
   reasonCode: z.enum(REJECTION_REASON_CODES),
+  remark: z.string().trim().min(10).max(500),
+});
+
+/** Third review verdict — a remark, but no rejection reason code. */
+export const pdocResubmissionSchema = z.object({
   remark: z.string().trim().min(10).max(500),
 });
 

@@ -4,13 +4,13 @@ import autoTable from 'jspdf-autotable';
 
 export interface ExportOptions {
   filename: string;
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   columns?: string[];
   title?: string;
   format: 'csv' | 'excel' | 'pdf';
 }
 
-function escapeCSV(value: any): string {
+function escapeCSV(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {

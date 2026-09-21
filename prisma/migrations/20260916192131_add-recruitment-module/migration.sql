@@ -2,59 +2,8 @@ BEGIN TRY
 
 BEGIN TRAN;
 
--- DropIndex
-DROP INDEX [IX_FnFSettlement_companyId_status] ON [dbo].[FnFSettlement];
-
--- DropIndex
-DROP INDEX [PlatformDocumentType_companyId_businessCategory_idx] ON [dbo].[PlatformDocumentType];
-
--- AlterTable
-ALTER TABLE [dbo].[ExitInterview] ALTER COLUMN [exitType] NVARCHAR(20) NOT NULL;
-ALTER TABLE [dbo].[ExitInterview] DROP CONSTRAINT [DF_ExitInterview_clearanceStatus], [DF_ExitInterview_rehireEligible], [DF_ExitInterview_noticeWaivedDays];
-ALTER TABLE [dbo].[ExitInterview] DROP COLUMN [approvedLastWorkingDay],
-[clearanceStatus],
-[noticePeriodDays],
-[noticeServedDays],
-[noticeWaivedDays],
-[rehireEligible],
-[resignationDate];
-
--- AlterTable
-DROP INDEX [FnFSettlement_companyId_status_idx] ON [dbo].[FnFSettlement];
-ALTER TABLE [dbo].[FnFSettlement] ALTER COLUMN [status] NVARCHAR(20) NOT NULL;
-ALTER TABLE [dbo].[FnFSettlement] DROP CONSTRAINT [DF_FnFSettlement_payableDays], [DF_FnFSettlement_arrearsAmount], [DF_FnFSettlement_incentiveAmount], [DF_FnFSettlement_tdsDeduction], [DF_FnFSettlement_pfDeduction], [DF_FnFSettlement_esiDeduction], [DF_FnFSettlement_salaryDivisor], [DF_FnFSettlement_noticeServedDays], [DF_FnFSettlement_noticeWaivedDays], [DF_FnFSettlement_noticeShortfallDays];
-ALTER TABLE [dbo].[FnFSettlement] DROP COLUMN [arrearsAmount],
-[clearanceOverrideRemark],
-[completedAt],
-[esiDeduction],
-[financeVerifiedAt],
-[financeVerifiedByUserId],
-[freezeSnapshotId],
-[holdReason],
-[incentiveAmount],
-[journalJson],
-[noticeServedDays],
-[noticeShortfallDays],
-[noticeWaivedDays],
-[overrideRemark],
-[payableDays],
-[pfDeduction],
-[salaryDivisor],
-[snapshotJson],
-[submittedAt],
-[submittedByUserId],
-[tdsDeduction];
-
--- AlterTable
-ALTER TABLE [dbo].[FullAndFinalConfig] DROP CONSTRAINT [DF_FullAndFinalConfig_salaryDivisorMode], [DF_FullAndFinalConfig_includePt], [DF_FullAndFinalConfig_clearanceRequired], [DF_FullAndFinalConfig_salaryDivisor], [DF_FullAndFinalConfig_noticeRateBasis], [DF_FullAndFinalConfig_includeTds], [DF_FullAndFinalConfig_includePf], [DF_FullAndFinalConfig_includeEsi];
-ALTER TABLE [dbo].[FullAndFinalConfig] DROP COLUMN [clearanceRequired],
-[includeEsi],
-[includePf],
-[includePt],
-[includeTds],
-[noticeRateBasis],
-[salaryDivisor],
-[salaryDivisorMode];
+-- F&F / exit / document-type columns from local BRD work must not be dropped
+-- by this introspected recruitment migration (origin schema was older).
 
 -- AlterTable
 ALTER TABLE [dbo].[JobPosting] DROP CONSTRAINT [DF__JobPostin__vacan__45B43A08];
@@ -218,11 +167,6 @@ EXEC SP_RENAME N'dbo.PK_PetrolAllowanceEntry', N'PetrolAllowanceEntry_pkey';
 ALTER TABLE [dbo].[PetrolAllowanceEntry] ADD CONSTRAINT [PetrolAllowanceEntry_status_df] DEFAULT 'PENDING' FOR [status];
 
 -- AlterTable
-ALTER TABLE [dbo].[PlatformDocumentType] DROP CONSTRAINT [PlatformDocumentType_businessCategory_df], [PlatformDocumentType_uploadMode_df];
-ALTER TABLE [dbo].[PlatformDocumentType] DROP COLUMN [businessCategory],
-[uploadMode];
-
--- AlterTable
 ALTER TABLE [dbo].[RoundingConfig] DROP CONSTRAINT [DF_RoundingConfig_applyTo],
 [DF_RoundingConfig_roundingMode],
 [DF_RoundingConfig_showRoundOff];
@@ -232,10 +176,6 @@ ALTER TABLE [dbo].[RoundingConfig] ADD CONSTRAINT [RoundingConfig_applyTo_df] DE
 -- AlterTable
 ALTER TABLE [dbo].[SalaryComponent] DROP CONSTRAINT [DF__SalaryCom__gross__019419E5],
 [DF__SalaryCom__inclu__009FF5AC];
-ALTER TABLE [dbo].[SalaryComponent] DROP CONSTRAINT [DF_SalaryComponent_fnfPayable], [DF_SalaryComponent_fnfProration], [DF_SalaryComponent_fnfTaxable];
-ALTER TABLE [dbo].[SalaryComponent] DROP COLUMN [fnfPayable],
-[fnfProration],
-[fnfTaxable];
 ALTER TABLE [dbo].[SalaryComponent] ADD CONSTRAINT [SalaryComponent_grossTier_df] DEFAULT 'ADDITIONAL' FOR [grossTier], CONSTRAINT [SalaryComponent_includeInGross_df] DEFAULT 1 FOR [includeInGross];
 
 -- AlterTable

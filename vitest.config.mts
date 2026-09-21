@@ -10,6 +10,7 @@ export default defineConfig({
     // Integration tests hit the real dev DB and mutate shared tables —
     // run serially so they can't interleave with each other.
     fileParallelism: false,
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.{idea,git,cache,output,temp}/**', 'tests/e2e/**'],
   },
   resolve: {
     alias: {
