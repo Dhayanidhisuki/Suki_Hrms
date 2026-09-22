@@ -1,14 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  BarChart3,
+  CircleAlert,
+  Clock,
+  Minus,
+  Package,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { AnimatedCountUp } from './AnimatedCountUp';
 
-export type KPITone = 'success' | 'warning' | 'danger' | 'info';
+export type KPITone = 'success' | 'warning' | 'danger' | 'info' | 'accent';
 
-const toneStyles: Record<KPITone, { bg: string; fg: string; icon: string }> = {
-  success: { bg: 'var(--success-soft)', fg: 'var(--success)', icon: 'var(--success)' },
-  warning: { bg: 'var(--warning-soft)', fg: 'var(--warning)', icon: 'var(--warning)' },
-  danger: { bg: 'var(--danger-soft)', fg: 'var(--danger)', icon: 'var(--danger)' },
-  info: { bg: 'var(--info-soft)', fg: 'var(--info)', icon: 'var(--info)' },
+export type KPITrendDirection = 'up' | 'down' | 'neutral';
+
+export interface KPITrend {
+  direction?: KPITrendDirection;
+  /** Highlighted delta, e.g. "$31.2K" */
+  value?: string;
+  /** Muted comparison label, e.g. "vs last month" */
+  label?: string;
+}
+
+const toneStyles: Record<KPITone, { bg: string; fg: string }> = {
+  success: { bg: 'var(--success-soft)', fg: 'var(--success)' },
+  warning: { bg: 'var(--warning-soft)', fg: 'var(--warning)' },
+  danger: { bg: 'var(--danger-soft)', fg: 'var(--danger)' },
+  info: { bg: 'var(--info-soft)', fg: 'var(--info)' },
+  accent: { bg: 'var(--primary-light)', fg: 'var(--primary)' },
+};
+
+const DEFAULT_ICONS: Record<KPITone, LucideIcon> = {
+  warning: Clock,
+  info: Users,
+  success: Package,
+  danger: CircleAlert,
+  accent: BarChart3,
+};
+
+const TREND_COLOR: Record<KPITrendDirection, string> = {
+  up: 'var(--success)',
+  down: 'var(--danger)',
+  neutral: 'var(--text-muted)',
 };
 
 interface KPICardProps {
@@ -16,78 +53,81 @@ interface KPICardProps {
   value: string | number;
   subtitle?: string;
   tone?: KPITone;
-  icon?: React.ReactNode;
-  animationDuration?: number; // milliseconds
+  icon?: ReactNode;
+  animationDuration?: number;
+  trend?: KPITrend;
+  title?: string;
+  className?: string;
 }
 
-function AnimatedCounter({ value, duration = 600 }: { value: number; duration?: number }) {
-  const [displayValue, setDisplayValue] = useState(0);
-
-  useEffect(() => {
-    if (typeof value !== 'number' || value <= 0) {
-      setDisplayValue(value);
-      return;
-    }
-
-    let startTime: number | null = null;
-    let animationFrameId: number;
-
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Easing function (easeOutQuad)
-      const easeProgress = 1 - Math.pow(1 - progress, 2);
-      const currentValue = Math.floor(easeProgress * value);
-
-      setDisplayValue(currentValue);
-
-      if (progress < 1) {
-        animationFrameId = requestAnimationFrame(animate);
-      }
-    };
-
-    animationFrameId = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [value, duration]);
-
-  return <span>{displayValue.toLocaleString()}</span>;
-}
-
-export default function KPICard({ label, value, subtitle, tone = 'info', icon, animationDuration = 600 }: KPICardProps) {
+export default function KPICard({
+  label,
+  value,
+  subtitle,
+  tone = 'info',
+  icon,
+  animationDuration = 600,
+  trend,
+  title,
+  className = '',
+}: KPICardProps) {
   const style = toneStyles[tone];
-  const isNumeric = typeof value === 'number';
+  const DefaultIcon = DEFAULT_ICONS[tone];
+  const direction = trend?.direction ?? 'up';
+  const TrendIcon =
+    direction === 'down' ? ArrowDown : direction === 'neutral' ? Minus : ArrowUp;
+  const hasTrend = Boolean(trend?.value);
+  const footerLabel = trend?.label ?? subtitle;
+  const hasFooter = hasTrend || Boolean(footerLabel);
 
   return (
     <div
-      className="flex flex-col gap-3 rounded-2xl border p-4 shadow-xs transition-all duration-300 hover:shadow-lg"
+      title={title}
+      className={`flex h-full min-h-[132px] flex-col rounded-[20px] border p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-shadow duration-200 hover:shadow-md ${className}`.trim()}
       style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-main)' }}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
-            {label}
-          </p>
-          <p className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
-            {isNumeric ? <AnimatedCounter value={value} duration={animationDuration} /> : value}
-          </p>
-          {subtitle && (
-            <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-              {subtitle}
-            </p>
-          )}
+      <div className="flex items-center gap-2.5">
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4 [&_svg]:w-4"
+          style={{ backgroundColor: style.bg, color: style.fg }}
+        >
+          {icon ?? <DefaultIcon />}
         </div>
-        {icon && (
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300"
-            style={{ backgroundColor: style.bg, color: style.icon }}
-          >
-            {icon}
-          </div>
-        )}
+        <p className="truncate text-[13px] font-medium leading-none" style={{ color: 'var(--text-muted)' }}>
+          {label}
+        </p>
       </div>
+
+      <p
+        className="mt-4 text-[28px] font-bold leading-none tracking-tight tabular-nums"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        {typeof value === 'number' ? (
+          <AnimatedCountUp value={value} duration={animationDuration} />
+        ) : (
+          value
+        )}
+      </p>
+
+      {hasFooter ? (
+        <div className="mt-auto flex min-h-[20px] items-center gap-1 pt-3 text-[12px] leading-none">
+          {hasTrend ? (
+            <>
+              <TrendIcon className="h-3.5 w-3.5 shrink-0" style={{ color: TREND_COLOR[direction] }} />
+              <span className="font-medium tabular-nums" style={{ color: TREND_COLOR[direction] }}>
+                {trend!.value}
+              </span>
+            </>
+          ) : null}
+          {footerLabel ? (
+            <span className="truncate font-medium" style={{ color: 'var(--text-muted)' }}>
+              {footerLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-auto min-h-[20px] pt-3" />
+      )}
     </div>
   );
 }
