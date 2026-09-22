@@ -51,6 +51,51 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/manager/') ||
     pathname.startsWith('/api/jd-master') ||
     pathname.startsWith('/api/recruitment/') ||
+    pathname.startsWith('/api/skill-levels') ||
+    pathname.startsWith('/api/competencies') ||
+    pathname.startsWith('/api/competency-requirements') ||
+    pathname.startsWith('/api/skill-matrix') ||
+    pathname.startsWith('/api/training-plans') ||
+    pathname.startsWith('/api/monthly-training-plans') ||
+    pathname.startsWith('/api/training-plan-lines') ||
+    pathname.startsWith('/api/training-schedules') ||
+    pathname.startsWith('/api/training-programs') ||
+    pathname.startsWith('/api/trainers') ||
+    pathname.startsWith('/api/training-venues') ||
+    pathname.startsWith('/api/training-needs') ||
+    pathname.startsWith('/api/training-nominations') ||
+    pathname.startsWith('/api/training-attendance') ||
+    pathname.startsWith('/api/training-feedback') ||
+    pathname.startsWith('/api/training-history') ||
+    pathname.startsWith('/api/question-bank') ||
+    pathname.startsWith('/api/question-bank-groups') ||
+    pathname.startsWith('/api/assessments') ||
+    pathname.startsWith('/api/assessment-attempts') ||
+    pathname.startsWith('/api/training-effectiveness') ||
+    pathname.startsWith('/api/my-trainings') ||
+    pathname.startsWith('/api/training-dashboard') ||
+    pathname.startsWith('/api/training-policies') ||
+    pathname.startsWith('/api/training-budgets') ||
+    pathname.startsWith('/api/induction-programs') ||
+    pathname.startsWith('/api/induction-assignments') ||
+    pathname.startsWith('/api/ojt-assignments') ||
+    pathname.startsWith('/api/training-checklists') ||
+    pathname.startsWith('/api/training-compliance') ||
+    pathname.startsWith('/api/training-certificates') ||
+    pathname.startsWith('/api/skills') ||
+    pathname.startsWith('/api/skill-requirements') ||
+    pathname.startsWith('/api/employee-skill-levels') ||
+    pathname.startsWith('/api/training-documents') ||
+    pathname.startsWith('/api/external-trainings') ||
+    pathname.startsWith('/api/idp') ||
+    pathname.startsWith('/api/training-recommendations') ||
+    pathname.startsWith('/api/training-reports') ||
+    pathname.startsWith('/api/training-cost-items') ||
+    pathname.startsWith('/api/training-mentors') ||
+    pathname.startsWith('/api/training-resources') ||
+    pathname.startsWith('/api/training-providers') ||
+    pathname.startsWith('/api/certification-masters') ||
+    pathname.startsWith('/api/training-methods') ||
     pathname.startsWith('/api/platform/') ||
     pathname.startsWith('/api/letters') ||
     pathname.startsWith('/api/ess/') ||
@@ -68,6 +113,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/manager/') ||
     pathname.startsWith('/recruitment/') ||
     pathname.startsWith('/dashboard/') ||
+    pathname.startsWith('/learning/') ||
     pathname.startsWith('/documents') ||
     pathname.startsWith('/ess') ||
     pathname.startsWith('/performance/') ||
@@ -174,6 +220,90 @@ export const config = {
     '/documents/:path*',
     '/ess/:path*',
     '/dashboard/:path*',
+    '/api/skill-levels/:path*',
+    '/api/skill-levels',
+    '/api/competencies/:path*',
+    '/api/competencies',
+    '/api/competency-requirements/:path*',
+    '/api/competency-requirements',
+    '/api/skill-matrix',
+    '/api/training-plans/:path*',
+    '/api/training-plans',
+    '/api/monthly-training-plans/:path*',
+    '/api/monthly-training-plans',
+    '/api/training-plan-lines/:path*',
+    '/api/training-plan-lines',
+    '/api/training-schedules/:path*',
+    '/api/training-schedules',
+    '/api/training-programs/:path*',
+    '/api/training-programs',
+    '/api/trainers/:path*',
+    '/api/trainers',
+    '/api/training-venues/:path*',
+    '/api/training-venues',
+    '/api/training-needs/:path*',
+    '/api/training-needs',
+    '/api/training-nominations/:path*',
+    '/api/training-nominations',
+    '/api/training-attendance/:path*',
+    '/api/training-attendance',
+    '/api/training-feedback',
+    '/api/training-history',
+    '/api/question-bank-groups/:path*',
+    '/api/question-bank-groups',
+    '/api/question-bank/:path*',
+    '/api/question-bank',
+    '/api/assessments/:path*',
+    '/api/assessments',
+    '/api/assessment-attempts',
+    '/api/training-effectiveness/:path*',
+    '/api/training-effectiveness',
+    '/api/my-trainings/:path*',
+    '/api/my-trainings',
+    '/ess/my-trainings',
+    '/api/training-dashboard',
+    '/api/training-policies/:path*',
+    '/api/training-policies',
+    '/api/training-budgets/:path*',
+    '/api/training-budgets',
+    '/api/induction-programs/:path*',
+    '/api/induction-programs',
+    '/api/induction-assignments/:path*',
+    '/api/induction-assignments',
+    '/api/ojt-assignments/:path*',
+    '/api/ojt-assignments',
+    '/api/training-checklists/:path*',
+    '/api/training-checklists',
+    '/api/training-compliance',
+    '/api/training-certificates/:path*',
+    '/api/training-certificates',
+    '/api/skills/:path*',
+    '/api/skills',
+    '/api/skill-requirements/:path*',
+    '/api/skill-requirements',
+    '/api/employee-skill-levels',
+    '/api/training-documents/:path*',
+    '/api/training-documents',
+    '/api/external-trainings/:path*',
+    '/api/external-trainings',
+    '/api/idp/:path*',
+    '/api/idp',
+    '/api/training-recommendations',
+    '/api/training-reports',
+    '/api/training-cost-items/:path*',
+    '/api/training-cost-items',
+    '/api/training-mentors/:path*',
+    '/api/training-mentors',
+    '/api/training-resources/:path*',
+    '/api/training-resources',
+    '/api/training-providers/:path*',
+    '/api/training-providers',
+    '/api/certification-masters/:path*',
+    '/api/certification-masters',
+    '/api/training-methods/:path*',
+    '/api/training-methods',
+    '/api/platform/audit',
+    '/learning/:path*',
     '/approvals/:path*',
     '/api/auth/me',
   ],

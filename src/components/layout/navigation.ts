@@ -452,16 +452,22 @@ export const navigation: NavModule[] = [
       {
         label: "Competency",
         items: [
-          { label: "Competency Management", short: "Competency", href: "/learning/competency" },
-          { label: "Skill Matrix", href: "/learning/skill-matrix" },
-          { label: "Skill Levels", href: "/learning/skill-levels" },
+          { label: "Competency Management", short: "Competency", href: "/learning/competency", ready: true },
+          { label: "Skill Matrix", href: "/learning/skill-matrix", ready: true },
+          { label: "Skill Levels", href: "/learning/skill-levels", ready: true },
         ],
       },
       {
         label: "Training",
         items: [
-          { label: "Yearly Training Plan", short: "Training Plan", href: "/learning/training-plan" },
-          { label: "Training Calendar", href: "/learning/training-calendar" },
+          { label: "Training Dashboard", short: "Dashboard", href: "/learning/dashboard", ready: true },
+          { label: "Yearly Training Plan", short: "Training Plan", href: "/learning/training-plan", ready: true },
+          { label: "Monthly Training Plan", short: "Monthly Plan", href: "/learning/monthly-plan", ready: true },
+          { label: "Training Calendar", href: "/learning/training-calendar", ready: true },
+          { label: "Operations", short: "Operations", href: "/learning/operations", ready: true },
+          { label: "Masters", short: "Masters", href: "/learning/masters", ready: true },
+          { label: "Audit Trail", short: "Audit", href: "/learning/audit", ready: true },
+          { label: "Training Reports", short: "Reports", href: "/learning/reports", ready: true },
         ],
       },
     ],
@@ -577,6 +583,10 @@ export const navigation: NavModule[] = [
         label: "Visitor",
         items: [{ label: "Visitor Pass Approval", short: "Visitor Pass", href: "/approvals/visitor/pass", ready: true }],
       },
+      {
+        label: "Learning",
+        items: [{ label: "Nomination Approval", short: "Nominations", href: "/approvals/learning/nominations", ready: true }],
+      },
     ],
   },
 
@@ -614,6 +624,7 @@ export const navigation: NavModule[] = [
           { label: "Comp-Off Request", short: "Comp-Off", href: "/ess/comp-off", ready: true },
           { label: "Leave Encashment", short: "Encashment", href: "/ess/leave-encashment", ready: true },
           { label: "Holiday Calendar", short: "Holidays", href: "/ess/holiday-calendar", ready: true },
+          { label: "My Trainings", href: "/ess/my-trainings", ready: true },
         ],
       },
     ],

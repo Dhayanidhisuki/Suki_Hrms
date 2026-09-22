@@ -52,6 +52,16 @@ interface CtcComponentRow { id: number; salaryComponentId: number; amount: strin
 interface SalaryComponentRow { salaryComponentId: number; salaryComponent: { name: string; code: string; type: string; grossTier: string }; amount: string; }
 interface SalaryRevisionRow { id: number; financialYear: string | null; grossSalary: string; netSalary: string | null; effectiveFrom: string; effectiveTo: string | null; components: SalaryComponentRow[]; }
 interface ActivityRow { id: number; activityAt: string; module: string; activityType: string; remarks: string | null; }
+interface TrainingHistoryRow {
+  id: number;
+  programName: string;
+  scheduledDate: string | null;
+  method: string | null;
+  attendanceStatus: string;
+  attendancePercent: number | null;
+  result: string;
+  status: string;
+}
 
 /**
  * Tab strip. Contact + Emergency Contacts live inside Personal Details,
@@ -60,7 +70,7 @@ interface ActivityRow { id: number; activityAt: string; module: string; activity
  */
 type TabKey =
   | 'basic' | 'personal' | 'job_profile' | 'salary' | 'education'
-  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'documents' | 'kra' | 'activity' | 'benefits';
+  | 'passport' | 'dependents' | 'assets' | 'skills' | 'kyc' | 'documents' | 'kra' | 'activity' | 'benefits' | 'training';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'basic', label: 'Basic Details' },
@@ -73,6 +83,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'benefits', label: 'Benefits' },
   { key: 'assets', label: 'Assets' },
   { key: 'skills', label: 'Skill Matrix' },
+  { key: 'training', label: 'Training' },
   { key: 'kyc', label: 'KYC & Statutory' },
   { key: 'documents', label: 'Documents' },
   { key: 'kra', label: 'KPI / KRA' },
@@ -1746,6 +1757,42 @@ function EmployeeActivityTab({ employeeId }: { employeeId: string }) {
 }
 
 /**
+ * Training tab (BRD §36) — read-only training history fed by the Learning
+ * closed loop: each row is a TrainingHistory record written when a training
+ * schedule is closed (/api/training-schedules/[id]/complete).
+ */
+function EmployeeTrainingTab({ employeeId }: { employeeId: string }) {
+  const [items, setItems] = useState<TrainingHistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/training-history?employeeId=${employeeId}`)
+      .then((res) => res.json())
+      .then((json) => { if (!cancelled) setItems(json.data ?? []); })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [employeeId]);
+
+  const columns: Column<TrainingHistoryRow>[] = [
+    { key: 'programName', label: 'Program' },
+    { key: 'scheduledDate', label: 'Date', render: (r) => (r.scheduledDate ? r.scheduledDate.slice(0, 10) : '—') },
+    { key: 'method', label: 'Method', render: (r) => r.method ?? '—' },
+    { key: 'attendanceStatus', label: 'Attendance' },
+    { key: 'attendancePercent', label: 'Attendance %', render: (r) => (r.attendancePercent != null ? `${r.attendancePercent}%` : '—') },
+    { key: 'result', label: 'Result' },
+    { key: 'status', label: 'Status' },
+  ];
+
+  return (
+    <SectionCard title="Training History" icon={<SectionIcon.Award />}>
+      <DataTable columns={columns} data={items} loading={loading} emptyMessage="No training history recorded yet." />
+    </SectionCard>
+  );
+}
+
+/**
  * Reveals the real PAN/Aadhaar values for the KYC tab (numbers only).
  * File scans live on the Documents tab (PlatformDocument) — this panel
  * may still list legacy EmployeeDocument rows as read-only.
@@ -2855,6 +2902,7 @@ export default function EmployeeProfilePage() {
       )}
       {activeTab === 'kra' && <EmployeeKraTab employeeId={employeeId} />}
       {activeTab === 'activity' && <EmployeeActivityTab employeeId={employeeId} />}
+      {activeTab === 'training' && <EmployeeTrainingTab employeeId={employeeId} />}
     </div>
   );
 }

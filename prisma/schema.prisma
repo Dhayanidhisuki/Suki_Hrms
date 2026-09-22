@@ -5550,22 +5550,6 @@ model RecruitmentApplicationSequence {
   @@map("RecruitmentApplicationSequence")
 }
 
-model SkillLevel {
-  id          Int       @id
-  companyId   Int
-  levelNumber Int
-  name        String    @db.NVarChar(50)
-  description String?   @db.NVarChar(500)
-  color       String?   @db.NVarChar(7)
-  isActive    Boolean
-  deletedAt   DateTime? @db.DateTime2
-  createdAt   DateTime  @default(now()) @db.DateTime2
-  updatedAt   DateTime  @db.DateTime2
-
-  @@unique([companyId, levelNumber])
-  @@index([companyId])
-  @@map("SkillLevel")
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recruitment, Onboarding, Portal & ESS models.
@@ -6865,4 +6849,1212 @@ model WfhRequest {
   @@index([employeeId])
   @@index([status])
   @@map("WfhRequest")
+}
+
+
+model SkillLevel {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  levelNumber Int
+  name        String    @db.NVarChar(50)
+  description String?   @db.NVarChar(500)
+  color       String?   @db.NVarChar(7)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  competencyRequirements    CompetencyRequirement[]
+  employeeCompetenciesCurrent EmployeeCompetency[] @relation("CurrentLevel")
+  employeeCompetenciesTarget  EmployeeCompetency[] @relation("TargetLevel")
+  skillRequirements           SkillRequirement[]
+  employeeSkillLevelsCurrent  EmployeeSkillLevel[] @relation("SkillCurrentLevel")
+  employeeSkillLevelsTarget   EmployeeSkillLevel[] @relation("SkillTargetLevel")
+  assessmentPromotions        Assessment[]
+
+  @@unique([companyId, levelNumber])
+  @@index([companyId])
+  @@map("SkillLevel")
+}
+
+model Competency {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String?   @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  category    String    @db.NVarChar(50)
+  type        String?   @db.NVarChar(50)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  requirements       CompetencyRequirement[]
+  employeeCompetencies EmployeeCompetency[]
+  trainingPlanLines  TrainingPlanLine[]     @relation("CompetencyPlanLines")
+
+  @@index([companyId, category])
+  @@map("Competency")
+}
+
+model CompetencyRequirement {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  competencyId    Int
+  departmentId    Int?
+  designationId   Int?
+  gradeId         Int?
+  // §30: job-role scope — matches JobInfo.additionalRole or the designation
+  // name when dept/designation/grade aren't enough.
+  jobRole         String?   @db.NVarChar(100)
+  requiredLevelId Int
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  competency    Competency    @relation(fields: [competencyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requiredLevel SkillLevel    @relation(fields: [requiredLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, competencyId])
+  @@index([companyId, departmentId, designationId, gradeId])
+  @@map("CompetencyRequirement")
+}
+
+model EmployeeCompetency {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  competencyId        Int
+  currentLevelId      Int
+  targetLevelId       Int?
+  certificationNumber String?   @db.NVarChar(50)
+  certifiedDate       DateTime?
+  expiryDate          DateTime?
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  competency   Competency  @relation(fields: [competencyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currentLevel SkillLevel  @relation("CurrentLevel", fields: [currentLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  targetLevel  SkillLevel? @relation("TargetLevel", fields: [targetLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([companyId, employeeId, competencyId])
+  @@index([employeeId])
+  @@map("EmployeeCompetency")
+}
+
+model TrainingProgram {
+  id                    Int       @id @default(autoincrement())
+  companyId             Int
+  code                  String?   @db.NVarChar(20)
+  name                  String    @db.NVarChar(100)
+  category              String?   @db.NVarChar(50)
+  type                  String?   @db.NVarChar(50)
+  objective             String?   @db.NVarChar(500)
+  learningOutcome       String?   @db.NVarChar(500)
+  targetAudience        String?   @db.NVarChar(200)
+  method                String?   @db.NVarChar(50)
+  duration              Decimal?  @db.Decimal(8, 2)
+  durationUnit          String?   @default("HOURS") @db.NVarChar(20)
+  assessmentRequired    Boolean   @default(false)
+  certificationRequired Boolean   @default(false)
+  validityMonths        Int?
+  refresherFrequency    String?   @db.NVarChar(50)
+  estimatedCost         Decimal?  @db.Decimal(18, 2)
+  competencyId          Int?      // competency this program addresses (drives recommendations §32)
+  skillId               Int?      // skill this program addresses
+  isMandatory           Boolean   @default(false) // §12: mandatory/optional flag on the program itself
+  isActive              Boolean   @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  trainingPlanLines TrainingPlanLine[] @relation("ProgramPlanLines")
+  monthlyPlanLines  MonthlyTrainingPlanLine[] @relation("ProgramMonthlyLines")
+  trainingSchedules TrainingSchedule[] @relation("ProgramSchedules")
+
+  @@index([companyId, category])
+  @@map("TrainingProgram")
+}
+
+model Trainer {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  name            String    @db.NVarChar(100)
+  email           String?   @db.NVarChar(100)
+  phone           String?   @db.NVarChar(20)
+  isExternal      Boolean   @default(false)
+  vendor          String?   @db.NVarChar(100)
+  commercialRate  Decimal?  @db.Decimal(18, 2)
+  contractDetails String?   @db.NVarChar(500)
+  employeeId      Int?      // link to Employee when internal trainer
+  expertise       String?   @db.NVarChar(300)
+  certifications  String?   @db.NVarChar(500)
+  rating          Decimal?  @db.Decimal(3, 1)
+  experienceYears Int?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("Trainer")
+}
+
+model TrainingVenue {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String    @db.NVarChar(100)
+  capacity    Int?
+  location    String?   @db.NVarChar(200)
+  floor       String?   @db.NVarChar(50)
+  building    String?   @db.NVarChar(100)
+  equipment   String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingVenue")
+}
+
+// ── BRD §17/18: Mentor master — dedicated mentors with expertise & assignments ──
+model TrainingMentor {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int?      // internal mentor → Employee link (optional: external mentors)
+  name             String    @db.NVarChar(100)
+  email            String?   @db.NVarChar(100)
+  phone            String?   @db.NVarChar(20)
+  expertise        String?   @db.NVarChar(300)  // competency/skill areas
+  role             String?   @db.NVarChar(100)  // e.g. "Buddy", "Coach", "SME"
+  assignedToIds    String?   // JSON array of employeeIds currently mentored
+  startDate        DateTime?
+  endDate          DateTime?
+  expectedOutcome  String?   @db.NVarChar(300)
+  notes            String?   @db.NVarChar(500)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingMentor")
+}
+
+// ── BRD §9: Training Method master — code + delivery attributes that the flat
+// DropdownMaster cannot carry (Internal/External, Online/Offline). ──
+model TrainingMethod {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  code           String?   @db.NVarChar(20)
+  name           String    @db.NVarChar(100)
+  description    String?   @db.NVarChar(500)
+  delivery       String?   @db.NVarChar(20) // INTERNAL | EXTERNAL
+  mode           String?   @db.NVarChar(20) // ONLINE | OFFLINE | BLENDED
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingMethod")
+}
+
+// ── BRD §19: bookable training resources (projector, laptop, lab, licenses) ──
+model TrainingResource {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  name         String    @db.NVarChar(100)
+  resourceType String?   @db.NVarChar(50)   // PROJECTOR/LAPTOP/CAMERA/MIC/LAB/SOFTWARE/OTHER
+  venueId      Int?      // optional: resource tied to a venue
+  serialNumber String?   @db.NVarChar(100)
+  quantity     Int       @default(1)
+  status       String    @default("AVAILABLE") @db.NVarChar(20) // AVAILABLE/BOOKED/MAINTENANCE/RETIRED
+  notes        String?   @db.NVarChar(300)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingResource")
+}
+
+// ── BRD §47: external training provider master ──
+model TrainingProvider {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String    @db.NVarChar(150)
+  contactName String?   @db.NVarChar(100)
+  email       String?   @db.NVarChar(100)
+  phone       String?   @db.NVarChar(20)
+  website     String?   @db.NVarChar(200)
+  address     String?   @db.NVarChar(300)
+  categories  String?   @db.NVarChar(300)  // training categories offered
+  rating      Decimal?  @db.Decimal(3, 1)
+  notes       String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingProvider")
+}
+
+// ── BRD §47: certification type master (drives expiry alerts) ──
+model CertificationMaster {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  name             String    @db.NVarChar(150)
+  issuingBody      String?   @db.NVarChar(150)
+  validityMonths   Int?      // default validity → expiry date derivation
+  category         String?   @db.NVarChar(100)
+  isMandatory      Boolean   @default(false)
+  description      String?   @db.NVarChar(500)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("CertificationMaster")
+}
+
+model TrainingPlan {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  year                String    @db.NVarChar(9)
+  departmentId        Int?
+  title               String?   @db.NVarChar(200)
+  status              String    @default("DRAFT") @db.NVarChar(20)
+  totalEstimatedCost  Decimal?  @db.Decimal(18, 2)
+  totalApprovedBudget Decimal?  @db.Decimal(18, 2)
+  approvedByUserId    Int?
+  approvedAt          DateTime?
+  // §14: multi-stage plan approval chain (TNA → Dept Review → L&D → Budget → Mgmt → Release).
+  currentStageOrder   Int       @default(0)
+  rejectionReason     String?   @db.NVarChar(500)
+  rejectedByUserId    Int?
+  rejectedAt          DateTime?
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  lines       TrainingPlanLine[]
+
+  @@index([companyId, year])
+  @@index([companyId, departmentId])
+  @@map("TrainingPlan")
+}
+
+model TrainingPlanLine {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  trainingPlanId    Int
+  competencyId      Int?
+  plannedMonth      Int
+  trainingProgramId Int
+  trainerId         Int?
+  trainingMethod    String?   @db.NVarChar(50)
+  duration          Decimal?  @db.Decimal(8, 2)
+  durationUnit      String?   @default("HOURS") @db.NVarChar(20)
+  participantCount  Int?
+  targetEmployeeIds String?   @db.NVarChar(Max)
+  estimatedCost     Decimal?  @db.Decimal(18, 2)
+  approvedAmount    Decimal?  @db.Decimal(18, 2)
+  priority          String?   @default("MEDIUM") @db.NVarChar(20)
+  isMandatory       Boolean   @default(false)
+  expectedOutcome   String?   @db.NVarChar(500)
+  status            String    @default("DRAFT") @db.NVarChar(20)
+  tnaReference      String?   @db.NVarChar(100)
+  // Annual training calendar fields (reference Excel format): trainee audience,
+  // internal/external mentor, manual department list, trainer type, period and
+  // month window, remarks, postponement.
+  traineeCategory     String?   @db.NVarChar(20)
+  mentorType          String?   @db.NVarChar(20)
+  mentorEmployeeId    Int?
+  externalMentorName  String?   @db.NVarChar(150)
+  trainerType         String?   @db.NVarChar(100)
+  targetDepartments   String?   @db.NVarChar(500)
+  schedulePeriod      String?   @db.NVarChar(20)
+  monthFrom           Int?
+  monthTo             Int?
+  remarks             String?   @db.NVarChar(500)
+  postponedTo         DateTime?
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  trainingPlan    TrainingPlan    @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  competency      Competency?     @relation("CompetencyPlanLines", fields: [competencyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  trainingProgram TrainingProgram @relation("ProgramPlanLines", fields: [trainingProgramId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, trainingPlanId])
+  @@index([companyId, plannedMonth])
+  @@map("TrainingPlanLine")
+}
+
+// §15 Monthly Training Plan — the annual plan broken into a monthly execution
+// plan with its own workflow (DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED →
+// SCHEDULED → IN_PROGRESS → COMPLETED, or CANCELLED / POSTPONED).
+model MonthlyTrainingPlan {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  trainingPlanId   Int?      // source annual plan, if generated from one
+  year             Int
+  month            Int       // 1-12
+  departmentId     Int?
+  status           String    @default("DRAFT") @db.NVarChar(20)
+  remarks          String?   @db.NVarChar(500)
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  lines            MonthlyTrainingPlanLine[]
+
+  @@index([companyId, year, month])
+  @@map("MonthlyTrainingPlan")
+}
+
+model MonthlyTrainingPlanLine {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  monthlyPlanId    Int
+  trainingProgramId Int
+  departmentId     Int?
+  employeeGroup    String?   @db.NVarChar(100)
+  participantCount Int?
+  trainerId        Int?
+  mentorEmployeeId Int?
+  plannedDate      DateTime? @db.Date
+  duration         Decimal?  @db.Decimal(8, 2)
+  durationUnit     String?   @default("HOURS") @db.NVarChar(20)
+  venueId          Int?
+  method           String?   @db.NVarChar(50)
+  budget           Decimal?  @db.Decimal(18, 2)
+  estimatedCost    Decimal?  @db.Decimal(18, 2)
+  status           String    @default("PLANNED") @db.NVarChar(20)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  monthlyPlan      MonthlyTrainingPlan @relation(fields: [monthlyPlanId], references: [id], onDelete: Cascade)
+  trainingProgram  TrainingProgram @relation("ProgramMonthlyLines", fields: [trainingProgramId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, monthlyPlanId])
+  @@map("MonthlyTrainingPlanLine")
+}
+
+model TrainingSchedule {
+  id                 Int       @id @default(autoincrement())
+  companyId          Int
+  trainingPlanLineId Int?
+  trainingProgramId  Int
+  title              String?   @db.NVarChar(200)
+  scheduledDate      DateTime? @db.Date
+  startTime          String?   @db.NVarChar(8)
+  endTime            String?   @db.NVarChar(8)
+  duration           Decimal?  @db.Decimal(8, 2)
+  durationUnit       String?   @default("HOURS") @db.NVarChar(20)
+  method             String?   @db.NVarChar(50)
+  venueId            Int?
+  meetingLink        String?   @db.NVarChar(500)
+  trainerId          Int?
+  coTrainerId        Int?
+  coordinator        String?   @db.NVarChar(100)
+  maxParticipants    Int?
+  minParticipants    Int?
+  targetDepartmentId Int?
+  targetGradeId      Int?
+  targetEmployeeIds  String?   @db.NVarChar(Max)
+  mentorEmployeeId   Int?      // mentor is an existing employee
+  // §17: mentor details per schedule — link to the TrainingMentor master plus
+  // this schedule's role / engagement window / expected outcome.
+  mentorId           Int?      // link to TrainingMentor master record
+  mentorRole         String?   @db.NVarChar(100)
+  mentorStartDate    DateTime? @db.Date
+  mentorEndDate      DateTime? @db.Date
+  mentorOutcome      String?   @db.NVarChar(300)
+  // §19: bookable resources reserved for this session (JSON array of TrainingResource ids).
+  resourceIds        String?   @db.NVarChar(Max)
+  materials          String?   @db.NVarChar(500)
+  assessmentRequired     Boolean @default(false)
+  feedbackRequired       Boolean @default(false)
+  certificationRequired  Boolean @default(false)
+  checklistId        Int?      // §44 optional checklist template attached to this schedule
+  checklistJson      String?   @db.NVarChar(Max) // §44 {"<itemId>": {done, auto, checkedAt}}
+  status             String    @default("PENDING") @db.NVarChar(20)
+  isActive           Boolean   @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  trainingProgram TrainingProgram @relation("ProgramSchedules", fields: [trainingProgramId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  nominations   TrainingNomination[] @relation("ScheduleNominations")
+  attendances   TrainingAttendance[] @relation("ScheduleAttendances")
+  feedbacks     TrainingFeedback[]   @relation("ScheduleFeedbacks")
+
+  @@index([companyId, scheduledDate])
+  @@index([companyId, status])
+  @@map("TrainingSchedule")
+}
+
+// ── Phase 1: closed-loop lifecycle (BRD §7–8, §20–22, §36–37, §50) ────────────
+// All additive. No FK into Employee/JobInfo/User — only employeeId scalar +
+// the Learning-owned tables above, so existing flows are not constrained.
+
+// §7–8 Training Need Analysis — raised from Skill Matrix gaps or by managers.
+model TrainingNeedRequest {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  competencyId    Int?
+  trainingProgramId Int?
+  source          String    @default("SKILL_GAP") @db.NVarChar(30) // SKILL_GAP | TNA | MANDATORY | MANAGER | PROMOTION | NEW_JOINING
+  reason          String?   @db.NVarChar(500)
+  priority        String    @default("MEDIUM") @db.NVarChar(20)
+  status          String    @default("DRAFT") @db.NVarChar(20) // DRAFT | SUBMITTED | APPROVED | REJECTED | PLANNED
+  currentStageOrder Int     @default(0)
+  approvedByUserId Int?
+  approvedAt      DateTime?
+  rejectionReason String?  @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt      DateTime?
+  tnaReference    String?   @db.NVarChar(100)
+  // §7.2: extended TNA attributes (all optional — existing rows unaffected).
+  tnaYear         Int?
+  category        String?   @db.NVarChar(50)
+  skillId         Int?
+  currentLevelId  Int?      // proficiency snapshot at request time
+  requiredLevelId Int?
+  gapLevel        String?   @db.NVarChar(20) // e.g. LOW | MEDIUM | HIGH | CRITICAL
+  businessImpact  String?   @db.NVarChar(500)
+  isMandatory     Boolean   @default(false)
+  proposedMethod  String?   @db.NVarChar(50)
+  proposedTrainer String?   @db.NVarChar(100)
+  targetDate      DateTime? @db.Date
+  estimatedCost   Decimal?  @db.Decimal(18, 2)
+  managerRemarks  String?   @db.NVarChar(500)
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, employeeId])
+  @@map("TrainingNeedRequest")
+}
+
+// §20 Employee Nomination — links an employee to a scheduled training.
+model TrainingNomination {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  trainingScheduleId Int
+  employeeId      Int
+  managerEmployeeId Int?    // nominating manager (Employee)
+  reason          String?   @db.NVarChar(200) // TNA | SKILL_GAP | MANDATORY | MANAGER | PLAN | PROMOTION | NEW_JOINING
+  priority        String    @default("MEDIUM") @db.NVarChar(20)
+  nominationDate  DateTime  @default(now())
+  status          String    @default("PENDING") @db.NVarChar(20) // PENDING | APPROVED | REJECTED | CANCELLED | NOMINATED
+  currentStageOrder Int     @default(0)
+  approvedByUserId Int?
+  approvedAt      DateTime?
+  rejectionReason String?  @db.NVarChar(500)
+  rejectedByUserId Int?
+  rejectedAt      DateTime?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  trainingSchedule TrainingSchedule @relation("ScheduleNominations", fields: [trainingScheduleId], references: [id], onDelete: Cascade)
+  attendance       TrainingAttendance?
+
+  @@unique([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, status])
+  @@index([companyId, employeeId])
+  @@map("TrainingNomination")
+}
+
+// §22 Training Attendance — one row per nominated employee per schedule.
+model TrainingAttendance {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  trainingScheduleId  Int
+  employeeId          Int
+  status              String    @default("ABSENT") @db.NVarChar(20) // PRESENT | ABSENT | LATE | PARTIAL | EXCUSED
+  attendedDuration    Decimal?  @db.Decimal(8, 2)
+  scheduledDuration   Decimal?  @db.Decimal(8, 2)
+  attendancePercent   Decimal?  @db.Decimal(5, 2)
+  markedByUserId      Int?
+  markedAt            DateTime?
+  remarks             String?   @db.NVarChar(500)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  trainingSchedule TrainingSchedule @relation("ScheduleAttendances", fields: [trainingScheduleId], references: [id], onDelete: Cascade)
+  nomination      TrainingNomination? @relation(fields: [nominationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  nominationId Int? @unique
+
+  @@unique([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+  @@map("TrainingAttendance")
+}
+
+// §37 Training Feedback — post-training rating + comments.
+model TrainingFeedback {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  trainingScheduleId  Int
+  employeeId          Int
+  trainerRating       Int?
+  contentRating       Int?
+  venueRating         Int?
+  overallRating       Int?
+  materialRating      Int?
+  durationRating      Int?
+  relevanceRating     Int?
+  learningOutcomeRating Int?
+  comments            String?   @db.NVarChar(1000)
+  submittedAt         DateTime  @default(now())
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  trainingSchedule TrainingSchedule @relation("ScheduleFeedbacks", fields: [trainingScheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, trainingScheduleId, employeeId])
+  @@index([companyId, trainingScheduleId])
+  @@map("TrainingFeedback")
+}
+
+// §36 Employee Training History — written automatically on schedule COMPLETED.
+// Read-only record of every training an employee has attended.
+model TrainingHistory {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  trainingScheduleId  Int?
+  trainingProgramId   Int?
+  programName         String    @db.NVarChar(200)
+  competencyId        Int?
+  scheduledDate       DateTime? @db.Date
+  method              String?   @db.NVarChar(50)
+  attendanceStatus    String?   @db.NVarChar(20)
+  attendancePercent   Decimal?  @db.Decimal(5, 2)
+  score               Decimal?  @db.Decimal(8, 2)
+  result              String?   @db.NVarChar(20) // PASS | FAIL | COMPLETED | INCOMPLETE
+  certificateNumber   String?   @db.NVarChar(50)
+  certifiedDate       DateTime? @db.Date
+  trainerId           Int?
+  venueId             Int?
+  // §36: remaining history columns — duration, cost and effectiveness.
+  duration            Decimal?  @db.Decimal(8, 2)
+  cost                Decimal?  @db.Decimal(18, 2)
+  effectivenessRating String?   @db.NVarChar(20)
+  status              String    @default("COMPLETED") @db.NVarChar(20)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([companyId, employeeId])
+  @@index([companyId, trainingScheduleId])
+  @@map("TrainingHistory")
+}
+
+// ── Phase 3: Assessment & Training Effectiveness (BRD §24–28) ────────────────
+// All additive. No FK into Employee/User — only employeeId / userId scalars
+// and the Learning-owned tables above, so existing flows are not constrained.
+
+// §24 Question Bank Group — groups of related questions for an assessment.
+model QuestionBankGroup {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String    @db.NVarChar(200)
+  description String?   @db.NVarChar(500)
+  passMark       Int?      // percentage
+  durationMinutes Int?
+  randomQuestions Boolean @default(false)
+  negativeMarking Boolean @default(false)
+  competencyId   Int?
+  gradeId        Int?
+  // §25: groups can also be linked to a skill, a proficiency level and a
+  // training program.
+  skillId           Int?
+  proficiencyLevelId Int?
+  trainingProgramId Int?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  questions   QuestionBank[]
+
+  @@index([companyId])
+  @@map("QuestionBankGroup")
+}
+
+// §24 Question Bank — individual questions. type: MCQ | TRUE_FALSE | SHORT_ANSWER | RATING.
+model QuestionBank {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  groupId     Int?
+  question    String    @db.NVarChar(1000)
+  questionType String   @default("MCQ") @db.NVarChar(20) // MCQ | TRUE_FALSE | SHORT_ANSWER | RATING | MULTI_SELECT | DESCRIPTIVE | SCENARIO | PRACTICAL | FILL_BLANK
+  options     String?   @db.NVarChar(Max) // JSON array for MCQ/MULTI_SELECT
+  correctAnswer String? @db.NVarChar(500) // for auto-scoring
+  maxScore    Int       @default(1)
+  difficulty  String?   @db.NVarChar(20) // EASY | MEDIUM | HARD
+  explanation String?   @db.NVarChar(1000)
+  competencyId Int?
+  skillId           Int?      // §24 question-level skill link
+  proficiencyLevelId Int?     // §24 proficiency level this question targets
+  category          String?   @db.NVarChar(100) // §24 question category
+  topic             String?   @db.NVarChar(200) // §24 question topic
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  group       QuestionBankGroup? @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, groupId])
+  @@map("QuestionBank")
+}
+
+// §26 Assessment — linked to a TrainingProgram (pre/post test).
+model Assessment {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  trainingProgramId   Int?
+  trainingScheduleId  Int?
+  title               String    @db.NVarChar(200)
+  description         String?   @db.NVarChar(500)
+  assessmentType      String    @default("POST") @db.NVarChar(20) // PRE | POST | PERIODIC | CERTIFICATION
+  passingScore        Int       @default(70) // percentage
+  durationMinutes     Int?
+  maxAttempts         Int       @default(1)
+  questionIds         String?   @db.NVarChar(Max) // JSON array of QuestionBank ids
+  // §51 opt-in: when enabled, a PASS promotes the linked competency/skill
+  // level. Off by default so existing assessments are unaffected.
+  promoteOnPass       Boolean   @default(false)
+  promoteToLevelId    Int?
+  promoteToLevel      SkillLevel? @relation(fields: [promoteToLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  attempts    AssessmentAttempt[]
+
+  @@index([companyId, trainingProgramId])
+  @@index([companyId, trainingScheduleId])
+  @@map("Assessment")
+}
+
+// §26 Assessment Attempt — one per employee per assessment.
+model AssessmentAttempt {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  assessmentId    Int
+  employeeId      Int
+  answersJson     String?   @db.NVarChar(Max) // JSON: [{ questionId, answer, score }]
+  questionIdsJson String?   @db.NVarChar(Max) // §25: shuffled question order for this attempt (randomQuestions)
+  totalScore      Int       @default(0)
+  maxScore        Int       @default(0)
+  scorePercent    Int       @default(0)
+  result          String    @default("INCOMPLETE") @db.NVarChar(20) // PASS | FAIL | INCOMPLETE
+  attemptNumber   Int       @default(1)
+  timeTakenSeconds Int?
+  startedAt       DateTime  @default(now())
+  submittedAt     DateTime?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assessment      Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, assessmentId, employeeId])
+  @@index([companyId, employeeId])
+  @@map("AssessmentAttempt")
+}
+
+// §27–28 Training Effectiveness — pre/post score comparison + Kirkpatrick levels.
+model TrainingEffectiveness {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  trainingScheduleId  Int
+  employeeId          Int
+  preScore            Int?      // percentage
+  postScore           Int?      // percentage
+  scoreImprovement    Int?      // postScore - preScore
+  // Kirkpatrick 4 levels (BRD §27)
+  level1Reaction      Int?      // 1-5 rating (satisfaction)
+  level2Learning      Int?      // percentage (knowledge gain)
+  level3Behavior       Int?      // 1-5 rating (behavior change, post-training eval)
+  level4Results       Int?      // 1-5 rating (business impact)
+  effectivenessRating  String?  @db.NVarChar(20) // EXCELLENT | GOOD | AVERAGE | POOR
+  evaluationStage     String?   @db.NVarChar(10) // IMMEDIATE | D30 | D60 | D90
+  // Manager evaluation section (BRD §28)
+  applicationOfLearning Int?
+  behavioralChange      Int?
+  skillImprovement      Int?
+  productivityImprovement Int?
+  qualityImprovement    Int?
+  additionalTrainingRequired Boolean @default(false)
+  // L&D section (BRD §28)
+  trainingOutcome       String?   @db.NVarChar(500)
+  roiImpact             String?   @db.NVarChar(500)
+  recommendation        String?   @db.NVarChar(500)
+  followUpRequired      Boolean   @default(false)
+  evaluationDate      DateTime? @db.Date
+  remarks            String?   @db.NVarChar(500)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([companyId, trainingScheduleId, employeeId, evaluationStage])
+  @@index([companyId, trainingScheduleId])
+  @@index([companyId, employeeId])
+  @@map("TrainingEffectiveness")
+}
+
+// ── Phase 5: Remaining BRD scope (§13, §23, §33–35, §43–44) ──────────────────
+// All additive. No FK into Employee/User — only scalar ids and the
+// Learning-owned tables above, so existing flows are not constrained.
+
+// §13 Training Policy — per-company rules (min attendance %, assessment
+// mandate, nomination windows, external-training budget cap, etc.).
+model TrainingPolicy {
+  id                        Int       @id @default(autoincrement())
+  companyId                 Int
+  name                      String    @db.NVarChar(200)
+  minAttendancePercent      Int?      // minimum attendance % required to count a training completed
+  assessmentRequired        Boolean   @default(false)
+  feedbackRequired          Boolean   @default(true)
+  nominationCutoffDays      Int?      // days before schedule when nomination closes
+  externalBudgetCap         Decimal?  @db.Decimal(18, 2) // max cost per external training before escalation
+  mandatoryTrainingGraceDays Int?     // grace days for completing mandatory trainings
+  effectiveFrom             DateTime? @db.Date
+  effectiveTo               DateTime? @db.Date
+  policyNumber              String?   @db.NVarChar(30)
+  version                   String?   @db.NVarChar(20)
+  applicableDepartmentId    Int?
+  applicableLocationId      Int?
+  applicableGroup           String?   @db.NVarChar(100)
+  approvalStatus            String    @default("DRAFT") @db.NVarChar(20) // DRAFT | APPROVED
+  approvedByUserId          Int?
+  approvedAt                DateTime?
+  attachmentPath            String?   @db.NVarChar(500)
+  remarks                   String?   @db.NVarChar(500)
+  // §13: policy rule fields.
+  reimbursementRules        String?   @db.NVarChar(500) // % / caps for cost reimbursement
+  cancellationRules         String?   @db.NVarChar(500) // penalties / notice rules
+  minTrainingHoursPerYear   Int?      // minimum hours each employee must complete per year
+  employeeObligations       String?   @db.NVarChar(500) // bond / service agreement notes
+  // §13: remaining policy rule text blocks (free-text rules, all optional).
+  eligibilityRules          String?   @db.NVarChar(500) // who is eligible for which training
+  nominationRules           String?   @db.NVarChar(500) // nomination windows / quotas
+  approvalHierarchy         String?   @db.NVarChar(500) // textual approval-chain description
+  externalTrainingRules     String?   @db.NVarChar(500) // external-training policy text
+  costPolicyRules           String?   @db.NVarChar(500) // training cost policy text
+  certificationRules        String?   @db.NVarChar(500) // certification policy text
+  attendanceRules           String?   @db.NVarChar(500) // attendance requirements text
+  effectivenessRules        String?   @db.NVarChar(500) // effectiveness evaluation rules
+  validityRules             String?   @db.NVarChar(500) // training validity rules
+  refresherRules            String?   @db.NVarChar(500) // refresher requirements
+  managerResponsibilities   String?   @db.NVarChar(500)
+  hrResponsibilities        String?   @db.NVarChar(500)
+  isActive                  Boolean   @default(true)
+  deletedAt                 DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("TrainingPolicy")
+}
+
+// §34 Training Budget — annual budget per department; actuals accumulate
+// from TrainingPlanLine.estimatedCost / actual spend at closure.
+model TrainingBudget {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  year           String    @db.NVarChar(9)
+  departmentId   Int?
+  locationId     Int?
+  category       String?   @db.NVarChar(50)
+  allocatedAmount Decimal  @db.Decimal(18, 2)
+  approvedAmount Decimal?  @db.Decimal(18, 2)
+  utilizedAmount  Decimal  @default(0) @db.Decimal(18, 2)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([companyId, year, departmentId])
+  @@index([companyId, year])
+  @@map("TrainingBudget")
+}
+
+// §34 Cost components — actual spend line items against a schedule or an
+// external training. Keeps Budget.utilizedAmount in sync via the API.
+model TrainingCostItem {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  trainingScheduleId  Int?
+  externalTrainingId  Int?
+  head                String    @db.NVarChar(30) // TRAINER_FEE|VENUE|TRAVEL|ACCOMMODATION|MATERIAL|CERTIFICATION|SOFTWARE|FOOD|EMPLOYEE_TRAVEL|OTHER
+  amount              Decimal   @db.Decimal(18, 2)
+  description         String?   @db.NVarChar(300)
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([companyId, trainingScheduleId])
+  @@index([companyId, externalTrainingId])
+  @@map("TrainingCostItem")
+}
+
+// §23 Induction Program — template for new joiners.
+model InductionProgram {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  name            String    @db.NVarChar(200)
+  departmentId    Int?      // null = applies to all departments
+  designationId   Int?      // null = all designations
+  locationId      Int?      // null = all locations
+  durationDays    Int?
+  topicsJson      String?   @db.NVarChar(Max) // [{topic, trainer, day}]
+  description     String?   @db.NVarChar(500)
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assignments     InductionAssignment[]
+
+  @@index([companyId, departmentId])
+  @@map("InductionProgram")
+}
+
+// §23 Induction Assignment — program auto-assigned to a new joiner.
+model InductionAssignment {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  inductionProgramId Int
+  employeeId        Int
+  assignedDate      DateTime  @default(now())
+  targetDate        DateTime? @db.Date
+  completedDate     DateTime? @db.Date
+  checklistJson     String?   @db.NVarChar(Max) // [{topic, done, date}]
+  employeeConfirmed Boolean   @default(false)
+  confirmedAt       DateTime?
+  status            String    @default("PENDING") @db.NVarChar(20) // PENDING | IN_PROGRESS | COMPLETED
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  program           InductionProgram @relation(fields: [inductionProgramId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([companyId, inductionProgramId, employeeId])
+  @@index([companyId, employeeId])
+  @@map("InductionAssignment")
+}
+
+// §43 OJT Assignment — on-the-job training with a mentor.
+model OjtAssignment {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  employeeId        Int
+  mentorEmployeeId  Int?      // mentor is an existing employee
+  trainerId         Int?      // or a Trainer master record
+  competencyId      Int?
+  trainingProgramId Int?
+  startDate         DateTime? @db.Date
+  endDate           DateTime? @db.Date
+  checklistId       Int?      // link to TrainingChecklist
+  skillsCovered     String?   @db.NVarChar(500)
+  observation       String?   @db.NVarChar(1000)
+  assessmentId      Int?      // §43 link to an Assessment taken for this OJT
+  assessmentScore   Decimal?  @db.Decimal(5, 2)
+  signOffByUserId   Int?
+  signOffDate       DateTime? @db.Date
+  status            String    @default("IN_PROGRESS") @db.NVarChar(20) // IN_PROGRESS | COMPLETED | CANCELLED
+  remarks           String?   @db.NVarChar(500)
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([companyId, employeeId])
+  @@map("OjtAssignment")
+}
+
+// §44 Training Checklist — a reusable list (e.g. pre-training logistics,
+// post-training follow-ups). Items belong to the checklist.
+model TrainingChecklist {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String    @db.NVarChar(200)
+  checklistType String  @default("GENERAL") @db.NVarChar(30) // PRE | POST | GENERAL
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items       TrainingChecklistItem[]
+
+  @@index([companyId])
+  @@map("TrainingChecklist")
+}
+
+model TrainingChecklistItem {
+  id           Int       @id @default(autoincrement())
+  checklistId  Int
+  label        String    @db.NVarChar(300)
+  sortOrder    Int       @default(0)
+  isMandatory  Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  checklist    TrainingChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([checklistId])
+  @@map("TrainingChecklistItem")
+}
+
+// §33 Training Certificate — issued on completion where the program has
+// certificationRequired. Supports generated or uploaded certificate file.
+model TrainingCertificate {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  trainingScheduleId  Int?
+  trainingProgramId   Int?
+  certificateNumber   String    @db.NVarChar(50)
+  issueDate           DateTime? @db.Date
+  expiryDate          DateTime? @db.Date
+  filePath            String?   @db.NVarChar(500)
+  issuedByUserId      Int?
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([companyId, certificateNumber])
+  @@index([companyId, employeeId])
+  @@map("TrainingCertificate")
+}
+
+// ── Phase 7: Skill master chain (BRD §29, §47) ───────────────────────────────
+// Skill master parallel to Competency — a distinct catalog of granular skills
+// (e.g. "Excel", "SQL") separate from broader competencies. EmployeeSkill on
+// the profile is untouched; this chain feeds the Skill Matrix.
+
+// Skill master — organization-wide skill catalog.
+model Skill {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  code        String?   @db.NVarChar(20)
+  name        String    @db.NVarChar(100)
+  category    String?   @db.NVarChar(50)
+  description String?   @db.NVarChar(500)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  requirements      SkillRequirement[]
+  employeeSkillLvls EmployeeSkillLevel[]
+
+  @@index([companyId, category])
+  @@map("Skill")
+}
+
+// SkillRequirement — required proficiency for a skill by role scope
+// (department / designation / grade), same semantics as CompetencyRequirement.
+model SkillRequirement {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  skillId         Int
+  departmentId    Int?
+  designationId   Int?
+  gradeId         Int?
+  // §30: job-role scope (same semantics as CompetencyRequirement.jobRole).
+  jobRole         String?   @db.NVarChar(100)
+  requiredLevelId Int
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  skill         Skill      @relation(fields: [skillId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requiredLevel SkillLevel @relation(fields: [requiredLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([companyId, skillId])
+  @@index([companyId, departmentId, designationId, gradeId])
+  @@map("SkillRequirement")
+}
+
+// EmployeeSkillLevel — current proficiency per skill per employee.
+model EmployeeSkillLevel {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  employeeId     Int
+  skillId        Int
+  currentLevelId Int
+  targetLevelId  Int?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  skill        Skill       @relation(fields: [skillId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currentLevel SkillLevel  @relation("SkillCurrentLevel", fields: [currentLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  targetLevel  SkillLevel? @relation("SkillTargetLevel", fields: [targetLevelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([companyId, employeeId, skillId])
+  @@index([employeeId])
+  @@map("EmployeeSkillLevel")
+}
+
+// ── Phase 12: Documents, External Training, IDP (BRD §35, §38, §48) ─────────
+
+// §38 Training Document — attachment library. Materials, attendance sheets,
+// certificates, invoices etc. linked to a schedule / program / employee.
+model TrainingDocument {
+  id                 Int       @id @default(autoincrement())
+  companyId          Int
+  title              String    @db.NVarChar(200)
+  docType            String    @default("MATERIAL") @db.NVarChar(30) // MATERIAL | ATTENDANCE_SHEET | CERTIFICATE | INVOICE | PO | POLICY | OTHER
+  filePath           String    @db.NVarChar(500)
+  fileSize           Int?
+  mimeType           String?   @db.NVarChar(100)
+  trainingScheduleId Int?
+  trainingProgramId  Int?
+  employeeId         Int?
+  uploadedByUserId   Int?
+  remarks            String?   @db.NVarChar(500)
+  accessRoles        String?   @db.NVarChar(500) // §38: CSV of role names allowed to view/download (null = all roles)
+  isActive           Boolean   @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([companyId, trainingScheduleId])
+  @@index([companyId, trainingProgramId])
+  @@index([companyId, employeeId])
+  @@map("TrainingDocument")
+}
+
+// §35 External Training — provider-managed training with commercial tracking
+// (PO → invoice → payment → certificate).
+model ExternalTraining {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  title             String    @db.NVarChar(200)
+  providerName      String    @db.NVarChar(200)
+  providerId        Int?      // §35 link to TrainingProvider master (providerName kept for display/legacy rows)
+  providerContact   String?   @db.NVarChar(200)
+  trainerName       String?   @db.NVarChar(100) // §35 external trainer (distinct from provider org)
+  trainingProgramId Int?
+  employeeIds       String?   @db.NVarChar(Max) // CSV of nominated employees
+  startDate         DateTime? @db.Date
+  endDate           DateTime? @db.Date
+  poNumber          String?   @db.NVarChar(50)
+  poAmount          Decimal?  @db.Decimal(18, 2)
+  invoiceNumber     String?   @db.NVarChar(50)
+  invoiceAmount     Decimal?  @db.Decimal(18, 2)
+  invoiceDate       DateTime? @db.Date
+  paymentStatus     String    @default("UNPAID") @db.NVarChar(20) // UNPAID | PARTIAL | PAID
+  paidAmount        Decimal?  @db.Decimal(18, 2)
+  paidDate          DateTime? @db.Date
+  certificateIssued Boolean   @default(false)
+  status            String    @default("PLANNED") @db.NVarChar(20) // PLANNED | SUBMITTED | UNDER_REVIEW | APPROVED | IN_PROGRESS | COMPLETED | CANCELLED | REJECTED | RETURNED
+  currentStageOrder Int       @default(0) // §21 approval chain stage
+  rejectionReason   String?   @db.NVarChar(500)
+  remarks           String?   @db.NVarChar(500)
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, providerName])
+  @@map("ExternalTraining")
+}
+
+// §35 External Training Participant — a real participant record per employee
+// (replaces the loose employeeIds CSV for new flows; CSV kept for display).
+// Carries completion, certificate link, feedback and effectiveness ratings.
+model ExternalTrainingParticipant {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  externalTrainingId  Int
+  employeeId          Int
+  status              String    @default("NOMINATED") @db.NVarChar(20) // NOMINATED | COMPLETED | CANCELLED
+  certificateId       Int?      // link to TrainingCertificate issued for this training
+  feedbackRating      Int?      // 1-5
+  feedbackComments    String?   @db.NVarChar(1000)
+  effectivenessRating String?   @db.NVarChar(20) // EXCELLENT | GOOD | AVERAGE | POOR
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([companyId, externalTrainingId, employeeId])
+  @@index([companyId, employeeId])
+  @@map("ExternalTrainingParticipant")
+}
+
+// §48/§53 Individual Development Plan — employee's career development path.
+model IndividualDevelopmentPlan {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int
+  title            String    @db.NVarChar(200)
+  goal             String?   @db.NVarChar(500)
+  competencyId     Int?
+  skillId          Int?
+  currentLevelId   Int?
+  targetLevelId    Int?
+  trainingProgramId Int?     // recommended program to close the gap
+  mentorEmployeeId Int?
+  startDate        DateTime? @db.Date
+  targetDate       DateTime? @db.Date
+  progressNotes    String?   @db.NVarChar(Max) // [{date, note, progressPct}]
+  status           String    @default("ACTIVE") @db.NVarChar(20) // ACTIVE | COMPLETED | ON_HOLD | CANCELLED
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId, employeeId])
+  @@index([companyId, status])
+  @@map("IndividualDevelopmentPlan")
 }

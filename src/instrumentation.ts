@@ -19,4 +19,7 @@ export async function register() {
 
   const { startEscalationScheduler } = await import('./lib/platform/workflow/escalation');
   startEscalationScheduler();
+
+  const { startLearningScheduler } = await import('./lib/learning/scheduler');
+  startLearningScheduler();
 }
