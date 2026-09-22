@@ -59,7 +59,7 @@ export default function Alert({ tone = 'info', children, onDismiss, className = 
   return (
     <div
       role={tone === 'danger' ? 'alert' : 'status'}
-      className={`flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-sm ${className}`}
+      className={`flex items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-sm ${className}`}
       style={{ backgroundColor: t.bg, color: 'var(--foreground)', border: `1px solid ${t.fg}33` }}
     >
       <span className="mt-0.5 shrink-0" style={{ color: t.fg }}>

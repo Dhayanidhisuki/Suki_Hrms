@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useToast } from '@/components/ui';
 
 interface AppRow {
@@ -106,6 +107,57 @@ export default function LeaveReportPage() {
   const handleExport = () => {
     window.open(`/api/reports/attendance/leave-summary?year=${year}&month=${month}&format=csv`, '_blank');
   };
+  const handleExportPdf = () => {
+    window.open(`/api/reports/attendance/leave-summary?year=${year}&month=${month}&format=pdf`, '_blank');
+  };
+
+  // Excel carries all three views the page shows — applications, balances and
+  // the by-leave-type summary — one sheet each, from the already-loaded data.
+  const handleExportExcel = () => {
+    if (!data) return;
+    const apps = data.applications.map((a, i) => ({
+      'Sl No': i + 1,
+      'Emp Code': a.employeeCode,
+      'Employee Name': a.employeeName,
+      Department: a.department,
+      'Leave Type': a.leaveTypeName,
+      Paid: a.isPaid ? 'Yes' : 'No',
+      'From Date': a.fromDate,
+      'To Date': a.toDate,
+      Days: a.numberOfDays,
+      'Half Day': a.isHalfDay ? 'Yes' : 'No',
+      Status: statusLabel[a.status] ?? a.status,
+      Reason: a.reason ?? '',
+      'Applied At': a.appliedAt,
+      'Approved At': a.approvedAt ?? '',
+    }));
+    const balances = data.balances.map((b, i) => ({
+      'Sl No': i + 1,
+      'Emp Code': b.employeeCode,
+      'Employee Name': b.employeeName,
+      'Leave Type': b.leaveTypeName,
+      Opening: b.openingBalance,
+      Accrued: b.accrued,
+      Availed: b.availed,
+      Adjusted: b.adjusted,
+      Closing: b.closingBalance,
+      Encashed: b.encashed,
+      Lapsed: b.lapsed,
+      Expired: b.expired,
+      'Pending Approval': b.pendingApproval,
+    }));
+    const byType = data.byLeaveType.map((t) => ({
+      'Leave Type': t.leaveType, Applications: t.count, Days: t.days,
+      Approved: t.approved, Pending: t.pending, Rejected: t.rejected,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(apps), 'Applications');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(balances), 'Balances');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byType), 'By Leave Type');
+    XLSX.writeFile(wb, `leave_report_${year}_${String(month).padStart(2, '0')}.xlsx`);
+  };
+
+  const hasRows = (data?.applications.length ?? 0) > 0 || (data?.balances.length ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -116,7 +168,9 @@ export default function LeaveReportPage() {
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}</option>)}
           </select>
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }} />
-          <button onClick={handleExport} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
+          <button onClick={handleExport} disabled={!hasRows} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
+          <button onClick={handleExportExcel} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Download Excel</button>
+          <button onClick={handleExportPdf} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Download PDF</button>
         </div>
       </div>
 

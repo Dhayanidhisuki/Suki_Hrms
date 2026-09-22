@@ -62,8 +62,8 @@ export default function KPICard({ label, value, subtitle, tone = 'info', icon, a
 
   return (
     <div
-      className="rounded-lg border p-4 flex flex-col gap-3 transition-all duration-300 hover:shadow-lg"
-      style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="flex flex-col gap-3 rounded-2xl border p-4 shadow-xs transition-all duration-300 hover:shadow-lg"
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-main)' }}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -81,7 +81,7 @@ export default function KPICard({ label, value, subtitle, tone = 'info', icon, a
         </div>
         {icon && (
           <div
-            className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300"
             style={{ backgroundColor: style.bg, color: style.icon }}
           >
             {icon}

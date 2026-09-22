@@ -55,10 +55,17 @@ export async function GET(request: NextRequest) {
     if (queue === 'hr') managerFilter = { status: 'pending_hr' };
   }
 
+  // `pending` is not a stored status — the two live stages are
+  // pending_manager and pending_hr. Passing it straight to Prisma matched
+  // nothing, which left the Leave Approval page permanently empty (and so
+  // with no row actions). Treat it as "either stage still awaiting a decision".
+  const statusFilter =
+    status === 'pending' ? { status: { in: ['pending_manager', 'pending_hr'] } } : status ? { status } : {};
+
   const records = await prisma.leaveApplication.findMany({
     where: {
       employee: { companyId: scope.companyId, deletedAt: null },
-      ...(status ? { status } : {}),
+      ...statusFilter,
       ...(employeeIdParam ? { employeeId: Number(employeeIdParam) } : {}),
       ...managerFilter,
     },

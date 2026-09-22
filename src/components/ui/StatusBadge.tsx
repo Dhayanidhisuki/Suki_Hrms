@@ -36,8 +36,8 @@ export default function StatusBadge({ tone = 'neutral', children, dot, size = 'x
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-medium ${size === 'xs' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'} ${className}`}
-      style={{ backgroundColor: bg, color: fg }}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-semibold ${size === 'xs' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'} ${className}`}
+      style={{ backgroundColor: bg, color: fg, borderColor: `${fg}40` }}
     >
       {dot && <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: fg }} aria-hidden />}
       {children}

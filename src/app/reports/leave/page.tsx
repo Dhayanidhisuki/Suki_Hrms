@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useToast } from '@/components/ui';
 
 interface ReportData {
@@ -39,7 +40,35 @@ export default function LeaveReportPage() {
   }, [year, month, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
   const handleExport = () => { window.open(`/api/reports/leave?year=${year}&month=${month}&format=csv`, '_blank'); };
+  const handleExportPdf = () => { window.open(`/api/reports/leave?year=${year}&month=${month}&format=pdf`, '_blank'); };
+
+  // Excel is built client-side from the rows already loaded, matching the
+  // Performance Incentive report; PDF is server-rendered via ?format=pdf.
+  const handleExportExcel = () => {
+    if (!data) return;
+    const rows = data.balances.map((b, i) => ({
+      'Sl No': i + 1,
+      'Emp Code': b.employeeCode,
+      'Employee Name': b.name,
+      'Leave Type': b.leaveType,
+      Opening: b.opening,
+      Accrued: b.accrued,
+      Availed: b.availed,
+      Closing: b.closing,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Leave Balances');
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(data.byLeaveType.map((t) => ({ 'Leave Type': t.leaveType, Applications: t.count, Days: t.days }))),
+      'By Leave Type'
+    );
+    XLSX.writeFile(wb, `leave_${year}_${String(month).padStart(2, '0')}.xlsx`);
+  };
+
+  const hasRows = (data?.balances.length ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -50,7 +79,9 @@ export default function LeaveReportPage() {
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}</option>)}
           </select>
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }} />
-          <button onClick={handleExport} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
+          <button onClick={handleExport} disabled={!hasRows} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
+          <button onClick={handleExportExcel} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Download Excel</button>
+          <button onClick={handleExportPdf} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Download PDF</button>
         </div>
       </div>
       {loading ? <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div> : data ? (

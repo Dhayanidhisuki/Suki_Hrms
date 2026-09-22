@@ -15,23 +15,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
-
-import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
-import { refreshMonthlySummary } from '@/lib/biometricConversion';
-import { debitCompOff } from '@/lib/compOffTransactions';
-
-function datesBetween(from: Date, to: Date): Date[] {
-  const dates: Date[] = [];
-  const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
-  const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
-  while (cursor <= end) {
-    dates.push(new Date(cursor));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return dates;
-}
+import { checkCanApprove, commitLeaveApproval, type LeaveApprovalTarget } from '@/lib/leave/finalizeApproval';
 
 export async function POST(
   request: NextRequest,
@@ -76,113 +61,25 @@ export async function POST(
     const permErr = await checkSpecificPermission(request, 'workforce.leave.approve');
     if (permErr) return permErr;
 
-    // Approving writes DailyAttendance rows (below) — block if either end of
-    // the range falls in a frozen month.
-    const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
-    if (freezeErrFrom) return freezeErrFrom;
-    const freezeErrTo = await checkMonthNotFrozen(application.employeeId, application.toDate);
-    if (freezeErrTo) return freezeErrTo;
+    const target: LeaveApprovalTarget = {
+      id: applicationId,
+      employeeId: application.employeeId,
+      leaveMasterId: application.leaveMasterId,
+      fromDate: application.fromDate,
+      toDate: application.toDate,
+      numberOfDays: Number(application.numberOfDays),
+      leaveCode: application.leaveMaster.code,
+    };
 
-    const numberOfDays = Number(application.numberOfDays);
-    const year = application.fromDate.getUTCFullYear();
+    // Approving writes DailyAttendance rows and moves the balance ledger —
+    // both guards live with the commit so the bulk importer applies them
+    // identically.
+    const blocked = await checkCanApprove(target);
+    if (blocked) return NextResponse.json({ error: blocked.message }, { status: 409 });
 
-    // Block approval if the employee does not have enough balance.
-    // For COMPOFF, check the comp-off ledger; for all other types, the
-    // LeaveBalance closing balance. Insufficient balance keeps the days as LOP
-    // and the request must be reduced or rejected.
-    if (application.leaveMaster.code === 'COMPOFF') {
-      const compOff = await prisma.compOffBalance.findUnique({
-        where: { employeeId: application.employeeId },
-      });
-      const available = compOff ? Number(compOff.balance) : 0;
-      if (available < numberOfDays) {
-        return NextResponse.json(
-          { error: `Insufficient comp-off balance: ${available.toFixed(2)} day(s) available, ${numberOfDays} requested` },
-          { status: 409 }
-        );
-      }
-    } else {
-      const leaveBalance = await prisma.leaveBalance.findUnique({
-        where: {
-          employeeId_leaveMasterId_year: {
-            employeeId: application.employeeId,
-            leaveMasterId: application.leaveMasterId,
-            year,
-          },
-        },
-      });
-      const available = leaveBalance ? Number(leaveBalance.closingBalance) : 0;
-      if (available < numberOfDays) {
-        return NextResponse.json(
-          { error: `Insufficient ${application.leaveMaster.code} balance: ${available.toFixed(2)} day(s) available, ${numberOfDays} requested` },
-          { status: 409 }
-        );
-      }
-    }
+    await commitLeaveApproval(target, userId || null);
 
-    const touchedMonths = new Set<string>();
-    const leaveDates = datesBetween(application.fromDate, application.toDate);
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const app = await tx.leaveApplication.update({
-        where: { id: applicationId },
-        data: { status: 'approved', approvedByUserId: userId, approvedAt: new Date() },
-      });
-
-      await tx.leaveBalance.upsert({
-        where: {
-          employeeId_leaveMasterId_year: {
-            employeeId: application.employeeId,
-            leaveMasterId: application.leaveMasterId,
-            year,
-          },
-        },
-        update: {
-          availed: { increment: numberOfDays },
-          closingBalance: { decrement: numberOfDays },
-        },
-        create: {
-          employeeId: application.employeeId,
-          leaveMasterId: application.leaveMasterId,
-          year,
-          availed: numberOfDays,
-          closingBalance: -numberOfDays,
-        },
-      });
-
-      for (const date of leaveDates) {
-        await upsertDailyAttendanceWithHistory(
-          tx,
-          application.employeeId,
-          date,
-          { status: 'Leave', source: 'manual' },
-          { userId, changedBySource: 'manual' }
-        );
-        touchedMonths.add(`${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`);
-      }
-
-      return app;
-    });
-
-    for (const key of touchedMonths) {
-      const [y, m] = key.split('-').map(Number);
-      await refreshMonthlySummary(application.employeeId, y, m);
-    }
-
-    // If this is a comp-off leave, also debit the CompOffBalance audit trail.
-    // The LeaveBalance ledger is the source of truth for availability; this
-    // layer tracks individual transactions with policy-driven expiry.
-    if (application.leaveMaster.code === 'COMPOFF') {
-      await debitCompOff(
-        application.employeeId,
-        numberOfDays,
-        application.fromDate,
-        'LEAVE',
-        applicationId,
-        `Comp-off leave approved (${numberOfDays} day(s))`
-      );
-    }
-
+    const updated = await prisma.leaveApplication.findUnique({ where: { id: applicationId } });
     return NextResponse.json(updated);
   }
 

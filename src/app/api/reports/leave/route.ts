@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { generateReportTablePdf } from '@/lib/reportTablePdf';
+
+const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -79,6 +82,38 @@ export async function GET(request: NextRequest) {
       closing: Number(b.closingBalance),
     })),
   };
+
+  if (format === 'pdf') {
+    const company = await prisma.company.findUnique({ where: { id: scope.companyId }, select: { name: true } });
+    const pdfBytes = await generateReportTablePdf({
+      title: `${company?.name ?? 'Company'} — Leave Summary Report`,
+      subtitle: `For the month of ${MONTH_NAMES[month]} ${year}`,
+      columns: [
+        { label: 'Sl No', width: 32, value: (_r, i) => String(i + 1) },
+        { label: 'Emp Code', width: 60, value: (r) => r.employeeCode },
+        { label: 'Employee Name', width: 130, value: (r) => r.name },
+        { label: 'Leave Type', width: 110, value: (r) => r.leaveType },
+        { label: 'Opening', width: 55, align: 'right', value: (r) => r.opening.toFixed(2) },
+        { label: 'Accrued', width: 55, align: 'right', value: (r) => r.accrued.toFixed(2) },
+        { label: 'Availed', width: 55, align: 'right', value: (r) => r.availed.toFixed(2) },
+        { label: 'Closing', width: 55, align: 'right', value: (r) => r.closing.toFixed(2) },
+      ],
+      rows: report.balances,
+      footer: [
+        { label: 'Balance Rows', value: String(report.balances.length) },
+        { label: 'Applications', value: String(report.totalApplications) },
+        { label: 'Approved', value: String(report.approved) },
+        { label: 'Pending', value: String(report.pending) },
+      ],
+      emptyMessage: 'No leave balances for this period.',
+    });
+    return new NextResponse(Buffer.from(pdfBytes), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="leave_${year}_${String(month).padStart(2, '0')}.pdf"`,
+      },
+    });
+  }
 
   if (format === 'csv') {
     const headers = ['Code', 'Name', 'Leave Type', 'Opening', 'Accrued', 'Availed', 'Closing'];

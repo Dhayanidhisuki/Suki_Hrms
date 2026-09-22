@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useToast } from '@/components/ui';
 
 interface TxnRow {
@@ -151,11 +152,58 @@ export default function CompOffReportPage() {
 
   const collapseAll = () => setExpandedRows(new Set());
 
-  const handleExport = (detail: boolean) => {
-    const params = new URLSearchParams({ year: String(year), month: String(month), format: 'csv' });
+  const openExport = (format: 'csv' | 'pdf', detail: boolean) => {
+    const params = new URLSearchParams({ year: String(year), month: String(month), format });
     if (detail) params.set('detail', '1');
     window.open(`/api/reports/attendance/comp-off?${params.toString()}`, '_blank');
   };
+  const handleExport = (detail: boolean) => openExport('csv', detail);
+
+  // One workbook covering both views: the per-employee summary and the flat
+  // transaction log the detail export uses, built from the loaded rows.
+  const handleExportExcel = () => {
+    if (!data) return;
+    const summary = data.rows.map((r, i) => ({
+      'Sl No': i + 1,
+      'Emp Code': r.employeeCode,
+      'Employee Name': r.employeeName,
+      Department: r.department,
+      'Current Balance': r.currentBalance,
+      'Total Earned': r.totalEarned,
+      'Total Used': r.totalUsed,
+      'Total Expired': r.totalExpired,
+      'Total Encashed': r.totalEncashed,
+      'Credits (This Month)': r.creditsThisMonth,
+      'Debits (This Month)': r.debitsThisMonth,
+      'Expired (This Month)': r.expiredThisMonth,
+      'Encashed (This Month)': r.encashedThisMonth,
+      Requests: r.requestCount,
+      Approved: r.approvedRequests,
+      Pending: r.pendingRequests,
+      Rejected: r.rejectedRequests,
+      'OT Comp-Off Days': r.otCompOffCount,
+      'OT Comp-Off Minutes': r.otCompOffMinutes,
+    }));
+    const txns = data.rows.flatMap((r) =>
+      r.txnBreakdown.map((t) => ({
+        'Emp Code': r.employeeCode,
+        'Employee Name': r.employeeName,
+        Department: r.department,
+        Date: t.date,
+        Type: t.type,
+        Days: t.days,
+        'Balance After': t.balanceAfter,
+        'Source Type': t.sourceType ?? '',
+        Reason: t.reason ?? '',
+      }))
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txns), 'Transactions');
+    XLSX.writeFile(wb, `comp_off_${year}_${String(month).padStart(2, '0')}.xlsx`);
+  };
+
+  const hasRows = (data?.rows.length ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -166,8 +214,11 @@ export default function CompOffReportPage() {
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}</option>)}
           </select>
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }} />
-          <button onClick={() => handleExport(false)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Export Summary CSV</button>
-          <button onClick={() => handleExport(true)} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>Export Detail CSV</button>
+          <button onClick={() => handleExport(false)} disabled={!hasRows} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: 'var(--primary)' }}>Export Summary CSV</button>
+          <button onClick={() => handleExport(true)} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>Export Detail CSV</button>
+          <button onClick={handleExportExcel} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Download Excel</button>
+          <button onClick={() => openExport('pdf', false)} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Summary PDF</button>
+          <button onClick={() => openExport('pdf', true)} disabled={!hasRows} className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>Detail PDF</button>
         </div>
       </div>
 

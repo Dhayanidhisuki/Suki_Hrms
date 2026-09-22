@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BrandLogo } from '@/components/BrandLogo';
 import { useToast } from '@/components/ui';
 
 const BLUE = '#3f6fd8';
@@ -83,17 +84,12 @@ export default function LoginPage() {
           minHeight: 'calc(100vh - 5rem)',
         }}
       >
-        {/* Brand (top-left of the card, like the mockup) */}
-        <div className="absolute left-8 top-7 z-10 flex items-center gap-2 sm:left-12">
-          <span className="grid h-7 w-7 place-items-center rounded-lg text-xs font-black text-white" style={{ background: BLUE }}>
-            S
-          </span>
-          <span className="text-xs font-bold tracking-[0.2em]" style={{ color: INK }}>
-            SUKI HRM
-          </span>
+        {/* Brand — inline wordmark, accent from the live theme */}
+        <div className="absolute left-8 top-6 z-20 sm:left-12">
+          <BrandLogo size="xl" className="text-[var(--text-primary)]" />
         </div>
         {/* Floating disc near the brand */}
-        <FloatingDisc className="absolute left-[24%] top-6 z-10 hidden h-20 w-20 lg:block" />
+        <FloatingDisc className="absolute left-[32%] top-6 z-10 hidden h-20 w-20 lg:block" />
 
         {/* Form column */}
         <section className="flex flex-col justify-center px-8 pb-12 pt-24 sm:px-12 lg:pl-14">

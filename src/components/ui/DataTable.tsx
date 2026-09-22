@@ -111,18 +111,18 @@ export default function DataTable<T extends { id: number }>({
   const table = (
     <table className="min-w-full text-sm">
       <thead>
-        <tr style={{ backgroundColor: 'var(--surface-hover)' }}>
+        <tr style={{ backgroundColor: 'var(--bg-subtle)' }}>
           {columns.map((col) => (
             <th
               key={col.key}
-              className={`px-4 py-3 text-left font-medium ${card ? 'text-xs' : ''} ${col.className ?? ''}`}
-              style={{ color: 'var(--foreground-muted)' }}
+              className={`px-4 py-3 text-left text-xs font-semibold ${col.className ?? ''}`}
+              style={{ color: 'var(--text-secondary)' }}
             >
               {col.label}
             </th>
           ))}
           {hasActions && (
-            <th className={`px-4 py-3 text-right font-medium ${card ? 'text-xs' : ''}`} style={{ color: 'var(--foreground-muted)' }}>
+            <th className="px-4 py-3 text-right text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
               Actions
             </th>
           )}
@@ -145,13 +145,13 @@ export default function DataTable<T extends { id: number }>({
           data.map((row) => (
             <tr
               key={rowKey ? rowKey(row) : row.id}
-              className="transition-colors"
-              style={{ borderTop: '1px solid var(--border)' }}
+              className="transition-colors hover:bg-[var(--bg-hover)]"
+              style={{ borderTop: '1px solid var(--border-main)' }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--surface-hover)')}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               {columns.map((col) => (
-                <td key={col.key} className={`px-4 py-3 ${col.className ?? ''}`} style={{ color: 'var(--foreground)' }}>
+                <td key={col.key} className={`px-4 py-3 text-[13px] ${col.className ?? ''}`} style={{ color: 'var(--text-primary)' }}>
                   {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
                 </td>
               ))}
@@ -200,7 +200,7 @@ export default function DataTable<T extends { id: number }>({
                 value={searchValue ?? ''}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="min-w-[200px] flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                className="min-w-[200px] flex-1 rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-1"
                 style={{
                   backgroundColor: 'var(--surface)',
                   color: 'var(--foreground)',
@@ -212,7 +212,7 @@ export default function DataTable<T extends { id: number }>({
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
           {table}
         </div>
 
@@ -250,13 +250,13 @@ export default function DataTable<T extends { id: number }>({
 
   /* ── Card (redesigned) layout ──────────────────────────────────────── */
   return (
-    <div className="rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+    <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
       {(onSearchChange || filters) && (
         <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
           {onSearchChange && (
             <label
-              className="flex min-w-[240px] flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-sm focus-within:ring-2"
-              style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}
+              className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-sm focus-within:ring-1"
+              style={{ backgroundColor: 'var(--bg-subtle)', borderColor: 'var(--border-main)', color: 'var(--text-muted)' }}
             >
               <SearchIcon />
               <input
@@ -326,7 +326,7 @@ function PageButton({
       disabled={disabled}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
-      className="inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+      className="inline-flex h-8 min-w-8 cursor-pointer items-center justify-center rounded-lg px-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
       style={{
         backgroundColor: active ? 'var(--accent-soft)' : 'transparent',
         color: active ? 'var(--accent)' : 'var(--foreground)',

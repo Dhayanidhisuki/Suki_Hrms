@@ -23,17 +23,16 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-xl shadow-2xl"
-        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+        className="w-full max-w-sm rounded-2xl shadow-2xl"
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-main)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+          <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
             {title}
           </h2>
           <p className="mt-2 text-sm" style={{ color: 'var(--foreground-muted)' }}>
@@ -41,13 +40,12 @@ export default function ConfirmDialog({
           </p>
         </div>
         <div
-          className="flex justify-end gap-2 px-5 py-3 border-t"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex justify-end gap-2 border-t px-5 py-3"
+          style={{ borderColor: 'var(--border-main)' }}
         >
           <button
             onClick={onClose}
-            className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            className="form-btn-cancel cursor-pointer"
           >
             {cancelLabel}
           </button>
@@ -56,8 +54,8 @@ export default function ConfirmDialog({
               onConfirm();
               onClose();
             }}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-            style={{ backgroundColor: '#dc2626' }}
+            className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+            style={{ backgroundColor: 'var(--color-danger)' }}
           >
             {confirmLabel}
           </button>

@@ -127,13 +127,23 @@ export default function EssPayslipPage() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     {row.payslipAvailable ? (
-                      <button
-                        onClick={() => setSelectedId(row.id)}
-                        className="rounded-lg border px-3 py-1 text-xs font-medium"
-                        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-                      >
-                        View
-                      </button>
+                      <span className="inline-flex gap-2">
+                        <button
+                          onClick={() => setSelectedId(row.id)}
+                          className="rounded-lg border px-3 py-1 text-xs font-medium"
+                          style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => window.open(`/api/workforce/my-payslips/${row.id}/pdf`, '_blank')}
+                          className="rounded-lg border px-3 py-1 text-xs font-medium"
+                          style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                          title="Download payslip PDF (FORM-25B format)"
+                        >
+                          Download PDF
+                        </button>
+                      </span>
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Payroll in progress</span>
                     )}
