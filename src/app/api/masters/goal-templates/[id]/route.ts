@@ -97,7 +97,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
         data: {
           ...header,
           code,
-          kras: { create: snapshotTemplateKpis(kras, resolved.kpiById) },
+          kras: { create: snapshotTemplateKpis(kras, resolved.kpiById, resolved.kraById) },
         },
         include: FULL_INCLUDE,
       });

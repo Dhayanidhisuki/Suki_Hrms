@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
         ...header,
         code,
         createdByUserId,
-        kras: { create: snapshotTemplateKpis(kras, resolved.kpiById) },
+        kras: { create: snapshotTemplateKpis(kras, resolved.kpiById, resolved.kraById) },
       },
       include: LIST_INCLUDE,
     });

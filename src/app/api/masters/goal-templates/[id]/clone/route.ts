@@ -43,6 +43,11 @@ export async function POST(request: NextRequest, { params }: Ctx) {
           create: source.kras.map((k) => ({
             kraId: k.kraId,
             weightage: k.weightage,
+            // Carry the source template's snapshot rather than re-reading the
+            // master, so a clone is a faithful copy of what was cloned.
+            kraCode: k.kraCode,
+            kraName: k.kraName,
+            kraCategory: k.kraCategory,
             kpis: {
               create: k.kpis.map((p) => ({
                 kpiId: p.kpiId,

@@ -32,6 +32,8 @@ interface GoalKpi {
 interface GoalKra {
   id: number;
   weightage: string;
+  kraCode?: string | null;
+  kraName?: string | null;
   kra: { id: number; code: string; name: string; category: string };
   kpis: GoalKpi[];
 }
@@ -177,7 +179,7 @@ export default function MyGoalsPage() {
                 <div key={kra.id} className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
                   <div className="flex items-center justify-between gap-3 border-b p-2.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-muted)' }}>
                     <div className="leading-tight">
-                      <div className="font-medium">{kra.kra.code} — {kra.kra.name}</div>
+                      <div className="font-medium">{kra.kraCode ?? kra.kra.code} — {kra.kraName ?? kra.kra.name}</div>
                       <div className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>{kra.kra.category}</div>
                     </div>
                     <StatusBadge tone="accent">{Number(kra.weightage)}%</StatusBadge>

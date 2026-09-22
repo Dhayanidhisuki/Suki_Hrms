@@ -5349,10 +5349,16 @@ model GoalTemplate {
 }
 
 model GoalTemplateKra {
-  id         Int     @id @default(autoincrement())
-  templateId Int
-  kraId      Int
-  weightage  Decimal @db.Decimal(5, 2) // Model A: Σ per template = 100
+  id          Int     @id @default(autoincrement())
+  templateId  Int
+  kraId       Int
+  weightage   Decimal @db.Decimal(5, 2) // Model A: Σ per template = 100
+  // Snapshot of the KRA's identity, for the same reason GoalTemplateKpi
+  // snapshots the KPI's measurement fields: renaming a KRA in the master must
+  // not silently rewrite a template that was already built from it.
+  kraCode     String? @db.NVarChar(30)
+  kraName     String? @db.NVarChar(150)
+  kraCategory String? @db.NVarChar(50)
 
   template GoalTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
   kra      Kra               @relation(fields: [kraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -5414,10 +5420,15 @@ model EmployeeGoalSet {
 }
 
 model EmployeeGoalKra {
-  id        Int     @id @default(autoincrement())
-  goalSetId Int
-  kraId     Int
-  weightage Decimal @db.Decimal(5, 2) // Model A: Σ per goal set = 100
+  id          Int     @id @default(autoincrement())
+  goalSetId   Int
+  kraId       Int
+  weightage   Decimal @db.Decimal(5, 2) // Model A: Σ per goal set = 100
+  // Snapshot — an accepted goal set is a record of what the employee agreed
+  // to, so a later master rename must not change what it shows them.
+  kraCode     String? @db.NVarChar(30)
+  kraName     String? @db.NVarChar(150)
+  kraCategory String? @db.NVarChar(50)
 
   goalSet EmployeeGoalSet   @relation(fields: [goalSetId], references: [id], onDelete: Cascade)
   kra     Kra               @relation(fields: [kraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
