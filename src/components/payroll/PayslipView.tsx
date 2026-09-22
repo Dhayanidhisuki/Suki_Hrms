@@ -41,16 +41,145 @@ export interface PayrollLineDetail {
   lwfAmount: string;
   healthInsurance: string;
   licAmount: string;
-  attendanceBonus: string;
-  petrolAllowance: string;
-  doubleMachineIncentive: string;
-  shiftIncentive: string;
   netSalary: string;
   status: string;
   holdReason: string | null;
   employee: { employeeCode: string; firstName: string; lastName: string };
   payrollRun: { year: number; month: number; status: string };
   components: LineComponent[];
+}
+
+/**
+ * The "Other Earnings" residual: the part of otherEarningsTotal that is not
+ * already itemised elsewhere on the payslip.
+ *
+ * otherEarningsTotal (payrollCalculation.ts) = ad-hoc earnings + every "auto"
+ * earning — OT, OT incentive, performance incentive, attendance bonus,
+ * petrol, double machine, shift bonus, heat/night/food allowances. The three
+ * that are PayrollLine columns get their own rows above, and any auto earning
+ * that produced a PayrollLineComponent is listed by name; both must be
+ * subtracted or they show twice.
+ *
+ * Which components sit inside otherEarningsTotal rather than grossEarnings
+ * cannot be read off the component's own flags — NIGHT_ALLOWANCE is flagged
+ * includeInGross = true yet payroll accumulates it into autoEarningsTotal.
+ * So it is derived from the two figures payroll actually stored: whatever the
+ * listed earning components total beyond grossEarnings is, by definition, the
+ * part of them already counted in otherEarningsTotal.
+ *
+ * A positive result means payroll credited an auto earning that never got a
+ * component row (its SalaryComponent master is missing) — exactly what the
+ * catch-all row is for.
+ *
+ * `earningComponents` must be displayableEarningComponents(...): passing a
+ * column mirror would subtract the same money twice, once here and once as its
+ * own column below.
+ */
+/**
+ * Component codes that MIRROR a PayrollLine column.
+ *
+ * Several figures reach the payslip by two routes: a column on PayrollLine
+ * (`line.otAmount`, `line.lomAmount`, …) which is rendered by its own hardcoded
+ * row, and — when the matching SalaryComponent exists — a PayrollLineComponent
+ * that payroll also writes. Nothing arbitrated between them, so a company that
+ * happened to have the component would see the same money on two lines and the
+ * itemised earnings would overstate Total Earnings.
+ *
+ * The column wins. It is the value the stored totals are built from, so it is
+ * the one guaranteed to reconcile; the mirroring component is suppressed here.
+ * That generalises what this file already did for PF/ESI — which it did by
+ * substring-matching the code and NAME for "pf"/"esi", quietly hiding
+ * legitimate rows like ARREAR_PF and ARREAR_ESI too. Matching exact codes
+ * fixes that as a side effect.
+ *
+ * Nothing changes for existing data: none of these components exist yet (see
+ * COLUMN_BACKED_DO_NOT_SEED in tests/unit/string-key-consistency.test.ts, which
+ * stops them being seeded). This makes the payslip correct if one ever is.
+ */
+const COLUMN_MIRRORED_EARNINGS = new Set([
+  'PERFORMANCE_INS', // line.performanceIncentive
+  'OT_PAY',          // line.otAmount
+  'OT_INCENTIVE',    // line.otIncentiveAmount
+]);
+
+const COLUMN_MIRRORED_DEDUCTIONS = new Set([
+  'PF',          // line.pfEmployee
+  'ESI',         // line.esiEmployee
+  'LOM',         // line.lomAmount
+  'LWF',         // line.lwfAmount
+  'HEALTH_INS',  // line.healthInsurance
+  'LIC',         // line.licAmount
+]);
+
+/**
+ * The earning/deduction components the payslip actually lists — everything
+ * except the column mirrors above. These are also what the two residual
+ * helpers must be given, so a mirrored amount is never counted as both a
+ * component and a column.
+ */
+export function displayableEarningComponents<T extends { salaryComponent: { type: string; code: string } }>(components: T[]): T[] {
+  return components.filter(
+    (c) => c.salaryComponent.type === 'earning' && !COLUMN_MIRRORED_EARNINGS.has(c.salaryComponent.code)
+  );
+}
+
+export function displayableDeductionComponents<T extends { salaryComponent: { type: string; code: string } }>(components: T[]): T[] {
+  return components.filter(
+    (c) => c.salaryComponent.type === 'deduction' && !COLUMN_MIRRORED_DEDUCTIONS.has(c.salaryComponent.code)
+  );
+}
+
+export function computeOtherAutoEarnings(
+  line: Pick<PayrollLineDetail, 'otherEarningsTotal' | 'performanceIncentive' | 'otAmount' | 'otIncentiveAmount' | 'grossEarnings'>,
+  earningComponents: { amount: string | number }[]
+): number {
+  const componentEarningsTotal = earningComponents.reduce((sum, c) => sum + Number(c.amount), 0);
+  const itemisedFromOtherTotal = Math.max(0, componentEarningsTotal - Number(line.grossEarnings));
+  return (
+    Number(line.otherEarningsTotal)
+    - Number(line.performanceIncentive)
+    - Number(line.otAmount)
+    - Number(line.otIncentiveAmount)
+    - itemisedFromOtherTotal
+  );
+}
+
+/**
+ * The "Other Auto Deductions" residual — the deduction-side twin of
+ * computeOtherAutoEarnings, and it had the same double-counting flaw.
+ *
+ * otherDeductionsTotal (payrollCalculation.ts:958) =
+ *   recurringDeductions + ad-hoc deductions + autoDeductionsTotal
+ *
+ * Every recurring deduction component is added to recurringDeductions AND
+ * written as a PayrollLineComponent (payrollCalculation.ts:313-315), so it is
+ * listed by name on the payslip as well as being inside otherDeductionsTotal.
+ * Subtracting only the four column-backed auto deductions (LOM, LWF, health,
+ * LIC) left those components counted twice — a real "Medical" (DED-2) row of
+ * ₹500 showed as its own line and again inside the residual, so the itemised
+ * deductions overstated the stated Total Deductions by ₹500.
+ *
+ * `displayedComponents` must be exactly the component rows the payslip
+ * renders — i.e. excluding the PF/ESI rows, which are mirrors of the
+ * pfEmployee/esiEmployee columns (their amounts match those columns to the
+ * rupee) and are shown from the columns instead, never from the component.
+ *
+ * Defined as "stated total minus everything else displayed", so the listed
+ * rows always reconcile to Total Deductions by construction.
+ */
+export function computeOtherAutoDeductions(
+  line: Pick<PayrollLineDetail, 'otherDeductionsTotal' | 'lomAmount' | 'lwfAmount' | 'healthInsurance' | 'licAmount'>,
+  displayedComponents: { amount: string | number }[]
+): number {
+  const displayedComponentTotal = displayedComponents.reduce((sum, c) => sum + Number(c.amount), 0);
+  return (
+    Number(line.otherDeductionsTotal)
+    - Number(line.lomAmount)
+    - Number(line.lwfAmount)
+    - Number(line.healthInsurance)
+    - Number(line.licAmount)
+    - displayedComponentTotal
+  );
 }
 
 export function fmt(n: string | number) {
@@ -71,8 +200,11 @@ export function PayslipView({
   /** Extra buttons rendered next to Print, e.g. "+ Add Earning/Deduction" on the HR page. */
   headerActions?: ReactNode;
 }) {
-  const rawEarnings = line.components.filter((c) => c.salaryComponent.type === 'earning');
-  const rawDeductions = line.components.filter((c) => c.salaryComponent.type === 'deduction');
+  // Only components that do NOT mirror a column. Both the rendered rows and the
+  // residual calculations work from these, so a mirror can never be counted
+  // once as a component and again as a column.
+  const rawEarnings = displayableEarningComponents(line.components);
+  const rawDeductions = displayableDeductionComponents(line.components);
 
   // Earnings rows (+ green) — grouped by Gross tier for subtotal display.
   // Driven by each component's own grossTier/includeInGross metadata (set
@@ -105,22 +237,25 @@ export function PayslipView({
   if (Number(line.performanceIncentive) > 0) earnings.push({ label: 'Performance Incentive (PMS)', amount: Number(line.performanceIncentive), isAdhoc: false });
   if (Number(line.otAmount) > 0) earnings.push({ label: 'Overtime', amount: Number(line.otAmount), isAdhoc: false });
   if (Number(line.otIncentiveAmount) > 0) earnings.push({ label: 'OT Incentive Bonus', amount: Number(line.otIncentiveAmount), isAdhoc: false });
-  if (Number(line.attendanceBonus) > 0) earnings.push({ label: 'Attendance Bonus', amount: Number(line.attendanceBonus), isAdhoc: false });
-  if (Number(line.petrolAllowance) > 0) earnings.push({ label: 'Petrol Allowance', amount: Number(line.petrolAllowance), isAdhoc: false });
-  if (Number(line.doubleMachineIncentive) > 0) earnings.push({ label: 'Double Machine Incentive', amount: Number(line.doubleMachineIncentive), isAdhoc: false });
-  if (Number(line.shiftIncentive) > 0) earnings.push({ label: 'Shift Incentive', amount: Number(line.shiftIncentive), isAdhoc: false });
+  // Attendance Bonus, Petrol Allowance, Double Machine Incentive and Shift
+  // Incentive are NOT PayrollLine columns — they are PayrollLineComponent
+  // rows (ATT_BONUS / PETROL / DM_INCENTIVE / SHIFT_BONUS), so the
+  // metadata-driven loops above already render them by name. They used to be
+  // pushed again from `line.<name>` here; those properties never existed on
+  // the payload, so every read was `undefined` → NaN, which silently
+  // suppressed the "Other Earnings" row below (NaN > 0 is false).
 
-  const otherAutoEarnings = Number(line.otherEarningsTotal) - Number(line.performanceIncentive) - Number(line.otAmount) - Number(line.otIncentiveAmount) - Number(line.attendanceBonus) - Number(line.petrolAllowance) - Number(line.doubleMachineIncentive) - Number(line.shiftIncentive);
+  // See computeOtherAutoEarnings above for why this is a residual.
+  const otherAutoEarnings = computeOtherAutoEarnings(line, rawEarnings);
   if (otherAutoEarnings > 0) {
     earnings.push({ label: 'Other Earnings', amount: otherAutoEarnings, isAdhoc: false });
   }
 
-  const otherAutoDeductions =
-    Number(line.otherDeductionsTotal) -
-    Number(line.lomAmount) -
-    Number(line.lwfAmount) -
-    Number(line.healthInsurance) -
-    Number(line.licAmount);
+  // rawDeductions already excludes every column mirror (PF/ESI included), so
+  // this is simply what gets rendered.
+  const displayedDeductionComponents = rawDeductions;
+
+  const otherAutoDeductions = computeOtherAutoDeductions(line, displayedDeductionComponents);
 
   const deductions: { label: string; amount: number; isAdhoc: boolean; id?: number }[] = [
     { label: 'Provident Fund (PF)', amount: Number(line.pfEmployee), isAdhoc: false },
@@ -134,12 +269,8 @@ export function PayslipView({
     ...(otherAutoDeductions > 0 ? [{ label: 'Other Auto Deductions', amount: otherAutoDeductions, isAdhoc: false }] : []),
   ];
 
-  rawDeductions.forEach((c) => {
-    const isPf = c.salaryComponent.code.toLowerCase().includes('pf') || c.salaryComponent.name.toLowerCase().includes('pf');
-    const isEsi = c.salaryComponent.code.toLowerCase().includes('esi') || c.salaryComponent.name.toLowerCase().includes('esi');
-    if (!isPf && !isEsi) {
-      deductions.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id });
-    }
+  displayedDeductionComponents.forEach((c) => {
+    deductions.push({ label: c.salaryComponent.name, amount: Number(c.amount), isAdhoc: c.isAdhoc, id: c.id });
   });
 
   // Use the actual stored totals (not sum of displayed rows) so the

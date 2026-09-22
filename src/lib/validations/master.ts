@@ -569,6 +569,7 @@ export const fullAndFinalConfigSchema = z.object({
   includePt: z.boolean().default(true),
   clearanceRequired: z.boolean().default(true),
   approvalStages: z.enum(['HR', 'HR_FINANCE', 'MANAGER_HR_FINANCE']).default('HR_FINANCE'),
+  enforceSegregationOfDuties: z.boolean().default(true),
   isActive: z.boolean().default(true),
 });
 
@@ -636,17 +637,6 @@ export const incentivePolicySchema = z.object({
   eligibility: z.string().max(500).optional().nullable(),
   eligibleShiftCodes: z.string().max(200).optional().nullable(),
   isActive: z.boolean().default(true),
-});
-
-export const doubleMachineEntrySchema = z.object({
-  employeeId: z.coerce.number().int().positive(),
-  date: z.coerce.date(),
-  machine1: z.string().max(50).optional().nullable(),
-  machine2: z.string().max(50).optional().nullable(),
-  numMachines: z.coerce.number().int().min(1).max(10).default(1),
-  workingHours: z.coerce.number().min(0).max(24),
-  incentiveRate: z.coerce.number().min(0),
-  hrRemarks: z.string().max(500).optional().nullable(),
 });
 
 export const canteenTokenSchema = z.object({

@@ -2069,8 +2069,17 @@ model DoubleMachineIncentive {
   employeeR       Decimal @default(0) @db.Decimal(18, 2)
 
   // draft | process | hold | complete
+  // Only `complete` is paid by payrollCalculation; `hold` is the explicit
+  // do-not-pay. Transitions are enforced by the approve/reject/return routes,
+  // not by free-form writes — see api/payroll/double-machine/[id]/.
   status  String  @default("draft") @db.NVarChar(20)
   remarks String? @db.NVarChar(500)
+
+  // Who signed this off, and why it was sent back. Populated only by the
+  // transition routes so the payslip figure is attributable to a person.
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.NVarChar(500)
 
   createdByUserId Int?
   updatedByUserId Int?
@@ -3794,6 +3803,10 @@ model FullAndFinalConfig {
   includePt              Boolean  @default(true)
   clearanceRequired      Boolean  @default(true)
   approvalStages         String   @default("HR_FINANCE") @db.NVarChar(100) // HR | HR_FINANCE | MANAGER_HR_FINANCE
+  // When true, no single user may take two different approval-chain steps on
+  // the same settlement. Defaults on; a payroll team too small to separate
+  // the roles can turn it off deliberately rather than by omission.
+  enforceSegregationOfDuties Boolean @default(true)
   isActive               Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -4056,6 +4069,11 @@ model FnFSettlement {
   approvedAt              DateTime?
   financeVerifiedByUserId Int?
   financeVerifiedAt       DateTime?
+  // Segregation of duties needs an actor on every approval-chain step, not
+  // just the ones that happened to record one.
+  managerApprovedByUserId Int?
+  managerApprovedAt       DateTime?
+  paidByUserId            Int?
   completedAt             DateTime?
   rejectionReason         String?   @db.NVarChar(500)
   remarks                 String?   @db.NVarChar(500)

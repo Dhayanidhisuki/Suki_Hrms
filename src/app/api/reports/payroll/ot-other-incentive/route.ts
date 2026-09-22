@@ -1,26 +1,55 @@
 /**
- * GET /api/reports/payroll/ot-other-incentive?year=X&month=Y
+ * GET /api/reports/payroll/ot-other-incentive
+ *   ?year=&month=&view=employee|department|trend&department=&search=&format=csv
  *
- * OT & Other Incentive Report — one row per employee for the selected
- * payroll run: OT hours (from attendance), OT amount, the OT Incentive
- * Bonus (OTIncentiveSlab.flatBonusAmount), and every other personal
- * incentive already computed by payroll: Double Machine, Shift Bonus,
- * Attendance Bonus, Petrol Allowance, Performance Incentive. Supports CSV
- * export via ?format=csv.
+ * OT & Other Incentive Register — the automated form of KUN's manual
+ * "Overtime Salary Register" workbook. Column set, the Tot OC Ear formula
+ * and the ESI split are all documented and verified in
+ * src/lib/payroll/otIncentiveRegister.ts.
  *
- * otAmount, otIncentiveAmount and performanceIncentive are direct
- * PayrollLine columns; Double Machine / Shift Bonus / Attendance Bonus /
- * Petrol Allowance are stored as PayrollLineComponent rows against the
- * DM_INCENTIVE / SHIFT_BONUS / ATT_BONUS / PETROL salary components (see
- * src/lib/payrollCalculation.ts) — summed here per employee the same way.
+ * `view=trend` returns the trailing-12-month comparison matrix instead of
+ * employee rows. The department summary always rides along with the
+ * employee view — it is derived from the same rows, so the two cannot
+ * disagree.
+ *
+ * When no payroll run exists for the period this returns 200 with
+ * `run: null` and an empty result rather than 404: the OT figures come from
+ * the same function payroll itself calls, so there is deliberately no
+ * raw-attendance approximation to fall back to.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import {
+  computeOtIncentiveRegister,
+  computeOtIncentiveTrend,
+  csvLine,
+  type OtIncentiveRegisterRow,
+} from '@/lib/payroll/otIncentiveRegister';
 
-const COMPONENT_CODES = ['DM_INCENTIVE', 'SHIFT_BONUS', 'ATT_BONUS', 'PETROL'] as const;
+const REGISTER_HEADERS = [
+  'Sl No', 'Emp ID', 'Employee Name', 'Month/Year', 'Category', 'Department',
+  'Designation', 'Date of Joining', 'Gender', 'Basic (Th)', 'OT Hrs', 'OT Value',
+  'OT Amount', 'OT Mon Incentive', 'OT Weekly Inc', 'DM_INC', 'ATT_BONUS',
+  'Shift Incentive', 'Employee Referral', 'Petrol Allowance', 'Performance Incentive',
+  'Tot OC Ear', 'OC Empl ESI', 'OC Emplr ESI', 'Tot OC Net',
+  'Bank A/c No', 'Bank IFSC', 'Bank Name', 'Remarks',
+];
+
+function registerCells(r: OtIncentiveRegisterRow): unknown[] {
+  return [
+    r.slNo, r.employeeCode, r.employeeName, r.monthYearLabel, r.category ?? '',
+    r.department ?? '', r.designation ?? '', r.dateOfJoining ?? '', r.gender ?? '',
+    r.basic.toFixed(2), r.otHours.toFixed(2), r.otValue === null ? '' : r.otValue.toFixed(2),
+    r.otAmount.toFixed(2), r.otMonthlyIncentive.toFixed(2), r.otWeeklyIncentive.toFixed(2),
+    r.doubleMachineIncentive.toFixed(2), r.attendanceBonus.toFixed(2), r.shiftIncentive.toFixed(2),
+    r.employeeReferral.toFixed(2), r.petrolAllowance.toFixed(2), r.performanceIncentive.toFixed(2),
+    r.totOcEarnings.toFixed(2), r.ocEmployeeEsi.toFixed(2),
+    r.ocEmployerEsi.toFixed(2), r.totOcNet.toFixed(2), r.bankAccountNumber ?? '',
+    r.bankIfsc ?? '', r.bankName ?? '', r.remarks,
+  ];
+}
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'payroll.processing.view');
@@ -29,96 +58,80 @@ export async function GET(request: NextRequest) {
   if ('error' in scope) return scope.error;
 
   const { searchParams } = new URL(request.url);
-  const year = parseInt(searchParams.get('year') ?? '0');
-  const month = parseInt(searchParams.get('month') ?? '0');
-  const format = searchParams.get('format');
-
-  if (!year || !month) {
+  const year = parseInt(searchParams.get('year') ?? '', 10);
+  const month = parseInt(searchParams.get('month') ?? '', 10);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
     return NextResponse.json({ error: 'year and month are required' }, { status: 400 });
   }
 
-  const run = await prisma.payrollRun.findFirst({
-    where: { companyId: scope.companyId, year, month },
-  });
-  if (!run) return NextResponse.json({ error: 'No payroll run for this period' }, { status: 404 });
+  const view = searchParams.get('view') ?? 'employee';
+  const format = searchParams.get('format');
+  const department = searchParams.get('department')?.trim() || undefined;
+  const search = searchParams.get('search')?.trim() || undefined;
 
-  const lines = await prisma.payrollLine.findMany({
-    where: { payrollRunId: run.id },
-    include: {
-      employee: {
-        select: {
-          employeeCode: true,
-          firstName: true,
-          lastName: true,
-          jobInfos: { where: { effectiveTo: null }, take: 1, select: { department: { select: { name: true } } } },
+  // ── Trend view ──
+  if (view === 'trend') {
+    const trend = await computeOtIncentiveTrend(scope.companyId, year, month, 12);
+    if (format === 'csv') {
+      const header = csvLine(['SL.NO', 'Overtime Comparison', ...trend.periods.map((p) => p.label)]);
+      const body = trend.rows.map((r, i) =>
+        csvLine([i + 1, r.category, ...r.values.map((v) => (v === null ? '' : v.toFixed(2)))])
+      );
+      return new NextResponse([header, ...body].join('\n'), {
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="ot_incentive_trend_${year}_${String(month).padStart(2, '0')}.csv"`,
         },
-      },
-      components: {
-        where: { salaryComponent: { code: { in: [...COMPONENT_CODES] } } },
-        select: { amount: true, salaryComponent: { select: { code: true } } },
-      },
-    },
-    orderBy: { employee: { employeeCode: 'asc' } },
+      });
+    }
+    return NextResponse.json(trend);
+  }
+
+  // ── Employee + department views ──
+  const result = await computeOtIncentiveRegister(scope.companyId, year, month, {
+    department,
+    search,
   });
-
-  const summaries = await prisma.monthlyAttendanceSummary.findMany({
-    where: { employeeId: { in: lines.map((l) => l.employeeId) }, year, month },
-    select: { employeeId: true, otMinutesTotal: true },
-  });
-  const otMinutesByEmployee = new Map(summaries.map((s) => [s.employeeId, s.otMinutesTotal]));
-
-  const rows = lines.map((l) => {
-    const byCode = (code: (typeof COMPONENT_CODES)[number]) =>
-      l.components.filter((c) => c.salaryComponent.code === code).reduce((sum, c) => sum + Number(c.amount), 0);
-
-    const otMinutes = otMinutesByEmployee.get(l.employeeId) ?? 0;
-
-    return {
-      id: l.id,
-      employeeCode: l.employee.employeeCode,
-      employeeName: `${l.employee.firstName} ${l.employee.lastName ?? ''}`.trim(),
-      department: l.employee.jobInfos[0]?.department?.name ?? '—',
-      otHours: Number((otMinutes / 60).toFixed(2)),
-      otAmount: Number(l.otAmount),
-      otIncentiveAmount: Number(l.otIncentiveAmount),
-      doubleMachineIncentive: byCode('DM_INCENTIVE'),
-      shiftIncentive: byCode('SHIFT_BONUS'),
-      attendanceBonus: byCode('ATT_BONUS'),
-      petrolAllowance: byCode('PETROL'),
-      performanceIncentive: Number(l.performanceIncentive),
-    };
-  });
-
-  const totals = rows.reduce(
-    (acc, r) => {
-      acc.otHours += r.otHours;
-      acc.otAmount += r.otAmount;
-      acc.otIncentiveAmount += r.otIncentiveAmount;
-      acc.doubleMachineIncentive += r.doubleMachineIncentive;
-      acc.shiftIncentive += r.shiftIncentive;
-      acc.attendanceBonus += r.attendanceBonus;
-      acc.petrolAllowance += r.petrolAllowance;
-      acc.performanceIncentive += r.performanceIncentive;
-      return acc;
-    },
-    { otHours: 0, otAmount: 0, otIncentiveAmount: 0, doubleMachineIncentive: 0, shiftIncentive: 0, attendanceBonus: 0, petrolAllowance: 0, performanceIncentive: 0 }
-  );
 
   if (format === 'csv') {
-    const headers = [
-      'Employee Code', 'Name', 'Department', 'OT Hours', 'OT Amount', 'OT Incentive Bonus',
-      'Double Machine Incentive', 'Shift Incentive', 'Attendance Bonus', 'Petrol Allowance', 'Performance Incentive',
-    ];
-    const csvRows = rows.map((r) => [
-      r.employeeCode, r.employeeName, r.department, r.otHours.toFixed(2), r.otAmount.toFixed(2),
-      r.otIncentiveAmount.toFixed(2), r.doubleMachineIncentive.toFixed(2), r.shiftIncentive.toFixed(2),
-      r.attendanceBonus.toFixed(2), r.petrolAllowance.toFixed(2), r.performanceIncentive.toFixed(2),
-    ]);
-    const csv = [headers.join(','), ...csvRows.map((r) => r.map((v) => `"${v}"`).join(','))].join('\n');
+    if (!result.run) {
+      return NextResponse.json({ error: 'No payroll run for this period — run payroll first.' }, { status: 409 });
+    }
+    if (view === 'department') {
+      const header = csvLine([
+        'Department', 'OT Hrs', 'OT', 'Cumulative (OT Mon Inc)', 'Shift Cont (OT Weekly Inc)',
+        'DM_INC', 'ATT_BONUS', 'Extra Work', 'Employee Referral', 'Shift Incentive', 'Tot OC Ear',
+      ]);
+      const body = result.departmentSummary.map((d) =>
+        csvLine([
+          d.department, d.otHours.toFixed(2), d.otAmount.toFixed(2), d.otMonthlyIncentive.toFixed(2),
+          d.otWeeklyIncentive.toFixed(2), d.doubleMachineIncentive.toFixed(2), d.attendanceBonus.toFixed(2),
+          d.extraWork.toFixed(2), d.employeeReferral.toFixed(2), d.shiftIncentive.toFixed(2), d.totOcEarnings.toFixed(2),
+        ])
+      );
+      const grand = csvLine([
+        'Grand Total', result.totals.otHours.toFixed(2), result.totals.otAmount.toFixed(2),
+        result.totals.otMonthlyIncentive.toFixed(2), result.totals.otWeeklyIncentive.toFixed(2),
+        result.totals.doubleMachineIncentive.toFixed(2), result.totals.attendanceBonus.toFixed(2),
+        result.totals.extraWork.toFixed(2), result.totals.employeeReferral.toFixed(2),
+        result.totals.shiftIncentive.toFixed(2), result.totals.totOcEarnings.toFixed(2),
+      ]);
+      return new NextResponse([header, ...body, grand].join('\n'), {
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="ot_incentive_department_${year}_${String(month).padStart(2, '0')}.csv"`,
+        },
+      });
+    }
+
+    const csv = [csvLine(REGISTER_HEADERS), ...result.rows.map((r) => csvLine(registerCells(r)))].join('\n');
     return new NextResponse(csv, {
-      headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="ot_other_incentive_${year}_${month}.csv"` },
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="ot_incentive_register_${year}_${String(month).padStart(2, '0')}.csv"`,
+      },
     });
   }
 
-  return NextResponse.json({ run: { id: run.id, year: run.year, month: run.month, status: run.status }, rows, totals });
+  return NextResponse.json(result);
 }

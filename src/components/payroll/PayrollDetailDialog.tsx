@@ -48,10 +48,6 @@ interface PayrollLineDetail {
   grossEarnings: string;
   otherEarningsTotal: string;
   otAmount: string;
-  attendanceBonus: string;
-  petrolAllowance: string;
-  doubleMachineIncentive: string;
-  shiftIncentive: string;
   otherDeductionsTotal: string;
   pfEmployee: string;
   esiEmployee: string;
@@ -131,10 +127,9 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
       .filter((c) => c.salaryComponent.type === 'earning')
       .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
     if (Number(data?.line.otAmount ?? 0) > 0) list.push({ label: 'Overtime', amount: Number(data?.line.otAmount) });
-    if (Number(data?.line.attendanceBonus ?? 0) > 0) list.push({ label: 'Attendance Bonus', amount: Number(data?.line.attendanceBonus) });
-    if (Number(data?.line.petrolAllowance ?? 0) > 0) list.push({ label: 'Petrol Allowance', amount: Number(data?.line.petrolAllowance) });
-    if (Number(data?.line.doubleMachineIncentive ?? 0) > 0) list.push({ label: 'Double Machine Incentive', amount: Number(data?.line.doubleMachineIncentive) });
-    if (Number(data?.line.shiftIncentive ?? 0) > 0) list.push({ label: 'Shift Incentive', amount: Number(data?.line.shiftIncentive) });
+    // ATT_BONUS / PETROL / DM_INCENTIVE / SHIFT_BONUS are component rows, so
+    // the map above already covers them — these were re-pushed from
+    // PayrollLine properties that do not exist.
     return list.sort(byCodeAsc);
   }, [data]);
 

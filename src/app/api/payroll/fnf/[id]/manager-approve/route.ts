@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
 import { FNF_MANAGER_APPROVABLE, assertStatus } from '@/lib/fnf/workflow';
 import { emitFnfEvent } from '@/lib/fnf/notify';
+import { segregationConflict } from '@/lib/fnf/segregation';
 
 export async function POST(
   request: NextRequest,
@@ -36,10 +37,18 @@ export async function POST(
     return NextResponse.json({ error: 'Only the reporting manager or payroll can manager-approve' }, { status: 403 });
   }
 
+  const config = await prisma.fullAndFinalConfig.findUnique({ where: { companyId: scope.companyId } });
+  const sod = segregationConflict(settlement, userId, 'manager-approve', config?.enforceSegregationOfDuties !== false);
+  if (sod) return NextResponse.json({ error: sod }, { status: 403 });
+
   const updated = await prisma.$transaction(async (tx) => {
     const rec = await tx.fnFSettlement.update({
       where: { id: settlementId },
-      data: { status: 'submitted' },
+      data: {
+        status: 'submitted',
+        managerApprovedByUserId: Number.isFinite(userId) ? userId : null,
+        managerApprovedAt: new Date(),
+      },
       include: fnfInclude,
     });
     await logActivity(tx, {

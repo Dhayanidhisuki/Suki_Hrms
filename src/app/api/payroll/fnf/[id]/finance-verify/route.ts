@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
 import { FNF_FINANCE_VERIFIABLE, assertStatus } from '@/lib/fnf/workflow';
 import { emitFnfEvent } from '@/lib/fnf/notify';
+import { segregationConflict } from '@/lib/fnf/segregation';
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +29,8 @@ export async function POST(
   }
   const blocked = assertStatus(settlement.status, FNF_FINANCE_VERIFIABLE, 'finance-verify');
   if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
+  const sod = segregationConflict(settlement, userId, 'finance-verify', config?.enforceSegregationOfDuties !== false);
+  if (sod) return NextResponse.json({ error: sod }, { status: 403 });
 
   const updated = await prisma.$transaction(async (tx) => {
     const rec = await tx.fnFSettlement.update({
