@@ -20,6 +20,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { generateReportTablePdf } from '@/lib/reportTablePdf';
+
+const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -231,6 +234,80 @@ export async function GET(request: NextRequest) {
   );
 
   // ── CSV export ──
+  if (format === 'pdf') {
+    const company = await prisma.company.findUnique({ where: { id: scope.companyId }, select: { name: true } });
+    const period = `For the month of ${MONTH_NAMES[month]} ${year}`;
+
+    if (detail) {
+      // Same flattening the detail CSV/JSON use — one row per transaction,
+      // carrying its employee down from the grouped structure.
+      const txnRows = rowsWithData.flatMap((r) =>
+        r.txnBreakdown.map((t) => ({ ...t, employeeCode: r.employeeCode, employeeName: r.employeeName, department: r.department }))
+      );
+      const pdfBytes = await generateReportTablePdf({
+        title: `${company?.name ?? 'Company'} — Comp-Off Report (Transaction Detail)`,
+        subtitle: period,
+        columns: [
+          { label: 'Sl No', width: 32, value: (_r, i) => String(i + 1) },
+          { label: 'Emp Code', width: 60, value: (r) => r.employeeCode },
+          { label: 'Employee Name', width: 125, value: (r) => r.employeeName },
+          { label: 'Department', width: 100, value: (r) => r.department },
+          { label: 'Date', width: 62, value: (r) => r.date },
+          { label: 'Type', width: 52, value: (r) => r.type },
+          { label: 'Days', width: 42, align: 'right', value: (r) => r.days.toFixed(2) },
+          { label: 'Balance After', width: 60, align: 'right', value: (r) => r.balanceAfter.toFixed(2) },
+          { label: 'Source', width: 78, value: (r) => r.sourceType ?? '' },
+          { label: 'Reason', width: 120, value: (r) => r.reason ?? '' },
+        ],
+        rows: txnRows,
+        footer: [{ label: 'Transactions', value: String(txnRows.length) }],
+        emptyMessage: 'No comp-off transactions for this period.',
+      });
+      return new NextResponse(Buffer.from(pdfBytes), {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="comp_off_detail_${year}_${String(month).padStart(2, '0')}.pdf"`,
+        },
+      });
+    }
+
+    const pdfBytes = await generateReportTablePdf({
+      title: `${company?.name ?? 'Company'} — Comp-Off Report (Summary)`,
+      subtitle: period,
+      columns: [
+        { label: 'Sl No', width: 30, value: (_r, i) => String(i + 1) },
+        { label: 'Emp Code', width: 58, value: (r) => r.employeeCode },
+        { label: 'Employee Name', width: 118, value: (r) => r.employeeName },
+        { label: 'Department', width: 92, value: (r) => r.department },
+        { label: 'Balance', width: 48, align: 'right', value: (r) => r.currentBalance.toFixed(2) },
+        { label: 'Earned', width: 45, align: 'right', value: (r) => r.totalEarned.toFixed(2) },
+        { label: 'Used', width: 45, align: 'right', value: (r) => r.totalUsed.toFixed(2) },
+        { label: 'Expired', width: 45, align: 'right', value: (r) => r.totalExpired.toFixed(2) },
+        { label: 'Encashed', width: 50, align: 'right', value: (r) => r.totalEncashed.toFixed(2) },
+        { label: 'Cr (Mth)', width: 46, align: 'right', value: (r) => r.creditsThisMonth.toFixed(2) },
+        { label: 'Dr (Mth)', width: 46, align: 'right', value: (r) => r.debitsThisMonth.toFixed(2) },
+        { label: 'Reqs', width: 36, align: 'right', value: (r) => String(r.requestCount) },
+        { label: 'Apprvd', width: 42, align: 'right', value: (r) => String(r.approvedRequests) },
+        { label: 'Pend', width: 36, align: 'right', value: (r) => String(r.pendingRequests) },
+        { label: 'Rejtd', width: 36, align: 'right', value: (r) => String(r.rejectedRequests) },
+        { label: 'OT C-Off Days', width: 62, align: 'right', value: (r) => String(r.otCompOffCount) },
+        { label: 'OT C-Off Mins', width: 62, align: 'right', value: (r) => String(r.otCompOffMinutes) },
+      ],
+      rows: rowsWithData,
+      footer: [
+        { label: 'Employees', value: String(rowsWithData.length) },
+        { label: 'Total Balance', value: rowsWithData.reduce((s, r) => s + r.currentBalance, 0).toFixed(2) },
+      ],
+      emptyMessage: 'No comp-off records for this period.',
+    });
+    return new NextResponse(Buffer.from(pdfBytes), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="comp_off_summary_${year}_${String(month).padStart(2, '0')}.pdf"`,
+      },
+    });
+  }
+
   if (format === 'csv') {
     if (detail) {
       // Per-transaction CSV

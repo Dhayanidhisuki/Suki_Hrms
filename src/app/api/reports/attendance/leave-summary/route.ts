@@ -10,6 +10,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { generateReportTablePdf } from '@/lib/reportTablePdf';
+
+const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -133,6 +136,40 @@ export async function GET(request: NextRequest) {
   };
 
   // ── CSV export ──
+  if (format === 'pdf') {
+    const company = await prisma.company.findUnique({ where: { id: scope.companyId }, select: { name: true } });
+    const pdfBytes = await generateReportTablePdf({
+      title: `${company?.name ?? 'Company'} — Leave Report`,
+      subtitle: `For the month of ${MONTH_NAMES[month]} ${year}`,
+      columns: [
+        { label: 'Sl No', width: 30, value: (_r, i) => String(i + 1) },
+        { label: 'Emp Code', width: 58, value: (r) => r.employeeCode },
+        { label: 'Employee Name', width: 118, value: (r) => r.employeeName },
+        { label: 'Department', width: 95, value: (r) => r.department },
+        { label: 'Leave Type', width: 95, value: (r) => r.leaveTypeName },
+        { label: 'From', width: 60, value: (r) => r.fromDate },
+        { label: 'To', width: 60, value: (r) => r.toDate },
+        { label: 'Days', width: 38, align: 'right', value: (r) => r.numberOfDays.toFixed(2) },
+        { label: 'Half Day', width: 44, value: (r) => (r.isHalfDay ? 'Yes' : 'No') },
+        { label: 'Status', width: 70, value: (r) => r.status },
+        { label: 'Reason', width: 110, value: (r) => r.reason ?? '' },
+        { label: 'Applied At', width: 62, value: (r) => r.appliedAt },
+      ],
+      rows: appRows,
+      footer: [
+        { label: 'Applications', value: String(appRows.length) },
+        { label: 'Total Days', value: appRows.reduce((s, a) => s + a.numberOfDays, 0).toFixed(2) },
+      ],
+      emptyMessage: 'No leave applications for this period.',
+    });
+    return new NextResponse(Buffer.from(pdfBytes), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="leave_report_${year}_${String(month).padStart(2, '0')}.pdf"`,
+      },
+    });
+  }
+
   if (format === 'csv') {
     const headers = [
       'Employee Code', 'Employee Name', 'Department', 'Leave Type',
