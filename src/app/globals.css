@@ -152,51 +152,9 @@ table td {
   animation: brand-logo-pulse 1.2s ease-in-out infinite;
 }
 
-/* App icon loader: same H mark as src/app/icon.svg, Next.js rounded-square + ring. */
-.hrms-app-icon {
+/* H puzzle loader: two chevrons snap together, hold, then pull apart. */
+.h-puzzle {
   position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.hrms-app-icon-plate {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  border-radius: 22%;
-  background: color-mix(in srgb, var(--logo-grad-1, #071853) 92%, #000);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
-}
-
-.hrms-app-icon-ring {
-  position: absolute;
-  inset: -14%;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0%,
-    transparent 35%,
-    var(--logo-grad-2, #208bf8) 70%,
-    var(--logo-grad-3, #bfecff) 88%,
-    transparent 100%
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  animation: hrms-app-icon-spin 0.9s linear infinite;
-}
-
-@keyframes hrms-app-icon-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.hrms-app-icon-mark {
-  display: block;
   overflow: visible;
 }
 
@@ -210,6 +168,68 @@ table td {
 
 .h-puzzle-stop-bot {
   stop-color: var(--logo-grad-1, #071c58);
+}
+
+.h-puzzle-piece {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-origin: center;
+  will-change: transform, opacity;
+  animation-duration: 2s;
+  animation-timing-function: cubic-bezier(0.22, 1.15, 0.36, 1);
+  animation-iteration-count: infinite;
+}
+
+.h-puzzle-piece svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.h-puzzle-left {
+  animation-name: h-puzzle-left;
+}
+
+.h-puzzle-right {
+  animation-name: h-puzzle-right;
+}
+
+@keyframes h-puzzle-left {
+  0%,
+  8% {
+    transform: translateX(-56px);
+    opacity: 0;
+  }
+  32%,
+  52% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  76%,
+  100% {
+    transform: translateX(-56px);
+    opacity: 0;
+  }
+}
+
+@keyframes h-puzzle-right {
+  0%,
+  8% {
+    transform: translateX(56px);
+    opacity: 0;
+  }
+  32%,
+  52% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  76%,
+  100% {
+    transform: translateX(56px);
+    opacity: 0;
+  }
 }
 
 /* Bar-chart loading skeletons */
@@ -252,8 +272,13 @@ table td {
 @media (prefers-reduced-motion: reduce) {
   .logo-spin,
   .brand-logo-pulse,
-  .hrms-app-icon-ring {
+  .h-puzzle-piece {
     animation: none;
+  }
+
+  .h-puzzle-piece {
+    opacity: 1;
+    transform: none;
   }
 
   .bar-chart-skeleton-bar {
