@@ -48,23 +48,18 @@ interface FieldProps {
 }
 
 export default function Field({ def, value, error, onChange }: FieldProps) {
-  const inputClass = `w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-2 transition ${
-    error
-      ? 'border-red-400 focus:ring-red-400'
-      : 'focus:ring-[var(--accent)]'
-  }`;
-  const baseStyle = {
-    backgroundColor: def.disabled ? 'var(--surface-muted)' : 'var(--surface)',
-    color: 'var(--foreground)',
-    borderColor: error ? '#f87171' : 'var(--border)',
-    opacity: def.disabled ? 0.7 : 1,
-  };
+  // .form-control is the design-system input (globals.css); the error ring is
+  // the only thing we still set per-field.
+  const inputClass = `form-control ${error ? 'border-[var(--color-danger)] focus:border-[var(--color-danger)]' : ''}`;
+  const baseStyle = error
+    ? { boxShadow: '0 0 0 3px color-mix(in srgb, var(--color-danger) 22%, transparent)' }
+    : undefined;
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+      <label className="form-label mb-0">
         {def.label}
-        {def.required && <span className="text-red-500 ml-0.5">*</span>}
+        {def.required && <span className="ml-0.5 text-[var(--color-danger)]">*</span>}
       </label>
 
       {def.type === 'checkbox' ? (
@@ -127,11 +122,11 @@ export default function Field({ def, value, error, onChange }: FieldProps) {
       )}
 
       {def.helpText && def.type !== 'checkbox' && (
-        <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+        <span className="form-hint mt-0">
           {def.helpText}
         </span>
       )}
-      {error && <span className="text-xs text-red-500">{error}</span>}
+      {error && <span className="form-error mt-0">{error}</span>}
     </div>
   );
 }

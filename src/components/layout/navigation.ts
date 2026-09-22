@@ -66,10 +66,6 @@ export const navigation: NavModule[] = [
         ],
       },
       {
-        label: "Security",
-        items: [{ label: "Security Dashboard", short: "Security", href: "/dashboard/security", ready: true }],
-      },
-      {
         label: "HR",
         items: [
           { label: "Headcount (Department-wise)", short: "Headcount by Dept", href: "/dashboard/headcount" },

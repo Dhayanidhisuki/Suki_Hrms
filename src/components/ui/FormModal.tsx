@@ -106,21 +106,20 @@ export default function FormModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto"
-        style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl shadow-2xl"
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-main)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-5 py-4 border-b"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex items-center justify-between border-b px-5 py-4"
+          style={{ borderColor: 'var(--border-main)' }}
         >
-          <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+          <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
             {title}
           </h2>
           <button
@@ -150,8 +149,8 @@ export default function FormModal({
 
           {submitError && (
             <div
-              className="rounded-lg px-3 py-2 text-sm"
-              style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
+              className="rounded-xl px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', border: '1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)' }}
             >
               {submitError}
             </div>
@@ -162,16 +161,14 @@ export default function FormModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
-              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              className="form-btn-cancel cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
-              style={{ backgroundColor: 'var(--accent)' }}
+              className="form-btn-save cursor-pointer disabled:opacity-50"
             >
               {submitting ? 'Saving...' : submitLabel}
             </button>

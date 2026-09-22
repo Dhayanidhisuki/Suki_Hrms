@@ -106,8 +106,8 @@ export default function SearchableSelect({
     }
   };
 
-  const triggerClass = `w-full flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm text-left focus:outline-none focus:ring-2 transition ${
-    error ? 'border-red-400 focus:ring-red-400' : 'focus:ring-[var(--accent)]'
+  const triggerClass = `form-control flex cursor-pointer items-center justify-between gap-2 text-left ${
+    error ? 'border-[var(--color-danger)] focus:border-[var(--color-danger)]' : ''
   }`;
 
   return (
@@ -143,8 +143,8 @@ export default function SearchableSelect({
 
       {open && !disabled && (
         <div
-          className={`absolute z-20 w-full rounded-lg border shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
-          style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+          className={`absolute z-20 w-full overflow-hidden rounded-xl border shadow-xl ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-main)' }}
           onKeyDown={handleKeyDown}
         >
           <div className="border-b p-2" style={{ borderColor: 'var(--border)' }}>
@@ -157,8 +157,8 @@ export default function SearchableSelect({
                 setHighlightIndex(0);
               }}
               placeholder="Search..."
-              className="w-full rounded-md border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+              className="w-full rounded-lg border px-2 py-1.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)', borderColor: 'var(--border-main)' }}
             />
           </div>
           <ul role="listbox" className="max-h-56 overflow-auto py-1">

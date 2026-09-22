@@ -24,8 +24,8 @@ export default function SectionCard({ title, description, count, actions, childr
   const hasHeader = Boolean(title || description || actions);
   return (
     <section
-      className={`rounded-xl border ${className}`}
-      style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
+      className={`rounded-2xl border ${className}`}
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-main)' }}
     >
       {hasHeader && (
         <header className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>

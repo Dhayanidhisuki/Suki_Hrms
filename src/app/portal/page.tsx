@@ -8,6 +8,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { BrandLogo } from '@/components/BrandLogo';
 import { useToast } from '@/components/ui';
 
 interface CandidateInfo {
@@ -252,9 +253,9 @@ function PortalInner() {
       <header className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
-            <div>
+            <div className="flex items-center gap-3">
+              <BrandLogo size="sm" plate />
               <h1 className="text-lg font-semibold">Candidate Portal</h1>
-              <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Suki HRMS — Self-Service</p>
             </div>
             <div className="text-right">
               <p className="text-sm font-medium">{candidate.firstName} {candidate.lastName}</p>

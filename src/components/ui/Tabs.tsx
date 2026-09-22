@@ -19,7 +19,7 @@ interface TabsProps<K extends string> {
 export default function Tabs<K extends string>({ tabs, active, onChange, variant = 'underline' }: TabsProps<K>) {
   if (variant === 'segmented') {
     return (
-      <div className="inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-muted)' }} role="tablist">
+      <div className="inline-flex rounded-xl border p-0.5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-subtle)' }} role="tablist">
         {tabs.map((t) => {
           const isActive = t.key === active;
           return (
@@ -29,7 +29,7 @@ export default function Tabs<K extends string>({ tabs, active, onChange, variant
               role="tab"
               aria-selected={isActive}
               onClick={() => onChange(t.key)}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition"
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition"
               style={{
                 backgroundColor: isActive ? 'var(--surface)' : 'transparent',
                 color: isActive ? 'var(--foreground)' : 'var(--foreground-muted)',
@@ -60,7 +60,7 @@ export default function Tabs<K extends string>({ tabs, active, onChange, variant
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(t.key)}
-            className="-mb-px flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition"
+            className="-mb-px flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm font-semibold transition"
             style={{
               color: isActive ? 'var(--accent)' : 'var(--foreground-muted)',
               borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
