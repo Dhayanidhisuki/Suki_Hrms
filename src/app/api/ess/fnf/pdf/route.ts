@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { generateFnfStatementPdf } from '@/lib/fnf-statement';
+import { essVisibility } from '@/lib/fnf/workflow';
 
 export async function GET(request: NextRequest) {
   const scope = getCompanyId(request);
@@ -24,6 +25,12 @@ export async function GET(request: NextRequest) {
     where: { id, companyId: scope.companyId, employeeId: employee.id },
   });
   if (!settlement) return NextResponse.json({ error: 'Settlement not found' }, { status: 404 });
+  // A statement PDF is a document the employee keeps and may act on, so it is
+  // only issued once HR has committed the figures. 404 rather than 403,
+  // matching how the list hides the same settlement.
+  if (essVisibility(settlement.status) !== 'full') {
+    return NextResponse.json({ error: 'Settlement not found' }, { status: 404 });
+  }
 
   const pdf = await generateFnfStatementPdf(settlement.id);
   return new NextResponse(Buffer.from(pdf), {
