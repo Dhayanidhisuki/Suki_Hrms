@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
 import { FNF_APPROVABLE, assertStatus, statusAfterHrApprove } from '@/lib/fnf/workflow';
 import { emitFnfEvent } from '@/lib/fnf/notify';
+import { segregationConflict } from '@/lib/fnf/segregation';
 
 export async function POST(
   request: NextRequest,
@@ -26,6 +27,8 @@ export async function POST(
   const blocked = assertStatus(settlement.status, FNF_APPROVABLE, 'approve');
   if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
   const config = await prisma.fullAndFinalConfig.findUnique({ where: { companyId: scope.companyId } });
+  const sod = segregationConflict(settlement, userId, 'approve', config?.enforceSegregationOfDuties !== false);
+  if (sod) return NextResponse.json({ error: sod }, { status: 403 });
   const next = statusAfterHrApprove(config?.approvalStages);
 
   const updated = await prisma.$transaction(async (tx) => {
