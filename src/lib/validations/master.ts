@@ -638,17 +638,6 @@ export const incentivePolicySchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const doubleMachineEntrySchema = z.object({
-  employeeId: z.coerce.number().int().positive(),
-  date: z.coerce.date(),
-  machine1: z.string().max(50).optional().nullable(),
-  machine2: z.string().max(50).optional().nullable(),
-  numMachines: z.coerce.number().int().min(1).max(10).default(1),
-  workingHours: z.coerce.number().min(0).max(24),
-  incentiveRate: z.coerce.number().min(0),
-  hrRemarks: z.string().max(500).optional().nullable(),
-});
-
 export const canteenTokenSchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   date: z.coerce.date(),

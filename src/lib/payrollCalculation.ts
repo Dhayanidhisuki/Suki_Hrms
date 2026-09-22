@@ -47,22 +47,12 @@
 
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
-import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from './attendanceCalc';
+import { computeLomMinutes } from './attendanceCalc';
+import { computeEmployeeOtForMonth } from './payroll/otCalculation';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from './permissionExcuse';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
-// Phase 18 — ISO week key (Monday-Sunday) for weekly OT aggregation.
-// Returns "YYYY-WW" where WW is the ISO week number.
-function getIsoWeekKey(date: Date): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${d.getUTCFullYear()}-${String(weekNum).padStart(2, '0')}`;
 }
 
 function round(n: number) {
@@ -333,154 +323,25 @@ export async function calculatePayrollRun(payrollRunId: number) {
     ctcOnlyEarnings = round(ctcOnlyEarnings);
     recurringDeductions = round(recurringDeductions);
 
-    let otAmount = 0;
+    // OT — status filter, threshold/rounding/daily cap, day-type factors,
+    // weekly + monthly caps and the OTIncentiveSlab match all live in one
+    // shared module (src/lib/payroll/otCalculation.ts) so the OT reports
+    // call the same code rather than re-deriving it and drifting.
+    const otResult = await computeEmployeeOtForMonth({
+      employeeId: emp.id,
+      year,
+      month,
+      jobInfo,
+      revision,
+      lopFactor,
+      totalWorkingDays,
+      otPlans,
+      otIncentiveSlabs,
+    });
+    const otAmount = otResult.otAmount;
     // Flat monthly bonus from an OTIncentiveSlab.flatBonusAmount match —
     // a separate earning, never folded into otAmount (that stays pure OT pay).
-    let otIncentiveAmount = 0;
-    // Gate on the per-employee eligibility flag only. summary.otMinutesTotal
-    // is written as approved-only (monthly/finalize, refreshMonthlySummary),
-    // so gating on it zeroed OT for sites with no OT approval workflow.
-    // The row query below decides whether there is anything to pay.
-    if (jobInfo?.overtimeAllowed) {
-      const otPlan = otPlans.find((p) => p.isActive) ?? null;
-      const otPlanLite = otPlan
-        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes }
-        : null;
-
-      // Phase 13 — per-day OT calculation with day-type factors.
-      // Two kinds of row are payable in cash:
-      //   1. approved-as-OT rows → otMinutesApproved;
-      //   2. rows with NO approval decision at all (otApprovalStatus null)
-      //      → otMinutesCalculated (sites without the approval workflow).
-      // Rejected rows and COMP_OFF settlements are never paid in cash — the
-      // comp-off route credits a comp-off day and nulls otMinutesApproved
-      // but leaves otMinutesCalculated untouched, so it must not be a
-      // fallback here. Pending rows are paid once decided.
-      const monthStart = new Date(Date.UTC(year, month - 1, 1));
-      const monthEnd = new Date(Date.UTC(year, month, 1));
-      const dailyOtRows = await prisma.dailyAttendance.findMany({
-        where: {
-          employeeId: emp.id,
-          date: { gte: monthStart, lt: monthEnd },
-          status: { in: ['Present', 'HalfDay', 'OnDuty'] },
-          OR: [
-            { otMinutesApproved: { gt: 0 }, otApprovalStatus: 'approved', otSettlementType: 'OT' },
-            { otApprovalStatus: null, otMinutesCalculated: { gt: 0 } },
-          ],
-        },
-        include: { shiftMaster: { select: { endTime: true } } },
-      });
-
-      // Compute the OT hourly rate based on the configured basis.
-      const otBasis = otPlan?.otCalculationBasis ?? 'GROSS';
-      let otHourlyRate: number;
-      if (otBasis === 'FIXED' && jobInfo.overtimeRatePerHour) {
-        otHourlyRate = Number(jobInfo.overtimeRatePerHour);
-      } else {
-        const componentSum = (codes: string[]) =>
-          revision.components
-            .filter((c) => codes.includes(c.salaryComponent.code) && c.salaryComponent.type === 'earning')
-            .reduce((sum, c) => sum + Number(c.amount) * lopFactor, 0);
-        let basisAmount: number;
-        if (otBasis === 'BASIC') {
-          basisAmount = componentSum(['BASIC']);
-        } else if (otBasis === 'BASIC_DA') {
-          basisAmount = componentSum(['BASIC', 'DA']);
-        } else if (otBasis === 'BASIC_DA_HRA') {
-          basisAmount = componentSum(['BASIC', 'DA', 'HRA']);
-        } else {
-          basisAmount = Number(revision.grossSalary); // GROSS
-        }
-        otHourlyRate = totalWorkingDays > 0 ? basisAmount / totalWorkingDays / 8 : 0;
-      }
-
-      // Apply per-day factors: each day's OT minutes are multiplied by the
-      // appropriate factor (weekday/weeklyOff/holiday) from the OTPlan.
-      const baseFactor = otPlan ? Number(otPlan.otRateMultiplier) : Number(jobInfo.overtimeFactor ?? 1);
-      let totalOtAmount = 0;
-      let totalOtHours = 0;
-      // Phase 18 — weekly OT aggregation for weekly cap enforcement.
-      // Group OT hours by ISO week (Monday-Sunday).
-      const weeklyOtHours = new Map<string, number>();
-      for (const d of dailyOtRows) {
-        const isApprovedOt = d.otApprovalStatus === 'approved' && d.otSettlementType === 'OT';
-        // Mirror the query: approved-as-OT → approved minutes; undecided →
-        // calculated minutes; any other decision (rejected, COMP_OFF,
-        // pending) → nothing in cash.
-        if (!isApprovedOt && d.otApprovalStatus !== null) continue;
-        const rawOtMinutes = isApprovedOt
-          ? Number(d.otMinutesApproved ?? 0)
-          : Number(d.otMinutesCalculated ?? 0);
-        // Threshold (qualification, not deduction) + daily cap. A null
-        // maxOtHoursPerDay means no cap — one implementation, shared with
-        // the attendance screens.
-        const shiftEndTod = d.shiftMaster ? parseShiftTime(d.shiftMaster.endTime) : undefined;
-        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite, shiftEndTod);
-        if (dayOtMinutes <= 0) continue;
-        const dayOtHours = dayOtMinutes / 60;
-        let dayFactor = baseFactor;
-        if (d.isHolidayWorked && otPlan?.holidayFactor) {
-          dayFactor = baseFactor * Number(otPlan.holidayFactor);
-        } else if (d.isWeeklyOffWorked && otPlan?.weeklyOffFactor) {
-          dayFactor = baseFactor * Number(otPlan.weeklyOffFactor);
-        } else if (otPlan?.weekdayFactor) {
-          dayFactor = baseFactor * Number(otPlan.weekdayFactor);
-        }
-        totalOtAmount += dayOtHours * otHourlyRate * dayFactor;
-        totalOtHours += dayOtHours;
-        // Aggregate by week.
-        const weekKey = getIsoWeekKey(d.date);
-        weeklyOtHours.set(weekKey, (weeklyOtHours.get(weekKey) ?? 0) + dayOtHours);
-      }
-
-      // Phase 18 — Apply weekly cap from OTPlan when set.
-      // If any week exceeds the cap, scale down that week's contribution.
-      if (otPlan?.maxOtHoursPerWeek != null && weeklyOtHours.size > 0) {
-        const weeklyCap = otPlan.maxOtHoursPerWeek;
-        let cappedTotalHours = 0;
-        let scaleTotal = 0;
-        let scaleCapped = 0;
-        for (const [, weekHours] of weeklyOtHours) {
-          if (weekHours > weeklyCap) {
-            scaleTotal += weekHours;
-            scaleCapped += weeklyCap;
-            cappedTotalHours += weeklyCap;
-          } else {
-            cappedTotalHours += weekHours;
-          }
-        }
-        if (scaleTotal > scaleCapped) {
-          // Scale the total OT amount proportionally.
-          totalOtAmount = totalOtAmount * (cappedTotalHours / totalOtHours);
-          totalOtHours = cappedTotalHours;
-        }
-      }
-
-      // Apply monthly cap from OTPlan when set — scales the amount in step
-      // with the hours, exactly like the weekly cap above. (The daily cap
-      // is already applied per row; there is no "daily cap × calendar
-      // days" monthly ceiling.)
-      ({ totalOtHours, totalOtAmount } = applyMonthlyOtCap(totalOtHours, totalOtAmount, otPlan?.maxOtHoursPerMonth));
-
-      otAmount = totalOtAmount;
-
-      // Apply the matching OT incentive slab, if any, for this month's total
-      // OT hours. A slab is either a flat monthly bonus (flatBonusAmount set
-      // — added as its own earning, otAmount is untouched) or a multiplier
-      // on OT pay (the original behaviour). Bands don't stack — the first
-      // matching slab wins, same convention as every other slab table here.
-      if (otIncentiveSlabs.length > 0 && totalOtHours > 0) {
-        const slab = otIncentiveSlabs.find(
-          (s) => totalOtHours >= Number(s.minOtHours) && (s.maxOtHours === null || totalOtHours < Number(s.maxOtHours))
-        );
-        if (slab?.flatBonusAmount != null) {
-          otIncentiveAmount = round(Number(slab.flatBonusAmount));
-        } else if (slab) {
-          otAmount *= Number(slab.incentiveMultiplier);
-        }
-      }
-      otAmount = round(otAmount);
-    }
+    const otIncentiveAmount = otResult.otIncentiveAmount;
 
     const pfApplicable = line.pfApplicable; // per-line override, default true, editable before approval
     let pfEmployee = 0;
@@ -700,7 +561,15 @@ export async function calculatePayrollRun(payrollRunId: number) {
         const comp = await prisma.salaryComponent.findUnique({
           where: { companyId_code: { companyId, code: dr.code } },
         });
-        if (comp) {
+        // The resolved component MUST be a deduction. A DeductionRate whose
+        // code happens to match an earning component would otherwise itemise
+        // money taken FROM salary as a +₹ earning on the payslip, while the
+        // amount sits in autoDeductionsTotal — the lines then overstate Total
+        // Earnings and the deduction is invisible. (Live example: a CANTEEN
+        // rate resolving to the "Canteen Allowance" earning row.) Falling
+        // through to no component is safe: the amount still deducts and shows
+        // under "Other Auto Deductions".
+        if (comp && comp.type === 'deduction') {
           autoComponentRows.push({ salaryComponentId: comp.id, amount });
         }
       }
@@ -814,10 +683,45 @@ export async function calculatePayrollRun(payrollRunId: number) {
       autoComponentRows.push({ salaryComponentId: otIncentiveComponent.id, amount: otIncentiveAmount });
     }
 
+    // ── Workforce > Benefits > Double Machine Incentive ──────────────
+    // The monthly figures HR keys on /payroll/processing/double-machine.
+    // Only `complete` rows are paid — draft/process are not finished, and
+    // `hold` is the one explicit "do not pay" the module offers. Same gate
+    // the OT & Other Incentive register applies (otIncentiveRegister.ts).
+    //
+    // This module replaced the per-day DoubleMachineEntry path, which had
+    // an approve endpoint and a payroll consumer but no way to create a row,
+    // so DM_INCENTIVE was always zero. Where this module carries a figure it
+    // wins outright over the computed AttendanceBonusConfig / IncentivePolicy
+    // values below: two producers for one payslip line is precisely the
+    // ambiguity being removed everywhere else in this codebase.
+    const dmModuleRow = await prisma.doubleMachineIncentive.findFirst({
+      where: { companyId, employeeId: emp.id, year, month, status: 'complete' },
+    });
+    const dmModuleAmount = (field: 'doubleMachine' | 'attendanceBonus' | 'shiftIncentive' | 'otWeeklyInc' | 'employeeR') =>
+      dmModuleRow ? round(Number(dmModuleRow[field])) : 0;
+
+    /** Credit an auto earning and itemise it when its component master exists. */
+    const creditAutoEarning = async (code: string, amount: number) => {
+      if (amount <= 0) return;
+      autoEarningsTotal += amount;
+      const comp = await prisma.salaryComponent.findUnique({
+        where: { companyId_code: { companyId, code } },
+      });
+      if (comp) autoComponentRows.push({ salaryComponentId: comp.id, amount });
+    };
+
     // Attendance bonus — auto-applied when configured and employee qualifies.
     // Qualification: zero LOP (if required), zero late (if required), zero
     // early-out (if required), and payable days >= min % of total days.
-    let attendanceBonus = 0;
+    // Skipped entirely when the Benefits module supplies the figure.
+    let attendanceBonus = dmModuleAmount('attendanceBonus');
+    if (attendanceBonus > 0) {
+      const bonusComp = await prisma.salaryComponent.findUnique({
+        where: { companyId_code: { companyId, code: 'ATT_BONUS' } },
+      });
+      if (bonusComp) autoComponentRows.push({ salaryComponentId: bonusComp.id, amount: attendanceBonus });
+    } else
     if (attendanceBonusConfig?.isActive && Number(attendanceBonusConfig.bonusAmount) > 0) {
       const lopDays = Math.round(Number(summary.lopDays));
       const lateMin = Number(summary.lateMinutesTotal ?? 0);
@@ -921,7 +825,12 @@ export async function calculatePayrollRun(payrollRunId: number) {
     if (canteenDeduction > 0) {
       autoDeductionsTotal += canteenDeduction;
       const canteenComp = await prisma.salaryComponent.findUnique({
-        where: { companyId_code: { companyId, code: 'CANTEEN' } },
+        // CANTEEN_DED, not CANTEEN. canteenDeduction is money taken FROM
+        // salary (it is added to autoDeductionsTotal above), but this used to
+        // point at the CANTEEN *earning* component, so the payslip rendered
+        // the recovery as a +₹ allowance. CANTEEN_DED exists in the catalog
+        // for exactly this and is typed `deduction`.
+        where: { companyId_code: { companyId, code: 'CANTEEN_DED' } },
       });
       if (canteenComp) {
         autoComponentRows.push({ salaryComponentId: canteenComp.id, amount: canteenDeduction });
@@ -943,27 +852,26 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
-    // Double machine incentive — sum approved entries for this month.
-    const doubleMachineEntries = await prisma.doubleMachineEntry.findMany({
-      where: {
-        employeeId: emp.id,
-        date: { gte: monthStart, lt: monthEnd },
-        status: 'APPROVED',
-      },
-    });
-    const doubleMachineIncentive = doubleMachineEntries.reduce((sum, d) => sum + Number(d.calculatedIncentive), 0);
-    if (doubleMachineIncentive > 0) {
-      autoEarningsTotal += doubleMachineIncentive;
-      const dmComp = await prisma.salaryComponent.findUnique({
-        where: { companyId_code: { companyId, code: 'DM_INCENTIVE' } },
-      });
-      if (dmComp) {
-        autoComponentRows.push({ salaryComponentId: dmComp.id, amount: doubleMachineIncentive });
-      }
-    }
+    // Double machine, OT weekly incentive and employee referral — all three
+    // exist only in the Benefits module; there is no rule engine for any of
+    // them. OT_WEEKLY_INC and EMP_REFERRAL have no salary component in the
+    // seed, so until an admin creates them these amounts are still paid but
+    // roll up under "Other Earnings" on the payslip rather than showing by
+    // name — the same behaviour every other auto earning has when its
+    // component master is missing.
+    const doubleMachineIncentive = dmModuleAmount('doubleMachine');
+    await creditAutoEarning('DM_INCENTIVE', doubleMachineIncentive);
+    await creditAutoEarning('OT_WEEKLY_INC', dmModuleAmount('otWeeklyInc'));
+    await creditAutoEarning('EMP_REFERRAL', dmModuleAmount('employeeR'));
 
     // Phase 15 — Shift bonus from IncentivePolicy (SHIFT_BONUS type).
-    for (const policy of incentivePolicies) {
+    // Skipped when the Benefits module supplies the figure, same precedence
+    // as the attendance bonus above.
+    const moduleShiftIncentive = dmModuleAmount('shiftIncentive');
+    if (moduleShiftIncentive > 0) {
+      await creditAutoEarning('SHIFT_BONUS', moduleShiftIncentive);
+    }
+    for (const policy of moduleShiftIncentive > 0 ? [] : incentivePolicies) {
       if (policy.type === 'SHIFT_BONUS' && policy.calculationType === 'FLAT') {
         const shiftCodes = (policy.eligibleShiftCodes ?? '').split(',').map((s) => s.trim()).filter(Boolean);
         if (shiftCodes.length > 0) {

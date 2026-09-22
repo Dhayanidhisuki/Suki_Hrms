@@ -9,6 +9,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { doubleMachineBulkSchema } from '@/lib/validations/payroll';
 import { logActivity } from '@/lib/activity-log';
+import { checkPeriodEditable } from '@/lib/payrollGuard';
 
 export async function POST(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'payroll.processing.edit');
@@ -22,6 +23,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { year, month, rows } = parsed.data;
+
+  // An import must not rewrite a period whose payroll is already approved.
+  const lockErr = await checkPeriodEditable(scope.companyId, year, month);
+  if (lockErr) return lockErr;
+
   const userId = Number(request.headers.get('x-user-id')) || null;
   const employeeIds = [...new Set(rows.map((r) => r.employeeId))];
 
@@ -53,13 +59,17 @@ export async function POST(request: NextRequest) {
           year,
           month,
           ...amounts,
-          status: 'complete',
+          // An Excel import is data entry, not sign-off. This used to stamp
+          // `complete` on every imported row with no review; `complete` is now
+          // what payroll pays, so imports land in `process` and someone has to
+          // approve them.
+          status: 'process',
           createdByUserId: userId,
           updatedByUserId: userId,
         },
         update: {
           ...amounts,
-          status: 'complete',
+          status: 'process',
           updatedByUserId: userId,
         },
       });
