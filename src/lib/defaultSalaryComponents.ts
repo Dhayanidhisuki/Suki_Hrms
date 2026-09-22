@@ -81,6 +81,27 @@ const RAW: [string, string, DefaultSalaryComponent['type']][] = [
   ['DOUBLE_MACHINE', 'Double Machine Allowance', 'earning'],
   ['EXTRA_WORK', 'Extra Work Allowance', 'earning'],
   ['REFERRAL_BONUS', 'Referral Bonus', 'earning'],
+
+  // The codes payrollCalculation.ts actually looks up when crediting the
+  // monthly incentives, and that both the OT & Other Incentive register and
+  // the Double Machine report query by. They were never in this catalog, so
+  // the lookups found nothing: the amounts were still PAID (they go into
+  // autoEarningsTotal regardless) but no PayrollLineComponent was written, so
+  // every one of them collapsed into the payslip's "Other Earnings" line
+  // instead of appearing under its own name.
+  //
+  // Note the four rows above overlap these conceptually (DOUBLE_MACHINE vs
+  // DM_INCENTIVE, PETROL_ALLOW vs PETROL, REFERRAL_BONUS vs EMP_REFERRAL).
+  // The rows above are referenced by no code at all — they were added for the
+  // BenefitRateByEmployeeType / ad-hoc-line mechanism. The codes below are the
+  // operative ones. Left both rather than renaming, because a company may
+  // already have ad-hoc payroll lines pointing at the older codes.
+  ['DM_INCENTIVE', 'Double Machine Incentive', 'earning'],
+  ['ATT_BONUS', 'Attendance Bonus', 'earning'],
+  ['SHIFT_BONUS', 'Shift Incentive', 'earning'],
+  ['PETROL', 'Petrol Allowance', 'earning'],
+  ['OT_WEEKLY_INC', 'OT Weekly Incentive', 'earning'],
+  ['EMP_REFERRAL', 'Employee Referral', 'earning'],
 ];
 
 export const DEFAULT_SALARY_COMPONENTS: DefaultSalaryComponent[] = RAW.map(([code, name, type]) => ({

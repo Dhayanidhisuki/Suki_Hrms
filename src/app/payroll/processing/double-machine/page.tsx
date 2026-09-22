@@ -35,6 +35,12 @@ interface IncentiveRow {
   employeeR: number;
   status: string;
   remarks: string | null;
+  hasPayrollLine: boolean;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  rejectionReason: string | null;
 }
 
 const AMOUNT_KEYS = ['doubleMachine', 'attendanceBonus', 'shiftIncentive', 'otWeeklyInc', 'employeeR'] as const;
@@ -90,6 +96,90 @@ const EMPTY_AMOUNTS: Record<AmountKey, string> = {
   employeeR: '',
 };
 
+/**
+ * The four states a DoubleMachineIncentive row moves through, in order.
+ * `hold` is a branch off the main line rather than a step on it — it is the
+ * only status that stops payment, and a held row can be returned to process.
+ */
+const WORKFLOW_STEPS = ['draft', 'process', 'complete'] as const;
+
+/** Which salary component each amount field reaches the payslip as. */
+const FIELD_TO_COMPONENT: Record<AmountKey, string> = {
+  doubleMachine: 'DM_INCENTIVE',
+  attendanceBonus: 'ATT_BONUS',
+  shiftIncentive: 'SHIFT_BONUS',
+  otWeeklyInc: 'OT_WEEKLY_INC',
+  employeeR: 'EMP_REFERRAL',
+};
+
+/** Draft → Process → Complete, with Hold shown as the branch it is. */
+function StatusPipeline({ status }: { status: string }) {
+  if (status === 'hold') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#b45309' }}>
+        <span aria-hidden>⏸</span> On hold — pays ₹0
+      </span>
+    );
+  }
+  const at = WORKFLOW_STEPS.indexOf(status as (typeof WORKFLOW_STEPS)[number]);
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[11px]" title={`Draft → Process → Complete (currently ${status})`}>
+      {WORKFLOW_STEPS.map((step, i) => (
+        <span key={step} className="inline-flex items-center gap-0.5">
+          <span
+            className="rounded px-1 py-px"
+            style={
+              i < at
+                ? { backgroundColor: 'var(--surface-hover)', color: 'var(--foreground-muted)' }
+                : i === at
+                  ? { backgroundColor: step === 'complete' ? '#166534' : 'var(--accent)', color: '#fff', fontWeight: 600 }
+                  : { color: 'var(--foreground-muted)', opacity: 0.5 }
+            }
+          >
+            {step}
+          </span>
+          {i < WORKFLOW_STEPS.length - 1 && <span aria-hidden style={{ color: 'var(--foreground-muted)', opacity: 0.5 }}>›</span>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** What this row does to payroll for the selected period, in plain terms. */
+function payrollImpact(row: IncentiveRow): { tone: 'paid' | 'blocked' | 'none'; headline: string; detail: string } {
+  const nonzero = AMOUNT_KEYS.filter((k) => Number(row[k]) > 0);
+  const total = nonzero.reduce((s, k) => s + Number(row[k]), 0);
+  if (!row.hasPayrollLine) {
+    return {
+      tone: 'blocked',
+      headline: 'No payroll line — will not reach any payslip',
+      detail: 'This employee has no payroll line for the period, so nothing here can be paid even once approved.',
+    };
+  }
+  if (row.status === 'hold') {
+    return {
+      tone: 'blocked',
+      headline: 'Paid ₹0 — held',
+      detail: row.rejectionReason ? `Reason: ${row.rejectionReason}` : 'No reason recorded.',
+    };
+  }
+  if (row.status !== 'complete') {
+    return {
+      tone: 'none',
+      headline: `Will NOT be paid — status is ${row.status}`,
+      detail: 'Payroll pays complete rows only. Approve it, then recalculate the run.',
+    };
+  }
+  if (nonzero.length === 0) {
+    return { tone: 'none', headline: 'Approved, but every amount is zero', detail: 'Nothing to pay.' };
+  }
+  return {
+    tone: 'paid',
+    headline: `Will be paid — ${fmtAmt(total)} across ${nonzero.length} component${nonzero.length === 1 ? '' : 's'}`,
+    detail: nonzero.map((k) => `${FIELD_TO_COMPONENT[k]} ${fmtAmt(Number(row[k]))}`).join(' · '),
+  };
+}
+
 export default function DoubleMachineIncentivePage() {
   const toast = useToast();
   const now = new Date();
@@ -101,6 +191,22 @@ export default function DoubleMachineIncentivePage() {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<IncentiveRow[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+  // Payroll for this period is APPROVED/LOCKED — the payslips are out, so
+  // every write control is disabled rather than letting the user discover the
+  // 409 by pressing a button.
+  const [periodLocked, setPeriodLocked] = useState(false);
+  const [periodRunStatus, setPeriodRunStatus] = useState<string | null>(null);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  /** Row whose audit trail is open. */
+  const [auditRow, setAuditRow] = useState<IncentiveRow | null>(null);
+  const [auditEntries, setAuditEntries] = useState<{ id: number; activityType: string; at: string; by: string | null; oldValue: string | null; newValue: string | null }[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 1 });
+  // Totals come from the server across the whole filtered set, not just the
+  // visible page — a page-only total reads as a grand total and misleads.
+  const [serverTotals, setServerTotals] = useState<Record<AmountKey, number> & { recordCount: number }>(
+    { doubleMachine: 0, attendanceBonus: 0, shiftIncentive: 0, otWeeklyInc: 0, employeeR: 0, recordCount: 0 }
+  );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [loading, setLoading] = useState(true);
@@ -136,6 +242,7 @@ export default function DoubleMachineIncentivePage() {
         month: String(month),
         status: statusFilter,
         search,
+        page: String(page),
       });
       if (departmentId) qs.set('departmentId', departmentId);
       const res = await fetch(`/api/payroll/double-machine?${qs.toString()}`);
@@ -143,6 +250,11 @@ export default function DoubleMachineIncentivePage() {
       if (!res.ok) throw new Error(json.error ?? 'Failed to load');
       setRows(json.data?.rows ?? []);
       setDepartments(json.data?.departments ?? []);
+      setPeriodLocked(Boolean(json.data?.periodLocked));
+      setPeriodRunStatus(json.data?.periodRunStatus ?? null);
+      setStatusCounts(json.data?.statusCounts ?? {});
+      if (json.data?.pagination) setPagination(json.data.pagination);
+      if (json.data?.totals) setServerTotals(json.data.totals);
       setSelectedIds(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load');
@@ -150,7 +262,31 @@ export default function DoubleMachineIncentivePage() {
     } finally {
       setLoading(false);
     }
-  }, [year, month, departmentId, statusFilter, search, toast]);
+  }, [year, month, departmentId, statusFilter, search, page, toast]);
+
+  // Any filter change puts us back on page 1 — otherwise narrowing the filters
+  // while on page 4 shows an empty grid that looks like "no records".
+  useEffect(() => {
+    setPage(1);
+  }, [year, month, departmentId, statusFilter, search]);
+
+  // Audit trail for the open row — from the endpoint that reads the
+  // EmployeeActivity rows this module has always written under
+  // module='double-machine', which nothing previously surfaced.
+  useEffect(() => {
+    if (!auditRow?.recordId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/payroll/double-machine/${auditRow.recordId}/audit`);
+        const json = await res.json();
+        if (!cancelled) setAuditEntries(res.ok ? json.data ?? [] : []);
+      } catch {
+        if (!cancelled) setAuditEntries([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auditRow]);
 
   useEffect(() => {
     loadData();
@@ -178,34 +314,36 @@ export default function DoubleMachineIncentivePage() {
 
   const selectedRecords = records.filter((r) => selectedIds.has(r.recordId!));
 
-  const postRow = async (row: IncentiveRow, status: string) => {
-    const res = await fetch('/api/payroll/double-machine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employeeId: row.employeeId,
-        year: row.year,
-        month: row.month,
-        doubleMachine: row.doubleMachine,
-        attendanceBonus: row.attendanceBonus,
-        shiftIncentive: row.shiftIncentive,
-        otWeeklyInc: row.otWeeklyInc,
-        employeeR: row.employeeR,
-        status,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? 'Action failed');
-  };
+  // The grid had no totals at all, so an import could not be sanity-checked
+  // or reconciled against the OT & Other Incentive register. These cover every
+  // row the current filters match, not just this page.
+  const columnTotals = serverTotals;
+  const grandTotal = AMOUNT_KEYS.reduce((sum, k) => sum + columnTotals[k], 0);
 
-  const bulkStatus = async (status: 'hold' | 'complete') => {
+  /**
+   * One transactional request for the whole selection. This used to fire one
+   * POST per row, so a mid-way failure left the selection half-applied with no
+   * indication of which half. `complete` is now reachable only through here —
+   * it is what payroll pays.
+   */
+  const bulkStatus = async (action: 'approve' | 'hold' | 'return') => {
     if (selectedRecords.length === 0) return;
     setBusy(true);
     try {
-      for (const row of selectedRecords) {
-        await postRow(row, status);
+      const res = await fetch('/api/payroll/double-machine/bulk-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedRecords.map((r) => r.recordId), action }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        const detail = Array.isArray(json.rejected) && json.rejected.length
+          ? ` — ${json.rejected[0].reason}`
+          : '';
+        throw new Error((json.error ?? 'Action failed') + detail);
       }
-      toast.success(`${selectedRecords.length} record(s) marked ${status === 'hold' ? 'On Hold' : 'Complete'}.`);
+      const verb = action === 'approve' ? 'approved' : action === 'hold' ? 'put on hold' : 'returned';
+      toast.success(`${json.updated} record(s) ${verb}.`);
       await loadData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed');
@@ -402,7 +540,7 @@ export default function DoubleMachineIncentivePage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Double Machine Incentive
+          Double Machine &amp; Other Incentives
         </h1>
         <button
           onClick={exportExcel}
@@ -463,6 +601,34 @@ export default function DoubleMachineIncentivePage() {
       </section>
 
       {/* Records grid */}
+      {Object.keys(statusCounts).length > 0 && (
+        <section className="flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-sm"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+          <span style={{ color: 'var(--foreground-muted)' }}>This period:</span>
+          {(['draft', 'process', 'hold', 'complete'] as const).map((st) => (
+            <span key={st} className="inline-flex items-center gap-1" style={{ color: 'var(--foreground)' }}>
+              <strong>{statusCounts[st] ?? 0}</strong>
+              <span style={{ color: 'var(--foreground-muted)' }}>{st}</span>
+            </span>
+          ))}
+          <span className="ml-auto text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            {(statusCounts.complete ?? 0) === 0
+              ? 'Nothing is approved yet — payroll will pay none of this.'
+              : `Only the ${statusCounts.complete} complete row(s) will be paid.`}
+          </span>
+        </section>
+      )}
+
+      {periodLocked && (
+        <section className="rounded-xl border p-3" style={{ borderColor: '#b45309', backgroundColor: 'var(--surface)' }}>
+          <p className="text-sm" style={{ color: 'var(--foreground)' }}>
+            Payroll for this period is <strong>{periodRunStatus?.toLowerCase()}</strong> — payslips have already been
+            produced from these figures, so nothing here can be added, edited, approved or deleted. Reopen the payroll
+            run first if a correction is genuinely needed.
+          </p>
+        </section>
+      )}
+
       <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
@@ -475,31 +641,43 @@ export default function DoubleMachineIncentivePage() {
                 setImportRows([]);
                 setChosenFile(null);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium"
+              disabled={periodLocked}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
               style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
             >
               <UploadIcon />
               Bulk Upload
             </button>
             <button
+              onClick={() => bulkStatus('return')}
+              disabled={busy || selectedIds.size === 0 || periodLocked}
+              title="Send an approved or held row back to Process for rework"
+              className="rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            >
+              {busy ? 'Working…' : `Return${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
+            </button>
+            <button
               onClick={() => bulkStatus('hold')}
-              disabled={busy || selectedIds.size === 0}
+              disabled={busy || selectedIds.size === 0 || periodLocked}
+              title="Do not pay this row — payroll and the OT & Other Incentive register both honour it"
               className="rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-40"
               style={{ borderColor: '#b45309', color: '#b45309' }}
             >
               {busy ? 'Working…' : `On Hold${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
             </button>
             <button
-              onClick={() => bulkStatus('complete')}
-              disabled={busy || selectedIds.size === 0}
+              onClick={() => bulkStatus('approve')}
+              disabled={busy || selectedIds.size === 0 || periodLocked}
+              title="Approve for payment — payroll pays complete rows"
               className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
               style={{ backgroundColor: '#166534' }}
             >
-              {busy ? 'Working…' : `Complete${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
+              {busy ? 'Working…' : `Approve${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
             </button>
             <button
               onClick={openAdd}
-              disabled={busy}
+              disabled={busy || periodLocked}
               className="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
               style={{ backgroundColor: 'var(--accent)' }}
             >
@@ -532,6 +710,7 @@ export default function DoubleMachineIncentivePage() {
                 <ThRight>OT Weekly Inc</ThRight>
                 <ThRight>Employee R</ThRight>
                 <Th>Status</Th>
+                <Th>Payroll Impact</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -576,15 +755,53 @@ export default function DoubleMachineIncentivePage() {
                         <span
                           className="rounded-full px-2 py-0.5 text-xs font-medium"
                           style={{ backgroundColor: sc.bg, color: sc.fg }}
+                          title={
+                            row.status === 'complete' && row.approvedBy
+                              ? `Approved by ${row.approvedBy}${row.approvedAt ? ` on ${row.approvedAt.slice(0, 10)}` : ''} — payroll pays this`
+                              : row.rejectionReason
+                                ? `Reason: ${row.rejectionReason}`
+                                : row.updatedBy
+                                  ? `Last changed by ${row.updatedBy}${row.updatedAt ? ` on ${row.updatedAt.slice(0, 10)}` : ''}`
+                                  : undefined
+                          }
                         >
                           {row.status}
                         </span>
+                        {(row.approvedBy || row.updatedBy) && (
+                          <div className="mt-0.5 text-[11px]" style={{ color: 'var(--foreground-muted)' }}>
+                            {row.status === 'complete' && row.approvedBy
+                              ? `✓ ${row.approvedBy}`
+                              : row.updatedBy}
+                          </div>
+                        )}
+                        <div className="mt-1"><StatusPipeline status={row.status} /></div>
+                        {row.recordId && (
+                          <button
+                            onClick={() => { setAuditRow(row); setAuditEntries(null); }}
+                            className="mt-1 text-[11px] underline"
+                            style={{ color: 'var(--foreground-muted)' }}
+                          >
+                            audit trail
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5" style={{ maxWidth: 280 }}>
+                        {(() => {
+                          const im = payrollImpact(row);
+                          const tone = im.tone === 'paid' ? '#166534' : im.tone === 'blocked' ? '#b45309' : 'var(--foreground-muted)';
+                          return (
+                            <>
+                              <div className="text-xs font-medium" style={{ color: tone }}>{im.headline}</div>
+                              <div className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>{im.detail}</div>
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-1.5">
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => openEdit(row)}
-                            disabled={busy}
+                            disabled={busy || periodLocked}
                             className="rounded-lg border px-2.5 py-1 text-xs font-medium disabled:opacity-40"
                             style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
                           >
@@ -592,7 +809,7 @@ export default function DoubleMachineIncentivePage() {
                           </button>
                           <button
                             onClick={() => deleteRecord(row)}
-                            disabled={busy}
+                            disabled={busy || periodLocked}
                             className="rounded-lg border px-2.5 py-1 text-xs font-medium disabled:opacity-40"
                             style={{ borderColor: '#dc2626', color: '#dc2626' }}
                           >
@@ -605,8 +822,54 @@ export default function DoubleMachineIncentivePage() {
                 })
               )}
             </tbody>
+            {!loading && serverTotals.recordCount > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                  <td className="px-3 py-2" colSpan={7} style={{ color: 'var(--foreground)' }}>
+                    Total — {serverTotals.recordCount} record(s) matching the current filters
+                  </td>
+                  {AMOUNT_KEYS.map((k) => (
+                    <td key={k} className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--foreground)' }}>
+                      {fmtAmt(columnTotals[k])}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-right tabular-nums" colSpan={3} style={{ color: 'var(--foreground)' }}>
+                    {fmtAmt(grandTotal)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between gap-2 border-t px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              Showing {(pagination.page - 1) * pagination.limit + 1}–
+              {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={loading || pagination.page <= 1}
+                className="rounded-lg border px-3 py-1 text-xs font-medium disabled:opacity-40"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                Previous
+              </button>
+              <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                disabled={loading || pagination.page >= pagination.totalPages}
+                className="rounded-lg border px-3 py-1 text-xs font-medium disabled:opacity-40"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Add / Edit modal */}
@@ -879,7 +1142,88 @@ export default function DoubleMachineIncentivePage() {
           </div>
         </div>
       )}
+      {auditRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setAuditRow(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Audit trail"
+        >
+          <div
+            className="mt-10 w-full max-w-xl rounded-xl border p-4"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Audit trail</h2>
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  {auditRow.employeeCode} — {auditRow.employeeName} · {monthName(auditRow.month)} {auditRow.year}
+                </p>
+              </div>
+              <button
+                onClick={() => setAuditRow(null)}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
+              <div><strong style={{ color: 'var(--foreground)' }}>Current status:</strong> {auditRow.status}</div>
+              {auditRow.approvedBy && (
+                <div><strong style={{ color: 'var(--foreground)' }}>Approved by:</strong> {auditRow.approvedBy}
+                  {auditRow.approvedAt ? ` on ${auditRow.approvedAt.slice(0, 10)}` : ''}</div>
+              )}
+              {auditRow.rejectionReason && (
+                <div><strong style={{ color: 'var(--foreground)' }}>Hold / return reason:</strong> {auditRow.rejectionReason}</div>
+              )}
+              {auditRow.updatedBy && (
+                <div><strong style={{ color: 'var(--foreground)' }}>Last changed by:</strong> {auditRow.updatedBy}
+                  {auditRow.updatedAt ? ` on ${auditRow.updatedAt.slice(0, 10)}` : ''}</div>
+              )}
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {auditEntries === null && (
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Loading…</p>
+              )}
+              {auditEntries?.length === 0 && (
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  No recorded activity. Rows created before the transition routes existed have no trail.
+                </p>
+              )}
+              {auditEntries?.map((e) => (
+                <div key={e.id} className="rounded-lg border p-2 text-xs" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium" style={{ color: 'var(--foreground)' }}>
+                      {e.activityType.replace(/^double_machine_/, '').replace(/_/g, ' ')}
+                    </span>
+                    <span style={{ color: 'var(--foreground-muted)' }}>{e.at.slice(0, 19).replace('T', ' ')}</span>
+                  </div>
+                  <div style={{ color: 'var(--foreground-muted)' }}>
+                    {e.by ?? 'unknown user'}
+                    {e.oldValue && e.newValue ? ` · ${e.oldValue} → ${e.newValue}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
+  );
+}
+
+function Th({ children }: { children: ReactNode }) {
+  return (
+    <th className="whitespace-nowrap px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
+      {children}
+    </th>
   );
 }
 
@@ -891,14 +1235,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       </label>
       {children}
     </div>
-  );
-}
-
-function Th({ children }: { children: ReactNode }) {
-  return (
-    <th className="whitespace-nowrap px-3 py-2 text-left font-medium" style={{ color: 'var(--foreground-muted)' }}>
-      {children}
-    </th>
   );
 }
 

@@ -2069,8 +2069,17 @@ model DoubleMachineIncentive {
   employeeR       Decimal @default(0) @db.Decimal(18, 2)
 
   // draft | process | hold | complete
+  // Only `complete` is paid by payrollCalculation; `hold` is the explicit
+  // do-not-pay. Transitions are enforced by the approve/reject/return routes,
+  // not by free-form writes — see api/payroll/double-machine/[id]/.
   status  String  @default("draft") @db.NVarChar(20)
   remarks String? @db.NVarChar(500)
+
+  // Who signed this off, and why it was sent back. Populated only by the
+  // transition routes so the payslip figure is attributable to a person.
+  approvedByUserId Int?
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.NVarChar(500)
 
   createdByUserId Int?
   updatedByUserId Int?

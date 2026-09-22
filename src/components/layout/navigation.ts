@@ -358,7 +358,7 @@ export const navigation: NavModule[] = [
           // are configured in Masters → Benefit Components.
           { label: "Benefits Overview", href: "/workforce/benefits", ready: true },
           { label: "Performance Incentive", href: "/payroll/processing/pms-incentive", ready: true },
-          { label: "Double Machine Incentive", href: "/payroll/processing/double-machine", ready: true },
+          { label: "Double Machine & Other Incentives", short: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
     ],
@@ -382,7 +382,6 @@ export const navigation: NavModule[] = [
           { label: "Leave Encashment", href: "/payroll/processing/leave-encashment" },
           { label: "Professional Tax", href: "/payroll/processing/professional-tax" },
           { label: "Full & Final Settlement", short: "Full & Final", href: "/payroll/processing/full-and-final", ready: true },
-          { label: "Other Incentives", href: "/payroll/processing/double-machine", ready: true },
         ],
       },
       {
@@ -717,7 +716,7 @@ export const navigation: NavModule[] = [
           { label: "OT Comparison Report", short: "OT Comparison", href: "/reports/payroll/ot-comparison" },
           { label: "Salary Reconciliation", short: "Reconciliation", href: "/reports/payroll/reconciliation" },
           { label: "Performance Incentive Report", short: "Performance Incentive", href: "/reports/payroll/performance-incentive", ready: true },
-          { label: "OT & Other Incentive Report", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
+          { label: "OT & Other Incentive Register", short: "OT & Other Incentive", href: "/reports/payroll/ot-other-incentive", ready: true },
           { label: "F&F Settlement Register", short: "F&F Register", href: "/reports/payroll/full-and-final", ready: true },
           { label: "Arrear Report", short: "Arrears", href: "/reports/payroll/arrears" },
           { label: "Salary Revision Report", short: "Salary Revision", href: "/reports/payroll/salary-revision" },

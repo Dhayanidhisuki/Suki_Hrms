@@ -115,6 +115,7 @@ const PAYROLL_PERMISSIONS: PermDef[] = [
   { code: 'payroll.gratuity.approve', module: 'payroll', submodule: 'gratuity', page: null, action: 'approve', description: 'Approve/reject/hold/mark-paid a gratuity record' },
   { code: 'payroll.pms.view', module: 'payroll', submodule: 'pms', page: null, action: 'view', description: 'View PMS incentive submissions' },
   { code: 'payroll.pms.approve', module: 'payroll', submodule: 'pms', page: null, action: 'approve', description: 'Approve/reject a PMS incentive submission before payroll' },
+  { code: 'payroll.dm.approve', module: 'payroll', submodule: 'dm', page: null, action: 'approve', description: 'Approve/hold/return a Double Machine & Other Incentives row — `complete` rows are paid by payroll' },
 ];
 
 const ADMIN_PERMISSIONS: PermDef[] = [
