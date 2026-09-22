@@ -58,3 +58,32 @@ export function queueStatuses(queue: string): string[] | null {
   if (queue === 'payable') return ['finance_verified', 'approved'];
   return null;
 }
+
+/**
+ * What the employee may see of their own settlement in ESS.
+ *
+ * The anchor is the notification catalogue in lib/fnf/notify.ts: the events
+ * addressed to SUBJECT_EMPLOYEE are exactly the points at which the system has
+ * already decided to tell them something. ESS should corroborate those
+ * messages, not run ahead of them.
+ *
+ * 'full'        — HR has approved, so the figures are committed and the
+ *                 statement and PDF are the employee's to keep.
+ * 'status-only' — the employee was notified (hold, rejection, reopen) and must
+ *                 be able to see why their money is delayed, but the amounts
+ *                 are mid-revision and are not a promise. Showing a provisional
+ *                 net here is how a draft number becomes a dispute.
+ * 'hidden'      — pending/calculated/pending_manager/submitted are payroll's
+ *                 internal working state, and a cancelled settlement is
+ *                 notified to HR only.
+ */
+export const ESS_VISIBLE_WITH_AMOUNTS = new Set(['approved', 'finance_verified', 'paid', 'completed']);
+export const ESS_VISIBLE_STATUS_ONLY = new Set(['on_hold', 'rejected', 'reopened']);
+
+export type EssVisibility = 'full' | 'status-only' | 'hidden';
+
+export function essVisibility(status: string): EssVisibility {
+  if (ESS_VISIBLE_WITH_AMOUNTS.has(status)) return 'full';
+  if (ESS_VISIBLE_STATUS_ONLY.has(status)) return 'status-only';
+  return 'hidden';
+}
