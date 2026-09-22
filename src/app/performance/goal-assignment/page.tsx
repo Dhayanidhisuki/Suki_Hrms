@@ -27,6 +27,8 @@ interface TemplateKpi { kpiId: number; weightage: string; target: string; unit?:
 interface TemplateKra {
   kraId: number;
   weightage: string;
+  kraCode?: string | null;
+  kraName?: string | null;
   kra?: { code: string; name: string };
   kpis: TemplateKpi[];
 }
@@ -54,6 +56,8 @@ interface AssignmentRow {
   kras?: Array<{
     id: number;
     weightage: string;
+    kraCode?: string | null;
+    kraName?: string | null;
     kra: { code: string; name: string; category: string };
     kpis: Array<{
       id: number;
@@ -270,7 +274,7 @@ export default function GoalAssignmentPage() {
             {(viewing.kras ?? []).map((kra) => (
               <div key={kra.id} className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
                 <div className="flex justify-between gap-2 border-b p-2.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-muted)' }}>
-                  <span className="font-medium">{kra.kra.code} — {kra.kra.name}</span>
+                  <span className="font-medium">{kra.kraCode ?? kra.kra.code} — {kra.kraName ?? kra.kra.name}</span>
                   <StatusBadge tone="accent">{Number(kra.weightage)}%</StatusBadge>
                 </div>
                 <table className="w-full text-sm">
@@ -329,7 +333,7 @@ export default function GoalAssignmentPage() {
                 {preview.kras.map((k) => (
                   <li key={k.kraId}>
                     <div className="flex justify-between gap-2 font-medium">
-                      <span>{k.kra ? `${k.kra.code} — ${k.kra.name}` : `KRA #${k.kraId}`}</span>
+                      <span>{k.kraCode ?? k.kra?.code ? `${k.kraCode ?? k.kra?.code} — ${k.kraName ?? k.kra?.name}` : `KRA #${k.kraId}`}</span>
                       <span className="tabular-nums" style={{ color: 'var(--foreground-muted)' }}>
                         {Number(k.weightage)}%
                       </span>

@@ -25,7 +25,7 @@ type SubmittedLine = {
 
 export type ResolvedMasters = {
   forValidation: WeightageKra[];
-  kraById: Map<number, { id: number; code: string; name: string }>;
+  kraById: Map<number, { id: number; code: string; name: string; category: string }>;
   kpiById: Map<
     number,
     {
@@ -46,11 +46,19 @@ export type ResolvedMasters = {
 
 export function snapshotTemplateKpis(
   lines: Array<{ kraId: number; weightage: number; kpis: Array<{ kpiId: number; target: number; weightage: number; minThreshold?: number | null; maxTarget?: number | null }> }>,
-  kpiById: ResolvedMasters['kpiById']
+  kpiById: ResolvedMasters['kpiById'],
+  kraById?: ResolvedMasters['kraById']
 ) {
-  return lines.map((k) => ({
+  return lines.map((k) => {
+    const kra = kraById?.get(k.kraId);
+    return {
     kraId: k.kraId,
     weightage: k.weightage,
+    // Frozen alongside the KPI fields: a later master rename must not rewrite
+    // a template that was already built from this KRA.
+    kraCode: kra?.code ?? null,
+    kraName: kra?.name ?? null,
+    kraCategory: kra?.category ?? null,
     kpis: {
       create: k.kpis.map((p) => {
         const master = kpiById.get(p.kpiId)!;
@@ -67,7 +75,8 @@ export function snapshotTemplateKpis(
         };
       }),
     },
-  }));
+    };
+  });
 }
 
 function nullableNumber(value: unknown): number | null {
@@ -98,7 +107,7 @@ export async function resolveTemplateLines(
 
   const kras = await prisma.kra.findMany({
     where: { id: { in: kraIds }, companyId },
-    select: { id: true, code: true, name: true, effectiveFrom: true, effectiveTo: true },
+    select: { id: true, code: true, name: true, category: true, effectiveFrom: true, effectiveTo: true },
   });
   if (kras.length !== kraIds.length) {
     return { error: 'One or more KRAs were not found', status: 404 };

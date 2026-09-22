@@ -26,6 +26,10 @@ type TemplateForCopy = {
   kras: Array<{
     kraId: number;
     weightage: unknown;
+    kraCode?: string | null;
+    kraName?: string | null;
+    kraCategory?: string | null;
+    kra?: { code?: string; name?: string; category?: string };
     kpis: Array<{
       kpiId: number;
       description: string;
@@ -55,6 +59,11 @@ export function goalSetCreateFromTemplate(
   return template.kras.map((tk) => ({
     kraId: tk.kraId,
     weightage: Number(tk.weightage),
+    // The employee's copy freezes the KRA's identity too — an accepted goal
+    // set is a record of what they agreed to.
+    kraCode: tk.kraCode ?? tk.kra?.code ?? null,
+    kraName: tk.kraName ?? tk.kra?.name ?? null,
+    kraCategory: tk.kraCategory ?? tk.kra?.category ?? null,
     kpis: {
       create: tk.kpis.map((tp) => ({
         kpiId: tp.kpiId,
