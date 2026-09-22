@@ -47,7 +47,7 @@
 
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
-import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes } from './attendanceCalc';
+import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from './attendanceCalc';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from './permissionExcuse';
 
 function daysInMonth(year: number, month: number) {
@@ -344,7 +344,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     if (jobInfo?.overtimeAllowed) {
       const otPlan = otPlans.find((p) => p.isActive) ?? null;
       const otPlanLite = otPlan
-        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay }
+        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes }
         : null;
 
       // Phase 13 — per-day OT calculation with day-type factors.
@@ -368,6 +368,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
             { otApprovalStatus: null, otMinutesCalculated: { gt: 0 } },
           ],
         },
+        include: { shiftMaster: { select: { endTime: true } } },
       });
 
       // Compute the OT hourly rate based on the configured basis.
@@ -413,7 +414,8 @@ export async function calculatePayrollRun(payrollRunId: number) {
         // Threshold (qualification, not deduction) + daily cap. A null
         // maxOtHoursPerDay means no cap — one implementation, shared with
         // the attendance screens.
-        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite);
+        const shiftEndTod = d.shiftMaster ? parseShiftTime(d.shiftMaster.endTime) : undefined;
+        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite, shiftEndTod);
         if (dayOtMinutes <= 0) continue;
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;
@@ -704,6 +706,34 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
+    // PAYROLL_HIDDEN CTC components (e.g. "Medical") — attached per-employee
+    // via the CTC tab's "+ Add Component" picker (the same table NON_PAYROLL
+    // components use), but unlike NON_PAYROLL these DO move Net Pay: a real,
+    // flat (not LOP-prorated) monthly earning or deduction that's
+    // deliberately kept off the Salary Details tab. Read here — not from
+    // revision.components — since that picker never lets them be attached
+    // to a Salary Revision. Neither side touches Gross/PF/ESI/PT/TDS bases,
+    // same treatment as the other auto-applied earnings/deductions below.
+    let payrollHiddenCtcDeductionAmount = 0;
+    let payrollHiddenCtcEarningAmount = 0;
+    const currentEmployeeCtc = await prisma.employeeCtc.findFirst({
+      where: { employeeId: emp.id, effectiveTo: null },
+      select: {
+        components: {
+          include: { salaryComponent: { select: { id: true, type: true, grossTier: true } } },
+        },
+      },
+    });
+    for (const c of currentEmployeeCtc?.components ?? []) {
+      if (c.salaryComponent.grossTier !== 'PAYROLL_HIDDEN') continue;
+      if (c.salaryComponent.type !== 'deduction' && c.salaryComponent.type !== 'earning') continue;
+      const amount = round(Number(c.amount));
+      if (amount === 0) continue;
+      autoComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount });
+      if (c.salaryComponent.type === 'deduction') payrollHiddenCtcDeductionAmount += amount;
+      else payrollHiddenCtcEarningAmount += amount;
+    }
+
     // LOM (Loss of Minutes) — only APPROVED LOM minutes are deducted.
     // The LOM approval workflow (Phase TimeOffice) queues late/early-out
     // minutes for HR/Admin approval. Only rows with lomApprovalStatus=
@@ -836,6 +866,8 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoDeductionsTotal += lwfAmount;
     autoDeductionsTotal += healthInsuranceAmount;
     autoDeductionsTotal += licDeduction;
+    autoDeductionsTotal += payrollHiddenCtcDeductionAmount;
+    autoEarningsTotal += payrollHiddenCtcEarningAmount;
 
     // Loan EMI deduction — for each active loan of this employee, deduct the
     // next pending installment. The deduction is split into principal and

@@ -1,186 +1,153 @@
-/**
- * Full & Final Settlement Approval — approve FnF settlements for exiting employees.
- * Statuses: pending → approved → paid
- */
-
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Button, DataTable, PageHeader, SectionCard, StatusBadge, type Column } from '@/components/ui';
+import { FNF_STATUS_TONE } from '@/lib/fnf/workflow';
+import { formatInr } from '@/lib/fnf/presentation';
 
-interface FnFSettlement {
+type Row = {
   id: number;
-  employee: { employeeCode: string; firstName: string; lastName: string };
-  exitInterview: { exitDate: string; exitType: string; exitReason: string };
-  lastWorkingDay: string;
   status: string;
-  createdAt: string;
-}
-
-const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
-  pending: { bg: '#fef3c7', fg: '#92400e' },
-  approved: { bg: '#dcfce7', fg: '#166534' },
-  paid: { bg: '#f1f5f9', fg: '#475569' },
-  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+  netPayable: string | number;
+  lastWorkingDay: string;
+  employee: { employeeCode: string; firstName: string; lastName: string };
 };
 
-const rejectFields: FieldDef[] = [{ name: 'reason', label: 'Rejection Reason', type: 'textarea', required: true }];
+function promptText(message: string): string | null {
+  const v = window.prompt(message);
+  return v == null ? null : v.trim();
+}
 
-export default function FullAndFinalApprovalPage() {
-  const [settlements, setSettlements] = useState<FnFSettlement[]>([]);
+function useQueue(queue: string) {
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const toast = useToast();
-  const [approveId, setApproveId] = useState<number | null>(null);
-  const [rejectId, setRejectId] = useState<number | null>(null);
-  const [approving, setApproving] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchSettlements = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/payroll/fnf?status=pending');
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? 'Failed to load FnF settlements');
-      }
+      const res = await fetch(`/api/payroll/fnf?queue=${queue}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to load');
       const json = await res.json();
-      setSettlements(json.data ?? []);
+      setRows(json.data ?? []);
+      setError(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load FnF settlements');
+      setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [queue]);
 
   useEffect(() => {
-    fetchSettlements();
-  }, [fetchSettlements]);
+    load();
+  }, [load]);
 
-  const handleApprove = async (id: number) => {
-    setApproving(true);
-    try {
-      const res = await fetch(`/api/payroll/fnf/${id}/approve`, { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? 'Approve failed');
-      }
-      fetchSettlements();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to approve');
-    } finally {
-      setApproving(false);
+  return { rows, loading, error, load };
+}
+
+export default function FnFApprovalPage() {
+  const manager = useQueue('manager');
+  const hr = useQueue('hr');
+  const finance = useQueue('finance');
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const act = async (url: string, body?: unknown) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setBanner(j.error ?? 'Action failed');
+      return;
     }
+    setBanner(null);
+    await Promise.all([manager.load(), hr.load(), finance.load()]);
   };
 
-  const handleReject = async (id: number, values: Record<string, any>) => {
-    setRejecting(true);
-    try {
-      const res = await fetch(`/api/payroll/fnf/${id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: values.reason }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? 'Reject failed');
-      }
-      setRejectId(null);
-      fetchSettlements();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reject');
-    } finally {
-      setRejecting(false);
-    }
-  };
-
-  const columns: Column<FnFSettlement>[] = [
+  const columns: Column<Row>[] = [
+    { key: 'code', label: 'Code', render: (r) => r.employee.employeeCode, className: 'font-medium' },
+    { key: 'name', label: 'Name', render: (r) => `${r.employee.firstName} ${r.employee.lastName}`.trim() },
+    { key: 'lastWorkingDay', label: 'LWD', render: (r) => String(r.lastWorkingDay).slice(0, 10) },
+    { key: 'netPayable', label: 'Net', render: (r) => formatInr(r.netPayable) },
     {
-      key: 'employee',
-      label: 'Employee',
-      render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}`,
-    },
-    {
-      key: 'exitDate',
-      label: 'Exit Date',
-      render: (r) => new Date(r.exitInterview.exitDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
-    },
-    {
-      key: 'exitType',
-      label: 'Exit Type',
-      render: (r) => r.exitInterview.exitType,
-    },
-    {
-      key: 'exitReason',
-      label: 'Reason',
-      render: (r) => r.exitInterview.exitReason || '—',
-    },
-    {
-      key: 'lastWorkingDay',
-      label: 'Last Working Day',
-      render: (r) => new Date(r.lastWorkingDay).toLocaleDateString('en-IN', { timeZone: 'UTC' }),
+      key: 'status',
+      label: 'Status',
+      render: (r) => <StatusBadge tone={FNF_STATUS_TONE[r.status] ?? 'neutral'}>{r.status}</StatusBadge>,
     },
   ];
 
+  const actions = (row: Row, kind: 'manager' | 'hr' | 'finance') => (
+    <div className="flex flex-wrap gap-1">
+      {kind === 'manager' && (
+        <Button size="xs" onClick={() => act(`/api/payroll/fnf/${row.id}/manager-approve`)}>
+          Approve
+        </Button>
+      )}
+      {kind === 'hr' && (
+        <Button size="xs" variant="success" onClick={() => act(`/api/payroll/fnf/${row.id}/approve`)}>
+          Approve
+        </Button>
+      )}
+      {kind === 'finance' && (
+        <Button size="xs" variant="success" onClick={() => act(`/api/payroll/fnf/${row.id}/finance-verify`)}>
+          Verify
+        </Button>
+      )}
+      <Button
+        size="xs"
+        variant="danger"
+        onClick={() => {
+          const reason = promptText('Rejection reason:');
+          if (!reason) return;
+          void act(`/api/payroll/fnf/${row.id}/reject`, { rejectionReason: reason });
+        }}
+      >
+        Reject
+      </Button>
+      <a href={`/payroll/processing/full-and-final?open=${row.id}`} className="px-2 py-1 text-xs font-medium" style={{ color: 'var(--accent)' }}>
+        Open
+      </a>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
-          Full & Final Settlement Approval
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-          Review and approve Full & Final settlements for exiting employees.
-        </p>
-      </div>
-
-      <DataTable
-        columns={columns}
-        data={settlements}
-        loading={loading}
-        emptyMessage="No pending Full & Final settlements for approval."
-        renderRowActions={(row) => (
-          <>
-            <button
-              onClick={() => setApproveId(row.id)}
-              disabled={approving}
-              className="mr-3 text-xs font-medium hover:underline disabled:opacity-50"
-              style={{ color: '#166534' }}
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => setRejectId(row.id)}
-              disabled={rejecting}
-              className="text-xs font-medium hover:underline disabled:opacity-50"
-              style={{ color: '#991b1b' }}
-            >
-              Reject
-            </button>
-          </>
-        )}
+      <PageHeader
+        eyebrow="Approvals"
+        title="Full & Final settlement"
+        description="Manager (if configured) → HR → Finance. Open a row to view the KUN statement and PDF."
       />
-
-      <ConfirmDialog
-        title="Approve Full & Final Settlement"
-        message="Approve this Full & Final settlement? The settlement will be marked as approved and ready for payment processing."
-        confirmLabel="Approve"
-        isOpen={approveId !== null}
-        onConfirm={() => {
-          if (approveId) handleApprove(approveId);
-          setApproveId(null);
-        }}
-        onClose={() => setApproveId(null)}
-      />
-
-      <FormModal
-        title="Reject Full & Final Settlement"
-        fields={rejectFields}
-        initialValues={{}}
-        isOpen={rejectId !== null}
-        onClose={() => setRejectId(null)}
-        onSubmit={async (values) => {
-          if (rejectId) await handleReject(rejectId, values);
-        }}
-      />
+      {banner && <Alert tone="danger">{banner}</Alert>}
+      {manager.error && <Alert tone="danger">{manager.error}</Alert>}
+      <SectionCard title={`Pending manager (${manager.rows.length})`}>
+        <DataTable
+          data={manager.rows}
+          columns={columns}
+          loading={manager.loading}
+          emptyMessage="No F&F waiting on reporting manager."
+          renderRowActions={(r) => actions(r, 'manager')}
+        />
+      </SectionCard>
+      <SectionCard title={`Pending HR (${hr.rows.length})`}>
+        <DataTable
+          data={hr.rows}
+          columns={columns}
+          loading={hr.loading}
+          emptyMessage="No F&F submitted to HR."
+          renderRowActions={(r) => actions(r, 'hr')}
+        />
+      </SectionCard>
+      <SectionCard title={`Pending finance (${finance.rows.length})`}>
+        <DataTable
+          data={finance.rows}
+          columns={columns}
+          loading={finance.loading}
+          emptyMessage="No F&F waiting on finance verify."
+          renderRowActions={(r) => actions(r, 'finance')}
+        />
+      </SectionCard>
     </div>
   );
 }

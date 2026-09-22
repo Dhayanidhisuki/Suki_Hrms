@@ -58,7 +58,10 @@ const MODULE_PERMISSION: Record<string, string> = {
  */
 async function countSimpleMaster(model: string) {
   try {
-    const table = prisma[model as keyof typeof prisma] as any;
+    // Model is chosen at runtime; only .count is called on it.
+    const table = prisma[model as keyof typeof prisma] as unknown as {
+      count(args?: object): Promise<number>;
+    };
     const [active, inactive] = await Promise.all([
       table.count({ where: { isActive: true, deletedAt: null } }),
       table.count({ where: { isActive: false, deletedAt: null } }),
@@ -73,7 +76,10 @@ async function countSimpleMaster(model: string) {
 /** Counts for a company-scoped master that carries isActive/deletedAt. */
 async function countScopedMaster(model: string, companyId: number) {
   try {
-    const table = prisma[model as keyof typeof prisma] as any;
+    // Model is chosen at runtime; only .count is called on it.
+    const table = prisma[model as keyof typeof prisma] as unknown as {
+      count(args?: object): Promise<number>;
+    };
     const [active, inactive] = await Promise.all([
       table.count({ where: { companyId, isActive: true, deletedAt: null } }),
       table.count({ where: { companyId, isActive: false, deletedAt: null } }),
@@ -248,6 +254,58 @@ export async function GET(
         stats = { ...EMPTY, total, active: processed, inactive: pending, pending, approved: processed };
         break;
       }
+
+      case 'approvals': {
+        const total = await prisma.leaveApplication.count({
+          where: { OR: [{ status: 'PENDING' }, { status: 'APPROVED' }, { status: 'REJECTED' }] },
+        });
+        const pending = await prisma.leaveApplication.count({ where: { status: 'PENDING' } });
+        const approved = await prisma.leaveApplication.count({ where: { status: 'APPROVED' } });
+        const rejected = await prisma.leaveApplication.count({ where: { status: 'REJECTED' } });
+        stats = { total, active: 0, inactive: 0, pending, approved, rejected };
+        break;
+      }
+
+      case 'skill-levels':
+        stats = await countSimpleMaster('skillLevel');
+        break;
+
+      case 'competencies':
+        stats = await countSimpleMaster('competency');
+        break;
+
+      case 'skill-matrix':
+        stats = await countSimpleMaster('employeeCompetency');
+        break;
+
+      case 'training-plan':
+        stats = await countSimpleMaster('trainingPlan');
+        break;
+
+      case 'training-calendar':
+        stats = await countSimpleMaster('trainingSchedule');
+        break;
+
+      case 'training-needs': {
+        const total = await prisma.trainingNeedRequest.count({ where: { deletedAt: null } });
+        const pending = await prisma.trainingNeedRequest.count({ where: { deletedAt: null, status: { in: ['DRAFT', 'SUBMITTED'] } } });
+        const approved = await prisma.trainingNeedRequest.count({ where: { deletedAt: null, status: 'APPROVED' } });
+        const rejected = await prisma.trainingNeedRequest.count({ where: { deletedAt: null, status: 'REJECTED' } });
+        stats = { total, active: approved, inactive: rejected, pending, approved, rejected };
+        break;
+      }
+
+      case 'training-nominations': {
+        const total = await prisma.trainingNomination.count({ where: { deletedAt: null } });
+        const pending = await prisma.trainingNomination.count({ where: { deletedAt: null, status: 'PENDING' } });
+        const approved = await prisma.trainingNomination.count({ where: { deletedAt: null, status: 'APPROVED' } });
+        const rejected = await prisma.trainingNomination.count({ where: { deletedAt: null, status: 'REJECTED' } });
+        stats = { total, active: approved, inactive: rejected, pending, approved, rejected };
+        break;
+      }
+
+      default:
+        return NextResponse.json({ total: 0, active: 0, inactive: 0, pending: 0, approved: 0, rejected: 0 });
     }
 
     return NextResponse.json(stats);

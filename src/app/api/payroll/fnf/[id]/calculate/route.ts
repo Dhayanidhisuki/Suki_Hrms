@@ -1,45 +1,82 @@
-/**
- * POST /api/payroll/fnf/[id]/calculate
- *   Calculates all FnF components and updates the settlement record.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { calculateFnF } from '@/lib/fnfCalculation';
+import { calculateFnF, persistFnFCalculation } from '@/lib/fnfCalculation';
+import { logActivity } from '@/lib/activity-log';
+import { fnfInclude } from '@/lib/fnf/include';
+import { FNF_CALCULABLE, assertStatus } from '@/lib/fnf/workflow';
+import { fnfEligibility } from '@/lib/fnf/eligibility';
+
+const bodySchema = z.object({
+  noticeServedDays: z.coerce.number().int().min(0).optional(),
+  noticeWaivedDays: z.coerce.number().int().min(0).optional(),
+  clearanceOverrideRemark: z.string().min(3).max(500).optional(),
+});
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const permErr = await checkSpecificPermission(request, 'payroll.processing.manage');
   if (permErr) return permErr;
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
 
-  const { id } = await params;
-  const settlementId = parseInt(id);
+  const settlementId = parseInt((await params).id);
   const userId = Number(request.headers.get('x-user-id'));
+  const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));
+  // This used to fall back to `{}` on a validation failure, so a bad value —
+  // negative notice days, an over-long override remark — was silently dropped
+  // and the settlement recalculated from stored values as though nothing had
+  // been sent. An empty body still parses cleanly; every field is optional.
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const overrides = parsed.data;
 
   const settlement = await prisma.fnFSettlement.findFirst({
     where: { id: settlementId, companyId: scope.companyId },
   });
   if (!settlement) return NextResponse.json({ error: 'Settlement not found' }, { status: 404 });
-  if (settlement.status !== 'pending') {
-    return NextResponse.json({ error: `Settlement is already ${settlement.status}` }, { status: 409 });
+  const blocked = assertStatus(settlement.status, FNF_CALCULABLE, 'calculate');
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
+
+  const elig = await fnfEligibility(settlement.exitInterviewId, scope.companyId);
+  const clearanceIssue = elig.issues.find((i) => i.code === 'CLEARANCE');
+  if (clearanceIssue && !overrides.clearanceOverrideRemark) {
+    return NextResponse.json({ error: clearanceIssue.message, issues: elig.issues }, { status: 409 });
   }
 
   try {
-    const calc = await calculateFnF(settlement.employeeId, settlement.exitInterviewId, scope.companyId);
-    const updated = await prisma.fnFSettlement.update({
+    const calc = await calculateFnF(
+      settlement.employeeId,
+      settlement.exitInterviewId,
+      scope.companyId,
+      overrides,
+      { userId: Number.isFinite(userId) ? userId : null },
+      settlement.freezeSnapshotId,
+    );
+    await persistFnFCalculation(settlementId, calc, Number.isFinite(userId) ? userId : 0);
+    if (overrides.clearanceOverrideRemark) {
+      await prisma.fnFSettlement.update({
+        where: { id: settlementId },
+        data: { clearanceOverrideRemark: overrides.clearanceOverrideRemark },
+      });
+    }
+    await logActivity(prisma, {
+      employeeId: settlement.employeeId,
+      activityType: 'fnf_calculated',
+      module: 'fnf',
+      performedByUserId: Number.isFinite(userId) ? userId : null,
+      relatedRecordId: settlementId,
+      newValue: { netPayable: calc.netPayable, payableDays: calc.payableDays, freezeSnapshotId: calc.freezeSnapshotId },
+      remarks: overrides.clearanceOverrideRemark,
+    });
+    const updated = await prisma.fnFSettlement.findFirst({
       where: { id: settlementId },
-      data: {
-        ...calc,
-        status: 'calculated',
-        calculatedByUserId: userId,
-        calculatedAt: new Date(),
-      },
+      include: fnfInclude,
     });
     return NextResponse.json(updated);
   } catch (err) {

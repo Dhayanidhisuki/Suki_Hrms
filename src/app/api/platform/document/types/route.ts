@@ -20,11 +20,13 @@ export async function GET(request: NextRequest) {
   if ('error' in scope) return scope.error;
 
   const appliesToEntity = request.nextUrl.searchParams.get('appliesToEntity');
+  const businessCategory = request.nextUrl.searchParams.get('businessCategory');
   const includeInactive = request.nextUrl.searchParams.get('includeInactive') === '1';
   const data = await prisma.platformDocumentType.findMany({
     where: {
       companyId: scope.companyId,
       ...(appliesToEntity ? { appliesToEntity: appliesToEntity.toUpperCase() } : {}),
+      ...(businessCategory ? { businessCategory: businessCategory.toUpperCase() } : {}),
       ...(includeInactive ? {} : { isActive: true }),
     },
     orderBy: [{ appliesToEntity: 'asc' }, { code: 'asc' }],

@@ -1,9 +1,6 @@
 /**
  * GET /api/payroll/fnf?status=X
- *   List all FnF settlements for the company, optionally filtered by status.
- * POST /api/payroll/fnf
- *   Create a new FnF settlement for an employee (requires an exit interview).
- *   Body: { employeeId, exitInterviewId }
+ * POST /api/payroll/fnf  { employeeId | employeeCode, exitInterviewId? }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,11 +8,15 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { logActivity } from '@/lib/activity-log';
+import { fnfInclude } from '@/lib/fnf/include';
+import { payableStatuses, queueStatuses } from '@/lib/fnf/workflow';
 
 const createSchema = z.object({
-  employeeId: z.coerce.number().int().positive(),
-  exitInterviewId: z.coerce.number().int().positive(),
-});
+  employeeId: z.coerce.number().int().positive().optional(),
+  employeeCode: z.string().min(1).max(40).optional(),
+  exitInterviewId: z.coerce.number().int().positive().optional(),
+}).refine((d) => d.employeeId || d.employeeCode, { message: 'employeeId or employeeCode is required' });
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'payroll.processing.view');
@@ -25,20 +26,51 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
+  const queue = searchParams.get('queue');
+  const q = searchParams.get('q')?.trim();
 
   const where: Record<string, unknown> = { companyId: scope.companyId };
-  if (status) where.status = status;
+  // The payable queue depends on the company's approval chain, so it cannot
+  // come from the static table — offering a settlement here that the bank
+  // file would refuse is how someone ends up chasing a payment that is still
+  // waiting on finance.
+  const config = await prisma.fullAndFinalConfig.findUnique({ where: { companyId: scope.companyId } });
+  const queued = queue === 'payable'
+    ? [...payableStatuses(config?.approvalStages)]
+    : queue
+      ? queueStatuses(queue)
+      : null;
+  if (queued) where.status = { in: queued };
+  else if (status) where.status = status;
+  if (q) {
+    where.employee = {
+      companyId: scope.companyId,
+      OR: [
+        { employeeCode: { contains: q } },
+        { firstName: { contains: q } },
+        { lastName: { contains: q } },
+      ],
+    };
+  }
 
-  const data = await prisma.fnFSettlement.findMany({
-    where,
-    include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-      exitInterview: { select: { id: true, exitDate: true, exitType: true, exitReason: true } },
-    },
-    orderBy: [{ createdAt: 'desc' }],
-  });
+  try {
+    const data = await prisma.fnFSettlement.findMany({
+      where,
+      include: fnfInclude,
+      orderBy: [{ createdAt: 'desc' }],
+    });
 
-  return NextResponse.json({ data });
+    // The page needs the configured chain to know which actions to offer —
+    // it cannot read /api/masters/full-and-final-config, which sits behind
+    // masters permission a payroll user does not necessarily hold.
+    return NextResponse.json({ data, approvalStages: config?.approvalStages ?? 'HR_FINANCE' });
+  } catch (err) {
+    console.error('[GET /api/payroll/fnf]', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to load settlements' },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -52,39 +84,52 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Validate employee and exit interview.
-  const employee = await prisma.employee.findFirst({
-    where: { id: parsed.data.employeeId, companyId: scope.companyId, deletedAt: null },
-  });
+  const employee = parsed.data.employeeId
+    ? await prisma.employee.findFirst({
+        where: { id: parsed.data.employeeId, companyId: scope.companyId, deletedAt: null },
+      })
+    : await prisma.employee.findFirst({
+        where: { employeeCode: parsed.data.employeeCode, companyId: scope.companyId, deletedAt: null },
+      });
   if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
 
-  const exitInterview = await prisma.exitInterview.findUnique({
-    where: { id: parsed.data.exitInterviewId },
-  });
-  if (!exitInterview || exitInterview.employeeId !== parsed.data.employeeId) {
-    return NextResponse.json({ error: 'Exit interview not found for this employee' }, { status: 404 });
+  const exitInterview = parsed.data.exitInterviewId
+    ? await prisma.exitInterview.findUnique({ where: { id: parsed.data.exitInterviewId } })
+    : await prisma.exitInterview.findUnique({ where: { employeeId: employee.id } });
+  if (!exitInterview || exitInterview.employeeId !== employee.id) {
+    return NextResponse.json({ error: 'A valid recorded separation is required before F&F' }, { status: 404 });
   }
 
-  // Check if FnF already exists for this exit interview.
   const existing = await prisma.fnFSettlement.findUnique({
-    where: { exitInterviewId: parsed.data.exitInterviewId },
+    where: { exitInterviewId: exitInterview.id },
   });
   if (existing) {
-    return NextResponse.json({ error: 'FnF settlement already exists for this exit' }, { status: 409 });
+    return NextResponse.json({ error: 'An F&F settlement already exists for this separation' }, { status: 409 });
   }
 
-  const record = await prisma.fnFSettlement.create({
-    data: {
-      companyId: scope.companyId,
-      employeeId: parsed.data.employeeId,
-      exitInterviewId: parsed.data.exitInterviewId,
-      lastWorkingDay: exitInterview.exitDate,
-      status: 'pending',
-    },
-    include: {
-      employee: { select: { employeeCode: true, firstName: true, lastName: true } },
-      exitInterview: { select: { exitDate: true, exitType: true } },
-    },
+  const userId = Number(request.headers.get('x-user-id')) || null;
+  const record = await prisma.$transaction(async (tx) => {
+    const created = await tx.fnFSettlement.create({
+      data: {
+        companyId: scope.companyId,
+        employeeId: employee.id,
+        exitInterviewId: exitInterview.id,
+        lastWorkingDay: exitInterview.approvedLastWorkingDay ?? exitInterview.exitDate,
+        noticeServedDays: exitInterview.noticeServedDays ?? 0,
+        noticeWaivedDays: exitInterview.noticeWaivedDays ?? 0,
+        status: 'pending',
+      },
+      include: fnfInclude,
+    });
+    await logActivity(tx, {
+      employeeId: employee.id,
+      activityType: 'fnf_created',
+      module: 'fnf',
+      performedByUserId: userId,
+      relatedRecordId: created.id,
+      newValue: { status: 'pending', exitInterviewId: exitInterview.id },
+    });
+    return created;
   });
 
   return NextResponse.json(record, { status: 201 });

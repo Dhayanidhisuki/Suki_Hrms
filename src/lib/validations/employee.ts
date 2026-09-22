@@ -334,11 +334,19 @@ export const salaryRevisionSchema = z.object({
 
 export const exitInterviewSchema = z.object({
   exitDate: z.coerce.date(),
-  exitType: z.enum(['resignation', 'termination', 'retirement']),
+  exitType: z.enum(['resignation', 'termination', 'retirement', 'death', 'absconding', 'contract_expiry', 'other']),
   exitReason: z.string().max(500).optional().nullable(),
   interviewNotes: z.string().max(2000).optional().nullable(),
   interviewDate: z.coerce.date().optional().nullable(),
   interviewedBy: z.string().max(100).optional().nullable(),
+  resignationDate: z.coerce.date().optional().nullable(),
+  noticePeriodDays: z.coerce.number().int().min(0).optional().nullable(),
+  // Both columns are Int NOT NULL with a default, so an explicit null would
+  // fail the insert — omit the field instead of nulling it.
+  noticeServedDays: z.coerce.number().int().min(0).optional(),
+  noticeWaivedDays: z.coerce.number().int().min(0).optional(),
+  approvedLastWorkingDay: z.coerce.date().optional().nullable(),
+  rehireEligible: z.boolean().optional(),
 });
 
 // ─── Employee core ───────────────────────────────────────────────────────────

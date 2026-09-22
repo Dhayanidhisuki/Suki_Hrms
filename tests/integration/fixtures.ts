@@ -14,22 +14,50 @@ import { prisma } from '@/lib/prisma';
 
 export const TEST_CODE_PREFIX = 'TEST-AUTO-';
 
+/**
+ * Role codes that grant full admin rights, most privileged first. This used to
+ * look for a bare 'admin' code, which has never existed in this database — the
+ * seed creates 'company-admin' — so every suite calling this threw at
+ * beforeAll and reported as a failed file (found 2026-09-22, seven files).
+ */
+const ADMIN_ROLE_CODES = ['admin', 'company-admin', 'hr-admin'];
+
 export async function getAdminAuth(): Promise<{ roleId: number; userId: number }> {
-  const role = await prisma.role.findFirst({ where: { code: 'admin' } });
-  if (!role) throw new Error('admin role not seeded — run scripts/seed-employee-permissions.mjs');
-  const user = await prisma.user.findFirst({ where: { roleId: role.id } });
-  return { roleId: role.id, userId: user?.id ?? 1 };
+  // Ordered lookup rather than an `in` filter — `in` would return whichever
+  // row the database felt like, and hr-admin is strictly weaker than
+  // company-admin.
+  for (const code of ADMIN_ROLE_CODES) {
+    const role = await prisma.role.findFirst({ where: { code }, orderBy: { id: 'asc' } });
+    if (!role) continue;
+    // A role with no user attached can't authenticate anything; keep looking.
+    const user = await prisma.user.findFirst({ where: { roleId: role.id } });
+    if (user) return { roleId: role.id, userId: user.id };
+  }
+  throw new Error(
+    `No admin role with a linked user found (tried ${ADMIN_ROLE_CODES.join(', ')}) — run scripts/seed-employee-permissions.mjs`
+  );
 }
 
 export function makeRequest(
   url: string,
-  opts: { method?: string; body?: unknown; auth: { roleId: number; userId: number } }
+  opts: {
+    method?: string;
+    body?: unknown;
+    auth: { roleId: number; userId: number };
+    /**
+     * Sets x-company-id, which proxy.ts also injects from the verified JWT.
+     * Opt-in rather than always-on: routes calling getCompanyId() need it,
+     * and the callers that predate it must keep behaving exactly as before.
+     */
+    companyId?: number;
+  }
 ): NextRequest {
   const headers = new Headers({
     'content-type': 'application/json',
     'x-role-id': String(opts.auth.roleId),
     'x-user-id': String(opts.auth.userId),
   });
+  if (opts.companyId !== undefined) headers.set('x-company-id', String(opts.companyId));
   return new NextRequest(new URL(url, 'http://localhost'), {
     method: opts.method ?? 'GET',
     headers,

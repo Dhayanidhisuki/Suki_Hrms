@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface ShiftMaster {
   id: number; code: string; name: string; startTime: string; endTime: string;
@@ -185,6 +186,7 @@ export default function ShiftMastersPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Shift Masters</h1>
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"

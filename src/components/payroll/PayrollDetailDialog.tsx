@@ -99,9 +99,13 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         if (!lineRes.ok) throw new Error('Failed to fetch payroll line');
         const line = await lineRes.json();
         const attJson = await attRes.json();
-        const att = (attJson.data ?? []).find((r: any) => r.employeeId === line.employeeId);
+        const att = ((attJson.data ?? []) as Array<{ employeeId: number; summary?: AttendanceSummary | null }>)
+          .find((r) => r.employeeId === line.employeeId);
         const balJson = await balRes.json();
-        const balances: LeaveBalance[] = (balJson.balances ?? []).filter((b: any) => b.employeeCode === line.employee.employeeCode);
+        // The endpoint returns balances for several employees, so the rows
+        // carry an employeeCode that LeaveBalance itself does not.
+        const balances: LeaveBalance[] = ((balJson.balances ?? []) as Array<LeaveBalance & { employeeCode: string }>)
+          .filter((b) => b.employeeCode === line.employee.employeeCode);
         if (!cancelled) {
           setData({ line, attendance: att?.summary ?? null, leaveBalances: balances });
         }
@@ -303,7 +307,6 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
                   <tr>
                     <th className="py-1 text-left text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Type</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Opng</th>
-                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Accrd</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Used</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Rem</th>
                   </tr>
@@ -312,14 +315,13 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
                   {data.leaveBalances.map((b, idx) => (
                     <tr key={idx}>
                       <td className="py-1" style={{ color: 'var(--foreground)' }}>{b.leaveType}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.opening)}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.accrued)}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.opening + b.accrued)}</td>
                       <td className="py-1 text-right tabular-nums" style={{ color: 'var(--warning, #f0b429)' }}>{fmt(b.availed)}</td>
                       <td className="py-1 text-right tabular-nums font-medium" style={{ color: 'var(--success, #22b573)' }}>{fmt(b.closing)}</td>
                     </tr>
                   ))}
                   {data.leaveBalances.length === 0 && (
-                    <tr><td colSpan={5} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
+                    <tr><td colSpan={4} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
                   )}
                 </tbody>
               </table>

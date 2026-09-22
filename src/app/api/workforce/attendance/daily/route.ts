@@ -16,7 +16,7 @@ import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
-import { computeLomMinutes, computeOtPayableMinutes, computeAttendanceMetrics } from '@/lib/attendanceCalc';
+import { computeLomMinutes, computeOtPayableMinutes, computeAttendanceMetrics, parseShiftTime } from '@/lib/attendanceCalc';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 export async function GET(request: NextRequest) {
@@ -69,13 +69,17 @@ export async function GET(request: NextRequest) {
       : null;
     const permissionExcusedMinutes = excusedMinutesFor(permissionExcused, r.employeeId, r.date);
     const lomMinutes = computeLomMinutes(r.lateMinutes, r.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null, permissionExcusedMinutes);
-    const otPayableMinutes = computeOtPayableMinutes(r.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
+    const otPayableMinutes = computeOtPayableMinutes(
+      r.otMinutesCalculated,
+      otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
+      shift ? parseShiftTime(shift.endTime) : undefined
+    );
     return { ...r, lomMinutes, otPayableMinutes, permissionExcusedMinutes };
   });
 
   return NextResponse.json({
     data,
-    otPlan: otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null,
+    otPlan: otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
     lomConfig: lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null,
   });
 }

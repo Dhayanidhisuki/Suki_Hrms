@@ -1,11 +1,11 @@
-import EmployeeMastersTabs from '@/components/masters/EmployeeMastersTabs';
-import { isEmployeeMasterTab } from '@/components/masters/employeeMasterTabs';
+import { redirect } from 'next/navigation';
 
-export default async function EmployeeMastersPage({
+/** Split back into separate Designations / Grades pages (2026-09-21) — keep old links working. */
+export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { tab } = await searchParams;
-  return <EmployeeMastersTabs initialTab={isEmployeeMasterTab(tab) ? tab : 'designations'} />;
+  redirect(tab === 'grades' ? '/masters/grades' : '/masters/designations');
 }

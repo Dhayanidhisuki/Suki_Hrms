@@ -60,7 +60,15 @@ const PATH_TO_GROUP: Record<string, MasterGroup> = {
   '/api/jd-master': 'org',
   '/api/masters/jd-master': 'org',
   '/api/recruitment/job-postings': 'org',
-  '/api/masters/attendance-color-config': 'definition',
+  '/api/recruitment/applicants': 'org',
+  // KPI/KRA performance masters — BRD §7-§9.
+  '/api/masters/performance-cycles': 'definition',
+  '/api/masters/kra': 'definition',
+  '/api/masters/kpi': 'definition',
+  '/api/masters/goal-templates': 'definition',
+  '/api/masters/incentive-policies': 'definition',
+  '/api/masters/allowance-configs': 'definition',
+  // attendance-color-config removed (2026-09-21) — master + route deleted, unused elsewhere.
   // Recruitment masters (BRD v6.4) — grouped under 'definition' for RBAC.
   '/api/masters/recruitment-status': 'definition',
   '/api/masters/sourcing-channels': 'definition',

@@ -18,12 +18,13 @@
  * gets paid, grossGratuity is kept for audit even if the ceiling capped it.
  *
  * Documented simplifications (Phase 1, not the full BRD):
- * - qualifyingServiceYears = (separationDate - doj) / 365.25 — no
- *   "continuous service start date" / "service break" handling (§8).
+ * - qualifyingServiceYears = completed years, rounded up when remaining
+ *   service exceeds six months (KUN gratuity working / Payment of Gratuity Act).
  * - One company-wide GratuityPolicy, not category-specific.
  */
 
 import { prisma } from './prisma';
+import { gratuityCalculationYears } from '@/lib/fnf/rules';
 
 function round(n: number) {
   return Math.round(n);
@@ -56,9 +57,7 @@ export async function calculateGratuity(companyId: number, employeeId: number) {
 
   const doj = jobInfo.joinDate;
   const separationDate = exitInterview.exitDate;
-  const qualifyingServiceYears = Number(
-    ((separationDate.getTime() - doj.getTime()) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(2)
-  );
+  const qualifyingServiceYears = gratuityCalculationYears(doj, separationDate);
 
   let eligibilityStatus: string;
   let eligibilityReason: string | null;

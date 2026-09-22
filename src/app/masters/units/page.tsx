@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface Unit {
   id: number;
@@ -14,6 +15,7 @@ interface Unit {
   name: string;
   address: string | null;
   description: string | null;
+  gstNumber: string | null;
   companyId: number;
   isActive: boolean;
   deletedAt: string | null;
@@ -54,6 +56,7 @@ export default function UnitsPage() {
       ? [{ name: 'code', label: 'Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef]
       : []),
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Chennai Plant' },
+    { name: 'gstNumber', label: 'GST No.', type: 'text', placeholder: 'e.g. 29ABCDE1234F1Z5' },
     { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Optional' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
@@ -90,6 +93,7 @@ export default function UnitsPage() {
     setInitialValues({
       code: row.code,
       name: row.name,
+      gstNumber: row.gstNumber ?? '',
       address: row.address ?? '',
       description: row.description ?? '',
       companyId: row.companyId,
@@ -99,7 +103,7 @@ export default function UnitsPage() {
   };
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const payload = { ...values, address: values.address || null, description: values.description || null };
+    const payload = { ...values, address: values.address || null, description: values.description || null, gstNumber: values.gstNumber || null };
     const url = editingId ? `/api/masters/units/${editingId}` : '/api/masters/units';
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -124,6 +128,7 @@ export default function UnitsPage() {
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
+    { key: 'gstNumber', label: 'GST No.', render: (row) => row.gstNumber ?? '—' },
     { key: 'address', label: 'Address', render: (row) => row.address ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
@@ -142,6 +147,7 @@ export default function UnitsPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Organization" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
           Units

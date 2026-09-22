@@ -1,16 +1,16 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 export interface ExportOptions {
   filename: string;
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   columns?: string[];
   title?: string;
   format: 'csv' | 'excel' | 'pdf';
 }
 
-function escapeCSV(value: any): string {
+function escapeCSV(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -68,9 +68,17 @@ export function exportToPDF(options: Omit<ExportOptions, 'format'>) {
     doc.text(title, 15, 15);
   }
 
-  const tableData = data.map(row => keys.map(key => row[key]));
+  // jspdf-autotable's RowInput only accepts string/number/boolean/null cells,
+  // not arbitrary unknown values — stringify anything else (dates, etc.).
+  const tableData = data.map((row) =>
+    keys.map((key) => {
+      const v = row[key];
+      if (v === null || v === undefined) return null;
+      return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? v : String(v);
+    })
+  );
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     head: [keys],
     body: tableData,
     startY: title ? 25 : 15,

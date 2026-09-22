@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const status = searchParams.get('status') ?? '';
 
-  const where: any = { companyId: scope.companyId };
+  const where: Prisma.VisitorNotificationLogWhereInput = { companyId: scope.companyId };
   if (status) where.status = status;
   if (user?.email) where.recipient = { contains: user.email };
 

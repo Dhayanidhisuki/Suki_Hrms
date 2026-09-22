@@ -45,6 +45,7 @@ import {
   type DocStatus,
   type RejectionReasonCode,
 } from './rules';
+import { HR_ONLY_TYPE_CODES, type DocumentBusinessCategory } from './categories';
 
 export { DocumentError, REJECTION_REASON_CODES } from './rules';
 export type { RejectionReasonCode, DocStatus } from './rules';
@@ -63,8 +64,11 @@ export type PlatformDocumentView = {
   documentTypeName: string;
   documentClass: string;
   category: string;
+  businessCategory: string;
+  uploadMode: string;
   ownerEntityType: string;
   ownerEntityId: number;
+  ownerEmployee: { id: number; employeeCode: string; name: string } | null;
   documentRef: string;
   versionNo: number;
   supersedesDocumentId: number | null;
@@ -106,7 +110,14 @@ function dateOnly(d: Date | null): string | null {
   return d ? d.toISOString().slice(0, 10) : null;
 }
 
-function toView(doc: DocumentRow, type: Pick<DocumentTypeRow, 'code' | 'name' | 'documentClass' | 'category'>, duplicateOf: number | null = null): PlatformDocumentView {
+type TypeViewFields = Pick<DocumentTypeRow, 'code' | 'name' | 'documentClass' | 'category' | 'businessCategory' | 'uploadMode'>;
+
+function toView(
+  doc: DocumentRow,
+  type: TypeViewFields,
+  duplicateOf: number | null = null,
+  ownerEmployee: PlatformDocumentView['ownerEmployee'] = null,
+): PlatformDocumentView {
   return {
     id: doc.id,
     companyId: doc.companyId,
@@ -115,8 +126,11 @@ function toView(doc: DocumentRow, type: Pick<DocumentTypeRow, 'code' | 'name' | 
     documentTypeName: type.name,
     documentClass: type.documentClass,
     category: type.category,
+    businessCategory: type.businessCategory,
+    uploadMode: type.uploadMode,
     ownerEntityType: doc.ownerEntityType,
     ownerEntityId: doc.ownerEntityId,
+    ownerEmployee,
     documentRef: doc.documentRef,
     versionNo: doc.versionNo,
     supersedesDocumentId: doc.supersedesDocumentId,
@@ -195,7 +209,11 @@ function documentLinkPath(doc: Pick<DocumentRow, 'id' | 'ownerEntityType' | 'own
     : `/admin/platform/documents/${doc.id}`;
 }
 
-function eventContext(doc: DocumentRow, type: DocumentTypeRow, extra?: { RejectionReason?: string | null }) {
+function eventContext(
+  doc: DocumentRow,
+  type: DocumentTypeRow,
+  extra?: { RejectionReason?: string | null; ResubmissionRemark?: string | null },
+) {
   return {
     moduleCode: 'PLAT' as const,
     sourceEntityType: ENTITY_TYPE,
@@ -209,6 +227,7 @@ function eventContext(doc: DocumentRow, type: DocumentTypeRow, extra?: { Rejecti
         Ref: doc.documentRef,
         Status: doc.verificationStatus,
         RejectionReason: extra?.RejectionReason ?? null,
+        ResubmissionRemark: extra?.ResubmissionRemark ?? null,
       },
     },
   };
@@ -245,6 +264,43 @@ function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 
+async function resolveOwnerEmployee(
+  companyId: number,
+  ownerEntityType: string,
+  ownerEntityId: number,
+): Promise<PlatformDocumentView['ownerEmployee']> {
+  if (ownerEntityType !== 'EMPLOYEE') return null;
+  const e = await prisma.employee.findFirst({
+    where: { id: ownerEntityId, companyId },
+    select: { id: true, employeeCode: true, firstName: true, lastName: true },
+  });
+  if (!e) return null;
+  return { id: e.id, employeeCode: e.employeeCode, name: `${e.firstName} ${e.lastName}`.trim() };
+}
+
+async function resolveOwnerEmployees(
+  companyId: number,
+  rows: Array<{ ownerEntityType: string; ownerEntityId: number }>,
+): Promise<Map<number, NonNullable<PlatformDocumentView['ownerEmployee']>>> {
+  const ids = [...new Set(rows.filter((r) => r.ownerEntityType === 'EMPLOYEE').map((r) => r.ownerEntityId))];
+  if (ids.length === 0) return new Map();
+  const emps = await prisma.employee.findMany({
+    where: { companyId, id: { in: ids } },
+    select: { id: true, employeeCode: true, firstName: true, lastName: true },
+  });
+  return new Map(
+    emps.map((e) => [e.id, { id: e.id, employeeCode: e.employeeCode, name: `${e.firstName} ${e.lastName}`.trim() }]),
+  );
+}
+
+function ownerFromMap(
+  doc: Pick<DocumentRow, 'ownerEntityType' | 'ownerEntityId'>,
+  map: Map<number, NonNullable<PlatformDocumentView['ownerEmployee']>>,
+): PlatformDocumentView['ownerEmployee'] {
+  if (doc.ownerEntityType !== 'EMPLOYEE') return null;
+  return map.get(doc.ownerEntityId) ?? null;
+}
+
 // ---------------------------------------------------------------- upload
 
 export async function uploadDocument(input: UploadDocumentInput): Promise<PlatformDocumentView> {
@@ -257,6 +313,13 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Platfo
     where: { companyId, code: input.documentTypeCode.toUpperCase(), isActive: true },
   });
   if (!type) throw new DocumentError(404, 'Document type not found');
+
+  if ((type.uploadMode === 'HR_ONLY' || HR_ONLY_TYPE_CODES.has(type.code)) && actor.source !== 'system') {
+    const roleCode = await roleCodeOf(actor.userId);
+    if (!roleCode || !HR_MANAGER_ROLE_CODES.includes(roleCode)) {
+      throw new DocumentError(403, 'Only HR may upload this document type');
+    }
+  }
 
   // Step 1 — authorise: the type must apply to this owner entity, and an
   // EMPLOYEE owner must exist in this company (cross-tenant → 404).
@@ -413,7 +476,7 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Platfo
     await emitPlatformEvent(companyId, 'DOCUMENT_VERIFIED', eventContext(created, type));
   }
 
-  return toView(created, type, await findDuplicate(created));
+  return toView(created, type, await findDuplicate(created), await resolveOwnerEmployee(companyId, ownerEntityType, ownerEntityId));
 }
 
 // ---------------------------------------------------------------- state machine
@@ -525,11 +588,54 @@ export async function rejectDocument(
     verificationRemark: remark.trim().slice(0, 500),
     rejectionReasonCode: reasonCode,
   }, remark);
-  // §16.1 — Rejected → ReuploadRequired is automatic.
-  const { doc } = await transition(companyId, documentId, DOC_STATUS.ReuploadRequired, actor, 'REUPLOAD_REQUIRED', {});
+  // Rejected is terminal on its own. The BRD makes "Request Resubmission" a
+  // separate verdict, so asking for a new copy is now an explicit HR action
+  // (requestResubmission) rather than an automatic cascade from a rejection.
+  const doc = rejected;
   await emitPlatformEvent(companyId, 'DOCUMENT_REJECTED', {
     ...eventContext(doc, type, { RejectionReason: `${reasonCode}: ${rejected.verificationRemark}` }),
     ...(reasonCode === 'SUSPECTED_FORGERY' ? { priority: 'URGENT' as const, recipients: [...HR_MANAGER_ROLE_CODES.map((r) => `ROLE:${r}`)] } : {}),
+  });
+  return toView(doc, type, await findDuplicate(doc));
+}
+
+/**
+ * Third review verdict from the KUN Document Module BRD: "Request
+ * Resubmission with remarks". Distinct from rejection — the document is not
+ * judged wrong, HR just needs a better copy — so it records a remark but no
+ * rejection reason code, and leaves any earlier reason intact for the audit.
+ *
+ * Reachable from review directly, or after a rejection.
+ */
+export async function requestResubmission(
+  companyId: number,
+  documentId: number,
+  actor: PlatformActor,
+  remark: string,
+): Promise<PlatformDocumentView> {
+  if (!remark || remark.trim().length < 10) {
+    throw new DocumentError(400, 'A resubmission remark of at least 10 characters is required');
+  }
+  const { doc: current } = await loadDocument(companyId, documentId);
+  if (actor.userId != null && current.uploadedByUserId != null && actor.userId === current.uploadedByUserId) {
+    throw new DocumentError(403, 'The uploader may not review their own upload');
+  }
+  const trimmed = remark.trim().slice(0, 500);
+  const { doc, type } = await transition(
+    companyId,
+    documentId,
+    DOC_STATUS.ReuploadRequired,
+    actor,
+    'REUPLOAD_REQUIRED',
+    {
+      verifiedByUserId: actor.userId ?? null,
+      verifiedAt: new Date(),
+      verificationRemark: trimmed,
+    },
+    trimmed,
+  );
+  await emitPlatformEvent(companyId, 'DOCUMENT_RESUBMISSION_REQUESTED', {
+    ...eventContext(doc, type, { ResubmissionRemark: trimmed }),
   });
   return toView(doc, type, await findDuplicate(doc));
 }
@@ -559,7 +665,7 @@ export async function revokeVerification(companyId: number, documentId: number, 
 
 export async function getDocument(companyId: number, documentId: number): Promise<PlatformDocumentView> {
   const { doc, type } = await loadDocument(companyId, documentId);
-  return toView(doc, type, await findDuplicate(doc));
+  return toView(doc, type, await findDuplicate(doc), await resolveOwnerEmployee(companyId, doc.ownerEntityType, doc.ownerEntityId));
 }
 
 export async function listDocuments(
@@ -583,6 +689,7 @@ export async function listDocuments(
     where: { companyId, id: { in: [...new Set(rows.map((r) => r.documentTypeId))] } },
   });
   const typeById = new Map(types.map((t) => [t.id, t]));
+  const owners = await resolveOwnerEmployees(companyId, rows);
   // Duplicate detection over the fetched set (same owner, so the set is complete).
   const seen = new Map<string, number>();
   const out: PlatformDocumentView[] = [];
@@ -592,9 +699,159 @@ export async function listDocuments(
     if (dup === null) seen.set(key, r.id);
     const type = typeById.get(r.documentTypeId);
     if (!type) continue;
-    out.push(toView(r, type, dup));
+    out.push(toView(r, type, dup, ownerFromMap(r, owners)));
   }
   return out.sort((a, b) => (b.uploadedAt.getTime() - a.uploadedAt.getTime()) || b.id - a.id);
+}
+
+export async function listDocumentVersions(companyId: number, documentId: number): Promise<PlatformDocumentView[]> {
+  const { doc, type } = await loadDocument(companyId, documentId);
+  const rows = await prisma.platformDocument.findMany({
+    where: {
+      companyId,
+      documentTypeId: doc.documentTypeId,
+      ownerEntityType: doc.ownerEntityType,
+      ownerEntityId: doc.ownerEntityId,
+      deletedAt: null,
+    },
+    orderBy: [{ versionNo: 'desc' }, { id: 'desc' }],
+  });
+  const owners = await resolveOwnerEmployees(companyId, rows);
+  return rows.map((r) => toView(r, type, null, ownerFromMap(r, owners)));
+}
+
+export type DocumentSearchQuery = {
+  q?: string;
+  businessCategory?: DocumentBusinessCategory;
+  verificationStatus?: string;
+  documentTypeCode?: string;
+  includeSuperseded?: boolean;
+  expiry?: 'expired' | 'soon';
+  page: number;
+  limit: number;
+};
+
+export type DocumentSearchResult = {
+  data: PlatformDocumentView[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  counts: { total: number; pending: number; verified: number; expired: number; reupload: number };
+};
+
+export async function searchDocuments(
+  companyId: number,
+  caller: DocumentCaller,
+  query: DocumentSearchQuery,
+): Promise<DocumentSearchResult> {
+  const isHr = !!caller.roleCode && HR_MANAGER_ROLE_CODES.includes(caller.roleCode);
+  const empty: DocumentSearchResult = {
+    data: [],
+    pagination: { page: query.page, limit: query.limit, total: 0, totalPages: 0 },
+    counts: { total: 0, pending: 0, verified: 0, expired: 0, reupload: 0 },
+  };
+
+  if (!isHr && caller.employeeId == null) return empty;
+
+  const typeWhere: Prisma.PlatformDocumentTypeWhereInput = { companyId };
+  if (query.businessCategory) typeWhere.businessCategory = query.businessCategory;
+  if (query.documentTypeCode) typeWhere.code = query.documentTypeCode.toUpperCase();
+  const types =
+    query.businessCategory || query.documentTypeCode
+      ? await prisma.platformDocumentType.findMany({ where: typeWhere, select: { id: true } })
+      : null;
+  if (types && types.length === 0) return empty;
+
+  const where: Prisma.PlatformDocumentWhereInput = {
+    companyId,
+    deletedAt: null,
+    ...(query.includeSuperseded ? {} : { verificationStatus: { not: DOC_STATUS.Superseded } }),
+    ...(query.verificationStatus ? { verificationStatus: query.verificationStatus } : {}),
+    ...(types ? { documentTypeId: { in: types.map((t) => t.id) } } : {}),
+  };
+
+  if (query.expiry === 'expired') {
+    where.verificationStatus = DOC_STATUS.Expired;
+  } else if (query.expiry === 'soon') {
+    const until = new Date();
+    until.setUTCDate(until.getUTCDate() + 30);
+    where.expiryDate = { lte: until };
+  }
+
+  if (!isHr && caller.employeeId != null) {
+    where.ownerEntityType = 'EMPLOYEE';
+    where.ownerEntityId = caller.employeeId;
+  } else if (query.q) {
+    const q = query.q.trim();
+    if (q) {
+      const emps = await prisma.employee.findMany({
+        where: {
+          companyId,
+          deletedAt: null,
+          OR: [
+            { employeeCode: { contains: q } },
+            { oldEmployeeCode: { contains: q } },
+            { firstName: { contains: q } },
+            { lastName: { contains: q } },
+          ],
+        },
+        select: { id: true },
+        take: 200,
+      });
+      const refMatch = q.toUpperCase().startsWith('DOC/')
+        ? { documentRef: { contains: q } }
+        : null;
+      if (emps.length === 0 && !refMatch) return empty;
+      where.OR = [
+        ...(emps.length ? [{ ownerEntityType: 'EMPLOYEE', ownerEntityId: { in: emps.map((e) => e.id) } }] : []),
+        ...(refMatch ? [refMatch] : []),
+      ];
+    }
+  }
+
+  const skip = (query.page - 1) * query.limit;
+  const countBase: Prisma.PlatformDocumentWhereInput = {
+    companyId,
+    deletedAt: null,
+    verificationStatus: { not: DOC_STATUS.Superseded },
+    ...(types ? { documentTypeId: { in: types.map((t) => t.id) } } : {}),
+    ...(where.ownerEntityType ? { ownerEntityType: where.ownerEntityType, ownerEntityId: where.ownerEntityId } : {}),
+    ...(where.OR ? { OR: where.OR } : {}),
+  };
+
+  const [rows, total, kpiTotal, pending, verified, expired, reupload] = await Promise.all([
+    prisma.platformDocument.findMany({
+      where,
+      orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }],
+      skip,
+      take: query.limit,
+    }),
+    prisma.platformDocument.count({ where }),
+    prisma.platformDocument.count({ where: countBase }),
+    prisma.platformDocument.count({
+      where: { ...countBase, verificationStatus: { in: [...PENDING_STATUSES] } },
+    }),
+    prisma.platformDocument.count({ where: { ...countBase, verificationStatus: DOC_STATUS.Verified } }),
+    prisma.platformDocument.count({ where: { ...countBase, verificationStatus: DOC_STATUS.Expired } }),
+    prisma.platformDocument.count({ where: { ...countBase, verificationStatus: DOC_STATUS.ReuploadRequired } }),
+  ]);
+
+  const typeRows = await prisma.platformDocumentType.findMany({
+    where: { companyId, id: { in: [...new Set(rows.map((r) => r.documentTypeId))] } },
+  });
+  const typeById = new Map(typeRows.map((t) => [t.id, t]));
+  const owners = await resolveOwnerEmployees(companyId, rows);
+  const data: PlatformDocumentView[] = [];
+  for (const r of rows) {
+    const type = typeById.get(r.documentTypeId);
+    if (!type) continue;
+    data.push(toView(r, type, null, ownerFromMap(r, owners)));
+  }
+
+  const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
+  return {
+    data,
+    pagination: { page: query.page, limit: query.limit, total, totalPages },
+    counts: { total: kpiTotal, pending, verified, expired, reupload },
+  };
 }
 
 export async function completeness(

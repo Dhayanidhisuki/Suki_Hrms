@@ -89,7 +89,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
     }
   };
 
-  const handleReject = async (id: number, values: Record<string, any>) => {
+  const handleReject = async (id: number, values: Record<string, string | number | boolean>) => {
     setRejecting(true);
     try {
       const res = await fetch(`/api/workforce/leave/applications/${id}/reject`, {

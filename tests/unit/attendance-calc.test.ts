@@ -89,6 +89,55 @@ describe('computeOtPayableMinutes (per-day threshold + cap)', () => {
     expect(computeOtPayableMinutes(300, { applicableAfterMinutes: 0, maxOtHoursPerDay: 3 })).toBe(180);
     expect(computeOtPayableMinutes(120, { applicableAfterMinutes: 0, maxOtHoursPerDay: 3 })).toBe(120);
   });
+
+  describe('wall-clock rounding slab', () => {
+    // Shift ends 17:30 (5:30pm) -> 1050 minutes from midnight, for every case below.
+    const shiftEnd530pm = 17 * 60 + 30;
+
+    it('floors to the last completed wall-clock mark, not N minutes from shift-end', () => {
+      const plan30 = { applicableAfterMinutes: 20, maxOtHoursPerDay: null, roundingSlabMinutes: 30 };
+      // Checkout 6:28pm (58 raw min) -> last :00/:30 mark before 6:28 is 6:00 -> 30 min OT.
+      expect(computeOtPayableMinutes(58, plan30, shiftEnd530pm)).toBe(30);
+      // Checkout 6:15pm (45 raw min) -> last mark is still 6:00 -> 30 min OT.
+      expect(computeOtPayableMinutes(45, plan30, shiftEnd530pm)).toBe(30);
+      // Checkout 6:38pm (68 raw min) -> last mark is 6:30 -> 60 min OT.
+      expect(computeOtPayableMinutes(68, plan30, shiftEnd530pm)).toBe(60);
+    });
+
+    it('works with a 15-minute slab', () => {
+      const plan15 = { applicableAfterMinutes: 20, maxOtHoursPerDay: null, roundingSlabMinutes: 15 };
+      // Checkout 6:22pm (52 raw min) -> last :00/:15/:30/:45 mark is 6:15 -> 45 min OT.
+      expect(computeOtPayableMinutes(52, plan15, shiftEnd530pm)).toBe(45);
+      // Checkout 6:14pm (44 raw min) -> last mark is 6:00 -> 30 min OT.
+      expect(computeOtPayableMinutes(44, plan15, shiftEnd530pm)).toBe(30);
+    });
+
+    it('works with a 60-minute slab, which is where it diverges most from raw-elapsed flooring', () => {
+      const plan60 = { applicableAfterMinutes: 20, maxOtHoursPerDay: null, roundingSlabMinutes: 60 };
+      // Checkout 6:54pm (84 raw min) -> last top-of-hour mark before 6:54 is 6:00 -> 30 min OT
+      // (NOT 60, which a naive floor(84/60)*60 from shift-end would give).
+      expect(computeOtPayableMinutes(84, plan60, shiftEnd530pm)).toBe(30);
+      // Checkout 7:24pm (114 raw min) -> last top-of-hour mark is 7:00 -> 90 min OT.
+      expect(computeOtPayableMinutes(114, plan60, shiftEnd530pm)).toBe(90);
+    });
+
+    it('still applies the qualification threshold before rounding', () => {
+      const plan60 = { applicableAfterMinutes: 90, maxOtHoursPerDay: null, roundingSlabMinutes: 60 };
+      // 84 raw min is below the 90-min threshold -> 0, even though it would round to a nonzero value.
+      expect(computeOtPayableMinutes(84, plan60, shiftEnd530pm)).toBe(0);
+    });
+
+    it('falls back to raw minutes (no rounding) when the shift end time-of-day is not supplied', () => {
+      const plan60 = { applicableAfterMinutes: 20, maxOtHoursPerDay: null, roundingSlabMinutes: 60 };
+      expect(computeOtPayableMinutes(84, plan60)).toBe(84);
+    });
+
+    it('still applies the daily cap after rounding', () => {
+      const plan60 = { applicableAfterMinutes: 20, maxOtHoursPerDay: 1, roundingSlabMinutes: 60 };
+      // Rounds to 90 min, then capped to 60 (1 hour).
+      expect(computeOtPayableMinutes(114, plan60, shiftEnd530pm)).toBe(60);
+    });
+  });
 });
 
 describe('applyMonthlyOtCap', () => {

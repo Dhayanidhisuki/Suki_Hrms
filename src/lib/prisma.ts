@@ -16,9 +16,22 @@ function createClient() {
  * `prisma.jobDescription.findMany` throws "Cannot read properties of
  * undefined (reading 'findMany')".
  */
+function isCurrentClient(client: PrismaClient): boolean {
+  return (
+    typeof client.jobDescription?.findMany === 'function' &&
+    typeof client.bankFileTemplate?.findMany === 'function' &&
+    typeof client.kra?.findMany === 'function' &&
+    typeof client.employeeGoalSet?.findMany === 'function' &&
+    typeof client.recruitmentApplicant?.findMany === 'function' &&
+    typeof client.generatedHrLetter?.findMany === 'function' &&
+    typeof client.fnFSettlementLine?.findMany === 'function' &&
+    typeof client.exitClearanceCheck?.findMany === 'function'
+  );
+}
+
 function resolveClient(): PrismaClient {
   const existing = globalForPrisma.prisma;
-  if (existing && typeof existing.jobDescription?.findMany === 'function') {
+  if (existing && isCurrentClient(existing)) {
     return existing;
   }
   return createClient();

@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { departmentId, designationId, title, description, acknowledgeDuplicate } = parsed.data;
+  const { departmentId, designationId, title, description, status, acknowledgeDuplicate } = parsed.data;
   const tags = normalizeTags(parsed.data.tags);
   const minExperienceYears = parsed.data.minExperienceYears ?? null;
   const maxExperienceYears = parsed.data.maxExperienceYears ?? null;
@@ -149,7 +149,12 @@ export async function POST(request: NextRequest) {
           minExperienceYears,
           maxExperienceYears,
           salaryPackage,
-          status: 'Active',
+          // Was hardcoded 'Active', which silently discarded a status the
+          // schema validates — a JD saved as Draft went live immediately, and
+          // then tripped the duplicate rule for its department/designation
+          // pair. The schema still defaults to 'Active', so a caller that
+          // sends no status is unaffected.
+          status,
           createdByUserId,
         },
       });

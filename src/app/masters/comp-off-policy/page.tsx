@@ -1,6 +1,7 @@
 'use client';
 
 import SingleConfigPage from '@/components/SingleConfigPage';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import type { FieldDef } from '@/components/ui';
 
 const fields: FieldDef[] = [
@@ -69,11 +70,14 @@ const fields: FieldDef[] = [
 
 export default function CompOffPolicyPage() {
   return (
-    <SingleConfigPage
-      title="Comp-Off Policy"
-      description="Defines how compensatory off is earned, expired, and encashed. When no policy exists, comp-off is disabled."
-      apiPath="/api/masters/comp-off-policy"
-      fields={fields}
-    />
+    <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
+      <SingleConfigPage
+        title="Comp-Off Policy"
+        description="Defines how compensatory off is earned, expired, and encashed. When no policy exists, comp-off is disabled."
+        apiPath="/api/masters/comp-off-policy"
+        fields={fields}
+      />
+    </div>
   );
 }
