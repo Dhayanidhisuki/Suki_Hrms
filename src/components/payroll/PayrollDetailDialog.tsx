@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useToast } from '@/components/ui';
 
 interface SalaryComponent {
   id: number;
@@ -82,14 +83,13 @@ function fmt(n: string | number) {
 }
 
 export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollDetailDialogProps) {
+  const toast = useToast();
   const [data, setData] = useState<PayrollDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
     Promise.all([
       fetch(`/api/payroll/runs/${runId}/lines/${lineId}`),
       fetch(`/api/workforce/attendance/monthly?year=2026&month=7`),
@@ -99,38 +99,49 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
         if (!lineRes.ok) throw new Error('Failed to fetch payroll line');
         const line = await lineRes.json();
         const attJson = await attRes.json();
-        const att = (attJson.data ?? []).find((r: any) => r.employeeId === line.employeeId);
+        const att = ((attJson.data ?? []) as Array<{ employeeId: number; summary?: AttendanceSummary | null }>)
+          .find((r) => r.employeeId === line.employeeId);
         const balJson = await balRes.json();
-        const balances: LeaveBalance[] = (balJson.balances ?? []).filter((b: any) => b.employeeCode === line.employee.employeeCode);
+        // The endpoint returns balances for several employees, so the rows
+        // carry an employeeCode that LeaveBalance itself does not.
+        const balances: LeaveBalance[] = ((balJson.balances ?? []) as Array<LeaveBalance & { employeeCode: string }>)
+          .filter((b) => b.employeeCode === line.employee.employeeCode);
         if (!cancelled) {
           setData({ line, attendance: att?.summary ?? null, leaveBalances: balances });
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load payroll details');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [runId, lineId]);
+  }, [runId, lineId, toast]);
+
+  // Rows always print ascending by code (falling back to label for the
+  // fields below that aren't sourced from a SalaryComponent — Overtime, LOM,
+  // TDS… — and so have none). A fixed order here, unlike the Salary
+  // Components admin table's own toggleable code sort.
+  const byCodeAsc = (a: { label: string; code?: string }, b: { label: string; code?: string }) =>
+    (a.code ?? a.label).localeCompare(b.code ?? b.label);
 
   const earnings = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'earning')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
     if (Number(data?.line.otAmount ?? 0) > 0) list.push({ label: 'Overtime', amount: Number(data?.line.otAmount) });
     if (Number(data?.line.attendanceBonus ?? 0) > 0) list.push({ label: 'Attendance Bonus', amount: Number(data?.line.attendanceBonus) });
     if (Number(data?.line.petrolAllowance ?? 0) > 0) list.push({ label: 'Petrol Allowance', amount: Number(data?.line.petrolAllowance) });
     if (Number(data?.line.doubleMachineIncentive ?? 0) > 0) list.push({ label: 'Double Machine Incentive', amount: Number(data?.line.doubleMachineIncentive) });
     if (Number(data?.line.shiftIncentive ?? 0) > 0) list.push({ label: 'Shift Incentive', amount: Number(data?.line.shiftIncentive) });
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   const deductions = useMemo(() => {
-    const list = data?.line.components
+    const list: { label: string; amount: number; code?: string }[] = data?.line.components
       .filter((c) => c.salaryComponent.type === 'deduction')
-      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount) })) ?? [];
+      .map((c) => ({ label: c.salaryComponent.name, amount: Number(c.amount), code: c.salaryComponent.code })) ?? [];
 
     const has = (code: string) => data?.line.components.some((c) => c.salaryComponent.code.toUpperCase() === code);
 
@@ -173,7 +184,7 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
       list.push({ label: 'Other Auto Deductions', amount: otherAuto });
     }
 
-    return list;
+    return list.sort(byCodeAsc);
   }, [data]);
 
   if (loading) {
@@ -186,11 +197,11 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
         <div className="w-full max-w-5xl rounded-xl p-6" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
-          <p className="text-sm" style={{ color: '#dc2626' }}>{error ?? 'No data'}</p>
+          <p className="text-sm" style={{ color: '#dc2626' }}>Failed to load payroll details</p>
           <button onClick={onClose} className="mt-4 rounded-lg border px-4 py-2 text-sm font-medium">Close</button>
         </div>
       </div>
@@ -296,7 +307,6 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
                   <tr>
                     <th className="py-1 text-left text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Type</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Opng</th>
-                    <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Accrd</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Used</th>
                     <th className="py-1 text-right text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Rem</th>
                   </tr>
@@ -305,14 +315,13 @@ export default function PayrollDetailDialog({ runId, lineId, onClose }: PayrollD
                   {data.leaveBalances.map((b, idx) => (
                     <tr key={idx}>
                       <td className="py-1" style={{ color: 'var(--foreground)' }}>{b.leaveType}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.opening)}</td>
-                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.accrued)}</td>
+                      <td className="py-1 text-right tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{fmt(b.opening + b.accrued)}</td>
                       <td className="py-1 text-right tabular-nums" style={{ color: 'var(--warning, #f0b429)' }}>{fmt(b.availed)}</td>
                       <td className="py-1 text-right tabular-nums font-medium" style={{ color: 'var(--success, #22b573)' }}>{fmt(b.closing)}</td>
                     </tr>
                   ))}
                   {data.leaveBalances.length === 0 && (
-                    <tr><td colSpan={5} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
+                    <tr><td colSpan={4} style={{ color: 'var(--foreground-muted)' }}>No leave balances</td></tr>
                   )}
                 </tbody>
               </table>

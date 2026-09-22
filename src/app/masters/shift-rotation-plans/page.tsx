@@ -14,7 +14,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, SearchableSelect, ConfirmDialog, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, ConfirmDialog, useToast, type Column } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface ShiftRef {
   id: number;
@@ -48,10 +49,10 @@ function todayIso() {
 }
 
 export default function ShiftRotationPlansPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<RotationPlan[]>([]);
   const [shiftOptions, setShiftOptions] = useState<ShiftRef[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -65,12 +66,10 @@ export default function ShiftRotationPlansPage() {
   const [isActive, setIsActive] = useState(true);
   const [cycle, setCycle] = useState<number[]>([]); // ordered shiftMasterIds
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const [plansRes, shiftsRes] = await Promise.all([
@@ -86,11 +85,11 @@ export default function ShiftRotationPlansPage() {
         setShiftOptions(shiftsJson.data);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -104,7 +103,6 @@ export default function ShiftRotationPlansPage() {
     setDescription('');
     setIsActive(true);
     setCycle([]);
-    setSaveError(null);
     setModalOpen(true);
   };
 
@@ -116,7 +114,6 @@ export default function ShiftRotationPlansPage() {
     setDescription(row.description ?? '');
     setIsActive(row.isActive);
     setCycle(row.slots.map((s) => s.shiftMasterId));
-    setSaveError(null);
     setModalOpen(true);
   };
 
@@ -124,16 +121,15 @@ export default function ShiftRotationPlansPage() {
     const res = await fetch(`/api/masters/shift-rotation-plans/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
   };
 
   const handleSave = async () => {
-    setSaveError(null);
     if (cycle.length < 2) {
-      setSaveError('Add at least 2 shifts to the rotation cycle.');
+      toast.warning('Add at least 2 shifts to the rotation cycle.');
       return;
     }
     setSaving(true);
@@ -152,7 +148,7 @@ export default function ShiftRotationPlansPage() {
       setModalOpen(false);
       fetchData();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -191,6 +187,7 @@ export default function ShiftRotationPlansPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Shift Rotation Plans</h1>
         <button
@@ -205,11 +202,6 @@ export default function ShiftRotationPlansPage() {
         Defines a weekly shift cycle (e.g. Shift 1 → Shift 2 → Shift 3 → back to Shift 1). Assign it to an employee via Employees &gt; Job
         Profile &gt; Shift Assignment = Rotational — the applicable shift for any day is calculated automatically from the anchor date.
       </p>
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
       <DataTable
         columns={columns}
         data={records}
@@ -297,12 +289,6 @@ export default function ShiftRotationPlansPage() {
               <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded" style={{ accentColor: 'var(--accent)' }} />
               <span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Active</span>
             </label>
-
-            {saveError && (
-              <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                {saveError}
-              </div>
-            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <button

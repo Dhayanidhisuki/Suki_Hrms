@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, FormModal, PageHeader, Alert, StatusBadge, statusTone, SectionCard, Button, KPICard, KPIGrid, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, PageHeader, StatusBadge, statusTone, SectionCard, Button, KPICard, KPIGrid, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface ShiftChangeRequestRow {
   id: number;
@@ -40,9 +40,9 @@ const requestFields: FieldDef[] = [
 const rejectFields: FieldDef[] = [{ name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true }];
 
 function useQueue(scope: 'my' | 'pending') {
+  const toast = useToast();
   const [records, setRecords] = useState<ShiftChangeRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -52,14 +52,14 @@ function useQueue(scope: 'my' | 'pending') {
       const json = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  return { records, loading, error, refetch: fetchData };
+  return { records, loading, refetch: fetchData };
 }
 
 const ArrowRight = () => (
@@ -69,12 +69,12 @@ const ArrowRight = () => (
 );
 
 export default function ShiftChangeRequestPage() {
+  const toast = useToast();
   const myQueue = useQueue('my');
   const pendingQueue = useQueue('pending');
   const [shifts, setShifts] = useState<ShiftOption[]>([]);
   const [requestOpen, setRequestOpen] = useState(false);
   const [rejectId, setRejectId] = useState<number | null>(null);
-  const [result, setResult] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/masters/shift-masters?limit=50')
@@ -103,7 +103,7 @@ export default function ShiftChangeRequestPage() {
       const err = await res.json();
       throw new Error(err.error ?? 'Failed to create request');
     }
-    setResult('Shift change request created');
+    toast.success('Shift change request created');
     myQueue.refetch();
   };
 
@@ -111,10 +111,10 @@ export default function ShiftChangeRequestPage() {
     const res = await fetch(`/api/workforce/shift-change-request/${id}/approve`, { method: 'POST' });
     const json = await res.json();
     if (!res.ok) {
-      alert(json.error ?? 'Approve failed');
+      toast.error(json.error ?? 'Approve failed');
       return;
     }
-    setResult(json.message ?? 'Approved');
+    toast.success(json.message ?? 'Approved');
     pendingQueue.refetch();
     myQueue.refetch();
   };
@@ -130,7 +130,7 @@ export default function ShiftChangeRequestPage() {
     if (!res.ok) {
       throw new Error(json.error ?? 'Reject failed');
     }
-    setResult('Request rejected');
+    toast.success('Request rejected');
     setRejectId(null);
     pendingQueue.refetch();
     myQueue.refetch();
@@ -226,10 +226,7 @@ export default function ShiftChangeRequestPage() {
         <KPICard label="Pending My Action" value={kpi.toApprove} tone={kpi.toApprove > 0 ? 'danger' : 'success'} />
       </KPIGrid>
 
-      {result && <Alert tone="success" onDismiss={() => setResult(null)}>{result}</Alert>}
-
       <SectionCard title="Pending My Approval" description="Requests where you are the current-stage approver." count={pendingQueue.loading ? undefined : kpi.toApprove} flush>
-        {pendingQueue.error && <div className="p-3"><Alert tone="danger">{pendingQueue.error}</Alert></div>}
         <DataTable
           variant="card"
           columns={columns}
@@ -248,7 +245,6 @@ export default function ShiftChangeRequestPage() {
       </SectionCard>
 
       <SectionCard title="My Requests" description="Requests you have raised, with their current approval stage." count={myQueue.loading ? undefined : myQueue.records.length} flush>
-        {myQueue.error && <div className="p-3"><Alert tone="danger">{myQueue.error}</Alert></div>}
         <DataTable
           variant="card"
           columns={columns}

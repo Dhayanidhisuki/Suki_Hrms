@@ -16,7 +16,8 @@ import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
-import { computeLomMinutes, computeOtPayableMinutes, computeAttendanceMetrics } from '@/lib/attendanceCalc';
+import { computeLomMinutes, computeOtPayableMinutes, computeAttendanceMetrics, parseShiftTime } from '@/lib/attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -51,23 +52,34 @@ export async function GET(request: NextRequest) {
 
   // Load OT plan + LOM config so the API can return computed LOM (after shift
   // grace) and OT payable (after threshold) for each row — matching payroll.
-  const [otPlan, lomConfig] = await Promise.all([
+  const [otPlan, lomConfig, permissionExcused] = await Promise.all([
     prisma.oTPlan.findFirst({ where: { isActive: true, deletedAt: null } }),
     prisma.lomConfig.findUnique({ where: { companyId: scope.companyId } }),
+    // Approved permission on this date excuses that much late/early time.
+    getApprovedPermissionMinutes(
+      records.map((r) => r.employeeId),
+      date,
+      new Date(date.getTime() + 24 * 60 * 60 * 1000)
+    ),
   ]);
 
   const data = records.map((r) => {
     const shift = r.shiftMaster
       ? { startTime: r.shiftMaster.startTime, endTime: r.shiftMaster.endTime, graceMinutes: r.shiftMaster.graceMinutes }
       : null;
-    const lomMinutes = computeLomMinutes(r.lateMinutes, r.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null);
-    const otPayableMinutes = computeOtPayableMinutes(r.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
-    return { ...r, lomMinutes, otPayableMinutes };
+    const permissionExcusedMinutes = excusedMinutesFor(permissionExcused, r.employeeId, r.date);
+    const lomMinutes = computeLomMinutes(r.lateMinutes, r.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null, permissionExcusedMinutes);
+    const otPayableMinutes = computeOtPayableMinutes(
+      r.otMinutesCalculated,
+      otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
+      shift ? parseShiftTime(shift.endTime) : undefined
+    );
+    return { ...r, lomMinutes, otPayableMinutes, permissionExcusedMinutes };
   });
 
   return NextResponse.json({
     data,
-    otPlan: otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null,
+    otPlan: otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
     lomConfig: lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null,
   });
 }

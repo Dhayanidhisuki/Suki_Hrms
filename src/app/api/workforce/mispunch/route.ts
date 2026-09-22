@@ -70,7 +70,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
-  return NextResponse.json({ error: 'scope must be one of: mine, manager, hr' }, { status: 400 });
+  // What this caller has already acted on, at either stage. Needs no grant:
+  // it is filtered to their own recorded action, so it can only ever return
+  // requests they personally decided. Without this an approval vanishes the
+  // moment it is actioned, leaving the approver no record of what they did.
+  if (scopeParam === 'actioned') {
+    const data = await prisma.mispunchCorrection.findMany({
+      where: {
+        employee: { companyId: scope.companyId },
+        OR: [{ managerActionByUserId: userId }, { hrActionByUserId: userId }],
+      },
+      include,
+      orderBy: [{ hrActionAt: 'desc' }, { managerActionAt: 'desc' }],
+      take: 50,
+    });
+    return NextResponse.json({ data });
+  }
+
+  return NextResponse.json({ error: 'scope must be one of: mine, manager, hr, actioned' }, { status: 400 });
 }
 
 export async function POST(request: NextRequest) {
@@ -87,6 +104,24 @@ export async function POST(request: NextRequest) {
   const parsed = mispunchRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  // One open correction per day. Without this an employee could stack several
+  // requests for the same date, and whichever the approver actioned last would
+  // silently overwrite the attendance the earlier ones had already written.
+  const existing = await prisma.mispunchCorrection.findFirst({
+    where: {
+      employeeId: ownEmployeeId,
+      date: parsed.data.date,
+      status: { in: ['pending_manager', 'pending_hr'] },
+    },
+    select: { id: true, status: true },
+  });
+  if (existing) {
+    return NextResponse.json(
+      { error: `You already have a correction request for this date awaiting approval (#${existing.id}). Cancel or wait for it to be actioned before raising another.` },
+      { status: 409 }
+    );
   }
 
   const record = await prisma.mispunchCorrection.create({

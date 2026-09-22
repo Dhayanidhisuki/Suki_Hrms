@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { KPIGrid, KPICard, DataTable, Spinner } from '@/components/ui';
+import { KPIGrid, KPICard, DataTable, Spinner, useToast } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -72,18 +72,17 @@ function fmt(value: string | number): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PendingSalaryPage() {
+  const toast = useToast();
   const [year, setYear]                   = useState(now.getFullYear());
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [runs, setRuns]                   = useState<RunSummary[]>([]);
   const [holdEmployees, setHoldEmployees] = useState<HoldEmployee[]>([]);
   const [loading, setLoading]             = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError]                 = useState<string | null>(null);
 
   // Load all runs for the selected year
   const fetchRuns = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/payroll/runs');
       if (!res.ok) {
@@ -107,16 +106,15 @@ export default function PendingSalaryPage() {
       if (auto) setSelectedRunId(auto.id);
       else { setSelectedRunId(null); setHoldEmployees([]); }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, toast]);
 
   // Load detail for selected run
   const fetchRunDetail = useCallback(async (runId: number) => {
     setDetailLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/payroll/runs/${runId}`);
       if (!res.ok) {
@@ -166,11 +164,11 @@ export default function PendingSalaryPage() {
         attendanceStatus: attMap[l.employee.id] ?? null,
       })));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchRuns(); }, [fetchRuns]);
   useEffect(() => { if (selectedRunId !== null) fetchRunDetail(selectedRunId); }, [selectedRunId, fetchRunDetail]);
@@ -267,13 +265,6 @@ export default function PendingSalaryPage() {
           className="w-24 rounded-lg border px-3 py-2 text-sm"
           style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }} />
       </div>
-
-      {error && (
-        <div className="rounded-lg px-4 py-3 text-sm"
-          style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16"><Spinner /></div>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 
 const GNR_STATUSES = [
   'DRAFT', 'DC_CAPTURED', 'GNR_CREATED', 'AWAITING_AUTHORIZATION', 'AUTHORIZED',
@@ -88,7 +89,9 @@ export function gnrStatusTone(status: string): { bg: string; fg: string } {
 }
 
 export async function generateGnrNo(
-  tx: { gateNumberRegister: { findMany: (args: object) => Promise<{ gnrNo: string }[]> } },
+  // Prisma's own transaction client, so callers pass `tx` straight through
+  // instead of casting it away.
+  tx: Prisma.TransactionClient,
   companyId: number,
   movementType: string
 ): Promise<string> {

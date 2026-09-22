@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
 
 interface BenefitComponent {
   id: number;
@@ -30,9 +30,9 @@ interface ApiResponse {
 }
 
 export default function BenefitRatesPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<BenefitComponent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [modalOpen, setModalOpen] = useState(false);
@@ -69,7 +69,6 @@ export default function BenefitRatesPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       const res = await fetch(`/api/masters/benefit-rates?${params}`);
@@ -78,11 +77,11 @@ export default function BenefitRatesPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, toast]);
 
   useEffect(() => {
     fetchData();
@@ -123,7 +122,7 @@ export default function BenefitRatesPage() {
     const res = await fetch(`/api/masters/benefit-rates/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -174,12 +173,6 @@ export default function BenefitRatesPage() {
           + Add Component
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading} onPageChange={setPage} onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />
 

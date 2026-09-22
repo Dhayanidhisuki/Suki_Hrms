@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface GratuityRow {
   id: number;
@@ -65,14 +65,13 @@ function ReasonModal({
   onClose: () => void;
   onSubmit: (reason: string) => Promise<void>;
 }) {
+  const toast = useToast();
   const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setReason('');
-      setError(null);
     }
   }, [isOpen]);
 
@@ -93,7 +92,6 @@ function ReasonModal({
               style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
             />
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -102,7 +100,7 @@ function ReasonModal({
               disabled={submitting}
               onClick={async () => {
                 if (!reason.trim()) {
-                  setError(`${label} is required`);
+                  toast.warning(`${label} is required`);
                   return;
                 }
                 setSubmitting(true);
@@ -110,7 +108,7 @@ function ReasonModal({
                   await onSubmit(reason.trim());
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -136,16 +134,15 @@ function MarkPaidModal({
   onClose: () => void;
   onSubmit: (paymentDate: string, paymentReference: string) => Promise<void>;
 }) {
+  const toast = useToast();
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (row) {
       setPaymentDate(new Date().toISOString().slice(0, 10));
       setPaymentReference('');
-      setError(null);
     }
   }, [row]);
 
@@ -180,7 +177,6 @@ function MarkPaidModal({
               style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
             />
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -189,16 +185,15 @@ function MarkPaidModal({
               disabled={submitting}
               onClick={async () => {
                 if (!paymentDate || !paymentReference.trim()) {
-                  setError('Both fields are required');
+                  toast.warning('Both fields are required');
                   return;
                 }
                 setSubmitting(true);
-                setError(null);
                 try {
                   await onSubmit(paymentDate, paymentReference.trim());
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -216,20 +211,19 @@ function MarkPaidModal({
 }
 
 export default function GratuityPage() {
+  const toast = useToast();
   const [statusFilter, setStatusFilter] = useState('');
   const [records, setRecords] = useState<GratuityRow[]>([]);
   const [separations, setSeparations] = useState<SeparationOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [calcEmployeeId, setCalcEmployeeId] = useState<number | ''>('');
   const [calculating, setCalculating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ row: GratuityRow; action: 'approve' | 'release-hold' } | null>(null);
   const [reasonModal, setReasonModal] = useState<{ row: GratuityRow; action: 'reject' | 'hold' } | null>(null);
   const [payRow, setPayRow] = useState<GratuityRow | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
@@ -243,11 +237,11 @@ export default function GratuityPage() {
       setRecords(recJson.data);
       setSeparations(sepJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   useEffect(() => {
     fetchData();
@@ -269,7 +263,6 @@ export default function GratuityPage() {
   const calculate = async () => {
     if (!calcEmployeeId) return;
     setCalculating(true);
-    setError(null);
     try {
       const res = await fetch('/api/gratuity/records', {
         method: 'POST',
@@ -281,7 +274,7 @@ export default function GratuityPage() {
       setCalcEmployeeId('');
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setCalculating(false);
     }
@@ -319,7 +312,7 @@ export default function GratuityPage() {
       render: (r) => (
         <div className="flex gap-2 justify-end">
           {(r.status === 'CALCULATED' || r.status === 'NOT_ELIGIBLE') && (
-            <button onClick={() => callAction(r.id, 'recalculate').catch((e) => setError(e.message))} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+            <button onClick={() => callAction(r.id, 'recalculate').catch((e) => toast.error(e.message))} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent)' }}>
               Recalculate
             </button>
           )}
@@ -373,12 +366,6 @@ export default function GratuityPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
       <div className="rounded-xl border p-4 space-y-3" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
         <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Calculate Gratuity</h2>
         <div className="flex flex-wrap items-end gap-3">
@@ -418,7 +405,7 @@ export default function GratuityPage() {
         onClose={() => setConfirm(null)}
         onConfirm={() => {
           if (!confirm) return;
-          callAction(confirm.row.id, confirm.action).catch((e) => setError(e.message));
+          callAction(confirm.row.id, confirm.action).catch((e) => toast.error(e.message));
           setConfirm(null);
         }}
       />

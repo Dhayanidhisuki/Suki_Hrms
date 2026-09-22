@@ -1,6 +1,7 @@
 'use client';
 
 import SlabPage from '@/components/SlabPage';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import type { Column, FieldDef } from '@/components/ui';
 
 const fields: FieldDef[] = [
@@ -40,13 +41,16 @@ const columns: Column<OTIncentiveSlabRow>[] = [
 
 export default function OTIncentiveSlabsPage() {
   return (
-    <SlabPage<OTIncentiveSlabRow>
-      statsModule="ot-incentive-slabs"
-      title="OT Incentive Slabs"
-      apiPath="/api/masters/ot-incentive-slabs"
-      fields={fields}
-      columns={columns}
-      itemLabel="OT Incentive Slab"
-    />
+    <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
+      <SlabPage<OTIncentiveSlabRow>
+        statsModule="ot-incentive-slabs"
+        title="OT Incentive Slabs"
+        apiPath="/api/masters/ot-incentive-slabs"
+        fields={fields}
+        columns={columns}
+        itemLabel="OT Incentive Slab"
+      />
+    </div>
   );
 }

@@ -13,7 +13,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { KPIGrid, KPICard } from '@/components/ui';
+import { KPIGrid, KPICard, useToast } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface EmployeeNode {
   id: number;
@@ -69,6 +70,7 @@ interface ApiResponse {
 }
 
 export default function ReportingStructurePage() {
+  const toast = useToast();
   const [tree, setTree] = useState<EmployeeNode[]>([]);
   const [flatList, setFlatList] = useState<FlatEmployee[]>([]);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
@@ -104,12 +106,6 @@ export default function ReportingStructurePage() {
   const [reassignOld, setReassignOld] = useState<string>('');
   const [reassignNew, setReassignNew] = useState<string>('');
   const [reassigning, setReassigning] = useState(false);
-  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const showToast = (type: 'success' | 'error', text: string) => {
-    setToastMsg({ type, text });
-    setTimeout(() => setToastMsg(null), 5000);
-  };
 
   const fetchHierarchy = useCallback(async () => {
     setLoading(true);
@@ -148,11 +144,11 @@ export default function ReportingStructurePage() {
       setExpandedNodes(autoExpand);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to fetch hierarchy';
-      showToast('error', msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchHierarchy();
@@ -242,13 +238,13 @@ export default function ReportingStructurePage() {
   const handleBulkAssign = async () => {
     if (selectedIds.size === 0) return;
     if (!bulkManagerId) {
-      alert('Please select a Reporting Manager to assign');
+      toast.warning('Please select a Reporting Manager to assign');
       return;
     }
 
     const mgrIdNum = Number(bulkManagerId);
     if (selectedIds.has(mgrIdNum)) {
-      alert('One of the selected employees cannot be their own manager. Please uncheck them first.');
+      toast.warning('One of the selected employees cannot be their own manager. Please uncheck them first.');
       return;
     }
 
@@ -267,14 +263,14 @@ export default function ReportingStructurePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to update manager assignments');
 
-      showToast('success', json.message || `Assigned manager to ${selectedIds.size} employees`);
+      toast.success(json.message || `Assigned manager to ${selectedIds.size} employees`);
       setSelectedIds(new Set());
       setBulkManagerId('');
       setBulkSecondManagerId('');
       await fetchHierarchy();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error assigning managers';
-      showToast('error', msg);
+      toast.error(msg);
     } finally {
       setSubmittingBulk(false);
     }
@@ -302,12 +298,12 @@ export default function ReportingStructurePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to unassign managers');
 
-      showToast('success', `Unassigned managers for ${selectedIds.size} employee(s)`);
+      toast.success(`Unassigned managers for ${selectedIds.size} employee(s)`);
       setSelectedIds(new Set());
       await fetchHierarchy();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error unassigning managers';
-      showToast('error', msg);
+      toast.error(msg);
     } finally {
       setSubmittingBulk(false);
     }
@@ -341,12 +337,12 @@ export default function ReportingStructurePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to update employee');
 
-      showToast('success', `Updated reporting manager for ${editingEmployee.fullName}`);
+      toast.success(`Updated reporting manager for ${editingEmployee.fullName}`);
       setEditingEmployee(null);
       await fetchHierarchy();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update';
-      showToast('error', msg);
+      toast.error(msg);
     } finally {
       setSavingEdit(false);
     }
@@ -355,7 +351,7 @@ export default function ReportingStructurePage() {
   // Bulk Reassign for Departing Managers
   const handleReassignDeparting = async () => {
     if (!reassignOld) {
-      alert('Please select the departing manager');
+      toast.warning('Please select the departing manager');
       return;
     }
     setReassigning(true);
@@ -371,14 +367,14 @@ export default function ReportingStructurePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to reassign reports');
 
-      showToast('success', json.message || 'Direct reports reassigned successfully');
+      toast.success(json.message || 'Direct reports reassigned successfully');
       setReassignOld('');
       setReassignNew('');
       setShowReassign(false);
       await fetchHierarchy();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reassign';
-      showToast('error', msg);
+      toast.error(msg);
     } finally {
       setReassigning(false);
     }
@@ -502,19 +498,7 @@ export default function ReportingStructurePage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border text-sm font-medium transition-all ${
-            toastMsg.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}
-        >
-          {toastMsg.text}
-        </div>
-      )}
-
+      <MasterGroupTabs groupLabel="Organization" />
       {/* Header & Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>

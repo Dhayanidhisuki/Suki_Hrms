@@ -99,5 +99,8 @@ export async function POST(
   }
   if (transitionResult) await emitTransitionEvent(employee.companyId, transitionResult, transitionOpts);
 
+  const { archiveConfirmationLetter } = await import('@/lib/confirmation-letter');
+  await archiveConfirmationLetter(employeeId, { userId: performedByUserId, source: 'system' });
+
   return NextResponse.json({ message: 'Employee confirmed', confirmationDate, lifecycleState: 'CONFIRMED' });
 }

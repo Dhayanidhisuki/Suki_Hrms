@@ -10,7 +10,7 @@
 
 import { useState, useRef, useMemo } from 'react';
 import Link from 'next/link';
-import { PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, Stepper, KPICard, KPIGrid } from '@/components/ui';
+import { PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, Stepper, KPICard, KPIGrid, useToast } from '@/components/ui';
 
 interface UploadResult {
   row: number;
@@ -40,10 +40,10 @@ const FileIcon = () => (
 const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 export default function BulkShiftUploadPage() {
+  const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ created: number; errors: number; total: number; results: UploadResult[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [resultFilter, setResultFilter] = useState<ResultFilter>('errors');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -53,11 +53,10 @@ export default function BulkShiftUploadPage() {
 
   const handleUpload = async () => {
     if (!file) {
-      alert('Please select a file first');
+      toast.warning('Please select a file first');
       return;
     }
     setUploading(true);
-    setError(null);
     setResult(null);
     try {
       const formData = new FormData();
@@ -68,13 +67,13 @@ export default function BulkShiftUploadPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? 'Upload failed');
+        toast.error(json.error ?? 'Upload failed');
         return;
       }
       setResult(json);
       setResultFilter(json.errors > 0 ? 'errors' : 'all');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -95,13 +94,11 @@ export default function BulkShiftUploadPage() {
     if (!f) return;
     setFile(f);
     setResult(null);
-    setError(null);
   };
 
   const reset = () => {
     setFile(null);
     setResult(null);
-    setError(null);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -132,8 +129,6 @@ export default function BulkShiftUploadPage() {
           completedKeys={completed}
         />
       </SectionCard>
-
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
         {/* Step 1: format */}

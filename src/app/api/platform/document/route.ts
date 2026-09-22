@@ -7,13 +7,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getCompanyId } from '@/lib/companyScope';
 import { pdocOwnerQuerySchema, pdocUploadFieldsSchema } from '@/lib/validations/platform-document';
 import { canAccessDocument, listDocuments, uploadDocument } from '@/lib/platform/document/service';
 import { HR_MANAGER_ROLE_CODES } from '@/lib/platform/document/rules';
-import { documentErrorResponse, openDocumentRequest } from '@/lib/platform/document/http';
+import { resolveDocumentActor } from '@/lib/platform/document/actor';
+import { checkSpecificPermission } from '@/lib/rbac-employee';
+import { documentErrorResponse, resolveDocumentContext } from '@/lib/platform/document/http';
 
 export async function GET(request: NextRequest) {
-  const opened = await openDocumentRequest(request, 'platform.document.view');
+  // Authentication is checked before anything else — an unauthenticated
+  // request must 401 regardless of what its query string looks like.
+  const opened = await resolveDocumentContext(request);
   if ('error' in opened) return opened.error;
   const { companyId, caller } = opened.ctx;
 
@@ -24,6 +29,15 @@ export async function GET(request: NextRequest) {
   });
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  // Viewing your own employee documents never needs the HR-level
+  // platform.document.view grant — same self-service convention as
+  // my-payslips/my-attendance/tds-declaration.
+  const isSelf = parsed.data.ownerEntityType === 'EMPLOYEE' && caller.employeeId != null && caller.employeeId === parsed.data.ownerEntityId;
+  if (!isSelf) {
+    const permErr = await checkSpecificPermission(request, 'platform.document.view');
+    if (permErr) return permErr;
   }
 
   try {
@@ -37,9 +51,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const opened = await openDocumentRequest(request, 'platform.document.upload');
-  if ('error' in opened) return opened.error;
-  const { companyId, actor, caller } = opened.ctx;
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
+  const resolved = await resolveDocumentActor(request, scope.companyId);
+  if (!resolved.actor.userId) {
+    return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
+  }
+  const { companyId, actor, caller } = { companyId: scope.companyId, ...resolved };
 
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Expected multipart/form-data' }, { status: 400 });
@@ -64,10 +82,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // §15.4 step 1 — authorise: self-upload, or an HR role uploading for anyone in the company.
-  const isHr = !!caller.roleCode && HR_MANAGER_ROLE_CODES.includes(caller.roleCode);
+  // §15.4 step 1 — authorise: self-upload never needs the HR-level
+  // platform.document.upload grant (self-service convention, same as
+  // my-payslips/my-attendance/tds-declaration); uploading for someone else
+  // does need it (every HR_MANAGER_ROLE_CODES role has it).
   const isSelf = parsed.data.ownerEntityType === 'EMPLOYEE' && caller.employeeId != null && caller.employeeId === parsed.data.ownerEntityId;
-  if (!isHr && !isSelf) {
+  const isHr = !!caller.roleCode && HR_MANAGER_ROLE_CODES.includes(caller.roleCode);
+  if (!isSelf && !isHr) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

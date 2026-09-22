@@ -47,7 +47,8 @@
 
 import { prisma } from './prisma';
 import { calculateAnnualTds } from './tdsCalculation';
-import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes } from './attendanceCalc';
+import { applyMonthlyOtCap, computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from './attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from './permissionExcuse';
 
 function daysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -111,6 +112,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
           where: { effectiveTo: null },
           take: 1,
           select: {
+            pfApplicable: true,
             esiApplicable: true,
             professionalTaxApplicable: true,
             overtimeAllowed: true,
@@ -225,7 +227,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const line = await prisma.payrollLine.upsert({
       where: { payrollRunId_employeeId: { payrollRunId, employeeId: emp.id } },
       update: {},
-      create: { payrollRunId, employeeId: emp.id },
+      // pfApplicable defaults from JobInfo (same convention as esiApplicable
+      // below), not hardcoded true — only applies the first time a line is
+      // created for this run; a manual per-run override afterward persists.
+      create: { payrollRunId, employeeId: emp.id, pfApplicable: jobInfo?.pfApplicable ?? true },
     });
 
     const summary = await prisma.monthlyAttendanceSummary.findUnique({
@@ -281,6 +286,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
     const isDaily = wageType === 'daily';
 
     for (const c of revision.components) {
+      // NON_PAYROLL components (e.g. a CTC-quoted Performance Incentive
+      // figure) must never touch payroll in any way — not Gross, not a
+      // deduction, not a PF/ESI/PT/TDS base. Skip before any accumulation.
+      if (c.salaryComponent.grossTier === 'NON_PAYROLL') continue;
       let proratedAmount: number;
       if (isHourly) {
         // Hourly rate × payable hours (payableDays × 8).
@@ -335,7 +344,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
     if (jobInfo?.overtimeAllowed) {
       const otPlan = otPlans.find((p) => p.isActive) ?? null;
       const otPlanLite = otPlan
-        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay }
+        ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes }
         : null;
 
       // Phase 13 — per-day OT calculation with day-type factors.
@@ -359,6 +368,7 @@ export async function calculatePayrollRun(payrollRunId: number) {
             { otApprovalStatus: null, otMinutesCalculated: { gt: 0 } },
           ],
         },
+        include: { shiftMaster: { select: { endTime: true } } },
       });
 
       // Compute the OT hourly rate based on the configured basis.
@@ -404,7 +414,8 @@ export async function calculatePayrollRun(payrollRunId: number) {
         // Threshold (qualification, not deduction) + daily cap. A null
         // maxOtHoursPerDay means no cap — one implementation, shared with
         // the attendance screens.
-        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite);
+        const shiftEndTod = d.shiftMaster ? parseShiftTime(d.shiftMaster.endTime) : undefined;
+        const dayOtMinutes = computeOtPayableMinutes(rawOtMinutes, otPlanLite, shiftEndTod);
         if (dayOtMinutes <= 0) continue;
         const dayOtHours = dayOtMinutes / 60;
         let dayFactor = baseFactor;
@@ -480,7 +491,10 @@ export async function calculatePayrollRun(payrollRunId: number) {
       // below the statutory wage ceiling, e.g. PF restricted to 15000 even
       // though actual gross is higher. Read from JobInfo.pfRestrictionAmount
       // when the admin has set one; otherwise only the statutory ceiling applies.
-      const pfWageCap = jobInfo?.pfRestrictionAmount != null
+      // 0 is treated the same as unset — a zero restriction would otherwise
+      // cap PF wage at 0 instead of meaning "no restriction" (see the field's
+      // help text).
+      const pfWageCap = jobInfo?.pfRestrictionAmount != null && Number(jobInfo.pfRestrictionAmount) > 0
         ? Math.min(Number(pfRate.wageCeilingMonthly), Number(jobInfo.pfRestrictionAmount))
         : Number(pfRate.wageCeilingMonthly);
       // PF wage base: sum only components flagged includeInPf = true. Falls
@@ -692,6 +706,34 @@ export async function calculatePayrollRun(payrollRunId: number) {
       }
     }
 
+    // PAYROLL_HIDDEN CTC components (e.g. "Medical") — attached per-employee
+    // via the CTC tab's "+ Add Component" picker (the same table NON_PAYROLL
+    // components use), but unlike NON_PAYROLL these DO move Net Pay: a real,
+    // flat (not LOP-prorated) monthly earning or deduction that's
+    // deliberately kept off the Salary Details tab. Read here — not from
+    // revision.components — since that picker never lets them be attached
+    // to a Salary Revision. Neither side touches Gross/PF/ESI/PT/TDS bases,
+    // same treatment as the other auto-applied earnings/deductions below.
+    let payrollHiddenCtcDeductionAmount = 0;
+    let payrollHiddenCtcEarningAmount = 0;
+    const currentEmployeeCtc = await prisma.employeeCtc.findFirst({
+      where: { employeeId: emp.id, effectiveTo: null },
+      select: {
+        components: {
+          include: { salaryComponent: { select: { id: true, type: true, grossTier: true } } },
+        },
+      },
+    });
+    for (const c of currentEmployeeCtc?.components ?? []) {
+      if (c.salaryComponent.grossTier !== 'PAYROLL_HIDDEN') continue;
+      if (c.salaryComponent.type !== 'deduction' && c.salaryComponent.type !== 'earning') continue;
+      const amount = round(Number(c.amount));
+      if (amount === 0) continue;
+      autoComponentRows.push({ salaryComponentId: c.salaryComponent.id, amount });
+      if (c.salaryComponent.type === 'deduction') payrollHiddenCtcDeductionAmount += amount;
+      else payrollHiddenCtcEarningAmount += amount;
+    }
+
     // LOM (Loss of Minutes) — only APPROVED LOM minutes are deducted.
     // The LOM approval workflow (Phase TimeOffice) queues late/early-out
     // minutes for HR/Admin approval. Only rows with lomApprovalStatus=
@@ -733,13 +775,17 @@ export async function calculatePayrollRun(payrollRunId: number) {
         },
         include: { shiftMaster: { select: { startTime: true, endTime: true, graceMinutes: true } } },
       });
+      // Approved permission excuses the late/early time it was granted for,
+      // so payroll must not deduct those minutes either.
+      const permissionExcused = await getApprovedPermissionMinutes([emp.id], lomMonthStart, lomMonthEnd);
       lomMinutes = 0;
       for (const d of lomDays) {
         lomMinutes += computeLomMinutes(
           Number(d.lateMinutes ?? 0),
           Number(d.earlyOutMinutes ?? 0),
           d.shiftMaster,
-          lomCfgLite
+          lomCfgLite,
+          excusedMinutesFor(permissionExcused, emp.id, d.date)
         );
       }
     }
@@ -820,6 +866,8 @@ export async function calculatePayrollRun(payrollRunId: number) {
     autoDeductionsTotal += lwfAmount;
     autoDeductionsTotal += healthInsuranceAmount;
     autoDeductionsTotal += licDeduction;
+    autoDeductionsTotal += payrollHiddenCtcDeductionAmount;
+    autoEarningsTotal += payrollHiddenCtcEarningAmount;
 
     // Loan EMI deduction — for each active loan of this employee, deduct the
     // next pending installment. The deduction is split into principal and

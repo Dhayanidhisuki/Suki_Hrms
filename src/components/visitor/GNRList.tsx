@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 import DataTable, { type Column, type Pagination } from '@/components/ui/DataTable';
 import { formatGnrStatus, gnrStatusTone } from '@/lib/gnr-helpers';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -84,9 +85,9 @@ const GNR_STATUS_OPTIONS = [
 ];
 
 export default function GNRList({ title, subtitle, defaultMovementType = '', defaultStatus = '', primaryAction = 'none', readOnly = false, showAdd = true, showExport = false, headerAction }: GNRListProps) {
+  const toast = useToast();
   const [gnrs, setGnrs] = useState<GNR[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
   const [search, setSearch] = useState('');
   const [movementType, setMovementType] = useState(defaultMovementType);
@@ -112,7 +113,7 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
   }, [pagination.page, search, movementType, statusFilter, dateFrom, dateTo]);
 
   const fetchGnrs = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const res = await fetch(`/api/visitor/gnr?${filterParams()}`);
       if (!res.ok) throw new Error('Failed to fetch');
@@ -120,11 +121,11 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
       setGnrs(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [filterParams]);
+  }, [filterParams, toast]);
 
   useEffect(() => { fetchGnrs(); }, [fetchGnrs]);
 
@@ -172,7 +173,7 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
     });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Action failed');
+      toast.error(err.error ?? 'Action failed');
       return;
     }
     fetchGnrs();
@@ -183,7 +184,7 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
     const res = await fetch(`/api/visitor/gnr/${deleteId}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     setDeleteId(null);
@@ -193,7 +194,7 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
   const exportCSV = () => {
     const headers = ['gnrNo', 'dcNo', 'dcDate', 'movementType', 'status', 'counterpartyName', 'vehicleNumber', 'lineItems'];
     const rows = gnrs.map((g) => headers.map((h) => {
-      const v = h === 'lineItems' ? (g.lineItems?.length ?? 0) : (g as any)[h];
+      const v = h === 'lineItems' ? (g.lineItems?.length ?? 0) : (g as unknown as Record<string, unknown>)[h];
       return `"${String(v ?? '').replace(/"/g, "'")}"`;
     }).join(','));
     const csv = [headers.join(','), ...rows].join('\n');
@@ -248,12 +249,6 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         variant="card"

@@ -4,7 +4,10 @@
  * hit once in this project with lightningcss).
  */
 
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import { stampDeterministicMetadata } from '@/lib/pdf-metadata';
+import { INK, M, PAGE, drawLetterhead, drawSignature, prepareChrome, wrapToWidth } from '@/lib/letter-template';
+import { loadCompanyProfile } from '@/lib/company-profile';
 
 export interface ConfirmationLetterData {
   companyName: string;
@@ -14,6 +17,12 @@ export interface ConfirmationLetterData {
   department: string;
   joinDate: Date;
   confirmationDate: Date;
+  /** From the Company record via loadCompanyProfile(). */
+  companyAddress?: string | null;
+  companyPhone?: string | null;
+  companyEmail?: string | null;
+  /** Optional register reference, shown on the letterhead when present. */
+  referenceNo?: string | null;
 }
 
 function formatDate(d: Date): string {
@@ -22,51 +31,101 @@ function formatDate(d: Date): string {
 
 export async function generateConfirmationLetterPdf(data: ConfirmationLetterData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const page = doc.addPage([595.28, 841.89]); // A4
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  stampDeterministicMetadata(doc, {
+    anchor: data.confirmationDate,
+    title: `Confirmation letter — ${data.employeeCode}`,
+  });
+  const page = doc.addPage([PAGE.width, PAGE.height]);
+  const chrome = await prepareChrome(doc);
+  const bodyWidth = M.right - M.left;
 
-  const margin = 60;
-  let y = 780;
-  const lineHeight = 20;
+  let y = drawLetterhead(page, chrome, {
+    companyName: data.companyName,
+    companyAddress: data.companyAddress,
+    companyPhone: data.companyPhone,
+    companyEmail: data.companyEmail,
+    title: 'Confirmation Letter',
+    referenceNo: data.referenceNo ?? null,
+    date: formatDate(data.confirmationDate),
+  });
 
-  const drawLine = (text: string, opts?: { bold?: boolean; size?: number; gap?: number }) => {
-    page.drawText(text, {
-      x: margin,
-      y,
-      size: opts?.size ?? 11,
-      font: opts?.bold ? bold : font,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-    y -= opts?.gap ?? lineHeight;
-  };
+  page.drawText(`Dear ${data.employeeName},`, { x: M.left, y, size: 11, font: chrome.font, color: INK });
+  y -= 24;
 
-  drawLine(data.companyName, { bold: true, size: 16, gap: 30 });
-  drawLine('CONFIRMATION LETTER', { bold: true, size: 14, gap: 30 });
-
-  drawLine(`Date: ${formatDate(data.confirmationDate)}`, { gap: 30 });
-
-  drawLine(`Dear ${data.employeeName},`, { gap: 24 });
-
-  const bodyLines = [
-    `This is to confirm that your employment with ${data.companyName}, which began on`,
-    `${formatDate(data.joinDate)} as ${data.designation} in the ${data.department} department`,
-    `(Employee Code: ${data.employeeCode}), has been reviewed following the completion of your`,
-    `probation period.`,
-    '',
-    `We are pleased to confirm your appointment as a permanent employee with effect from`,
-    `${formatDate(data.confirmationDate)}. All other terms and conditions of your employment remain`,
-    `unchanged.`,
-    '',
+  // Paragraphs, not pre-broken lines — wrapToWidth measures the real glyph
+  // widths, so the right edge stays even whatever the name or designation.
+  const paragraphs = [
+    `This is to confirm that your employment with ${data.companyName}, which began on ${formatDate(data.joinDate)} as ${data.designation} in the ${data.department} department (Employee Code: ${data.employeeCode}), has been reviewed following the completion of your probation period.`,
+    `We are pleased to confirm your appointment as a permanent employee with effect from ${formatDate(data.confirmationDate)}. All other terms and conditions of your employment remain unchanged.`,
     'We look forward to your continued contribution.',
   ];
-  for (const line of bodyLines) {
-    drawLine(line, { gap: line === '' ? 14 : 18 });
+  for (const para of paragraphs) {
+    for (const line of wrapToWidth(chrome.font, para, 11, bodyWidth)) {
+      page.drawText(line, { x: M.left, y, size: 11, font: chrome.font, color: INK });
+      y -= 16;
+    }
+    y -= 10;
   }
 
-  y -= 30;
-  drawLine('For ' + data.companyName, { gap: 50 });
-  drawLine('Authorized Signatory', {});
-
+  drawSignature(page, chrome, y - 24, { companyName: data.companyName });
   return doc.save();
+}
+
+export async function archiveConfirmationLetter(employeeId: number, actor: import('@/lib/platform/contracts').PlatformActor): Promise<void> {
+  const { prisma } = await import('@/lib/prisma');
+  const { ensureDocumentType, indexGeneratedPdf } = await import('@/lib/platform/document/index-document');
+
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeId, deletedAt: null },
+    include: {
+      company: { select: { name: true } },
+      jobInfos: {
+        where: { effectiveTo: null },
+        take: 1,
+        include: { designation: { select: { name: true } }, department: { select: { name: true } } },
+      },
+    },
+  });
+  const job = employee?.jobInfos[0];
+  if (!employee || !job?.confirmationDate) return;
+
+  await ensureDocumentType(employee.companyId, 'CONFIRMATION_LETTER', {
+    name: 'Confirmation letter',
+    category: 'EMPLOYMENT',
+    businessCategory: 'LIFECYCLE',
+    uploadMode: 'HR_ONLY',
+    appliesToEntity: 'EMPLOYEE',
+    documentClass: 'CONFIDENTIAL',
+    verificationRequired: false,
+    allowedFileTypes: 'pdf',
+    maxFileSizeMb: 10,
+  });
+
+  const displayCode = employee.oldEmployeeCode ?? employee.employeeCode;
+  const profile = await loadCompanyProfile(employee.companyId);
+  const pdfBytes = await generateConfirmationLetterPdf({
+    companyName: profile?.name ?? employee.company.name,
+    companyAddress: profile?.address ?? null,
+    companyPhone: profile?.phone ?? null,
+    companyEmail: profile?.email ?? null,
+    employeeName: `${employee.firstName} ${employee.lastName}`,
+    employeeCode: displayCode,
+    designation: job.designation.name,
+    department: job.department.name,
+    joinDate: job.joinDate,
+    confirmationDate: job.confirmationDate,
+  });
+
+  try {
+    await indexGeneratedPdf({
+      companyId: employee.companyId,
+      documentTypeCode: 'CONFIRMATION_LETTER',
+      ownerEntityId: employee.id,
+      fileName: `confirmation-letter-${displayCode}.pdf`,
+      bytes: Buffer.from(pdfBytes),
+      actor: { ...actor, source: 'system' },
+    });
+  } catch (err) {
+    console.error('[confirmation-letter] document index failed', err);
+  }
 }

@@ -13,9 +13,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid,
+  DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast,
   type Column, type FieldDef,
 } from '@/components/ui';
+import { exportToPDF } from '@/lib/export-utils';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 // ─── Shared types ───────────────────────────────────────────────────────
 
@@ -91,13 +93,32 @@ const inputStyle = { backgroundColor: 'var(--background)', color: 'var(--foregro
 
 // ─── Tab 1: Declared Holidays ───────────────────────────────────────────
 
+/** A row in the merged Declared Holidays view — either a real Holiday record
+ * (editable here) or a read-only entry pulled in from the Yearly Leave
+ * Calendar tab (managed there; the Yearly Leave Calendar is the source of
+ * truth for those dates, so this view mirrors rather than duplicates them). */
+interface DeclaredHolidayRow {
+  id: number;
+  key: string;
+  date: string;
+  name: string;
+  typeLabel: string;
+  typeTone: 'accent' | 'warning' | 'danger' | 'neutral';
+  typeColor?: string;
+  company: string;
+  description: string | null;
+  isActive: boolean;
+  source: 'holiday' | 'yearly';
+  holiday?: Holiday;
+}
+
 function DeclaredHolidaysTab() {
+  const toast = useToast();
   const [records, setRecords] = useState<Holiday[]>([]);
+  const [yearlyEntries, setYearlyEntries] = useState<YearlyLeaveEntry[]>([]);
+  const [year, setYear] = useState(new Date().getUTCFullYear());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, string | number | boolean | undefined>>({});
@@ -115,22 +136,82 @@ function DeclaredHolidaysTab() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
-      const res = await fetch(`/api/masters/holidays?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const resp = await res.json();
-      setRecords(resp.data);
-      setPagination(resp.pagination);
+      // Fetched in full (not the usual small page size) — this view merges
+      // in Yearly Leave Calendar entries too, so pagination has to happen
+      // client-side across both sources, and the PDF export needs the whole
+      // list, not just the visible page.
+      const [holidayRes, yearlyRes] = await Promise.all([
+        fetch('/api/masters/holidays?limit=1000'),
+        fetch(`/api/masters/yearly-leave-calendar?year=${year}`),
+      ]);
+      if (!holidayRes.ok) throw new Error('Failed to fetch');
+      const holidayResp = await holidayRes.json();
+      const yearlyResp = await yearlyRes.json();
+      setRecords(holidayResp.data);
+      setYearlyEntries(yearlyResp.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [year, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const mergedRows: DeclaredHolidayRow[] = useMemo(() => {
+    const holidayRows: DeclaredHolidayRow[] = records.map((h) => ({
+      id: h.id,
+      key: `h-${h.id}`,
+      date: h.date,
+      name: h.name,
+      typeLabel: HOLIDAY_TYPE_OPTIONS.find((o) => o.value === h.holidayType)?.label ?? h.holidayType,
+      typeTone: HOLIDAY_TYPE_TONE[h.holidayType] ?? 'neutral',
+      company: h.company?.name ?? '—',
+      description: h.description,
+      isActive: h.isActive,
+      source: 'holiday',
+      holiday: h,
+    }));
+    const yearlyRows: DeclaredHolidayRow[] = yearlyEntries.map((e) => ({
+      id: e.id,
+      key: `y-${e.id}`,
+      date: e.date,
+      name: e.name,
+      typeLabel: e.leaveTypeMaster.name,
+      typeTone: 'neutral',
+      typeColor: e.leaveTypeMaster.color,
+      company: '—',
+      description: e.description,
+      isActive: true,
+      source: 'yearly',
+    }));
+    const q = search.trim().toLowerCase();
+    const all = [...holidayRows, ...yearlyRows]
+      .filter((r) => !q || r.name.toLowerCase().includes(q) || r.typeLabel.toLowerCase().includes(q))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return all;
+  }, [records, yearlyEntries, search]);
+
+  const handleDownloadPdf = () => {
+    if (mergedRows.length === 0) {
+      toast.error('Nothing to download — no holidays declared for this filter.');
+      return;
+    }
+    exportToPDF({
+      filename: `Declared-Holidays-${year}`,
+      title: `Declared Holidays — ${year}`,
+      columns: ['Date', 'Day', 'Name'],
+      data: mergedRows.map((r) => {
+        const d = new Date(r.date);
+        return {
+          Date: d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' }),
+          Day: d.toLocaleDateString('en-IN', { weekday: 'long' }),
+          Name: r.name,
+        };
+      }),
+    });
+  };
 
   const handleAdd = () => {
     setEditingId(null);
@@ -166,13 +247,13 @@ function DeclaredHolidaysTab() {
     const res = await fetch(`/api/masters/holidays/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
   };
 
-  const columns: Column<Holiday>[] = [
+  const columns: Column<DeclaredHolidayRow>[] = [
     {
       key: 'date',
       label: 'Date',
@@ -195,36 +276,79 @@ function DeclaredHolidaysTab() {
     },
     { key: 'name', label: 'Name', className: 'font-medium' },
     {
-      key: 'holidayType',
+      key: 'typeLabel',
       label: 'Type',
-      render: (row) => <StatusBadge tone={HOLIDAY_TYPE_TONE[row.holidayType] ?? 'neutral'} dot>{HOLIDAY_TYPE_OPTIONS.find((o) => o.value === row.holidayType)?.label ?? row.holidayType}</StatusBadge>,
+      render: (row) =>
+        row.typeColor ? (
+          <StatusBadge color={row.typeColor}>{row.typeLabel}</StatusBadge>
+        ) : (
+          <StatusBadge tone={row.typeTone} dot>{row.typeLabel}</StatusBadge>
+        ),
     },
-    { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
+    {
+      key: 'source',
+      label: 'Source',
+      render: (row) => (
+        <StatusBadge tone={row.source === 'yearly' ? 'accent' : 'neutral'}>
+          {row.source === 'yearly' ? 'Yearly Leave Calendar' : 'Company Holiday'}
+        </StatusBadge>
+      ),
+    },
     { key: 'description', label: 'Description', render: (row) => <span style={{ color: row.description ? undefined : 'var(--foreground-muted)' }}>{row.description ?? '—'}</span> },
-    { key: 'isActive', label: 'Status', render: (row) => <StatusBadge tone={row.isActive ? 'success' : 'danger'} dot>{row.isActive ? 'Active' : 'Inactive'}</StatusBadge> },
+    {
+      key: 'isActive',
+      label: 'Status',
+      render: (row) =>
+        row.source === 'yearly' ? (
+          <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>—</span>
+        ) : (
+          <StatusBadge tone={row.isActive ? 'success' : 'danger'} dot>{row.isActive ? 'Active' : 'Inactive'}</StatusBadge>
+        ),
+    },
   ];
 
   return (
     <SectionCard
       title="Declared Holidays"
-      description="Declared holidays feed the OT Approval weekly-off/holiday Comp-Off choice and the Attendance Overview day status."
-      count={loading ? undefined : pagination.total}
-      actions={<Button variant="primary" size="sm" onClick={handleAdd}>+ Add Holiday</Button>}
+      description="Declared holidays feed the OT Approval weekly-off/holiday Comp-Off choice and the Attendance Overview day status. Dates marked on the Yearly Leave Calendar are shown here too (read-only — manage those on that tab)."
+      count={loading ? undefined : mergedRows.length}
+      actions={
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="rounded-lg border px-2 py-1.5 text-xs focus:outline-none focus:ring-2"
+            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+          >
+            {Array.from({ length: 5 }, (_, i) => new Date().getUTCFullYear() - 2 + i).map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={handleDownloadPdf}>Download PDF</Button>
+          <Button variant="primary" size="sm" onClick={handleAdd}>+ Add Holiday</Button>
+        </div>
+      }
       flush
     >
-      {error && <div className="p-3"><Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
       <DataTable
         variant="card"
         columns={columns}
-        data={records}
-        pagination={pagination}
+        data={mergedRows}
+        rowKey={(row) => row.key}
         loading={loading}
         searchValue={search}
         searchPlaceholder="Search holidays…"
-        onSearchChange={(v) => { setSearch(v); setPage(1); }}
-        onPageChange={setPage}
-        onEdit={handleEdit}
-        onDelete={(row) => setDeleteId(row.id)}
+        onSearchChange={setSearch}
+        renderRowActions={(row) =>
+          row.source === 'holiday' && row.holiday ? (
+            <>
+              <button onClick={() => handleEdit(row.holiday!)} className="text-xs font-medium mr-3 hover:underline" style={{ color: 'var(--accent)' }}>Edit</button>
+              <button onClick={() => setDeleteId(row.holiday!.id)} className="text-xs font-medium hover:underline text-red-500">Delete</button>
+            </>
+          ) : (
+            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Manage on Yearly Leave Calendar</span>
+          )
+        }
         emptyMessage="No holidays declared yet."
       />
       <FormModal title={editingId ? 'Edit Holiday' : 'Add Holiday'} fields={fields} initialValues={initialValues} isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} submitLabel={editingId ? 'Update' : 'Create'} />
@@ -236,10 +360,10 @@ function DeclaredHolidaysTab() {
 // ─── Tab 2: Department Weekly Off ───────────────────────────────────────
 
 function DepartmentWeeklyOffTab() {
+  const toast = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [configs, setConfigs] = useState<DepartmentWeeklyOff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -255,11 +379,11 @@ function DepartmentWeeklyOffTab() {
       setDepartments(deptJson.data ?? []);
       setConfigs(configJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -273,12 +397,12 @@ function DepartmentWeeklyOffTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to toggle');
+        toast.error(err.error ?? 'Failed to toggle');
         return;
       }
       await fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setBusyKey(null);
     }
@@ -294,12 +418,12 @@ function DepartmentWeeklyOffTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to remove');
+        toast.error(err.error ?? 'Failed to remove');
         return;
       }
       await fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setBusyKey(null);
     }
@@ -345,8 +469,6 @@ function DepartmentWeeklyOffTab() {
           />
         }
       >
-        {error && <div className="p-3"><Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
-
         {/* Column headers */}
         <div className="hidden items-center gap-3 border-b px-4 py-2 md:flex" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface-hover)' }}>
           <div className="w-64 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-muted)' }}>Department</div>
@@ -425,11 +547,10 @@ function DepartmentWeeklyOffTab() {
 // ─── Tab 3: Yearly Leave Calendar ────────────────────────────────────────
 
 function YearlyLeaveCalendarTab() {
+  const toast = useToast();
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [entries, setEntries] = useState<YearlyLeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
   const [year, setYear] = useState(new Date().getUTCFullYear());
   const [month, setMonth] = useState(new Date().getUTCMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -451,11 +572,11 @@ function YearlyLeaveCalendarTab() {
       setLeaveTypes(ltJson.data ?? []);
       setEntries(calJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -505,15 +626,15 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to save');
+        toast.error(err.error ?? 'Failed to save');
         return;
       }
-      setResult(`Saved leave entry for ${new Date(selectedDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`);
+      toast.success(`Saved leave entry for ${new Date(selectedDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`);
       setSelectedDate(null);
       setEntryName('');
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setSaving(false);
     }
@@ -528,14 +649,14 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to delete');
+        toast.error(err.error ?? 'Failed to delete');
         return;
       }
-      setResult('Leave entry deleted');
+      toast.success('Leave entry deleted');
       setSelectedDate(null);
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
 
@@ -549,15 +670,15 @@ function YearlyLeaveCalendarTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error ?? 'Failed to create leave type');
+        toast.error(err.error ?? 'Failed to create leave type');
         return;
       }
-      setResult(`Leave type "${ltForm.name}" created`);
+      toast.success(`Leave type "${ltForm.name}" created`);
       setLtModalOpen(false);
       setLtForm({ code: '', name: '', color: '#3b82f6', description: '' });
       fetchData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : 'Failed');
     } finally {
       setSaving(false);
     }
@@ -570,9 +691,6 @@ function YearlyLeaveCalendarTab() {
 
   return (
     <div className="space-y-4">
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
-      {result && <Alert tone="success" onDismiss={() => setResult(null)}>{result}</Alert>}
-
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
         {/* Calendar */}
         <SectionCard flush>
@@ -809,6 +927,7 @@ export default function HolidaysPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <PageHeader
         eyebrow="Masters · Time Office"
         title="Holiday Master"

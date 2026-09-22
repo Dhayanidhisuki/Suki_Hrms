@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { PageHeader, Alert, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid } from '@/components/ui';
+import { PageHeader, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast } from '@/components/ui';
 
 interface ShiftPlanRow {
   employeeId: number;
@@ -75,17 +75,16 @@ const MoonIcon = () => (
 );
 
 export default function ShiftPlanPage() {
+  const toast = useToast();
   const [view, setView] = useState<'week' | 'month'>('week');
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [monthDate, setMonthDate] = useState(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
   const [plan, setPlan] = useState<ShiftPlanRow[]>([]);
   const [shifts, setShifts] = useState<ShiftOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ employeeId: number; date: string; employeeName?: string } | null>(null);
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const startDate = view === 'week' ? weekStart : monthDate;
@@ -105,11 +104,11 @@ export default function ShiftPlanPage() {
       setPlan(planJson.data);
       setShifts(shiftsJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, toast]);
 
   useEffect(() => {
     fetchPlan();
@@ -167,16 +166,16 @@ export default function ShiftPlanPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error ?? 'Failed to save override');
+        toast.error(json.error ?? 'Failed to save override');
         return;
       }
-      setBulkResult(`Override saved for ${editingCell.date}`);
+      toast.success(`Override saved for ${editingCell.date}`);
       setEditingCell(null);
       setSelectedShiftId(null);
       setOverrideReason('');
       fetchPlan();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save');
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
     }
   };
 
@@ -189,13 +188,13 @@ export default function ShiftPlanPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error ?? 'Failed to delete override');
+        toast.error(json.error ?? 'Failed to delete override');
         return;
       }
-      setBulkResult(`Override removed for ${date}`);
+      toast.success(`Override removed for ${date}`);
       fetchPlan();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
     }
   };
 
@@ -245,9 +244,6 @@ export default function ShiftPlanPage() {
         <KPICard label="Manual Overrides" value={stats.overrides} subtitle="in this period" tone={stats.overrides > 0 ? 'warning' : 'success'} />
         <KPICard label="Night Shift Days" value={stats.nights} subtitle="night allowance eligible" tone="info" />
       </KPIGrid>
-
-      {error && <Alert tone="danger" onDismiss={() => setError(null)}>{error}</Alert>}
-      {bulkResult && <Alert tone="success" onDismiss={() => setBulkResult(null)}>{bulkResult}</Alert>}
 
       <SectionCard flush>
         {/* Toolbar: period nav + legend + search */}

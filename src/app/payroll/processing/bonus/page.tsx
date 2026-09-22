@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, type Column } from '@/components/ui';
+import { DataTable, ConfirmDialog, useToast, type Column } from '@/components/ui';
 
 interface BonusRow {
   id: number;
@@ -75,14 +75,13 @@ function ReasonModal({
   onClose: () => void;
   onSubmit: (reason: string) => Promise<void>;
 }) {
+  const toast = useToast();
   const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setReason('');
-      setError(null);
     }
   }, [isOpen]);
 
@@ -103,7 +102,6 @@ function ReasonModal({
               style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
             />
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -112,7 +110,7 @@ function ReasonModal({
               disabled={submitting}
               onClick={async () => {
                 if (!reason.trim()) {
-                  setError(`${label} is required`);
+                  toast.warning(`${label} is required`);
                   return;
                 }
                 setSubmitting(true);
@@ -120,7 +118,7 @@ function ReasonModal({
                   await onSubmit(reason.trim());
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -150,14 +148,13 @@ function PercentModal({
   onClose: () => void;
   onSubmit: (percent: number) => Promise<void>;
 }) {
+  const toast = useToast();
   const [percent, setPercent] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setPercent('');
-      setError(null);
     }
   }, [isOpen]);
 
@@ -182,7 +179,6 @@ function PercentModal({
             />
             <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Cannot be below the statutory minimum, 8.33%.</span>
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -192,16 +188,15 @@ function PercentModal({
               onClick={async () => {
                 const value = Number(percent);
                 if (!percent || Number.isNaN(value) || value < 8.33) {
-                  setError('Enter a value of at least 8.33');
+                  toast.warning('Enter a value of at least 8.33');
                   return;
                 }
                 setSubmitting(true);
-                setError(null);
                 try {
                   await onSubmit(value);
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -227,15 +222,14 @@ function ApplyModal({
   onClose: () => void;
   onApply: (payrollRunId: number) => Promise<void>;
 }) {
+  const toast = useToast();
   const [runs, setRuns] = useState<RunOption[]>([]);
   const [runId, setRunId] = useState<number | ''>('');
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!row) return;
     setRunId('');
-    setError(null);
     fetch('/api/payroll/runs')
       .then((r) => r.json())
       .then((json: { data: RunOption[] }) => setRuns((json.data ?? []).filter((r) => r.status === 'DRAFT' || r.status === 'CALCULATED')));
@@ -268,7 +262,6 @@ function ApplyModal({
               </select>
             </div>
           )}
-          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
               Cancel
@@ -278,12 +271,11 @@ function ApplyModal({
               onClick={async () => {
                 if (!runId) return;
                 setSubmitting(true);
-                setError(null);
                 try {
                   await onApply(runId);
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed');
+                  toast.error(err instanceof Error ? err.message : 'Failed');
                 } finally {
                   setSubmitting(false);
                 }
@@ -301,14 +293,13 @@ function ApplyModal({
 }
 
 export default function BonusPage() {
+  const toast = useToast();
   const [acYear, setAcYear] = useState(defaultAcYear);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<BonusRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ row: BonusRow; action: 'approve' | 'release-hold' } | null>(null);
   const [reasonModal, setReasonModal] = useState<{ row: BonusRow; action: 'reject' | 'hold' } | null>(null);
   const [applyRow, setApplyRow] = useState<BonusRow | null>(null);
@@ -317,7 +308,6 @@ export default function BonusPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ acYear: String(acYear) });
       if (statusFilter) params.set('status', statusFilter);
@@ -326,11 +316,11 @@ export default function BonusPage() {
       const json: { data: BonusRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [acYear, statusFilter]);
+  }, [acYear, statusFilter, toast]);
 
   useEffect(() => {
     fetchData();
@@ -351,8 +341,6 @@ export default function BonusPage() {
 
   const calculate = async () => {
     setCalculating(true);
-    setError(null);
-    setSuccessMessage(null);
     try {
       const res = await fetch('/api/bonus/records', {
         method: 'POST',
@@ -361,10 +349,10 @@ export default function BonusPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Calculate failed');
-      setSuccessMessage(json.message ?? 'Done');
+      toast.success(json.message ?? 'Done');
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setCalculating(false);
     }
@@ -529,18 +517,6 @@ export default function BonusPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-      {successMessage && (
-        <div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-          <span>{successMessage}</span>
-          <button onClick={() => setSuccessMessage(null)} className="text-xs font-medium hover:underline">Dismiss</button>
-        </div>
-      )}
-
       {selectableIds.length > 0 && (
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--foreground-muted)' }}>
@@ -576,7 +552,7 @@ export default function BonusPage() {
         onClose={() => setConfirm(null)}
         onConfirm={() => {
           if (!confirm) return;
-          callAction(confirm.row.id, confirm.action).catch((e) => setError(e.message));
+          callAction(confirm.row.id, confirm.action).catch((e) => toast.error(e.message));
           setConfirm(null);
         }}
       />

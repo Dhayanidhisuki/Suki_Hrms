@@ -25,7 +25,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const employee = await findEmployeeInCompany(parseInt(id), scope.companyId);
   if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
 
-  const record = await prisma.exitInterview.findUnique({ where: { employeeId: employee.id } });
+  const record = await prisma.exitInterview.findUnique({
+    where: { employeeId: employee.id },
+    include: { clearanceChecks: true },
+  });
   return NextResponse.json(record);
 }
 
@@ -64,6 +67,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const created = await prisma.$transaction(async (tx) => {
     const record = await tx.exitInterview.create({ data: { employeeId, ...parsed.data } });
+    await tx.exitClearanceCheck.createMany({
+      data: [
+        { exitInterviewId: record.id, checkCode: 'MANAGER' },
+        { exitInterviewId: record.id, checkCode: 'IT' },
+        { exitInterviewId: record.id, checkCode: 'FINANCE' },
+        { exitInterviewId: record.id, checkCode: 'HR' },
+      ],
+    });
     await tx.employee.update({ where: { id: employeeId }, data: { status: employeeStatus, isActive: false } });
     await logActivity(tx, {
       employeeId,

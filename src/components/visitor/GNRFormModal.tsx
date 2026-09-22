@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from '@/components/ui';
 
 interface LineItemInput {
   materialDescription: string;
@@ -36,16 +37,15 @@ const COUNTERPARTY_TYPES = [
 ];
 
 export default function GNRFormModal({ isOpen, onClose, onSubmit, initialValues, title = 'GNR', submitLabel = 'Save' }: GNRFormModalProps) {
+  const toast = useToast();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setValues(initialValues ?? {});
     setErrors({});
-    setSubmitError(null);
   }, [isOpen, initialValues]);
 
   const handleChange = (name: string, v: string | number | boolean) => {
@@ -86,12 +86,12 @@ export default function GNRFormModal({ isOpen, onClose, onSubmit, initialValues,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    setSubmitting(true); setSubmitError(null);
+    setSubmitting(true);
     try {
       await onSubmit(values);
       onClose();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Submission failed');
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -112,10 +112,6 @@ export default function GNRFormModal({ isOpen, onClose, onSubmit, initialValues,
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {submitError && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>{submitError}</div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>DC No *</label>

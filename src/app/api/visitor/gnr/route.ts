@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { checkGNRPermission } from '@/lib/rbac-gnr';
@@ -22,13 +23,15 @@ export async function GET(request: NextRequest) {
   const dateFrom = searchParams.get('dateFrom') ?? '';
   const dateTo = searchParams.get('dateTo') ?? '';
 
-  const where: any = { companyId, deletedAt: null };
+  const where: Prisma.GateNumberRegisterWhereInput = { companyId, deletedAt: null };
   if (status) where.status = status;
   if (movementType) where.movementType = movementType;
   if (dateFrom || dateTo) {
-    where.dcDate = {};
-    if (dateFrom) where.dcDate.gte = new Date(dateFrom);
-    if (dateTo) where.dcDate.lte = new Date(dateTo);
+    // Built in one assignment: a typed where cannot be mutated field by field.
+    where.dcDate = {
+      ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+      ...(dateTo ? { lte: new Date(dateTo) } : {}),
+    };
   }
   if (search) {
     where.OR = [
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const gnr = await prisma.$transaction(async (tx) => {
-      const gnrNo = await generateGnrNo(tx as any, companyId, data.movementType);
+      const gnrNo = await generateGnrNo(tx, companyId, data.movementType);
       return tx.gateNumberRegister.create({
         data: {
           companyId,

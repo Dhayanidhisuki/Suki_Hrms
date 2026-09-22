@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import SimpleMasterPage from '@/components/SimpleMasterPage';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import type { FieldOption } from '@/components/ui';
 
 export default function LevelsPage() {
@@ -27,17 +28,20 @@ export default function LevelsPage() {
   }, []);
 
   return (
-    <SimpleMasterPage
-      statsModule="levels"
-      title="Levels"
-      apiPath="/api/masters/levels"
-      codeLabel="Level Code"
-      nameLabel="Level Name"
-      extraFields={[{ name: 'gradeId', label: 'Grade', type: 'select', required: true, options: gradeOptions }]}
-      extraColumns={[
-        { key: 'grade', label: 'Grade', render: (row) => (row.grade as { name: string } | null | undefined)?.name ?? '—' },
-      ]}
-      extraInitialValues={(row) => ({ gradeId: (row.gradeId as number | null | undefined) ?? undefined })}
-    />
+    <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Designation" />
+      <SimpleMasterPage
+        statsModule="levels"
+        title="Levels"
+        apiPath="/api/masters/levels"
+        codeLabel="Level Code"
+        nameLabel="Level Name"
+        extraFields={[{ name: 'gradeId', label: 'Grade', type: 'select', required: true, options: gradeOptions }]}
+        extraColumns={[
+          { key: 'grade', label: 'Grade', render: (row) => (row.grade as { name: string } | null | undefined)?.name ?? '—' },
+        ]}
+        extraInitialValues={(row) => ({ gradeId: (row.gradeId as number | null | undefined) ?? undefined })}
+      />
+    </div>
   );
 }

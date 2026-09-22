@@ -53,6 +53,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const existingRecord = await prisma.deductionRate.findFirst({ where: { id: parseInt(id), companyId: scope.companyId } });
   if (!existingRecord) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  await prisma.deductionRate.update({ where: { id: parseInt(id) }, data: { isActive: false } });
-  return NextResponse.json({ message: 'Deactivated' });
+  // A real delete now (not a soft-deactivate) — Active/Inactive is a
+  // separate, reversible toggle in the UI (the eye icon); Delete removes
+  // the row outright, whichever state it's currently in.
+  await prisma.deductionRate.delete({ where: { id: parseInt(id) } });
+  return NextResponse.json({ message: 'Deleted' });
 }

@@ -19,10 +19,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, ConfirmDialog, FormModal, PageHeader, Alert, StatusBadge, SectionCard, Button, KPICard, KPIGrid, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, PageHeader, Alert, StatusBadge, SectionCard, Button, KPICard, KPIGrid, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface OtRow {
   id: number;
+  otApprovalStatus?: string | null;
+  otMinutesApproved?: number | null;
   date: string;
   otMinutesCalculated: number;
   employee: { employeeCode: string; firstName: string; lastName: string };
@@ -57,11 +59,11 @@ function useHolidaySet(): Set<string> {
   return holidaySet;
 }
 
-function useOtQueue(scope: 'manager' | 'hr') {
+function useOtQueue(scope: 'manager' | 'hr' | 'actioned') {
   const [records, setRecords] = useState<OtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -75,17 +77,17 @@ function useOtQueue(scope: 'manager' | 'hr') {
       const json: { data: OtRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, visible, error, refetch: fetchData };
+  return { records, loading, visible, refetch: fetchData };
 }
 
 /** Two-option radio card for OT vs Comp-Off — same values the API expects. */
@@ -134,7 +136,8 @@ function OtQueueSection({
   holidaySet: Set<string>;
   onCount?: (scope: 'manager' | 'hr', count: number, minutes: number) => void;
 }) {
-  const { records, loading, visible, error, refetch } = useOtQueue(scope);
+  const { records, loading, visible, refetch } = useOtQueue(scope);
+  const toast = useToast();
   const [approveRow, setApproveRow] = useState<OtRow | null>(null);
   const [settlementType, setSettlementType] = useState<'OT' | 'COMP_OFF'>('OT');
   const [rejectId, setRejectId] = useState<number | null>(null);
@@ -144,7 +147,6 @@ function OtQueueSection({
   const [bulkSettlementType, setBulkSettlementType] = useState<'OT' | 'COMP_OFF'>('OT');
   const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading) onCount?.(scope, records.length, records.reduce((a, r) => a + r.otMinutesCalculated, 0));
@@ -176,7 +178,7 @@ function OtQueueSection({
     });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Approve failed');
+      toast.error(err.error ?? 'Approve failed');
       return;
     }
     setApproveRow(null);
@@ -195,14 +197,14 @@ function OtQueueSection({
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error ?? 'Bulk approve failed');
+        toast.error(json.error ?? 'Bulk approve failed');
         return;
       }
-      setBulkResult(`Approved ${json.approved} of ${json.total} (${json.skipped} skipped)`);
+      toast.success(`Approved ${json.approved} of ${json.total} (${json.skipped} skipped)`);
       setSelectedIds(new Set());
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Bulk approve failed');
+      toast.error(err instanceof Error ? err.message : 'Bulk approve failed');
     }
   };
 
@@ -219,7 +221,7 @@ function OtQueueSection({
       if (!res.ok) {
         throw new Error(json.error ?? 'Bulk reject failed');
       }
-      setBulkResult(`Rejected ${json.rejected} of ${json.total} (${json.skipped} skipped)`);
+      toast.success(`Rejected ${json.rejected} of ${json.total} (${json.skipped} skipped)`);
       setSelectedIds(new Set());
       setBulkRejectOpen(false);
       refetch();
@@ -304,13 +306,6 @@ function OtQueueSection({
         ) : undefined
       }
     >
-      {(error || bulkResult) && (
-        <div className="space-y-2 p-3">
-          {error && <Alert tone="danger">{error}</Alert>}
-          {bulkResult && <Alert tone="success" onDismiss={() => setBulkResult(null)}>{bulkResult}</Alert>}
-        </div>
-      )}
-
       <DataTable
         columns={columns}
         data={records}
@@ -437,6 +432,54 @@ function OtQueueSection({
   );
 }
 
+const HIST_TONE: Record<string, { bg: string; fg: string }> = {
+  pending_manager: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_hr: { bg: '#dbeafe', fg: '#1e40af' },
+  approved: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
+};
+const HIST_LABEL: Record<string, string> = {
+  pending_manager: 'Pending Manager',
+  pending_hr: 'Pending HR',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+/**
+ * What this approver has already decided. A day leaves both pending queues
+ * the moment it is actioned, so without this the approver has no record of
+ * what they settled.
+ */
+function OtHistorySection() {
+  const { records, loading, visible } = useOtQueue('actioned');
+  if (!visible) return null;
+
+  const columns: Column<OtRow>[] = [
+    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'otMinutesCalculated', label: 'OT Hours', render: (r) => formatHoursMinutes(r.otMinutesApproved ?? r.otMinutesCalculated) },
+    {
+      key: 'otApprovalStatus',
+      label: 'Status',
+      render: (r) => {
+        const st = r.otApprovalStatus ?? '';
+        const tone = HIST_TONE[st] ?? { bg: '#f1f5f9', fg: '#475569' };
+        return <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>{HIST_LABEL[st] ?? st}</span>;
+      },
+    },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>My Approval History</h2>
+        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Overtime you have already actioned. Read-only.</p>
+      </div>
+      <DataTable columns={columns} data={records} loading={loading} emptyMessage="You have not actioned any overtime yet." />
+    </div>
+  );
+}
+
 export default function OvertimeApprovalPage() {
   const holidaySet = useHolidaySet();
   const [counts, setCounts] = useState<Record<'manager' | 'hr', { count: number; minutes: number }>>({
@@ -478,6 +521,8 @@ export default function OvertimeApprovalPage() {
         holidaySet={holidaySet}
         onCount={onCount}
       />
+
+      <OtHistorySection />
     </div>
   );
 }

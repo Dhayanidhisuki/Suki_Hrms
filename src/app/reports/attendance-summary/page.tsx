@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
 
 interface ReportData {
   period: { year: number; month: number };
@@ -23,17 +24,17 @@ export default function AttendanceSummaryReportPage() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const res = await fetch(`/api/reports/attendance-summary?year=${year}&month=${month}`);
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? 'Failed'); }
       setData(await res.json());
-    } catch (err) { setError(err instanceof Error ? err.message : 'Error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Error'); }
     finally { setLoading(false); }
-  }, [year, month]);
+  }, [year, month, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   const handleExport = () => { window.open(`/api/reports/attendance-summary?year=${year}&month=${month}&format=csv`, '_blank'); };
@@ -50,7 +51,6 @@ export default function AttendanceSummaryReportPage() {
           <button onClick={handleExport} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: 'var(--primary)' }}>Export CSV</button>
         </div>
       </div>
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {loading ? <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div> : data ? (
         <div className="space-y-6">
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>

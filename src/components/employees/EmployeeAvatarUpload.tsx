@@ -8,6 +8,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useToast } from '@/components/ui';
 import EmployeeAvatar from './EmployeeAvatar';
 
 interface Props {
@@ -39,16 +40,15 @@ const TrashIcon = () => (
 );
 
 export default function EmployeeAvatarUpload({ employeeId, firstName, lastName, photoPath, size = 88, onChanged }: Props) {
+  const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handlePick = () => inputRef.current?.click();
 
   const handleFile = async (file: File) => {
-    setError(null);
     if (file.size > MAX_BYTES) {
-      setError('File too large — max 5 MB.');
+      toast.error('File too large — max 5 MB.');
       return;
     }
     setBusy(true);
@@ -60,7 +60,7 @@ export default function EmployeeAvatarUpload({ employeeId, firstName, lastName, 
       if (!res.ok) throw new Error(json.error ?? 'Upload failed');
       onChanged(json.profilePhotoPath);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -68,7 +68,6 @@ export default function EmployeeAvatarUpload({ employeeId, firstName, lastName, 
   };
 
   const handleRemove = async () => {
-    setError(null);
     setBusy(true);
     try {
       const res = await fetch(`/api/employees/${employeeId}/photo`, { method: 'DELETE' });
@@ -76,7 +75,7 @@ export default function EmployeeAvatarUpload({ employeeId, firstName, lastName, 
       if (!res.ok) throw new Error(json.error ?? 'Remove failed');
       onChanged(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Remove failed');
+      toast.error(err instanceof Error ? err.message : 'Remove failed');
     } finally {
       setBusy(false);
     }
@@ -131,14 +130,6 @@ export default function EmployeeAvatarUpload({ employeeId, firstName, lastName, 
         }}
       />
 
-      {error && (
-        <div
-          className="absolute left-1/2 top-full z-10 mt-2 w-48 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-center text-xs shadow-lg"
-          style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

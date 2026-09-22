@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface ApprovalChainRow {
   id: number;
@@ -43,12 +43,11 @@ const fields: FieldDef[] = [
 ];
 
 export default function ApprovalChainConfigPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<ApprovalChainRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [result, setResult] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -58,11 +57,11 @@ export default function ApprovalChainConfigPage() {
       const json = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -82,7 +81,7 @@ export default function ApprovalChainConfigPage() {
       const err = await res.json();
       throw new Error(err.error ?? 'Failed to save');
     }
-    setResult('Approval chain stage saved');
+    toast.success('Approval chain stage saved');
     fetchData();
   };
 
@@ -95,10 +94,10 @@ export default function ApprovalChainConfigPage() {
     });
     if (!res.ok) {
       const err = await res.json();
-      alert(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
-    setResult('Stage deleted');
+    toast.success('Stage deleted');
     setDeleteId(null);
     fetchData();
   };
@@ -130,18 +129,6 @@ export default function ApprovalChainConfigPage() {
         Configure who approves each type of request. Stages are executed in order — stage 1 first, then stage 2, etc.
         A request is fully approved only when all stages approve it.
       </p>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
-          {result}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

@@ -14,6 +14,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { computeLomMinutes } from '@/lib/attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 const bodySchema = z.object({
   approvedMinutes: z.number().int().min(0).optional(),
@@ -55,11 +56,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // Default approved minutes = canonical LOM (grace on late only, daily cap).
   const lomConfig = await prisma.lomConfig.findUnique({ where: { companyId: record.employee.companyId } });
+  // Approved permission on this date has already excused that much of the
+  // late/early time, so it must not be offered up for approval again.
+  const permissionExcused = await getApprovedPermissionMinutes(
+    [record.employeeId],
+    record.date,
+    new Date(record.date.getTime() + 24 * 60 * 60 * 1000)
+  );
   const defaultApproved = computeLomMinutes(
     record.lateMinutes,
     record.earlyOutMinutes,
     record.shiftMaster,
-    lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null
+    lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null,
+    excusedMinutesFor(permissionExcused, record.employeeId, record.date)
   );
   const approvedMinutes = parsed.data.approvedMinutes ?? defaultApproved;
 

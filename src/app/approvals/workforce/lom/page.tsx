@@ -13,7 +13,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, ConfirmDialog, FormModal, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, KPICard, KPIGrid, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, ConfirmDialog, FormModal, PageHeader, StatusBadge, SectionCard, Tabs, Button, KPICard, KPIGrid, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface LomRow {
   id: number;
@@ -39,7 +39,7 @@ function formatMinutes(minutes: number): string {
 function useLomQueue(status: LomStatus) {
   const [records, setRecords] = useState<LomRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -53,17 +53,17 @@ function useLomQueue(status: LomStatus) {
       const json: { data: LomRow[] } = await res.json();
       setRecords(json.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, toast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { records, loading, error, refetch: fetchData };
+  return { records, loading, refetch: fetchData };
 }
 
 const MinutesChip = ({ minutes, tone }: { minutes: number; tone: 'warning' | 'danger' }) =>
@@ -74,11 +74,11 @@ const MinutesChip = ({ minutes, tone }: { minutes: number; tone: 'warning' | 'da
   );
 
 function LomQueueSection({ status, description, onLoaded }: { status: LomStatus; description: string; onLoaded: (s: LomStatus, rows: LomRow[]) => void }) {
-  const { records, loading, error, refetch } = useLomQueue(status);
+  const { records, loading, refetch } = useLomQueue(status);
+  const toast = useToast();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -112,14 +112,14 @@ function LomQueueSection({ status, description, onLoaded }: { status: LomStatus;
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error ?? 'Bulk approve failed');
+        toast.error(json.error ?? 'Bulk approve failed');
         return;
       }
-      setBulkResult(`Approved ${json.approved} of ${json.total} (${json.skipped} skipped)`);
+      toast.success(`Approved ${json.approved} of ${json.total} (${json.skipped} skipped)`);
       setSelectedIds(new Set());
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Bulk approve failed');
+      toast.error(err instanceof Error ? err.message : 'Bulk approve failed');
     }
   };
 
@@ -136,7 +136,7 @@ function LomQueueSection({ status, description, onLoaded }: { status: LomStatus;
       if (!res.ok) {
         throw new Error(json.error ?? 'Bulk reject failed');
       }
-      setBulkResult(`Rejected ${json.rejected} of ${json.total} (${json.skipped} skipped)`);
+      toast.success(`Rejected ${json.rejected} of ${json.total} (${json.skipped} skipped)`);
       setSelectedIds(new Set());
       setBulkRejectOpen(false);
       refetch();
@@ -238,13 +238,6 @@ function LomQueueSection({ status, description, onLoaded }: { status: LomStatus;
         ) : undefined
       }
     >
-      {(error || bulkResult) && (
-        <div className="space-y-2 p-3">
-          {error && <Alert tone="danger">{error}</Alert>}
-          {bulkResult && <Alert tone="success" onDismiss={() => setBulkResult(null)}>{bulkResult}</Alert>}
-        </div>
-      )}
-
       <DataTable
         variant="card"
         columns={columns}
@@ -258,7 +251,7 @@ function LomQueueSection({ status, description, onLoaded }: { status: LomStatus;
               size="xs"
               onClick={async () => {
                 const res = await fetch(`/api/workforce/attendance/lom/${row.id}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-                if (!res.ok) { const err = await res.json(); alert(err.error ?? 'Approve failed'); return; }
+                if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Approve failed'); return; }
                 refetch();
               }}
             >

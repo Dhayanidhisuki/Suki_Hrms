@@ -23,11 +23,13 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10) || 20));
   const jdId = searchParams.get('jdId') ? Number(searchParams.get('jdId')) : undefined;
+  const status = searchParams.get('status')?.trim();
   const search = searchParams.get('search')?.trim();
 
   const where = {
     deletedAt: null,
     ...(jdId && !Number.isNaN(jdId) ? { jdId } : {}),
+    ...(status ? { status } : {}),
     ...(search ? { title: { contains: search } } : {}),
   };
 

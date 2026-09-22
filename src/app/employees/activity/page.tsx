@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface ActivityItem {
   id: number;
@@ -26,16 +26,15 @@ interface ApiResponse {
 }
 
 export default function EmployeeActivityPage() {
+  const toast = useToast();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/employees/activity?${params}`);
@@ -44,11 +43,11 @@ export default function EmployeeActivityPage() {
       setItems(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -85,12 +84,6 @@ export default function EmployeeActivityPage() {
           Read-only chronological timeline of changes across all employees.
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

@@ -23,3 +23,5 @@ export type { TabDef } from './Tabs';
 export { default as EmptyState } from './EmptyState';
 export { default as Button } from './Button';
 export type { ButtonVariant, ButtonSize } from './Button';
+export { default as ToastProvider, useToast } from './Toast';
+export type { ToastApi, ToastTone } from './Toast';

@@ -18,6 +18,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
+import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const scope = getCompanyId(request);
@@ -70,8 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const priorHours = otherApprovedThisMonth.reduce((sum, r) => sum + Number(r.hours), 0);
     const totalHours = priorHours + Number(record.hours);
 
-    const policy = await prisma.permissionPolicy.findUnique({ where: { companyId: scope.companyId } });
-    const freeHoursPerMonth = policy ? Number(policy.freeHoursPerMonth) : 2;
+    const freeHoursPerMonth = await getFreeHoursPerMonth(scope.companyId);
 
     const exceedsAllowance = totalHours > freeHoursPerMonth;
     const excessHours = exceedsAllowance ? Math.round((totalHours - freeHoursPerMonth) * 100) / 100 : 0;

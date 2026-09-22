@@ -8,7 +8,7 @@
 'use client';
 
 import { Fragment, useState, useEffect, useCallback } from 'react';
-import { DataTable, SearchableSelect, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, useToast, type Column } from '@/components/ui';
 
 interface EmployeeOption {
   id: number;
@@ -79,7 +79,7 @@ export default function ProfessionalTaxReportPage() {
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     fetch('/api/employees?limit=200')
@@ -94,7 +94,6 @@ export default function ProfessionalTaxReportPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ financialYear: String(financialYear), halfType, half: String(half), status });
       if (unitId) params.set('unitId', String(unitId));
@@ -103,11 +102,11 @@ export default function ProfessionalTaxReportPage() {
       if (!res.ok) throw new Error('Failed to fetch report');
       setData(await res.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [financialYear, halfType, half, unitId, employeeId, status]);
+  }, [financialYear, halfType, half, unitId, employeeId, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -209,12 +208,6 @@ export default function ProfessionalTaxReportPage() {
           </select>
         </div>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       {loading || !data ? (
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading...</p>

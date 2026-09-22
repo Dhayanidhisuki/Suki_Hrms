@@ -17,7 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { computeLomMinutes, computeOtPayableMinutes } from '@/lib/attendanceCalc';
+import { computeLomMinutes, computeOtPayableMinutes, parseShiftTime } from '@/lib/attendanceCalc';
+import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.view');
@@ -97,6 +98,13 @@ export async function GET(request: NextRequest) {
     },
   });
 
+  // Approved permission for the month excuses the late/early time it covers.
+  const permissionExcused = await getApprovedPermissionMinutes(
+    employees.map((e) => e.id),
+    monthStart,
+    monthEnd
+  );
+
   const lomByEmp = new Map<number, number>();
   const otPayableByEmp = new Map<number, number>();
   for (const d of dailyRows) {
@@ -104,9 +112,13 @@ export async function GET(request: NextRequest) {
     const shift = d.shiftMaster
       ? { startTime: d.shiftMaster.startTime, endTime: d.shiftMaster.endTime, graceMinutes: d.shiftMaster.graceMinutes }
       : null;
-    const lom = computeLomMinutes(d.lateMinutes, d.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null);
+    const lom = computeLomMinutes(d.lateMinutes, d.earlyOutMinutes, shift, lomConfig ? { graceMinutesExempt: lomConfig.graceMinutesExempt, dailyLomCap: lomConfig.dailyLomCap } : null, excusedMinutesFor(permissionExcused, d.employeeId, d.date));
     lomByEmp.set(d.employeeId, (lomByEmp.get(d.employeeId) ?? 0) + lom);
-    const otPay = computeOtPayableMinutes(d.otMinutesCalculated, otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay } : null);
+    const otPay = computeOtPayableMinutes(
+      d.otMinutesCalculated,
+      otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
+      shift ? parseShiftTime(shift.endTime) : undefined
+    );
     otPayableByEmp.set(d.employeeId, (otPayableByEmp.get(d.employeeId) ?? 0) + otPay);
   }
 

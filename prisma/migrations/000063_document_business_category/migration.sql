@@ -1,0 +1,92 @@
+-- Document Module hub: BRD business category (nav buckets) and upload mode
+-- on PlatformDocumentType. Additive columns + backfill from known type codes.
+--
+-- SQL Server compiles a script as one batch, so UPDATE/INDEX on a column
+-- added above must run via EXEC (nested batch) or they fail with 207.
+
+BEGIN TRY
+
+BEGIN TRAN;
+
+ALTER TABLE [dbo].[PlatformDocumentType] ADD [businessCategory] NVARCHAR(30) NOT NULL CONSTRAINT [PlatformDocumentType_businessCategory_df] DEFAULT 'EMPLOYEE';
+ALTER TABLE [dbo].[PlatformDocumentType] ADD [uploadMode] NVARCHAR(40) NOT NULL CONSTRAINT [PlatformDocumentType_uploadMode_df] DEFAULT 'EMPLOYEE_WITH_HR_VERIFICATION';
+
+EXEC(N'
+UPDATE [dbo].[PlatformDocumentType]
+SET [businessCategory] = CASE [code]
+  WHEN ''SSLC'' THEN ''RECRUITMENT''
+  WHEN ''HSC'' THEN ''RECRUITMENT''
+  WHEN ''DEGREE_CERT'' THEN ''RECRUITMENT''
+  WHEN ''EXPERIENCE_CERT'' THEN ''RECRUITMENT''
+  WHEN ''RELIEVING_LETTER'' THEN ''RECRUITMENT''
+  WHEN ''PAYSLIP_PREV'' THEN ''RECRUITMENT''
+  WHEN ''OFFER_LETTER'' THEN ''RECRUITMENT''
+  WHEN ''APPOINTMENT_LETTER'' THEN ''RECRUITMENT''
+  WHEN ''MEDICAL_FITNESS'' THEN ''RECRUITMENT''
+  WHEN ''AADHAAR'' THEN ''EMPLOYEE''
+  WHEN ''PAN'' THEN ''EMPLOYEE''
+  WHEN ''BANK_PROOF'' THEN ''EMPLOYEE''
+  WHEN ''PHOTO'' THEN ''EMPLOYEE''
+  WHEN ''ADDRESS_PROOF'' THEN ''EMPLOYEE''
+  WHEN ''SERVICE_LETTER'' THEN ''LETTERS_CERTIFICATES''
+  WHEN ''BONAFIDE'' THEN ''LETTERS_CERTIFICATES''
+  WHEN ''WARNING_LETTER'' THEN ''LETTERS_CERTIFICATES''
+  WHEN ''SHOW_CAUSE'' THEN ''LETTERS_CERTIFICATES''
+  WHEN ''COMPANY_RELIEVING'' THEN ''LETTERS_CERTIFICATES''
+  WHEN ''SAFETY_INDUCTION'' THEN ''LIFECYCLE''
+  WHEN ''SKILL_CERT'' THEN ''LIFECYCLE''
+  WHEN ''TRAINING_MATERIAL'' THEN ''LIFECYCLE''
+  WHEN ''TRAINING_CERT'' THEN ''LIFECYCLE''
+  WHEN ''EXIT_CLEARANCE'' THEN ''LIFECYCLE''
+  WHEN ''RESIGNATION_LETTER'' THEN ''LIFECYCLE''
+  WHEN ''ASSET_HANDOVER'' THEN ''LIFECYCLE''
+  WHEN ''FNF_STATEMENT'' THEN ''PAYROLL''
+  WHEN ''FORM16'' THEN ''PAYROLL''
+  WHEN ''CONTRACT_AGREEMENT'' THEN ''COMPLIANCE''
+  WHEN ''HR_POLICY'' THEN ''COMPLIANCE''
+  ELSE CASE
+    WHEN [appliesToEntity] = ''CANDIDATE'' THEN ''RECRUITMENT''
+    WHEN [category] IN (''STATUTORY'', ''COMPANY'') THEN ''COMPLIANCE''
+    WHEN [category] = ''EXIT'' THEN ''LIFECYCLE''
+    WHEN [category] = ''FINANCIAL'' THEN ''PAYROLL''
+    ELSE ''EMPLOYEE''
+  END
+END;
+');
+
+EXEC(N'
+UPDATE [dbo].[PlatformDocumentType]
+SET [uploadMode] = ''HR_ONLY''
+WHERE [code] IN (
+  ''OFFER_LETTER'',
+  ''APPOINTMENT_LETTER'',
+  ''FNF_STATEMENT'',
+  ''FORM16'',
+  ''HR_POLICY'',
+  ''CONTRACT_AGREEMENT'',
+  ''TRAINING_MATERIAL'',
+  ''SERVICE_LETTER'',
+  ''BONAFIDE'',
+  ''WARNING_LETTER'',
+  ''SHOW_CAUSE'',
+  ''COMPANY_RELIEVING''
+);
+');
+
+EXEC(N'
+CREATE NONCLUSTERED INDEX [PlatformDocumentType_companyId_businessCategory_idx]
+ON [dbo].[PlatformDocumentType]([companyId], [businessCategory]);
+');
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

@@ -8,7 +8,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface AuthMe {
   userId: number;
@@ -50,9 +51,9 @@ interface Unit {
 }
 
 export default function SitesPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -114,7 +115,6 @@ export default function SitesPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/sites?${params}`);
@@ -123,11 +123,11 @@ export default function SitesPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -183,7 +183,7 @@ export default function SitesPage() {
     const res = await fetch(`/api/masters/sites/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -214,6 +214,7 @@ export default function SitesPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Organization" />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
@@ -231,12 +232,6 @@ export default function SitesPage() {
           + Add Site
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

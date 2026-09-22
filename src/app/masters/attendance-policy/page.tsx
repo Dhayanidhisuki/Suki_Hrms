@@ -6,8 +6,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 export default function AttendancePolicyPage() {
+  const toast = useToast();
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,8 +42,8 @@ export default function AttendancePolicyPage() {
     const res = await fetch('/api/masters/attendance-policy', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
     });
-    if (res.ok) { setConfig(await res.json()); alert('Saved'); }
-    else alert('Failed');
+    if (res.ok) { setConfig(await res.json()); toast.success('Saved'); }
+    else toast.error('Failed');
     setSaving(false);
   };
 
@@ -48,6 +51,7 @@ export default function AttendancePolicyPage() {
 
   return (
     <div className="space-y-6">
+      <MasterGroupTabs groupLabel="Workforce" />
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Attendance Policy</h1>
       <form onSubmit={handleSave} className="max-w-md space-y-4 rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
         <div>

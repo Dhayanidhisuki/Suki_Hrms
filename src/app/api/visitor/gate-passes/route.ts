@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
@@ -27,14 +28,16 @@ export async function GET(request: NextRequest) {
   const dateFrom = searchParams.get('dateFrom') ?? '';
   const dateTo = searchParams.get('dateTo') ?? '';
 
-  const where: any = { companyId, deletedAt: null };
+  const where: Prisma.VisitorGatePassWhereInput = { companyId, deletedAt: null };
   if (status) where.status = status;
   if (passType) where.passType = passType;
   if (personToMeetId) where.personToMeetId = parseInt(personToMeetId);
   if (dateFrom || dateTo) {
-    where.visitDate = {};
-    if (dateFrom) where.visitDate.gte = new Date(dateFrom);
-    if (dateTo) where.visitDate.lte = new Date(dateTo);
+    // Built in one assignment: a typed where cannot be mutated field by field.
+    where.visitDate = {
+      ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+      ...(dateTo ? { lte: new Date(dateTo) } : {}),
+    };
   }
   if (search) {
     where.OR = [
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const pass = await prisma.$transaction(async (tx) => {
-      const gatePassNo = await generateGatePassNo(tx as any, companyId, data.visitorTypeValue);
+      const gatePassNo = await generateGatePassNo(tx, companyId, data.visitorTypeValue);
       const qrToken = generateQrToken();
 
       return tx.visitorGatePass.create({

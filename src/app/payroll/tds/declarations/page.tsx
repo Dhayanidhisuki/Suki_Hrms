@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface Declaration {
   id: number;
@@ -40,9 +40,9 @@ const columns: Column<Declaration>[] = [
 ];
 
 export default function TdsDeclarationsPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Declaration[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
@@ -60,18 +60,18 @@ export default function TdsDeclarationsPage() {
       })) as Declaration[];
       setRecords(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleApprove = async (id: number) => {
     const res = await fetch(`/api/payroll/tds/declarations/${id}/approve`, { method: 'POST' });
     if (res.ok) fetchData();
-    else alert('Failed to approve');
+    else toast.error('Failed to approve');
   };
 
   const handleReject = async () => {
@@ -86,7 +86,7 @@ export default function TdsDeclarationsPage() {
       setRejectReason('');
       fetchData();
     } else {
-      alert('Failed to reject');
+      toast.error('Failed to reject');
     }
   };
 
@@ -98,8 +98,6 @@ export default function TdsDeclarationsPage() {
           Review and approve employee investment declarations for TDS calculation.
         </p>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

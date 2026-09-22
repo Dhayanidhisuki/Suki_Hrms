@@ -10,6 +10,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/components/ui';
 import EmployeeAvatar from './EmployeeAvatar';
 import { formatDate } from '@/lib/format-date';
 
@@ -131,10 +132,10 @@ const Icon = {
 
 export default function ConfirmationActionDialog({ mode, target, daysOverdue, onClose, onSubmit }: Props) {
   const t = TONE[mode];
+  const toast = useToast();
   const [remarks, setRemarks] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // Form state resets per target because the parent keys this component on
   // the target's id (see the confirmation page).
 
@@ -142,16 +143,15 @@ export default function ConfirmationActionDialog({ mode, target, daysOverdue, on
 
   const handleSubmit = async () => {
     if (mode === 'reject' && !reason) {
-      setError('Please select a reason for rejection.');
+      toast.warning('Please select a reason for rejection.');
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       await onSubmit({ remarks: remarks.trim(), reason: reason || undefined });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      toast.error(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setSubmitting(false);
     }
@@ -295,12 +295,6 @@ export default function ConfirmationActionDialog({ mode, target, daysOverdue, on
               style={inputStyle}
             />
           </div>
-
-          {error && (
-            <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-              {error}
-            </div>
-          )}
 
           {/* Footer */}
           <div className="flex justify-center gap-3 pt-1">

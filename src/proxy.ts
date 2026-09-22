@@ -8,6 +8,7 @@
  * - /api/masters/*       — master setup API routes (JWT here, permission in handler)
  * - /api/org-options     — org master dropdown data (JWT here, permission in handler)
  * - /api/admin/*         — user/role/permission admin API routes (JWT here, permission in handler)
+ * - /api/stats/*         — dashboard KPI counts (JWT here, permission + company-scope in handler)
  * - /api/workforce/*     — attendance/leave API routes (JWT here, permission + company-scope in handler)
  * - /api/biometric/*     — biometric attendance import API routes (JWT here, permission + company-scope in handler)
  * - /api/payroll/*       — payroll run API routes (JWT here, permission + company-scope in handler)
@@ -38,6 +39,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/uploads') ||
     pathname.startsWith('/api/org-options') ||
     pathname.startsWith('/api/admin/') ||
+    pathname.startsWith('/api/stats/') ||
     pathname.startsWith('/api/superadmin/') ||
     pathname.startsWith('/api/workforce/') ||
     pathname.startsWith('/api/biometric/') ||
@@ -94,7 +96,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/training-providers') ||
     pathname.startsWith('/api/certification-masters') ||
     pathname.startsWith('/api/training-methods') ||
-    pathname.startsWith('/api/platform/audit') ||
+    pathname.startsWith('/api/platform/') ||
+    pathname.startsWith('/api/letters') ||
+    pathname.startsWith('/api/ess/') ||
+    pathname.startsWith('/api/performance/') ||
     pathname === '/api/auth/me';
   const isUiRoute =
     pathname.startsWith('/masters/') ||
@@ -109,7 +114,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/recruitment/') ||
     pathname.startsWith('/dashboard/') ||
     pathname.startsWith('/learning/') ||
-    pathname.startsWith('/ess/my-trainings');
+    pathname.startsWith('/documents') ||
+    pathname.startsWith('/ess') ||
+    pathname.startsWith('/performance/') ||
+    pathname.startsWith('/approvals');
 
   if (!isApiRoute && !isUiRoute) {
     return NextResponse.next();
@@ -182,6 +190,7 @@ export const config = {
     '/api/org-options',
     '/api/admin/:path*',
     '/admin/:path*',
+    '/api/stats/:path*',
     '/api/superadmin/:path*',
     '/superadmin/:path*',
     '/api/workforce/:path*',
@@ -199,8 +208,17 @@ export const config = {
     '/manager/:path*',
     '/api/jd-master/:path*',
     '/api/jd-master',
+    '/api/performance/:path*',
+    '/performance/:path*',
     '/api/recruitment/:path*',
     '/recruitment/:path*',
+    '/api/platform/:path*',
+    '/api/letters',
+    '/api/letters/:path*',
+    '/api/ess/:path*',
+    '/documents',
+    '/documents/:path*',
+    '/ess/:path*',
     '/dashboard/:path*',
     '/api/skill-levels/:path*',
     '/api/skill-levels',
@@ -286,6 +304,7 @@ export const config = {
     '/api/training-methods',
     '/api/platform/audit',
     '/learning/:path*',
+    '/approvals/:path*',
     '/api/auth/me',
   ],
 };

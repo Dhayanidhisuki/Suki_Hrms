@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface PermissionRow {
   id: number;
@@ -39,26 +39,38 @@ function formatWallClockTime(iso: string | null): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
+interface Allowance {
+  freeHoursPerMonth: number;
+  approvedHours: number;
+  pendingHours: number;
+  usedHours: number;
+  remainingHours: number;
+  month: string;
+}
+
+const hrs = (n: number) => `${Number(n).toFixed(2).replace(/\.00$/, '')}h`;
+
 export default function PermissionRequestsPage() {
   const [records, setRecords] = useState<PermissionRow[]>([]);
+  const [allowance, setAllowance] = useState<Allowance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/workforce/permission?scope=mine');
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
-      const json: { data: PermissionRow[] } = await res.json();
+      const json: { data: PermissionRow[]; allowance?: Allowance } = await res.json();
       setRecords(json.data);
+      setAllowance(json.allowance ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -117,8 +129,8 @@ export default function PermissionRequestsPage() {
             Permission Requests
           </h1>
           <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Short leave during the day, in hours. Requests beyond your monthly free allowance are flagged for HR to
-            handle as a Loss of Pay adjustment.
+            Short leave during the day, in hours. Use your monthly allowance in any split you like — 30 minutes one
+            day, an hour another. Hours beyond it are flagged for HR, not deducted automatically.
           </p>
         </div>
         <button
@@ -130,9 +142,37 @@ export default function PermissionRequestsPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
+      {allowance && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Monthly Allowance</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{hrs(allowance.freeHoursPerMonth)}</div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Approved</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{hrs(allowance.approvedHours)}</div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Awaiting Approval</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{hrs(allowance.pendingHours)}</div>
+          </div>
+          <div
+            className="rounded-lg border p-4"
+            style={{ borderColor: allowance.remainingHours > 0 ? 'var(--border)' : '#fcd34d' }}
+          >
+            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Remaining</div>
+            <div
+              className="mt-1 text-2xl font-bold"
+              style={{ color: allowance.remainingHours > 0 ? 'var(--foreground)' : '#854d0e' }}
+            >
+              {hrs(allowance.remainingHours)}
+            </div>
+            {allowance.remainingHours <= 0 && (
+              <div className="mt-1 text-xs" style={{ color: '#854d0e' }}>
+                Further requests will be flagged as excess.
+              </div>
+            )}
+          </div>
         </div>
       )}
 

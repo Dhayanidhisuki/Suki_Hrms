@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface OTPlan {
   id: number; code: string; name: string; otRateMultiplier: number;
   otCalculationBasis: string | null;
-  applicableAfterMinutes: number; maxOtHoursPerDay: number | null;
+  applicableAfterMinutes: number; roundingSlabMinutes: number | null; maxOtHoursPerDay: number | null;
   payComponentId: number | null;
   payComponent: { id: number; name: string } | null;
   weekdayFactor: number;
@@ -21,9 +22,9 @@ interface OTPlan {
 interface ApiResponse { data: OTPlan[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
 
 export default function OTPlansPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<OTPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -51,7 +52,13 @@ export default function OTPlansPage() {
       { label: 'Basic + DA + HRA', value: 'BASIC_DA_HRA' },
       { label: 'Fixed Rate', value: 'FIXED' },
     ], helpText: 'Basis for OT hourly rate calculation' },
-    { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0 },
+    { name: 'applicableAfterMinutes', label: 'Applicable After (min)', type: 'number', defaultValue: 0, min: 0, helpText: 'Employee must work at least this many minutes past shift-end before any OT is recognized.' },
+    { name: 'roundingSlabMinutes', label: 'Rounding Slab', type: 'select', options: [
+      { label: 'No rounding (pay raw minutes)', value: '' },
+      { label: '15 minutes', value: 15 },
+      { label: '30 minutes', value: 30 },
+      { label: '60 minutes (1 hour)', value: 60 },
+    ], helpText: 'Payable OT is floored to the last completed wall-clock mark of this size (e.g. 60 → the top of the hour), not to N minutes after shift-end. E.g. shift ends 5:30pm, checkout 6:54pm, slab=60 → OT = 5:30-6:00pm (30 min), not 60.' },
     { name: 'maxOtHoursPerDay', label: 'Max OT Hours/Day', type: 'number', min: 0, helpText: 'Leave blank for no cap' },
     { name: 'payComponentId', label: 'Pay Component', type: 'select', options: componentOptions, helpText: 'The salary component the calculated OT amount is credited to on the payslip.' },
     { name: 'weekdayFactor', label: 'Weekday Factor', type: 'number', defaultValue: 1, step: '0.01', min: 0, helpText: 'Multiplier for OT on normal working days (1 = same as base)' },
@@ -69,16 +76,16 @@ export default function OTPlansPage() {
   ];
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/ot-plans?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
       setRecords(json.data); setPagination(json.pagination);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unknown error'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -91,6 +98,7 @@ export default function OTPlansPage() {
       otRateMultiplier: row.otRateMultiplier,
       otCalculationBasis: row.otCalculationBasis ?? 'GROSS',
       applicableAfterMinutes: row.applicableAfterMinutes,
+      roundingSlabMinutes: row.roundingSlabMinutes ?? '',
       maxOtHoursPerDay: row.maxOtHoursPerDay ?? '',
       payComponentId: row.payComponentId ?? '',
       weekdayFactor: row.weekdayFactor,
@@ -109,6 +117,7 @@ export default function OTPlansPage() {
     const payload = {
       ...values,
       description: values.description || null,
+      roundingSlabMinutes: values.roundingSlabMinutes || null,
       maxOtHoursPerDay: values.maxOtHoursPerDay || null,
       maxOtHoursPerWeek: values.maxOtHoursPerWeek || null,
       maxOtHoursPerMonth: values.maxOtHoursPerMonth || null,
@@ -123,7 +132,7 @@ export default function OTPlansPage() {
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/ot-plans/${id}`, { method: 'DELETE' });
-    if (!res.ok) { const err = await res.json(); setError(err.error ?? 'Delete failed'); return; }
+    if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Delete failed'); return; }
     fetchData();
   };
 
@@ -133,6 +142,7 @@ export default function OTPlansPage() {
     { key: 'otRateMultiplier', label: 'Rate Multiplier', render: (row) => `${row.otRateMultiplier}x` },
     { key: 'otCalculationBasis', label: 'Basis', render: (row) => row.otCalculationBasis ?? 'GROSS' },
     { key: 'applicableAfterMinutes', label: 'After (min)' },
+    { key: 'roundingSlabMinutes', label: 'Rounding Slab', render: (row) => row.roundingSlabMinutes ? `${row.roundingSlabMinutes} min` : 'None' },
     { key: 'maxOtHoursPerDay', label: 'Max hrs/day', render: (row) => row.maxOtHoursPerDay ?? 'No cap' },
     { key: 'payComponent', label: 'Pay Component', render: (row) => row.payComponent?.name ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
@@ -149,12 +159,12 @@ export default function OTPlansPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>OT Plans</h1>
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add OT Plan</button>
       </div>
-      {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>{error}</div>}
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />

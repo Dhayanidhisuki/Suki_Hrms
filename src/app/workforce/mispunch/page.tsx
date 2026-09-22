@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface MispunchRequest {
   id: number;
@@ -37,9 +37,9 @@ const fields: FieldDef[] = [
 ];
 
 export default function MispunchPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<MispunchRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<'mine' | 'manager' | 'hr'>('mine');
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -59,11 +59,11 @@ export default function MispunchPage() {
       })) as MispunchRequest[];
       setRecords(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -78,14 +78,14 @@ export default function MispunchPage() {
       fetchData();
     } else {
       const json = await res.json().catch(() => ({}));
-      alert(json.error ?? 'Failed to submit');
+      toast.error(json.error ?? 'Failed to submit');
     }
   };
 
   const handleApprove = async (id: number) => {
     const res = await fetch(`/api/workforce/mispunch/${id}/approve`, { method: 'POST' });
     if (res.ok) fetchData();
-    else alert('Failed to approve');
+    else toast.error('Failed to approve');
   };
 
   const handleReject = async (id: number) => {
@@ -97,7 +97,7 @@ export default function MispunchPage() {
       body: JSON.stringify({ rejectionReason: reason }),
     });
     if (res.ok) fetchData();
-    else alert('Failed to reject');
+    else toast.error('Failed to reject');
   };
 
   return (
@@ -133,8 +133,6 @@ export default function MispunchPage() {
           </button>
         ))}
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading ? (
         <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>

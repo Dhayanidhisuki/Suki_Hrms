@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/components/ui';
 
 interface Row {
   salaryComponentId: number;
@@ -31,11 +32,10 @@ interface ApiResponse {
 }
 
 export default function CommonLogicPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   // Local edit state — keyed by salaryComponentId so unsaved edits survive a
   // re-render without needing to touch `rows` until Save succeeds.
@@ -44,7 +44,6 @@ export default function CommonLogicPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch('/api/masters/gross-split-rules');
       if (!res.ok) throw new Error('Failed to fetch');
@@ -53,11 +52,11 @@ export default function CommonLogicPage() {
       setPercents(Object.fromEntries(json.data.map((r) => [r.salaryComponentId, r.percentOfGross ?? ''])));
       setActives(Object.fromEntries(json.data.map((r) => [r.salaryComponentId, r.isActive])));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -73,8 +72,6 @@ export default function CommonLogicPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       const res = await fetch('/api/masters/gross-split-rules', {
         method: 'PUT',
@@ -91,10 +88,10 @@ export default function CommonLogicPage() {
         const err = await res.json();
         throw new Error(err.error ?? 'Save failed');
       }
-      setSaved(true);
+      toast.success('Saved.');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -110,17 +107,6 @@ export default function CommonLogicPage() {
           Gross % Split — the fixed percentage of Gross Salary each earning component is entitled to (e.g. Basic 40%, HRA 20%).
         </p>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--danger-soft)', color: 'var(--danger)' }}>
-          {error}
-        </div>
-      )}
-      {saved && !error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--success-soft)', color: 'var(--success)' }}>
-          Saved.
-        </div>
-      )}
 
       {loading ? (
         <div className="card p-6 text-sm" style={{ color: 'var(--foreground-muted)' }}>

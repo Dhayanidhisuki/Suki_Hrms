@@ -6,7 +6,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface Unit {
   id: number;
@@ -14,6 +15,7 @@ interface Unit {
   name: string;
   address: string | null;
   description: string | null;
+  gstNumber: string | null;
   companyId: number;
   isActive: boolean;
   deletedAt: string | null;
@@ -26,9 +28,9 @@ interface ApiResponse {
 }
 
 export default function UnitsPage() {
+  const toast = useToast();
   const [records, setRecords] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -54,6 +56,7 @@ export default function UnitsPage() {
       ? [{ name: 'code', label: 'Code', type: 'text', disabled: true, helpText: 'Generated automatically' } as FieldDef]
       : []),
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Chennai Plant' },
+    { name: 'gstNumber', label: 'GST No.', type: 'text', placeholder: 'e.g. 29ABCDE1234F1Z5' },
     { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Optional' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional' },
     { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
@@ -61,7 +64,6 @@ export default function UnitsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
       const res = await fetch(`/api/masters/units?${params}`);
@@ -70,11 +72,11 @@ export default function UnitsPage() {
       setRecords(json.data);
       setPagination(json.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchData();
@@ -91,6 +93,7 @@ export default function UnitsPage() {
     setInitialValues({
       code: row.code,
       name: row.name,
+      gstNumber: row.gstNumber ?? '',
       address: row.address ?? '',
       description: row.description ?? '',
       companyId: row.companyId,
@@ -100,7 +103,7 @@ export default function UnitsPage() {
   };
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const payload = { ...values, address: values.address || null, description: values.description || null };
+    const payload = { ...values, address: values.address || null, description: values.description || null, gstNumber: values.gstNumber || null };
     const url = editingId ? `/api/masters/units/${editingId}` : '/api/masters/units';
     const method = editingId ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -115,7 +118,7 @@ export default function UnitsPage() {
     const res = await fetch(`/api/masters/units/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
-      setError(err.error ?? 'Delete failed');
+      toast.error(err.error ?? 'Delete failed');
       return;
     }
     fetchData();
@@ -125,6 +128,7 @@ export default function UnitsPage() {
     { key: 'code', label: 'Code', sortable: true, className: 'font-medium' },
     { key: 'name', label: 'Name' },
     { key: 'company', label: 'Company', render: (row) => row.company?.name ?? '—' },
+    { key: 'gstNumber', label: 'GST No.', render: (row) => row.gstNumber ?? '—' },
     { key: 'address', label: 'Address', render: (row) => row.address ?? '—' },
     { key: 'description', label: 'Description', render: (row) => row.description ?? '—' },
     {
@@ -143,6 +147,7 @@ export default function UnitsPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Organization" />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
           Units
@@ -155,12 +160,6 @@ export default function UnitsPage() {
           + Add Unit
         </button>
       </div>
-
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
 
       <DataTable
         columns={columns}

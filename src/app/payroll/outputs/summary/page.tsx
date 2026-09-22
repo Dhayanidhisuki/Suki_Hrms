@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/ui';
 
 interface SummaryData {
   run: { id: number; year: number; month: number; status: string };
@@ -32,13 +33,13 @@ export default function PayrollSummaryPage() {
 }
 
 function PayrollSummaryContent() {
+  const toast = useToast();
   const searchParams = useSearchParams();
   const initialRunId = searchParams.get('runId');
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [selectedRun, setSelectedRun] = useState(initialRunId ?? '');
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/payroll/runs')
@@ -62,11 +63,11 @@ function PayrollSummaryContent() {
       const json = await res.json();
       setSummary(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [selectedRun]);
+  }, [selectedRun, toast]);
 
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
@@ -97,8 +98,6 @@ function PayrollSummaryContent() {
           </select>
         </div>
       </div>
-
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {loading && <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>Loading…</div>}
 
