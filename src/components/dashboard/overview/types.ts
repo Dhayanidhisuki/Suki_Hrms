@@ -1,3 +1,40 @@
+/** One bucket of the attendance trend — a week or a calendar month. */
+export interface AttendanceTrendPoint {
+  label: string;
+  /** Present as a percentage of attendance opportunities in the bucket. */
+  rate: number;
+  present: number;
+  absent: number;
+  /** Rows counted, i.e. excluding weekly-offs and holidays. */
+  counted: number;
+}
+
+export type AttendanceGranularity = 'week' | 'month' | 'year';
+
+/**
+ * One period x department x unit cell of the Attendance Overview.
+ * The client sums these to whatever the dropdowns are set to, so switching
+ * department, unit or granularity costs no extra request.
+ */
+export interface AttendanceOverviewBucket {
+  g: AttendanceGranularity;
+  label: string;
+  /** Sortable period key (ISO date / YYYY-MM / YYYY). */
+  sort: string;
+  department: string;
+  unit: string;
+  present: number;
+  absent: number;
+  /** Rows counted, i.e. excluding weekly-offs and holidays. */
+  counted: number;
+}
+
+export interface AttendanceOverview {
+  departments: string[];
+  units: string[];
+  buckets: AttendanceOverviewBucket[];
+}
+
 /** Response shape of GET /api/dashboard/overview. */
 export interface OverviewData {
   asOf: string;
@@ -15,7 +52,11 @@ export interface OverviewData {
     rate: number | null;
   };
   pendingApprovals: { leave: number; overtime: number; compOff: number; total: number };
-  attendanceTrend: Array<{ label: string; rate: number }>;
+  attendanceTrend: AttendanceTrendPoint[];
+  /** Same series bucketed by calendar month, for the overview chart's toggle. */
+  attendanceTrendMonthly: AttendanceTrendPoint[];
+  /** Department- and unit-dimensioned attendance for the lead chart. */
+  attendanceOverview: AttendanceOverview;
   /** Empty when no leave was applied for in the window. */
   leaveByStatus: Array<{ label: string; approved: number; pending: number; rejected: number }>;
   salaryCost: Array<{ label: string; gross: number; net: number; ot: number }>;

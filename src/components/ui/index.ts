@@ -9,7 +9,7 @@ export { default as Stepper } from './Stepper';
 export type { StepDef } from './Stepper';
 export { default as SearchableSelect } from './SearchableSelect';
 export { default as KPICard } from './KPICard';
-export type { KPITone } from './KPICard';
+export type { KPITone, KPITrend, KPITrendDirection } from './KPICard';
 export { default as KPIGrid } from './KPIGrid';
 export { default as PageHeader } from './PageHeader';
 export { default as Alert } from './Alert';
@@ -51,3 +51,14 @@ export { NavigationLoader } from './NavigationLoader';
 export { AppToaster } from './AppToaster';
 export { ReportHub } from './ReportHub';
 export type { ReportLink, PreviewColumn } from './ReportHub';
+export {
+  ReportChartCard,
+  ReportBarChart,
+  ReportStackedBarChart,
+  ReportLineChart,
+  ReportAreaChart,
+  ReportDonutChart,
+  useAccent,
+  tooltipStyle,
+} from './ReportCharts';
+export { BAR_ANIMATION, BAR_ANIMATION_STAGGER, BarChartLoadingSkeleton } from './BarChartEffects';
