@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast, StatusPillTabs } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
@@ -45,6 +45,9 @@ export default function DepartmentPage() {
   const [records, setRecords] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Server-side: the list is paginated, so a client-side filter would only
+  // hide rows on the current page and misreport the total.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -61,7 +64,12 @@ export default function DepartmentPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(status ? { status } : {}),
+      });
       const res = await fetch(`/api/masters/departments?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
@@ -72,7 +80,7 @@ export default function DepartmentPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -227,6 +235,31 @@ export default function DepartmentPage() {
         <KPICard label="Total Departments" value={stats.total} tone="info" />
         <KPICard label="Active" value={stats.active ?? 0} tone="success" />
       </KPIGrid>
+
+      <div className="flex flex-wrap items-center gap-2">
+
+        <StatusPillTabs
+
+          items={[
+
+            { value: '', label: 'All' },
+
+            { value: 'active', label: 'Active', tone: 'success' },
+
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+
+          ]}
+
+          value={status}
+
+          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+
+          idPrefix="departments-status"
+
+        />
+
+      </div>
+
 
       <DataTable
         columns={columns}

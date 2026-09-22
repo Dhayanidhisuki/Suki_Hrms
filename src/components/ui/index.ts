@@ -36,6 +36,8 @@ export { SearchSelect } from './SearchSelect';
 export type { SearchSelectItem } from './SearchSelect';
 export { MasterSearchSelect } from './MasterSearchSelect';
 export { SelectionFilter } from './SelectionFilter';
+export { default as InlineSelect } from './InlineSelect';
+export type { InlineSelectOption, InlineSelectProps } from './InlineSelect';
 export { TablePager, pageWindow } from './TablePager';
 export { ExpandableTable } from './ExpandableTable';
 export type { ExpandableTableColumn } from './ExpandableTable';
@@ -62,3 +64,12 @@ export {
   tooltipStyle,
 } from './ReportCharts';
 export { BAR_ANIMATION, BAR_ANIMATION_STAGGER, BarChartLoadingSkeleton } from './BarChartEffects';
+export { AttendanceGauge } from './AttendanceGauge';
+export type { GaugeSegment } from './AttendanceGauge';
+export { ConfirmProvider, useConfirm } from './ConfirmProvider';
+export type { ConfirmOptions, PromptOptions } from './ConfirmProvider';
+export { ReportGroupedBarChart } from './ReportCharts';
+export { CrossTabTable } from './CrossTabTable';
+export type { CrossTabRow } from './CrossTabTable';
+export { ReportMultiLineChart } from './ReportCharts';
+export { RowAction } from './DataTable';

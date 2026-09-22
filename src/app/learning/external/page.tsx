@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { DataTable, FormModal, ConfirmDialog, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, KPICard, KPIGrid, useConfirm } from '@/components/ui';
 import type { Column, FieldDef } from '@/components/ui';
 import { exportCsv } from '@/lib/exportCsv';
 import { exportXlsx } from '@/lib/exportXlsx';
@@ -100,6 +100,7 @@ const ACTIONS: Record<string, { action: string; label: string; color: string }[]
 };
 
 export default function ExternalTrainingsPage() {
+  const { prompt } = useConfirm();
   const [rows, setRows] = useState<ExtTraining[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +160,14 @@ export default function ExternalTrainingsPage() {
   };
 
   const handleAction = async (id: number, action: string) => {
-    const reason = ['REJECT', 'RETURN', 'CANCEL'].includes(action) ? window.prompt(`${action} reason (optional)`) ?? null : null;
+    const reason = ['REJECT', 'RETURN', 'CANCEL'].includes(action)
+      ? await prompt({
+          title: `${action[0]}${action.slice(1).toLowerCase()} request`,
+          message: 'Add a reason for the record. Optional.',
+          placeholder: 'Reason',
+          multiline: true,
+        })
+      : null;
     const res = await fetch(`/api/external-trainings/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

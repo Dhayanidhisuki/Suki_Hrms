@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm } from '@/components/ui';
 
 interface Announcement {
   id: number;
@@ -41,6 +41,7 @@ function fullDate(iso: string | null) {
 }
 
 export default function AdminAnnouncementsPage() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const [items, setItems] = useState<Announcement[]>([]);
   const [audienceSize, setAudienceSize] = useState(0);
@@ -111,7 +112,14 @@ export default function AdminAnnouncementsPage() {
   };
 
   const publish = async (a: Announcement) => {
-    if (!confirm(`Publish "${a.title}" to all ${audienceSize} employees? It cannot be edited afterwards.`)) return;
+    if (
+      !(await confirm({
+        title: 'Publish announcement?',
+        message: `"${a.title}" goes out to all ${audienceSize} employees. It cannot be edited afterwards.`,
+        confirmLabel: 'Publish',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const res = await fetch(`/api/platform/announcement/${a.id}/publish`, { method: 'POST' });
@@ -129,7 +137,17 @@ export default function AdminAnnouncementsPage() {
 
   const remove = async (a: Announcement) => {
     const isDraft = a.status === 'DRAFT';
-    if (!confirm(isDraft ? `Delete draft "${a.title}"?` : `Archive "${a.title}"? Employees will stop seeing it.`)) return;
+    if (
+      !(await confirm({
+        title: isDraft ? 'Delete draft?' : 'Archive announcement?',
+        message: isDraft
+          ? `"${a.title}" will be deleted.`
+          : `"${a.title}" will be archived and employees will stop seeing it.`,
+        confirmLabel: isDraft ? 'Delete' : 'Archive',
+        tone: 'danger',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const res = await fetch(`/api/platform/announcement/${a.id}`, { method: 'DELETE' });

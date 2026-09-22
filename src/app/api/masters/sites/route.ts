@@ -20,9 +20,13 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
   const search = searchParams.get('search') ?? '';
+  // 'active' | 'inactive'; anything else (including absent) means no filter,
+  // so an existing caller that never sends it keeps seeing every row.
+  const status = searchParams.get('status');
 
   const where = {
     deletedAt: null,
+    ...(status === 'active' ? { isActive: true } : status === 'inactive' ? { isActive: false } : {}),
     ...(search ? { OR: [{ code: { contains: search } }, { name: { contains: search } }, { city: { contains: search } }] } : {}),
   };
 

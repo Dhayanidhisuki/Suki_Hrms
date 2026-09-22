@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, StatusPillTabs, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SimpleMaster {
@@ -76,6 +76,10 @@ export default function SimpleMasterPage({
   const [loading, setLoading] = useState(true);
   const toast = useToast();
   const [search, setSearch] = useState('');
+  // Server-side, not a filter over the current page: the list is paginated at
+  // 20, so filtering client-side would only ever hide rows from the page you
+  // happen to be on and silently misreport the counts.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -93,7 +97,12 @@ export default function SimpleMasterPage({
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(status ? { status } : {}),
+      });
       const res = await fetch(`${apiPath}?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
@@ -104,7 +113,7 @@ export default function SimpleMasterPage({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, search, toast]);
+  }, [apiPath, page, search, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -200,6 +209,22 @@ export default function SimpleMasterPage({
           <KPICard label="Active" value={stats.active ?? 0} tone="success" />
         </KPIGrid>
       )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPillTabs
+          items={[
+            { value: '', label: 'All' },
+            { value: 'active', label: 'Active', tone: 'success' },
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+          ]}
+          value={status}
+          onChange={(v) => {
+            setStatus(v as '' | 'active' | 'inactive');
+            setPage(1);
+          }}
+          idPrefix={`${apiPath}-status`}
+        />
+      </div>
 
       <DataTable
         columns={columns}

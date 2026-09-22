@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DataTable, FormModal, KPICard, KPIGrid } from '@/components/ui';
+import { DataTable, FormModal, KPICard, KPIGrid, useConfirm } from '@/components/ui';
 import type { Column, FieldDef } from '@/components/ui';
 
 interface TrainingPlan {
@@ -78,6 +78,7 @@ const schedulePeriods = [
 ];
 
 export default function TrainingPlanPage() {
+  const { prompt } = useConfirm();
   const [records, setRecords] = useState<TrainingPlanLine[]>([]);
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
@@ -280,7 +281,14 @@ export default function TrainingPlanPage() {
 
   // §14: annual plan approval workflow (SUBMIT/APPROVE/REJECT/RETURN/RESUBMIT/CANCEL).
   const planAction = async (planId: number, action: string) => {
-    const reason = ['REJECT', 'RETURN'].includes(action) ? window.prompt(`${action} reason:`) ?? '' : undefined;
+    const reason = ['REJECT', 'RETURN'].includes(action)
+      ? (await prompt({
+          title: `${action[0]}${action.slice(1).toLowerCase()} plan`,
+          message: 'Add a reason for the record.',
+          placeholder: 'Reason',
+          multiline: true,
+        })) ?? ''
+      : undefined;
     const res = await fetch(`/api/training-plans/${planId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

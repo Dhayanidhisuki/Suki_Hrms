@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption, StatusPillTabs } from '@/components/ui';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface OTPlan {
@@ -26,6 +26,9 @@ export default function OTPlansPage() {
   const [records, setRecords] = useState<OTPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Server-side: the list is paginated, so a client-side filter would only
+  // hide rows on the current page and misreport the total.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [modalOpen, setModalOpen] = useState(false);
@@ -78,14 +81,19 @@ export default function OTPlansPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(status ? { status } : {}),
+      });
       const res = await fetch(`/api/masters/ot-plans?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
       setRecords(json.data); setPagination(json.pagination);
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Unknown error'); }
     finally { setLoading(false); }
-  }, [page, search, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -165,6 +173,19 @@ export default function OTPlansPage() {
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add OT Plan</button>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPillTabs
+          items={[
+            { value: '', label: 'All' },
+            { value: 'active', label: 'Active', tone: 'success' },
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+          ]}
+          value={status}
+          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+          idPrefix="ot-plans-status"
+        />
+      </div>
+
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />

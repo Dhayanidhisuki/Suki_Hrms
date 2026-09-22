@@ -19,6 +19,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -71,7 +72,8 @@ export function ReportChartCard({
   children,
   className = "",
   action,
-  bodyClassName = "h-64 min-h-[16rem]",
+  height = 256,
+  bodyClassName = "",
 }: {
   title: string;
   subtitle?: string;
@@ -79,7 +81,14 @@ export function ReportChartCard({
   className?: string;
   /** Optional action shown in the header (e.g. Refresh). */
   action?: ReactNode;
-  /** Override the plot area height. */
+  /**
+   * Plot height in pixels. Set as an inline style, not a class, because
+   * Recharts' ResponsiveContainer measures its parent: given only a
+   * min-height on an auto-height flex child it resolves to 0 and the chart
+   * renders nothing at all. A definite height is not optional here.
+   */
+  height?: number;
+  /** Extra classes for the plot area. Never use this to set the height. */
   bodyClassName?: string;
 }) {
   return (
@@ -93,7 +102,9 @@ export function ReportChartCard({
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className={`w-full flex-1 ${bodyClassName}`}>{children}</div>
+      <div className={`w-full shrink-0 ${bodyClassName}`} style={{ height }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -118,6 +129,11 @@ export function ReportBarChart({
   axisFormatter,
   yAxisWidth,
   categoryWidth = 118,
+  colorKey,
+  opacityKey,
+  xTickAngle,
+  xTickHeight,
+  xTickFontSize,
 }: {
   data: Row[];
   xKey?: string;
@@ -128,12 +144,27 @@ export function ReportBarChart({
   color?: string;
   /** Series label shown in the tooltip. */
   seriesName?: string;
-  /** Formats the tooltip value (e.g. currency). */
-  valueFormatter?: Formatter;
+  /**
+   * Formats the tooltip value. Receives the whole row too, so a caller can
+   * append context the number alone does not carry (a status, a note).
+   */
+  valueFormatter?: (value: number, row?: Row) => string;
   /** Formats the value-axis ticks. */
   axisFormatter?: Formatter;
   yAxisWidth?: number;
   categoryWidth?: number;
+  /**
+   * Field on each row holding that bar's own colour. For a series where the
+   * colour carries meaning per data point — an attendance flag, a status —
+   * rather than identifying one series.
+   */
+  colorKey?: string;
+  /** Field holding a per-bar fill opacity, e.g. to fade an empty day. */
+  opacityKey?: string;
+  /** Category-axis tick overrides, for a dense axis like days of a month. */
+  xTickAngle?: number;
+  xTickHeight?: number;
+  xTickFontSize?: number;
 }) {
   const accent = useAccent();
   const fill = color ?? accent;
@@ -183,11 +214,11 @@ export function ReportBarChart({
               dataKey={xKey}
               axisLine={false}
               tickLine={false}
-              tick={tick}
+              tick={xTickFontSize ? { ...tick, fontSize: xTickFontSize } : tick}
               interval={0}
-              angle={data.length > 6 ? -20 : 0}
-              textAnchor={data.length > 6 ? "end" : "middle"}
-              height={data.length > 6 ? 56 : 30}
+              angle={xTickAngle ?? (data.length > 6 ? -20 : 0)}
+              textAnchor={(xTickAngle ?? (data.length > 6 ? -20 : 0)) !== 0 ? "end" : "middle"}
+              height={xTickHeight ?? (data.length > 6 ? 56 : 30)}
             />
             <YAxis
               axisLine={false}
@@ -203,10 +234,10 @@ export function ReportBarChart({
           contentStyle={tooltipStyle}
           cursor={{ fill: "var(--bg-hover)" }}
           isAnimationActive={false}
-          formatter={(value) => {
+          formatter={(value, _name, item) => {
             const n = typeof value === "number" ? value : Number(value) || 0;
             return [
-              valueFormatter ? valueFormatter(n) : n.toLocaleString(),
+              valueFormatter ? valueFormatter(n, item?.payload as Row) : n.toLocaleString(),
               seriesName ?? String(yKey),
             ] as [string, string];
           }}
@@ -220,13 +251,22 @@ export function ReportBarChart({
           {...BAR_ANIMATION}
           onMouseEnter={(_, index) => setActiveIndex(index)}
         >
-          {data.map((_, index) => (
-            <Cell
-              key={`bar-${index}`}
-              fill={fill}
-              fillOpacity={activeIndex == null || activeIndex === index ? 1 : 0.28}
-            />
-          ))}
+          {data.map((row, index) => {
+            const own = colorKey ? (row as Record<string, unknown>)[colorKey] : undefined;
+            const rowOpacity = opacityKey
+              ? Number((row as Record<string, unknown>)[opacityKey] ?? 1)
+              : 1;
+            // Hover dimming multiplies the row's own opacity rather than
+            // replacing it, so a faded bar stays faded while hovered.
+            const dim = activeIndex == null || activeIndex === index ? 1 : 0.28;
+            return (
+              <Cell
+                key={`bar-${index}`}
+                fill={typeof own === "string" ? own : fill}
+                fillOpacity={rowOpacity * dim}
+              />
+            );
+          })}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -266,6 +306,77 @@ export function ReportStackedBarChart({
             maxBarSize={28}
             // Only the top segment gets the rounded cap, or the stack looks split.
             radius={i === series.length - 1 ? [10, 10, 0, 0] : undefined}
+            {...BAR_ANIMATION}
+          />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+
+/**
+ * Grouped bars: one coloured series per row, side by side within each month.
+ *
+ * Distinct from ReportStackedBarChart — stacking answers "what does the total
+ * consist of", grouping answers "how do these compare month to month", which
+ * is what a department cross-tab is read for.
+ */
+export function ReportGroupedBarChart({
+  columns,
+  series,
+  valueFormatter,
+  axisFormatter,
+  loading = false,
+}: {
+  /** Category-axis labels, e.g. the 12 FY months. */
+  columns: string[];
+  /** One entry per group; `values` is parallel to `columns`. */
+  series: Array<{ name: string; values: number[]; color?: string }>;
+  valueFormatter?: Formatter;
+  axisFormatter?: Formatter;
+  loading?: boolean;
+}) {
+  const accent = useAccent();
+  const palette = [accent, ACCENT.emerald, ACCENT.amber, ACCENT.rose, ACCENT.violet, ACCENT.sky];
+
+  if (loading) return <BarChartLoadingSkeleton color={accent} />;
+  if (!series.length || !columns.length) return <NoData />;
+
+  // Recharts wants a row per category with one key per series.
+  const data = columns.map((label, i) => {
+    const row: Record<string, string | number> = { label };
+    for (const s of series) row[s.name] = s.values[i] ?? 0;
+    return row;
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 8, right: 16, left: -4, bottom: 4 }} barCategoryGap="22%">
+        <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--border-main)" strokeOpacity={0.85} />
+        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={tick} />
+        <YAxis axisLine={false} tickLine={false} tick={tick} tickFormatter={axisFormatter} />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          cursor={{ fill: "var(--bg-hover)" }}
+          isAnimationActive={false}
+          formatter={(value, name) => {
+            const n = typeof value === "number" ? value : Number(value) || 0;
+            return [valueFormatter ? valueFormatter(n) : n.toLocaleString(), String(name)];
+          }}
+        />
+        <Legend
+          wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
+          iconType="circle"
+          iconSize={8}
+        />
+        {series.map((s, i) => (
+          <Bar
+            key={s.name}
+            dataKey={s.name}
+            fill={s.color ?? palette[i % palette.length]}
+            radius={[6, 6, 0, 0]}
+            maxBarSize={22}
             {...BAR_ANIMATION}
           />
         ))}
@@ -322,6 +433,79 @@ export function ReportLineChart({
           dot={{ r: 3, fill: stroke, strokeWidth: 0 }}
           activeDot={{ r: 5 }}
         />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+
+/**
+ * Smooth multi-series lines — one soft curve per series over a shared category
+ * axis, legend on top.
+ *
+ * Deliberately no dots: at 30 categories a dot per point turns the curve into
+ * a dotted line, and the shape is what carries the meaning here. Hovering
+ * still reveals the exact values through the shared tooltip.
+ */
+export function ReportMultiLineChart({
+  columns,
+  series,
+  valueFormatter,
+  axisFormatter,
+  domain,
+  loading = false,
+}: {
+  columns: string[];
+  series: Array<{ name: string; values: number[]; color?: string }>;
+  valueFormatter?: Formatter;
+  axisFormatter?: Formatter;
+  domain?: [number, number];
+  loading?: boolean;
+}) {
+  const accent = useAccent();
+  const palette = [accent, ACCENT.emerald, ACCENT.amber, ACCENT.rose, ACCENT.violet, ACCENT.sky];
+
+  if (loading) return <BarChartLoadingSkeleton color={accent} />;
+  if (!series.length || !columns.length) return <NoData />;
+
+  const data = columns.map((label, i) => {
+    const row: Record<string, string | number> = { label };
+    for (const s of series) row[s.name] = s.values[i] ?? 0;
+    return row;
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 8, right: 16, left: -8, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--border-main)" strokeOpacity={0.85} />
+        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={tick} interval="preserveStartEnd" />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tick={tick}
+          domain={domain}
+          tickFormatter={axisFormatter}
+        />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          isAnimationActive={false}
+          formatter={(value, name) => {
+            const n = typeof value === "number" ? value : Number(value) || 0;
+            return [valueFormatter ? valueFormatter(n) : n.toLocaleString(), String(name)];
+          }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
+        {series.map((s, i) => (
+          <Line
+            key={s.name}
+            type="monotone"
+            dataKey={s.name}
+            stroke={s.color ?? palette[i % palette.length]}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 5 }}
+          />
+        ))}
       </LineChart>
     </ResponsiveContainer>
   );

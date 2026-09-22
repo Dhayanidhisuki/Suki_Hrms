@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, DataTable, PageHeader, SectionCard, StatusBadge, type Column } from '@/components/ui';
+import { Alert, Button, DataTable, PageHeader, SectionCard, StatusBadge, type Column, useConfirm } from '@/components/ui';
 import { FNF_STATUS_TONE } from '@/lib/fnf/workflow';
 import { formatInr } from '@/lib/fnf/presentation';
 
@@ -12,11 +12,6 @@ type Row = {
   lastWorkingDay: string;
   employee: { employeeCode: string; firstName: string; lastName: string };
 };
-
-function promptText(message: string): string | null {
-  const v = window.prompt(message);
-  return v == null ? null : v.trim();
-}
 
 function useQueue(queue: string) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -46,6 +41,7 @@ function useQueue(queue: string) {
 }
 
 export default function FnFApprovalPage() {
+  const { prompt } = useConfirm();
   const manager = useQueue('manager');
   const hr = useQueue('hr');
   const finance = useQueue('finance');
@@ -98,8 +94,14 @@ export default function FnFApprovalPage() {
       <Button
         size="xs"
         variant="danger"
-        onClick={() => {
-          const reason = promptText('Rejection reason:');
+        onClick={async () => {
+          const reason = await prompt({
+            title: 'Reject this settlement?',
+            message: 'A rejection reason is recorded against the request.',
+            placeholder: 'Rejection reason',
+            required: true,
+            multiline: true,
+          });
           if (!reason) return;
           void act(`/api/payroll/fnf/${row.id}/reject`, { rejectionReason: reason });
         }}

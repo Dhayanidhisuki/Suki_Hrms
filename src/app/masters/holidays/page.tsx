@@ -11,11 +11,11 @@
 
 'use client';
 
+import { Pencil, Trash2 } from 'lucide-react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DataTable, FormModal, ConfirmDialog, PageHeader, Alert, StatusBadge, SectionCard, Tabs, Button, EmptyState, KPICard, KPIGrid, useToast,
-  type Column, type FieldDef,
-} from '@/components/ui';
+  type Column, type FieldDef, RowAction } from '@/components/ui';
 import { exportToPDF } from '@/lib/export-utils';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
@@ -342,8 +342,12 @@ function DeclaredHolidaysTab() {
         renderRowActions={(row) =>
           row.source === 'holiday' && row.holiday ? (
             <>
-              <button onClick={() => handleEdit(row.holiday!)} className="text-xs font-medium mr-3 hover:underline" style={{ color: 'var(--accent)' }}>Edit</button>
-              <button onClick={() => setDeleteId(row.holiday!.id)} className="text-xs font-medium hover:underline text-red-500">Delete</button>
+              <RowAction label="Edit" onClick={() => handleEdit(row.holiday!)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </RowAction>
+              <RowAction label="Delete" tone="danger" onClick={() => setDeleteId(row.holiday!.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </RowAction>
             </>
           ) : (
             <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Manage on Yearly Leave Calendar</span>

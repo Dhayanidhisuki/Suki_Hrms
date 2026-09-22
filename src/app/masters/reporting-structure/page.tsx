@@ -13,7 +13,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { KPIGrid, KPICard, useToast } from '@/components/ui';
+import { KPIGrid, KPICard, useToast, useConfirm } from '@/components/ui';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface EmployeeNode {
@@ -70,6 +70,7 @@ interface ApiResponse {
 }
 
 export default function ReportingStructurePage() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const [tree, setTree] = useState<EmployeeNode[]>([]);
   const [flatList, setFlatList] = useState<FlatEmployee[]>([]);
@@ -279,7 +280,14 @@ export default function ReportingStructurePage() {
   // Bulk Unassign / Remove Manager
   const handleBulkUnassign = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Are you sure you want to remove manager assignment from ${selectedIds.size} selected employee(s)? They will become Root employees.`)) {
+    if (
+      !(await confirm({
+        title: 'Remove manager assignment?',
+        message: `${selectedIds.size} selected employee(s) will become Root employees.`,
+        confirmLabel: 'Remove assignment',
+        tone: 'danger',
+      }))
+    ) {
       return;
     }
 

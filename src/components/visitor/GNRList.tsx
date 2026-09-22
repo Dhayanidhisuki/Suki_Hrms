@@ -1,7 +1,8 @@
 'use client';
 
+import { Pencil, Trash2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/components/ui';
+import { useToast, RowAction } from '@/components/ui';
 import DataTable, { type Column, type Pagination } from '@/components/ui/DataTable';
 import { formatGnrStatus, gnrStatusTone } from '@/lib/gnr-helpers';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -280,13 +281,17 @@ export default function GNRList({ title, subtitle, defaultMovementType = '', def
               <button onClick={() => performAction(row.id, 'outward')} className="rounded-md px-2 py-1 text-xs font-medium" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}>Record Outward</button>
             )}
             {['GNR_CREATED', 'AWAITING_AUTHORIZATION'].includes(row.status) && (
-              <button onClick={() => handleEdit(row)} className="rounded-md px-2 py-1 text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Edit</button>
+              <RowAction label="Edit" onClick={() => handleEdit(row)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </RowAction>
             )}
             {['GNR_CREATED', 'AWAITING_AUTHORIZATION', 'AUTHORIZED'].includes(row.status) && (
               <button onClick={() => performAction(row.id, 'reject', { reason: 'Rejected' })} className="rounded-md px-2 py-1 text-xs font-medium" style={{ color: 'var(--danger)' }}>Reject</button>
             )}
             {!['INWARD_RECORDED', 'OUTWARD_RECORDED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(row.status) && (
-              <button onClick={() => setDeleteId(row.id)} className="rounded-md px-2 py-1 text-xs font-medium" style={{ color: 'var(--danger)' }}>Delete</button>
+              <RowAction label="Delete" tone="danger" onClick={() => setDeleteId(row.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </RowAction>
             )}
           </span>
         )}

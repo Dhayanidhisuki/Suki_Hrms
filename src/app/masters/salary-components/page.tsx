@@ -12,7 +12,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast, InlineSelect, type InlineSelectOption } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
 interface SalaryComponentRow {
@@ -142,6 +142,23 @@ function buildFields(isEditing: boolean, existing: SalaryComponentRow[]): FieldD
   { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true, hidden: true },
   ];
 }
+
+type GrossTier = 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL' | 'PAYROLL_HIDDEN';
+
+/** Tier labels and the hints that used to live on the raw <select>'s title. */
+const GROSS_TIER_OPTIONS: readonly InlineSelectOption<GrossTier>[] = [
+  { value: 'FIXED', label: 'Fixed', title: 'Fixed share of gross — set its % of gross alongside' },
+  { value: 'ADDITIONAL', label: 'Additional', title: 'Paid on top of the fixed gross split' },
+  { value: 'NON_PAYROLL', label: 'Non-Payroll', title: 'Never touched by payroll' },
+  { value: 'PAYROLL_HIDDEN', label: 'Payroll-Hidden', title: 'Deducted in real payroll, but hidden from the Salary Details tab' },
+];
+
+const GROSS_TIER_TONE: Record<GrossTier, string> = {
+  FIXED: 'var(--accent)',
+  ADDITIONAL: 'var(--success)',
+  NON_PAYROLL: 'var(--foreground-muted)',
+  PAYROLL_HIDDEN: 'var(--warning)',
+};
 
 export default function SalaryComponentsPage() {
   const toast = useToast();
@@ -323,24 +340,14 @@ export default function SalaryComponentsPage() {
       key: 'grossTier',
       label: 'Tier',
       render: (r) => (
-        <select
-          value={r.grossTier}
-          onChange={(e) => setGrossTier(r, e.target.value as 'FIXED' | 'ADDITIONAL' | 'NON_PAYROLL' | 'PAYROLL_HIDDEN')}
-          className="rounded border px-1 py-0.5 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--foreground)', opacity: r.grossTier === 'NON_PAYROLL' || r.includeInGross ? 1 : 0.4 }}
-          title={
-            r.grossTier === 'NON_PAYROLL'
-              ? 'Never touched by payroll'
-              : r.grossTier === 'PAYROLL_HIDDEN'
-              ? 'Deducted in real payroll, but hidden from the Salary Details tab'
-              : undefined
-          }
-        >
-          <option value="FIXED">Fixed</option>
-          <option value="ADDITIONAL">Additional</option>
-          <option value="NON_PAYROLL">Non-Payroll</option>
-          <option value="PAYROLL_HIDDEN">Payroll-Hidden</option>
-        </select>
+        <InlineSelect
+          value={r.grossTier as GrossTier}
+          options={GROSS_TIER_OPTIONS}
+          onChange={(tier) => setGrossTier(r, tier)}
+          tone={GROSS_TIER_TONE[r.grossTier as GrossTier]}
+          muted={r.grossTier !== 'NON_PAYROLL' && !r.includeInGross}
+          ariaLabel={`Gross tier for ${r.name}`}
+        />
       ),
     },
     {

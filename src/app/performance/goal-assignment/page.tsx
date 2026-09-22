@@ -9,11 +9,11 @@
 
 'use client';
 
+import { Eye } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, DataTable, PageHeader, SectionCard, Spinner, StatusBadge,
-  type Column, type BadgeTone,
-} from '@/components/ui';
+  type Column, type BadgeTone, RowAction } from '@/components/ui';
 
 interface Cycle { id: number; code: string; name: string; status: string; startDate: string; endDate: string }
 interface Employee {
@@ -437,7 +437,9 @@ export default function GoalAssignmentPage() {
           }
           emptyMessage="No goal assignments yet. Use Assign Goals to copy a template onto employees."
           renderRowActions={(row) => (
-            <Button variant="ghost" size="xs" onClick={() => void openView(row)}>View</Button>
+            <RowAction label="View" onClick={() => void openView(row)}>
+              <Eye className="h-3.5 w-3.5" />
+            </RowAction>
           )}
         />
       )}

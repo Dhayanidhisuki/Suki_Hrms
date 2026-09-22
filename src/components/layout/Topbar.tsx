@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import NotificationDropdown from "./NotificationDropdown";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { fetchCurrentUser } from "@/lib/currentUser";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -52,8 +53,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
+    fetchCurrentUser()
       .then((data) => {
         if (!cancelled && data) {
           setMe({

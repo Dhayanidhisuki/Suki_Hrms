@@ -12,7 +12,7 @@
  * per dropdown change.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -27,6 +27,7 @@ import {
 import { BAR_ANIMATION, BAR_ANIMATION_STAGGER } from '@/components/ui/BarChartEffects';
 import { useAccent } from '@/components/ui/ReportCharts';
 import type {
+  AttendanceDimension,
   AttendanceGranularity,
   AttendanceOverview,
   AttendanceOverviewBucket,
@@ -106,7 +107,8 @@ function rollUp(
   buckets: AttendanceOverviewBucket[],
   g: AttendanceGranularity,
   department: string,
-  unit: string
+  unit: string,
+  employee: string
 ): ChartRow[] {
   const byPeriod = new Map<string, ChartRow>();
 
@@ -114,6 +116,7 @@ function rollUp(
     if (b.g !== g) continue;
     if (department !== ALL && b.department !== department) continue;
     if (unit !== ALL && b.unit !== unit) continue;
+    if (employee !== ALL && b.employee !== employee) continue;
 
     let row = byPeriod.get(b.sort);
     if (!row) {
@@ -152,9 +155,16 @@ const GRANULARITY_TITLE: Record<AttendanceGranularity, string> = {
 
 export function AttendanceOverviewChart({ overview }: { overview?: AttendanceOverview }) {
   const [granularity, setGranularity] = useState<AttendanceGranularity>('week');
+  const [dimension, setDimension] = useState<AttendanceDimension>('department');
   const [department, setDepartment] = useState(ALL);
   const [unit, setUnit] = useState(ALL);
+  const [employee, setEmployee] = useState(ALL);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  // Employee-grouped buckets are not in the dashboard payload: grouping by
+  // employee multiplies the row count by headcount, so it is fetched once, on
+  // demand, and cached for the rest of the session.
+  const [byEmployee, setByEmployee] = useState<AttendanceOverview | null>(null);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const accent = useAccent();
   const presentColor = accent;
   const absentColor = lightenHex(accent, 0.52);
@@ -162,17 +172,38 @@ export function AttendanceOverviewChart({ overview }: { overview?: AttendanceOve
   // Defaulted rather than required: a client holding an older cached payload
   // has no attendanceOverview, and one missing field must not take the whole
   // dashboard down with it.
-  const departments = overview?.departments ?? [];
-  const units = overview?.units ?? [];
+  // A ref, not the loading flag, guards against a second request. Putting
+  // `loadingEmployees` in the dependency array made setting it re-run the
+  // effect, whose cleanup then cancelled the very request it had just started
+  // — so the picker sat on "Loading…" forever.
+  const employeeFetchStarted = useRef(false);
+
+  useEffect(() => {
+    if (dimension !== 'employee' || employeeFetchStarted.current) return;
+    employeeFetchStarted.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingEmployees(true);
+    fetch('/api/dashboard/attendance-overview?groupBy=employee')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => { if (json) setByEmployee(json); })
+      .catch(() => { employeeFetchStarted.current = false; })
+      .finally(() => setLoadingEmployees(false));
+  }, [dimension]);
+
+  const active = dimension === 'employee' ? byEmployee : overview;
+  const departments = active?.departments ?? overview?.departments ?? [];
+  const units = active?.units ?? overview?.units ?? [];
+  const employees = byEmployee?.employees ?? [];
 
   const chartData = useMemo<ChartRow[]>(
-    () => rollUp(overview?.buckets ?? [], granularity, department, unit),
-    [overview, granularity, department, unit]
+    () => rollUp(active?.buckets ?? [], granularity, department, unit, employee),
+    [active, granularity, department, unit, employee]
   );
 
   const scopeLabel = [
     department === ALL ? 'All departments' : department,
     unit === ALL ? 'all units' : unit,
+    ...(employee === ALL ? [] : [employee]),
   ].join(' · ');
 
   // A symmetric domain keeps the zero line centred, so "mostly present" and
@@ -205,6 +236,40 @@ export function AttendanceOverviewChart({ overview }: { overview?: AttendanceOve
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] p-0.5">
+            {(['department', 'unit', 'employee'] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => {
+                  setDimension(d);
+                  // The employee filter belongs to the employee row set only.
+                  if (d !== 'employee') setEmployee(ALL);
+                }}
+                className={`cursor-pointer rounded-md px-2.5 py-1.5 text-[11px] font-semibold capitalize transition-colors ${
+                  dimension === d
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+
+          {dimension === 'employee' && (
+            <select
+              value={employee}
+              onChange={(e) => setEmployee(e.target.value)}
+              aria-label="Filter attendance by employee"
+              disabled={loadingEmployees}
+              className="h-9 max-w-[220px] cursor-pointer rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 text-[11px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--primary)] disabled:opacity-50"
+            >
+              <option value={ALL}>{loadingEmployees ? 'Loading…' : 'All Employees'}</option>
+              {employees.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          )}
+
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
@@ -259,7 +324,14 @@ export function AttendanceOverviewChart({ overview }: { overview?: AttendanceOve
         </div>
       </div>
 
-      <div className="h-[340px] w-full">
+      {/* Shorter than a full-width chart would be: this card now shares its row
+          with the live gauge, so the two stay close in height. */}
+      {/* Height as an inline style, not an arbitrary Tailwind class:
+          ResponsiveContainer measures its parent, so if that utility is ever
+          missing from the generated CSS the container collapses to zero and
+          the chart silently draws nothing. A style attribute cannot be
+          purged. */}
+      <div className="w-full" style={{ height: 268 }}>
         {chartData.length === 0 ? (
           <div className="flex h-full items-center justify-center rounded-xl border border-dashed px-4 text-center text-[12.5px]"
                style={{ borderColor: 'var(--border-main)', color: 'var(--text-muted)' }}>

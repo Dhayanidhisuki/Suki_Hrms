@@ -11,7 +11,9 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 
 export async function GET(request: NextRequest) {
-  const permErr = await checkSpecificPermission(request, 'employees.view');
+  // 'employee.view' — singular. The permission table has no 'employees.view',
+  // so the plural spelling 403'd this report for every role.
+  const permErr = await checkSpecificPermission(request, 'employee.view');
   if (permErr) return permErr;
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;

@@ -10,8 +10,7 @@ import {
   PageHeader,
   SearchableSelect,
   StatusBadge,
-  type Column,
-} from '@/components/ui';
+  type Column, useConfirm } from '@/components/ui';
 import { payableStatuses, FNF_STATUS_TONE } from '@/lib/fnf/workflow';
 import FnFOverview from '@/components/fnf/FnFOverview';
 import { formatInr } from '@/lib/fnf/presentation';
@@ -87,12 +86,21 @@ function money(v: string | number | null | undefined) {
   return formatInr(v);
 }
 
-function promptText(message: string): string | null {
-  const v = window.prompt(message);
-  return v == null ? null : v.trim();
-}
-
 export default function FnFPage() {
+  const { prompt } = useConfirm();
+  /**
+   * Was a module-level window.prompt wrapper. The overlay is a hook, so it
+   * lives in the component now; the signature stays the same apart from
+   * being awaited, which every caller already sits inside an async handler
+   * to do.
+   */
+  const promptText = useCallback(
+    async (message: string) => {
+      const v = await prompt({ message, placeholder: 'Type here', required: true });
+      return v == null ? null : v.trim();
+    },
+    [prompt]
+  );
   const [records, setRecords] = useState<FnFSettlement[]>([]);
   const [eligible, setEligible] = useState<EligibleExit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -333,7 +341,7 @@ export default function FnFPage() {
                         noticeWaivedDays: Number(waived) || 0,
                       };
                       if (selected.exitInterview.clearanceStatus !== 'CLEARED') {
-                        const remark = promptText('Clearance incomplete. Override remark (required):');
+                        const remark = await promptText('Clearance incomplete. Override remark (required):');
                         if (!remark) return;
                         payload.clearanceOverrideRemark = remark;
                       }
@@ -348,7 +356,7 @@ export default function FnFPage() {
                       size="sm"
                       variant="secondary"
                       onClick={async () => {
-                        const remark = promptText('Override remark (required):');
+                        const remark = await promptText('Override remark (required):');
                         if (!remark) return;
                         const res = await fetch(`/api/payroll/fnf/${selected.id}`, {
                           method: 'PATCH',
@@ -404,7 +412,7 @@ export default function FnFPage() {
                     size="sm"
                     variant="danger"
                     onClick={async () => {
-                      const reason = promptText('Rejection reason:');
+                      const reason = await promptText('Rejection reason:');
                       if (!reason) return;
                       const j = await postAction(`/api/payroll/fnf/${selected.id}/reject`, { rejectionReason: reason });
                       if (j) await refreshSelected(selected.id);
@@ -419,7 +427,7 @@ export default function FnFPage() {
                   size="sm"
                   variant="danger"
                   onClick={async () => {
-                    const reason = promptText('Rejection reason:');
+                    const reason = await promptText('Rejection reason:');
                     if (!reason) return;
                     const j = await postAction(`/api/payroll/fnf/${selected.id}/reject`, { rejectionReason: reason });
                     if (j) await refreshSelected(selected.id);
@@ -444,7 +452,7 @@ export default function FnFPage() {
                     size="sm"
                     variant="danger"
                     onClick={async () => {
-                      const reason = promptText('Rejection reason:');
+                      const reason = await promptText('Rejection reason:');
                       if (!reason) return;
                       const j = await postAction(`/api/payroll/fnf/${selected.id}/reject`, { rejectionReason: reason });
                       if (j) await refreshSelected(selected.id);
@@ -470,7 +478,7 @@ export default function FnFPage() {
                 <Button
                   size="sm"
                   onClick={async () => {
-                    const ref = promptText('Payment reference (UTR / cheque):');
+                    const ref = await promptText('Payment reference (UTR / cheque):');
                     if (ref == null) return;
                     const j = await postAction(`/api/payroll/fnf/${selected.id}/mark-paid`, {
                       paymentReference: ref || undefined,
@@ -498,7 +506,7 @@ export default function FnFPage() {
                   size="sm"
                   variant="ghost"
                   onClick={async () => {
-                    const reason = promptText('Hold reason:');
+                    const reason = await promptText('Hold reason:');
                     if (!reason) return;
                     const j = await postAction(`/api/payroll/fnf/${selected.id}/hold`, { reason });
                     if (j) await refreshSelected(selected.id);
@@ -512,7 +520,7 @@ export default function FnFPage() {
                   size="sm"
                   variant="ghost"
                   onClick={async () => {
-                    const remark = promptText('Reopen remark:');
+                    const remark = await promptText('Reopen remark:');
                     if (!remark) return;
                     const j = await postAction(`/api/payroll/fnf/${selected.id}/reopen`, { remark });
                     if (j) await refreshSelected(selected.id);
@@ -526,7 +534,7 @@ export default function FnFPage() {
                   size="sm"
                   variant="danger"
                   onClick={async () => {
-                    const reason = promptText('Cancel reason:');
+                    const reason = await promptText('Cancel reason:');
                     if (!reason) return;
                     const j = await postAction(`/api/payroll/fnf/${selected.id}/cancel`, { reason });
                     if (j) await refreshSelected(selected.id);

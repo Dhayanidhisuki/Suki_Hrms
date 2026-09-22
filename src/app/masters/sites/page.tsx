@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption, StatusPillTabs } from '@/components/ui';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface AuthMe {
@@ -55,6 +55,9 @@ export default function SitesPage() {
   const [records, setRecords] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Server-side: the list is paginated, so a client-side filter would only
+  // hide rows on the current page and misreport the total.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [modalOpen, setModalOpen] = useState(false);
@@ -116,7 +119,12 @@ export default function SitesPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(status ? { status } : {}),
+      });
       const res = await fetch(`/api/masters/sites?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
@@ -127,7 +135,7 @@ export default function SitesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -232,6 +240,31 @@ export default function SitesPage() {
           + Add Site
         </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+
+        <StatusPillTabs
+
+          items={[
+
+            { value: '', label: 'All' },
+
+            { value: 'active', label: 'Active', tone: 'success' },
+
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+
+          ]}
+
+          value={status}
+
+          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+
+          idPrefix="sites-status"
+
+        />
+
+      </div>
+
 
       <DataTable
         columns={columns}

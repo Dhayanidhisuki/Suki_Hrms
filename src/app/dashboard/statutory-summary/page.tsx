@@ -1,63 +1,228 @@
 /**
  * Dashboard — Statutory Summary
  *
- * Shows PF, ESI, PT, TDS, LWF totals from the latest payroll run.
+ * The employer's statutory liability for one payroll run, read from
+ * GET /api/reports/payroll-summary. Employee and employer shares are kept
+ * apart throughout: only their sum is remitted, but only the employer share is
+ * a cost to the company, and collapsing them hides which is which.
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { KPIGrid, KPICard, Spinner } from '@/components/ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Landmark, PiggyBank, ReceiptIndianRupee, ShieldPlus } from 'lucide-react';
+import { PageHeader, Spinner } from '@/components/ui';
+import {
+  ReportChartCard,
+  ReportDonutChart,
+  ReportStackedBarChart,
+} from '@/components/ui/ReportCharts';
+import { ModuleKpiRow } from '@/components/ui/ModuleKpiRow';
+import {
+  MONTH_NAMES,
+  inr,
+  inrShort,
+  type PayrollSummaryReport,
+} from '@/lib/payrollSummaryTypes';
 
-interface StatData {
-  pfEmployee: number; pfEmployer: number;
-  esiEmployee: number; esiEmployer: number;
-  professionalTax: number; tds: number; lwf: number;
-}
+const EMPLOYEE_COLOR = '#6d4aff';
+const EMPLOYER_COLOR = '#a3e635';
 
-export default function StatutorySummaryPage() {
-  const [data, setData] = useState<StatData | null>(null);
+export default function StatutorySummaryDashboardPage() {
+  const now = useMemo(() => new Date(), []);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [data, setData] = useState<PayrollSummaryReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const now = new Date();
-      const res = await fetch(`/api/reports/payroll-summary?year=${now.getFullYear()}&month=${now.getMonth() + 1}`);
-      if (!res.ok) { setData(null); return; }
-      const json = await res.json();
-      const t = json.totals ?? {};
-      setData({
-        pfEmployee: t.pfEmployee ?? 0, pfEmployer: t.pfEmployer ?? 0,
-        esiEmployee: t.esiEmployee ?? 0, esiEmployer: t.esiEmployer ?? 0,
-        professionalTax: t.professionalTax ?? 0, tds: t.tds ?? 0, lwf: t.lwfAmount ?? 0,
-      });
-    } catch {} finally { setLoading(false); }
-  }, []);
+      const res = await fetch(`/api/reports/payroll-summary?year=${year}&month=${month}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Request failed (${res.status})`);
+      }
+      setData(await res.json());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load statutory summary');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    // The fetch flips `loading` on entry, which is the point: that state is
+    // what drives the spinner.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData();
+  }, [fetchData]);
 
-  const fmt = (v: number) => `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const periodPicker = (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={month}
+        onChange={(e) => setMonth(Number(e.target.value))}
+        aria-label="Month"
+        className="h-9 cursor-pointer rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 text-[12px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--primary)]"
+      >
+        {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+      </select>
+      <select
+        value={year}
+        onChange={(e) => setYear(Number(e.target.value))}
+        aria-label="Year"
+        className="h-9 cursor-pointer rounded-lg border border-[var(--border-main)] bg-[var(--bg-subtle)] px-3 text-[12px] font-semibold text-[var(--text-secondary)] outline-none focus:border-[var(--primary)]"
+      >
+        {[0, 1, 2, 3].map((back) => {
+          const y = now.getFullYear() - back;
+          return <option key={y} value={y}>{y}</option>;
+        })}
+      </select>
+    </div>
+  );
+
+  const t = data?.totals;
+
+  const heads = t
+    ? [
+        { head: 'Provident Fund', employee: t.pfEmployee, employer: t.pfEmployer },
+        { head: 'ESI', employee: t.esiEmployee, employer: t.esiEmployer },
+        { head: 'Professional Tax', employee: t.professionalTax, employer: 0 },
+        { head: 'TDS', employee: t.tds, employer: 0 },
+        { head: 'LWF', employee: t.lwfAmount, employer: 0 },
+      ]
+    : [];
+
+  const employeeTotal = heads.reduce((s, h) => s + h.employee, 0);
+  const employerTotal = heads.reduce((s, h) => s + h.employer, 0);
+  const grandTotal = employeeTotal + employerTotal;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Statutory Summary</h1>
-      {loading ? <Spinner /> : data ? (
+      <PageHeader
+        title="Statutory Summary"
+        description={`${MONTH_NAMES[month - 1]} ${year} · payable to authorities`}
+        eyebrow="Dashboard"
+        actions={periodPicker}
+      />
+
+      {loading ? (
+        <div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>
+      ) : error || !data || !t ? (
+        <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-6">
+          <p className="text-sm text-[var(--text-muted)]">
+            {error ?? 'No payroll run for this period.'}
+          </p>
+        </div>
+      ) : (
         <>
-          <KPIGrid>
-            <KPICard label="PF (Employee)" value={fmt(data.pfEmployee)} tone="info" />
-            <KPICard label="PF (Employer)" value={fmt(data.pfEmployer)} tone="info" />
-            <KPICard label="ESI (Employee)" value={fmt(data.esiEmployee)} tone="info" />
-            <KPICard label="ESI (Employer)" value={fmt(data.esiEmployer)} tone="info" />
-          </KPIGrid>
-          <KPIGrid>
-            <KPICard label="Professional Tax" value={fmt(data.professionalTax)} tone="warning" />
-            <KPICard label="TDS" value={fmt(data.tds)} tone="danger" />
-            <KPICard label="LWF" value={fmt(data.lwf)} tone="info" />
-            <KPICard label="Total Statutory" value={fmt(data.pfEmployee + data.pfEmployer + data.esiEmployee + data.esiEmployer + data.professionalTax + data.tds + data.lwf)} tone="success" />
-          </KPIGrid>
+          <ModuleKpiRow
+            className="mb-0"
+            items={[
+              {
+                id: 'total',
+                label: 'Total Remittance',
+                value: inrShort(grandTotal),
+                icon: Landmark,
+                subtext: `Run #${data.run.id} · ${data.run.status}`,
+              },
+              {
+                id: 'pf',
+                label: 'Provident Fund',
+                value: inrShort(t.pfEmployee + t.pfEmployer),
+                icon: PiggyBank,
+                subtext: `${inrShort(t.pfEmployee)} employee · ${inrShort(t.pfEmployer)} employer`,
+              },
+              {
+                id: 'esi',
+                label: 'ESI',
+                value: inrShort(t.esiEmployee + t.esiEmployer),
+                icon: ShieldPlus,
+                subtext: `${inrShort(t.esiEmployee)} employee · ${inrShort(t.esiEmployer)} employer`,
+              },
+              {
+                id: 'tax',
+                label: 'PT + TDS',
+                value: inrShort(t.professionalTax + t.tds),
+                icon: ReceiptIndianRupee,
+                subtext: `${inrShort(t.professionalTax)} PT · ${inrShort(t.tds)} TDS`,
+              },
+            ]}
+          />
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <ReportChartCard
+              title="Employee vs Employer Share"
+              subtitle="Stacked per statutory head"
+              className="mb-0"
+              height={300}
+            >
+              <ReportStackedBarChart
+                data={heads}
+                xKey="head"
+                series={[
+                  { key: 'employee', name: 'Employee', color: EMPLOYEE_COLOR },
+                  { key: 'employer', name: 'Employer', color: EMPLOYER_COLOR },
+                ]}
+              />
+            </ReportChartCard>
+
+            <ReportChartCard
+              title="Share of Total"
+              subtitle="Who bears the liability"
+              className="mb-0"
+              height={300}
+            >
+              <ReportDonutChart
+                data={[
+                  { name: 'Employee', value: Math.round(employeeTotal), color: EMPLOYEE_COLOR },
+                  { name: 'Employer', value: Math.round(employerTotal), color: EMPLOYER_COLOR },
+                ]}
+                centerLabel={inrShort(grandTotal)}
+                centerSubtext="remittance"
+                showBadges={false}
+              />
+            </ReportChartCard>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-5">
+            <h2 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">Statutory Heads</h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border-main)] bg-[var(--bg-subtle)]">
+                  <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Head</th>
+                  {['Employee', 'Employer', 'Total'].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-main)]">
+                {heads.map((h) => (
+                  <tr key={h.head} className="transition-colors hover:bg-[var(--bg-hover)]">
+                    <td className="px-3 py-2.5 text-xs text-[var(--text-secondary)]">{h.head}</td>
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-primary)]">{inr(h.employee)}</td>
+                    {/* An em dash, not ₹0: these heads have no employer share at all. */}
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-primary)]">
+                      {h.employer > 0 ? inr(h.employer) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs font-semibold tabular-nums text-[var(--text-primary)]">{inr(h.employee + h.employer)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="px-3 pt-3 text-xs font-bold text-[var(--text-primary)]">Total</td>
+                  <td className="px-3 pt-3 text-right text-xs font-bold tabular-nums text-[var(--text-primary)]">{inr(employeeTotal)}</td>
+                  <td className="px-3 pt-3 text-right text-xs font-bold tabular-nums text-[var(--text-primary)]">{inr(employerTotal)}</td>
+                  <td className="px-3 pt-3 text-right text-xs font-bold tabular-nums text-[var(--text-primary)]">{inr(grandTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </>
-      ) : <div className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No payroll data for the current month.</div>}
+      )}
     </div>
   );
 }

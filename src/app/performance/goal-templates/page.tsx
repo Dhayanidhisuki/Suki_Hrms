@@ -8,11 +8,11 @@
 
 'use client';
 
+import { Eye, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, ConfirmDialog, DataTable, PageHeader, SectionCard, Spinner, StatusBadge,
-  type Column, type BadgeTone,
-} from '@/components/ui';
+  type Column, type BadgeTone, RowAction } from '@/components/ui';
 import WeightageBuilder, { type BuilderKra, type MasterKpi, type MasterKra } from '@/components/performance/WeightageBuilder';
 
 interface TemplateKpi {
@@ -359,8 +359,12 @@ export default function GoalTemplatesPage() {
           }
           renderRowActions={(row) => (
             <div className="flex flex-wrap gap-1">
-              <Button variant="ghost" size="xs" onClick={() => void open(row, 'view')}>View</Button>
-              <Button variant="ghost" size="xs" onClick={() => void open(row, 'edit')}>Edit</Button>
+              <RowAction label="View" onClick={() => void open(row, 'view')}>
+                <Eye className="h-3.5 w-3.5" />
+              </RowAction>
+              <RowAction label="Edit" onClick={() => void open(row, 'edit')}>
+                <Pencil className="h-3.5 w-3.5" />
+              </RowAction>
               <Button variant="ghost" size="xs" onClick={() => void clone(row)}>Clone</Button>
               {row.status !== 'INACTIVE' && (
                 <Button variant="ghost" size="xs" onClick={() => setDeactivateId(row.id)}>Deactivate</Button>
