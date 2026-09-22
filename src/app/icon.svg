@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#071853"/>
+  <g transform="translate(6.265 4) scale(0.04486)">
+    <path d="M140.132 0L0 172.743V535L217 267.5H140.132V0Z" fill="url(#hrmsIconGradL)"/>
+    <path d="M293.868 535L434 362.257V0L217 267.5H293.868V535Z" fill="url(#hrmsIconGradR)"/>
+  </g>
+  <defs>
+    <linearGradient id="hrmsIconGradL" x1="393.865" y1="268.339" x2="5.442" y2="268.339" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="0.2" stop-color="#6CD3FE"/>
+      <stop offset="0.35" stop-color="#2090FF"/>
+      <stop offset="0.65" stop-color="#1A3B8F"/>
+      <stop offset="1" stop-color="#071853"/>
+    </linearGradient>
+    <linearGradient id="hrmsIconGradR" x1="126.527" y1="268.339" x2="563.928" y2="268.339" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D9D9D9"/>
+      <stop offset="0.414" stop-color="#6CD3FE"/>
+      <stop offset="0.83" stop-color="#1F87F4"/>
+      <stop offset="0.85" stop-color="#2090FF"/>
+      <stop offset="0.857" stop-color="#1A3B8F"/>
+      <stop offset="1" stop-color="#071853"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -254,7 +254,7 @@ function PortalInner() {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <BrandLogo size="sm" plate />
+              <BrandLogo size="sm" className="text-[var(--text-primary)]" />
               <h1 className="text-lg font-semibold">Candidate Portal</h1>
             </div>
             <div className="text-right">

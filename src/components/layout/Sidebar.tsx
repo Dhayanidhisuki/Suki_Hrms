@@ -333,7 +333,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
           >
             <BrandLogo
               variant={collapsed ? "mark" : "full"}
-              className={collapsed ? undefined : "w-full justify-center"}
+              className={collapsed ? "text-white" : "w-full justify-center text-white"}
             />
           </Link>
         </div>

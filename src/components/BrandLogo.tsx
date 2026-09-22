@@ -1,12 +1,16 @@
 "use client";
 
-import { useTheme } from "@/contexts/ThemeContext";
-import { THEMES } from "@/lib/themes";
+import { SukiHrmsWordmark } from "@/components/ui/SukiHrmsWordmark";
 
 interface BrandLogoProps {
   variant?: "full" | "mark";
   size?: "sm" | "md" | "lg" | "xl";
-  /** Black rounded plate so the white “SUKI” type stays visible on light surfaces. */
+  /**
+   * Black rounded plate. No longer needed — the inline wordmark reads on any
+   * surface — and kept only so existing callers stay valid.
+   *
+   * @deprecated
+   */
   plate?: boolean;
   className?: string;
 }
@@ -18,48 +22,51 @@ const SIZE_CLASS = {
   xl: "h-20 w-auto",
 } as const;
 
-/** Theme-aware Suki HRMS wordmark. Uses a real img so the SVG always paints. */
+/**
+ * Suki HRMS wordmark.
+ *
+ * Draws the inline SVG rather than an <img> of /branding/suki-hrms-*.svg: those
+ * files paint "SUKI" solid white for a black plate, so an image of them needs a
+ * dark box behind it wherever it goes. Inline, the chevrons take the live
+ * theme's accent and the word takes the surrounding text colour, so the logo
+ * works on a light login card, a dark rail and a themed dialog alike.
+ *
+ * On a dark surface, give it a light text colour (e.g. `text-white`).
+ */
 export function BrandLogo({
   variant = "full",
   size = "md",
   plate = false,
   className = "",
 }: BrandLogoProps) {
-  const { theme } = useTheme();
-  const src = THEMES[theme].logo;
-
-  const img = (
-    <img
-      src={src}
-      alt="Suki HRMS"
-      draggable={false}
-      className={
-        variant === "mark"
-          ? "h-10 w-auto max-w-none select-none"
-          : `${SIZE_CLASS[size]} select-none`
-      }
+  const mark = (
+    <SukiHrmsWordmark
+      variant={variant}
+      className={variant === "mark" ? "h-10 w-auto" : SIZE_CLASS[size]}
     />
   );
 
   if (variant === "mark") {
     return (
-      <span className={`inline-flex h-10 w-10 shrink-0 overflow-hidden ${className}`.trim()}>
-        {img}
+      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center ${className}`.trim()}>
+        {mark}
       </span>
     );
   }
 
   if (plate) {
     return (
-      <span className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-black px-2.5 py-1.5 ${className}`.trim()}>
-        {img}
+      <span
+        className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-black px-2.5 py-1.5 text-white ${className}`.trim()}
+      >
+        {mark}
       </span>
     );
   }
 
   return className ? (
-    <span className={`inline-flex shrink-0 items-center justify-center ${className}`}>{img}</span>
+    <span className={`inline-flex shrink-0 items-center justify-center ${className}`}>{mark}</span>
   ) : (
-    img
+    mark
   );
 }

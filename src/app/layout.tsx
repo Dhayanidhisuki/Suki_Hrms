@@ -60,7 +60,6 @@ export default async function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: antiFoucScript }} />
-        <link rel="preload" as="image" href={`/branding/suki-hrms-${theme}.svg`} />
       </head>
       <body className="min-h-full font-sans">
         <ThemeProvider initialTheme={theme} initialMode={mode}>

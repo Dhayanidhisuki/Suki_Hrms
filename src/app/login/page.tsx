@@ -84,11 +84,9 @@ export default function LoginPage() {
           minHeight: 'calc(100vh - 5rem)',
         }}
       >
-        {/* Brand — black rounded badge with the themed SVG wordmark */}
+        {/* Brand — inline wordmark, accent from the live theme */}
         <div className="absolute left-8 top-6 z-20 sm:left-12">
-          <div className="inline-flex items-center rounded-[28px] bg-black px-5 py-3.5 shadow-md">
-            <BrandLogo size="xl" />
-          </div>
+          <BrandLogo size="xl" className="text-[var(--text-primary)]" />
         </div>
         {/* Floating disc near the brand */}
         <FloatingDisc className="absolute left-[32%] top-6 z-10 hidden h-20 w-20 lg:block" />
