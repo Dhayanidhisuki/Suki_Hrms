@@ -728,6 +728,12 @@ export const navigation: NavModule[] = [
         ],
       },
       {
+        label: "Performance",
+        items: [
+          { label: "Goal Assignment Coverage", short: "Goal Coverage", href: "/reports/performance/goal-coverage", ready: true },
+        ],
+      },
+      {
         label: "Statutory",
         items: [
           { label: "PF Report", short: "PF", href: "/reports/statutory/pf" },

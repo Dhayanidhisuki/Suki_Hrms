@@ -13,11 +13,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (postingIds.length) await prisma.jobPosting.deleteMany({ where: { id: { in: postingIds } } });
-  if (createdIds.length) {
-    await prisma.jobDescriptionVersion.deleteMany({ where: { jobDescriptionId: { in: createdIds } } });
-    await prisma.jobDescriptionTag.deleteMany({ where: { jobDescriptionId: { in: createdIds } } });
-    await prisma.jobDescription.deleteMany({ where: { id: { in: createdIds } } });
+  // A failed create pushes `undefined` (json.id of an error body), and Prisma
+  // rejects undefined inside an `in` array. That threw here, aborted the whole
+  // teardown, and left every JD this suite created behind — which then made
+  // the next run fail the duplicate check, which left more rows behind again.
+  // Filtering is what stops that feedback loop.
+  const ids = createdIds.filter((id): id is number => typeof id === 'number');
+  const postings = postingIds.filter((id): id is number => typeof id === 'number');
+  if (postings.length) await prisma.jobPosting.deleteMany({ where: { id: { in: postings } } });
+  if (ids.length) {
+    await prisma.jobDescriptionVersion.deleteMany({ where: { jobDescriptionId: { in: ids } } });
+    await prisma.jobDescriptionTag.deleteMany({ where: { jobDescriptionId: { in: ids } } });
+    await prisma.jobDescription.deleteMany({ where: { id: { in: ids } } });
   }
 });
 
@@ -35,6 +42,12 @@ describe('JD Master', () => {
           description: 'Role description for automated test.',
           status: 'Draft',
           tags: [' React ', 'NODE'],
+          // This test is about jdCode generation and tag normalisation, not
+          // the duplicate rule (that is the next test). requiredMasterIds()
+          // returns whichever department/designation is first in the database,
+          // shared with real data, so an Active JD may already exist on that
+          // pair and 409 the create. Acknowledging up front decouples them.
+          acknowledgeDuplicate: true,
         },
       })
     );
@@ -114,6 +127,7 @@ describe('JD Master', () => {
           title: 'Before edit',
           description: 'Original text',
           status: 'Draft',
+          acknowledgeDuplicate: true, // see the jdCode test — same decoupling
         },
       })
     );
@@ -232,6 +246,7 @@ describe('JD Master', () => {
     expect(json.failedRows).toHaveLength(1);
     const created = await prisma.jobDescription.findFirst({
       where: { title: 'Bulk JD', deletedAt: null },
+      orderBy: { id: 'desc' }, // the one this test just made, not an older namesake
       include: { tags: true },
     });
     expect(created).toBeTruthy();

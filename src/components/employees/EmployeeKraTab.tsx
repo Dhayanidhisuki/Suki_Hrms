@@ -20,6 +20,8 @@ interface GoalKpi {
   kpi: { code: string; name: string };
 }
 interface GoalKra {
+  kraCode?: string | null;
+  kraName?: string | null;
   id: number;
   weightage: string;
   kra: { code: string; name: string; category: string };
@@ -169,7 +171,7 @@ export default function EmployeeKraTab({ employeeId }: { employeeId: string | nu
                 {(row.kras ?? []).map((kra) => (
                   <div key={kra.id}>
                     <div className="mb-1 flex justify-between text-sm">
-                      <span className="font-medium">{kra.kra.code} — {kra.kra.name}</span>
+                      <span className="font-medium">{kra.kraCode ?? kra.kra.code} — {kra.kraName ?? kra.kra.name}</span>
                       <span className="tabular-nums" style={{ color: 'var(--foreground-muted)' }}>{Number(kra.weightage)}%</span>
                     </div>
                     <ul className="space-y-0.5 text-sm">
