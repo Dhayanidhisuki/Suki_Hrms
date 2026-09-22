@@ -10,7 +10,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { logActivity } from '@/lib/activity-log';
 import { fnfInclude } from '@/lib/fnf/include';
-import { queueStatuses } from '@/lib/fnf/workflow';
+import { payableStatuses, queueStatuses } from '@/lib/fnf/workflow';
 
 const createSchema = z.object({
   employeeId: z.coerce.number().int().positive().optional(),
@@ -30,7 +30,16 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get('q')?.trim();
 
   const where: Record<string, unknown> = { companyId: scope.companyId };
-  const queued = queue ? queueStatuses(queue) : null;
+  // The payable queue depends on the company's approval chain, so it cannot
+  // come from the static table — offering a settlement here that the bank
+  // file would refuse is how someone ends up chasing a payment that is still
+  // waiting on finance.
+  const config = await prisma.fullAndFinalConfig.findUnique({ where: { companyId: scope.companyId } });
+  const queued = queue === 'payable'
+    ? [...payableStatuses(config?.approvalStages)]
+    : queue
+      ? queueStatuses(queue)
+      : null;
   if (queued) where.status = { in: queued };
   else if (status) where.status = status;
   if (q) {
@@ -51,7 +60,10 @@ export async function GET(request: NextRequest) {
       orderBy: [{ createdAt: 'desc' }],
     });
 
-    return NextResponse.json({ data });
+    // The page needs the configured chain to know which actions to offer —
+    // it cannot read /api/masters/full-and-final-config, which sits behind
+    // masters permission a payroll user does not necessarily hold.
+    return NextResponse.json({ data, approvalStages: config?.approvalStages ?? 'HR_FINANCE' });
   } catch (err) {
     console.error('[GET /api/payroll/fnf]', err);
     return NextResponse.json(

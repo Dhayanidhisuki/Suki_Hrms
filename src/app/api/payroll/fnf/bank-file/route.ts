@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { payableStatuses } from '@/lib/fnf/workflow';
 
 function csvCell(v: string | number | null | undefined): string {
   const s = String(v ?? '');
@@ -20,10 +21,19 @@ export async function GET(request: NextRequest) {
     ? ids.split(',').map((n) => Number(n.trim())).filter((n) => Number.isFinite(n) && n > 0)
     : [];
 
+  // The payable statuses depend on the company's approval chain. This used to
+  // hardcode ['finance_verified', 'approved'], which under the default
+  // HR_FINANCE chain put settlements that finance had NOT yet verified into
+  // the file the bank pays from — the same control mark-paid enforces
+  // correctly. 'approved' is payable only when no finance stage is configured.
+  const config = await prisma.fullAndFinalConfig.findUnique({ where: { companyId: scope.companyId } });
   const where: Record<string, unknown> = {
     companyId: scope.companyId,
-    status: { in: ['finance_verified', 'approved'] },
-    netPayable: { not: 0 },
+    status: { in: [...payableStatuses(config?.approvalStages)] },
+    // netPayable is totalPayable - totalRecovery with no floor, so recoveries
+    // exceeding dues make it negative. That is money the employee owes the
+    // company, not a credit to push through the bank.
+    netPayable: { gt: 0 },
   };
   if (idList.length) where.id = { in: idList };
 

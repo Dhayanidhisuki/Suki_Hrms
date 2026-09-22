@@ -48,7 +48,9 @@ export async function POST(
     return rec;
   });
 
-  await emitFnfEvent(scope.companyId, next === 'pending_manager' ? 'FNF_SUBMITTED' : 'FNF_SUBMITTED', updated, {
+  // Both routes emit FNF_SUBMITTED: its recipient list already covers HR and
+  // the subject's L1 manager, so the manager queue needs no separate event.
+  await emitFnfEvent(scope.companyId, 'FNF_SUBMITTED', updated, {
     linkPath: '/approvals/payroll/full-and-final',
   });
   return NextResponse.json(updated);
