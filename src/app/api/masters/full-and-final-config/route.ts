@@ -27,6 +27,7 @@ const DEFAULTS = {
   includePt: true,
   clearanceRequired: true,
   approvalStages: 'HR_FINANCE',
+  enforceSegregationOfDuties: true,
   isActive: true,
 };
 

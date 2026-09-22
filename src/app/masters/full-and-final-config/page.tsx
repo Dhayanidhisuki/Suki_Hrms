@@ -127,6 +127,13 @@ const fields: FieldDef[] = [
     helpText: 'Payroll can override with a remark if clearance is incomplete',
   },
   {
+    name: 'enforceSegregationOfDuties',
+    label: 'Enforce segregation of duties',
+    type: 'checkbox',
+    defaultValue: true,
+    helpText: 'No one person can take two approval steps on the same settlement. Turn off only if payroll is too small to separate the roles.',
+  },
+  {
     name: 'approvalStages',
     label: 'Approval Chain',
     type: 'select',

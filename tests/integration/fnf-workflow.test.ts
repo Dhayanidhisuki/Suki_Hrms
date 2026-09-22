@@ -10,6 +10,7 @@ let companyId: number;
 let employeeId: number;
 let exitId: number;
 let settlementId: number;
+let priorSoD: boolean | null = null;
 
 beforeAll(async () => {
   const t = await testTenant();
@@ -42,6 +43,18 @@ beforeAll(async () => {
     },
   });
   employeeId = emp.id;
+  // This suite drives the whole chain as one admin, which segregation of
+  // duties now refuses by design. That control has its own suite
+  // (fnf-segregation.test.ts); here the subject is the status machine, so the
+  // switch is turned off for the tenant and restored in afterAll.
+  const cfg = await prisma.fullAndFinalConfig.findUnique({ where: { companyId } });
+  priorSoD = cfg?.enforceSegregationOfDuties ?? null;
+  await prisma.fullAndFinalConfig.upsert({
+    where: { companyId },
+    create: { companyId, enforceSegregationOfDuties: false },
+    update: { enforceSegregationOfDuties: false },
+  });
+
   const exit = await prisma.exitInterview.create({
     data: {
       employeeId,
@@ -55,6 +68,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await cleanupEmployee(employeeId, settlementId, exitId);
+  if (priorSoD !== null) {
+    await prisma.fullAndFinalConfig.updateMany({
+      where: { companyId },
+      data: { enforceSegregationOfDuties: priorSoD },
+    });
+  }
 });
 
 async function cleanupEmployee(empId?: number, fnfId?: number, exId?: number) {

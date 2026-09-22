@@ -569,6 +569,7 @@ export const fullAndFinalConfigSchema = z.object({
   includePt: z.boolean().default(true),
   clearanceRequired: z.boolean().default(true),
   approvalStages: z.enum(['HR', 'HR_FINANCE', 'MANAGER_HR_FINANCE']).default('HR_FINANCE'),
+  enforceSegregationOfDuties: z.boolean().default(true),
   isActive: z.boolean().default(true),
 });
 

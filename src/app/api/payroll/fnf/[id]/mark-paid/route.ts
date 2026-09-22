@@ -8,6 +8,7 @@ import { fnfInclude } from '@/lib/fnf/include';
 import { assertStatus, payableStatuses } from '@/lib/fnf/workflow';
 import { buildJournal } from '@/lib/fnfCalculation';
 import { emitFnfEvent } from '@/lib/fnf/notify';
+import { segregationConflict } from '@/lib/fnf/segregation';
 
 const bodySchema = z.object({
   paymentReference: z.string().max(100).optional(),
@@ -37,6 +38,8 @@ export async function POST(
   const allowed = payableStatuses(config?.approvalStages);
   const blocked = assertStatus(settlement.status, allowed, 'mark paid');
   if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
+  const sod = segregationConflict(settlement, userId, 'mark-paid', config?.enforceSegregationOfDuties !== false);
+  if (sod) return NextResponse.json({ error: sod }, { status: 403 });
 
   const journal = buildJournal(settlement);
 
@@ -47,6 +50,7 @@ export async function POST(
         status: 'paid',
         paymentDate: new Date(),
         paymentReference: parsed.data.paymentReference ?? null,
+        paidByUserId: Number.isFinite(userId) ? userId : null,
         journalJson: JSON.stringify(journal),
       },
       include: fnfInclude,
