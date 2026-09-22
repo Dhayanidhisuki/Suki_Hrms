@@ -395,18 +395,6 @@ export const navigation: NavModule[] = [
         ],
       },
       {
-        label: "Deductions",
-        items: [
-          { label: "Health Insurance", href: "/payroll/deductions/health-insurance" },
-          { label: "Loan Recovery", href: "/payroll/deductions/loan-recovery" },
-          { label: "Snacks Deduction", short: "Snacks", href: "/payroll/deductions/snacks" },
-          { label: "Mobile Deduction", short: "Mobile", href: "/payroll/deductions/mobile" },
-          { label: "Travel Deduction", short: "Travel", href: "/payroll/deductions/travel" },
-          { label: "Lunch Deduction", short: "Lunch", href: "/payroll/deductions/lunch" },
-          { label: "Other Deductions", short: "Others", href: "/payroll/deductions/other" },
-        ],
-      },
-      {
         label: "Outputs",
         items: [
           { label: "Payslip (Individual)", short: "Payslip", href: "/payroll/outputs/payslip", ready: true },
