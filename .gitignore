@@ -73,3 +73,6 @@ check-user21.js
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local logical data exports — never commit (contains employee data)
+db-export-*/
