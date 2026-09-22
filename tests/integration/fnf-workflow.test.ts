@@ -129,7 +129,11 @@ describe('F&F API workflow', () => {
     const done = await complete(req(`http://localhost/api/payroll/fnf/${settlementId}/complete`, { method: 'POST', auth }), ctx(settlementId));
     expect(done.status).toBe(200);
     expect((await done.json()).status).toBe('completed');
-  });
+    // Seven sequential route handlers against a remote SQL Server, each with
+    // its own permission check and transaction. It lands just past the 20s
+    // global timeout on a normal run, so it gets its own budget rather than
+    // slowing every other test's failure detection.
+  }, 60_000);
 
   it('cancels a pending draft and refuses cancel after submit', async () => {
     const emp2 = await prisma.employee.create({

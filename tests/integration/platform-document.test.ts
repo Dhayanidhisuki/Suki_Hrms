@@ -19,6 +19,7 @@ import {
   getDocument,
   listDocuments,
   rejectDocument,
+  requestResubmission,
   revokeVerification,
   runExpirySweep,
   uploadDocument,
@@ -297,7 +298,11 @@ describe('platform document service', () => {
     expect(history.map((d) => d.id)).toContain(panV1);
   });
 
-  it('reject path → Rejected → ReuploadRequired automatically; prior Verified version is unaffected', async () => {
+  // Rejection used to cascade straight to ReuploadRequired. The BRD makes
+  // "Request Resubmission with remarks" its own verdict, so rejectDocument now
+  // stops at Rejected and asking for a fresh copy is an explicit second
+  // action. This test asserts the current two-step shape.
+  it('reject path → Rejected, then an explicit resubmission request → ReuploadRequired; prior Verified version is unaffected', async () => {
     const v3 = await uploadDocument({
       companyId, documentTypeCode: 'PAN', ownerEntityType: 'EMPLOYEE', ownerEntityId: employeeId,
       file: { name: 'pan-v3.pdf', mimeType: 'application/pdf', bytes: Buffer.concat([PDF, Buffer.from('v3')]) }, actor: ownerActor(),
@@ -306,8 +311,14 @@ describe('platform document service', () => {
     await claimForVerification(companyId, v3.id, hrActor());
     await expectDocumentError(rejectDocument(companyId, v3.id, hrActor(), 'ILLEGIBLE', 'short'), 400);
     const rejected = await rejectDocument(companyId, v3.id, hrActor(), 'ILLEGIBLE', 'Scan is blurred, please re-upload');
-    expect(rejected.verificationStatus).toBe('ReuploadRequired');
+    expect(rejected.verificationStatus).toBe('Rejected');
     expect(rejected.rejectionReasonCode).toBe('ILLEGIBLE');
+
+    const resubmit = await requestResubmission(companyId, v3.id, hrActor(), 'Please upload a clearer scan');
+    expect(resubmit.verificationStatus).toBe('ReuploadRequired');
+    // The rejection reason survives the second verdict, for the audit trail.
+    expect(resubmit.rejectionReasonCode).toBe('ILLEGIBLE');
+
     expect((await getDocument(companyId, panV2)).verificationStatus).toBe('Verified');
 
     const actions = await prisma.auditLog.findMany({ where: { entityType: 'PlatformDocument', entityId: v3.id }, select: { action: true } });
