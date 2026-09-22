@@ -10,9 +10,11 @@
 import jwt from 'jsonwebtoken';
 
 const BASE = 'http://localhost:3000';
+try { process.loadEnvFile('.env'); } catch { /* .env optional if JWT_SECRET is set in the shell */ }
+const SECRET = process.env.JWT_SECRET ?? 'suki-hrms-super-secret-jwt-key';
 const TOKEN = jwt.sign(
   { userId: 1, companyId: 1, roleId: 6 },
-  'suki-hrms-local-auth-secret-2026-change-before-production',
+  SECRET,
   { expiresIn: '2h' }
 );
 const H = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
@@ -41,7 +43,8 @@ async function api(method, path, body) {
   return { status: res.status, json, text };
 }
 
-const schedDate = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+// Randomized far-future date so repeated runs don't collide on trainer/venue double-booking.
+const schedDate = new Date(Date.now() + (60 + Math.floor(Math.random() * 300)) * 86400000).toISOString().slice(0, 10);
 
 // ── 1. TNA ───────────────────────────────────────────────────────────────────
 const tna = await api('POST', '/training-needs', {
@@ -199,9 +202,15 @@ step('10. Effectiveness recorded', eff.status === 200 || eff.status === 201, `st
 
 const lvlAfter = await api('GET', `/skill-matrix?employeeId=${EMPLOYEE_ID}`);
 const compAfter = lvlAfter.json?.data?.find((r) => r.itemType !== 'SKILL' && r.competencyId === COMPETENCY_ID);
+// Promotion can't exceed the highest configured SkillLevel; at max the correct outcome is "unchanged".
+const lvls = await api('GET', '/skill-levels');
+const maxLevel = Math.max(0, ...(lvls.json?.data ?? []).map((l) => l.levelNumber ?? 0));
+const alreadyMax = (compBefore?.currentLevelNumber ?? 0) >= maxLevel && maxLevel > 0;
 step('10b. Competency level promoted',
-  (compAfter?.currentLevelNumber ?? 0) > (compBefore?.currentLevelNumber ?? 0),
-  `${compBefore?.currentLevelName ?? '—'} → ${compAfter?.currentLevelName ?? '—'}`);
+  alreadyMax
+    ? (compAfter?.currentLevelNumber ?? 0) === (compBefore?.currentLevelNumber ?? 0)
+    : (compAfter?.currentLevelNumber ?? 0) > (compBefore?.currentLevelNumber ?? 0),
+  `${compBefore?.currentLevelName ?? '—'} → ${compAfter?.currentLevelName ?? '—'}${alreadyMax ? ' (already at max)' : ''}`);
 
 // ── 11. Close schedule → history + certificate ───────────────────────────────
 const close = await api('POST', `/training-schedules/${schedId}/complete`, { status: 'COMPLETED' });

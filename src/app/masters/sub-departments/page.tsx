@@ -57,9 +57,13 @@ function SubDepartmentsPageInner() {
 
   useEffect(() => {
     fetch('/api/masters/departments?limit=100')
-      .then((r) => r.json())
-      .then((json: ApiResponse) => setDeptOptions(json.data.map((d) => ({ label: d.name, value: d.id }))));
-  }, []);
+      .then(async (r) => {
+        if (!r.ok) throw new Error('Failed to fetch departments');
+        const json: ApiResponse = await r.json();
+        setDeptOptions((json.data ?? []).map((d) => ({ label: d.name, value: d.id })));
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to fetch departments'));
+  }, [toast]);
 
   const fields: FieldDef[] = [
     { name: 'departmentId', label: 'Department', type: 'select', required: true, options: deptOptions },

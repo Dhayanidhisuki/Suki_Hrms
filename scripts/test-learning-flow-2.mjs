@@ -10,7 +10,8 @@
 import jwt from 'jsonwebtoken';
 
 const BASE = 'http://localhost:3000';
-const SECRET = 'suki-hrms-local-auth-secret-2026-change-before-production';
+try { process.loadEnvFile('.env'); } catch { /* .env optional if JWT_SECRET is set in the shell */ }
+const SECRET = process.env.JWT_SECRET ?? 'suki-hrms-super-secret-jwt-key';
 
 // Admin token (role 6) and an ESS employee token (userId 21 → employee 372 "Suresh").
 const ADMIN = jwt.sign({ userId: 1, companyId: 1, roleId: 6 }, SECRET, { expiresIn: '2h' });
