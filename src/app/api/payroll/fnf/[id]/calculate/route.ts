@@ -27,7 +27,14 @@ export async function POST(
   const settlementId = parseInt((await params).id);
   const userId = Number(request.headers.get('x-user-id'));
   const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));
-  const overrides = parsed.success ? parsed.data : {};
+  // This used to fall back to `{}` on a validation failure, so a bad value —
+  // negative notice days, an over-long override remark — was silently dropped
+  // and the settlement recalculated from stored values as though nothing had
+  // been sent. An empty body still parses cleanly; every field is optional.
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const overrides = parsed.data;
 
   const settlement = await prisma.fnFSettlement.findFirst({
     where: { id: settlementId, companyId: scope.companyId },

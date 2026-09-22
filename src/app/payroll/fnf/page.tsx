@@ -12,7 +12,7 @@ import {
   StatusBadge,
   type Column,
 } from '@/components/ui';
-import { FNF_STATUS_TONE } from '@/lib/fnf/workflow';
+import { payableStatuses, FNF_STATUS_TONE } from '@/lib/fnf/workflow';
 import FnFOverview from '@/components/fnf/FnFOverview';
 import { formatInr } from '@/lib/fnf/presentation';
 
@@ -103,6 +103,10 @@ export default function FnFPage() {
   const [served, setServed] = useState('0');
   const [waived, setWaived] = useState('0');
   const [editLines, setEditLines] = useState<FnFLine[]>([]);
+  // The company's configured approval chain, from the list endpoint. Under
+  // HR_FINANCE an approved settlement is NOT yet payable, and offering the
+  // button anyway just earns the user a 409 from mark-paid.
+  const [approvalStages, setApprovalStages] = useState<string>('HR_FINANCE');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -124,6 +128,7 @@ export default function FnFPage() {
         lines: s.lines ?? [],
       }));
       setRecords(mapped);
+      if (json.approvalStages) setApprovalStages(json.approvalStages);
       if (eligRes.ok) {
         const elig = await eligRes.json();
         setEligible(elig.data ?? []);
@@ -461,7 +466,7 @@ export default function FnFPage() {
                   Finance verify
                 </Button>
               )}
-              {(selected.status === 'finance_verified' || selected.status === 'approved') && (
+              {payableStatuses(approvalStages).has(selected.status) && (
                 <Button
                   size="sm"
                   onClick={async () => {
