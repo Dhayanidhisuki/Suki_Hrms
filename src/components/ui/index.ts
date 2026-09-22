@@ -18,6 +18,7 @@ export { default as StatusBadge, statusTone } from './StatusBadge';
 export type { BadgeTone } from './StatusBadge';
 export { default as SectionCard } from './SectionCard';
 export { default as Tabs } from './Tabs';
+export { MiniBarChart, DonutChart } from './Charts';
 export type { TabDef } from './Tabs';
 export { default as EmptyState } from './EmptyState';
 export { default as Button } from './Button';

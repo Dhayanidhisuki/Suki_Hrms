@@ -14,7 +14,7 @@ import { randomUUID } from 'crypto';
 
 const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
 
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.webp', '.doc', '.docx']);
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.webp', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.csv', '.txt', '.mp4', '.mov', '.webm', '.zip']);
 
 /**
  * Used both for the subdir passed to saveUploadedFile (no dots expected)
