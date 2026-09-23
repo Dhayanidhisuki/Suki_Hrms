@@ -20,7 +20,7 @@ import { DataTable, type Column } from '@/components/ui';
 
 interface RunLine {
   id: number;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
 }
 interface RunResponse {
   id: number;
@@ -98,7 +98,7 @@ function BulkAdhocContent() {
       return;
     }
 
-    const lineByEmployeeCode = new Map(run.lines.map((l) => [l.employee.employeeCode, l]));
+    const lineByEmployeeCode = new Map(run.lines.map((l) => [l.employee.oldEmployeeCode ?? '', l]));
     const componentByCode = new Map(components.map((c) => [c.code, c]));
 
     const built: UploadRow[] = parsed.map((r, i) => {
@@ -129,7 +129,7 @@ function BulkAdhocContent() {
 
   const runUpload = async () => {
     if (!run) return;
-    const lineByEmployeeCode = new Map(run.lines.map((l) => [l.employee.employeeCode, l]));
+    const lineByEmployeeCode = new Map(run.lines.map((l) => [l.employee.oldEmployeeCode ?? '', l]));
     const componentByCode = new Map(components.map((c) => [c.code, c]));
     setRunning(true);
     try {

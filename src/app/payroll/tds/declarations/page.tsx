@@ -21,7 +21,7 @@ interface Declaration {
   rejectionReason: string | null;
   remarks: string | null;
   createdAt: string;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   proofs: Array<{ id: number; section: string; amount: string; status: string }>;
   [key: string]: unknown;
 }
@@ -54,7 +54,7 @@ export default function TdsDeclarationsPage() {
       const json = await res.json();
       const mapped = (json.data ?? []).map((d: Record<string, unknown>) => ({
         ...d,
-        employeeCode: (d.employee as Record<string, unknown>).employeeCode as string,
+        employeeCode: ((d.employee as Record<string, unknown>).oldEmployeeCode as string | null) ?? '',
         name: `${(d.employee as Record<string, unknown>).firstName} ${(d.employee as Record<string, unknown>).lastName}`.trim(),
         proofs: (d.proofs as Array<{ id: number; section: string; amount: string; status: string }>) ?? [],
       })) as Declaration[];

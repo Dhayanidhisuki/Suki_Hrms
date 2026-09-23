@@ -13,7 +13,7 @@ import { DataTable, ConfirmDialog, SearchableSelect, useToast, type Column } fro
 
 interface EmployeeOption {
   id: number;
-  employeeCode: string;
+  oldEmployeeCode: string | null;
   firstName: string;
   lastName: string;
 }
@@ -35,7 +35,7 @@ interface CurrentSalary {
 interface RevisionRow {
   id: number;
   employeeId: number;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   revisionType: string;
   revisionMethod: string;
   currentGross: string;
@@ -286,7 +286,7 @@ function AddRevisionModal({
             <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Employee <span className="text-red-500">*</span></label>
             <SearchableSelect
               value={employeeId}
-              options={employees.map((e) => ({ label: `${e.employeeCode} — ${e.firstName} ${e.lastName}`, value: e.id }))}
+              options={employees.map((e) => ({ label: e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`, value: e.id }))}
               onChange={(v) => setEmployeeId(v === '' ? '' : Number(v))}
             />
           </div>
@@ -606,7 +606,7 @@ export default function SalaryRevisionPage() {
   };
 
   const columns: Column<RevisionRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'revisionType', label: 'Type' },
     { key: 'currentGross', label: 'Current Gross' },
     { key: 'revisedGross', label: 'Revised Gross' },

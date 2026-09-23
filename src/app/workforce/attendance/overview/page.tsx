@@ -20,6 +20,7 @@ import { SearchableSelect, useToast } from '@/components/ui';
 interface EmployeeOption {
   id: number;
   employeeCode: string;
+  oldEmployeeCode: string | null;
   firstName: string;
   lastName: string;
 }
@@ -264,7 +265,7 @@ function OverviewInner() {
     fetch('/api/employees?limit=500')
       .then((r) => r.json())
       .then((json: { data: EmployeeOption[] }) => {
-        const list = (json.data ?? []).slice().sort((a, b) => a.employeeCode.localeCompare(b.employeeCode, undefined, { numeric: true }));
+        const list = (json.data ?? []).slice().sort((a, b) => (a.oldEmployeeCode ?? '').localeCompare(b.oldEmployeeCode ?? '', undefined, { numeric: true }));
         setEmployees(list);
       })
       .catch(() => {});
@@ -294,7 +295,7 @@ function OverviewInner() {
   }, [fetchData]);
 
   const employeeOptions = useMemo(
-    () => employees.map((e) => ({ label: `${e.employeeCode} — ${e.firstName} ${e.lastName}`.trim(), value: e.id })),
+    () => employees.map((e) => ({ label: (e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`).trim(), value: e.id })),
     [employees]
   );
 

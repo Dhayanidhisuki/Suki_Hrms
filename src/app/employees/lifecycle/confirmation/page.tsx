@@ -320,7 +320,7 @@ export default function ConfirmationPendingPage() {
 
   const columns: Column<PendingConfirmation>[] = [
     { key: 'sno', label: 'S.No', render: (r) => filtered.indexOf(r) + 1 },
-    { key: 'oldEmployeeCode', label: 'Employee Code', className: 'font-medium', render: (r) => r.oldEmployeeCode ?? r.employeeCode },
+    { key: 'oldEmployeeCode', label: 'Employee Code', className: 'font-medium', render: (r) => r.oldEmployeeCode ?? '—' },
     {
       key: 'name',
       label: 'Employee Name',

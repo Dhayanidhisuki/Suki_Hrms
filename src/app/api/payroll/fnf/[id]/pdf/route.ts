@@ -15,14 +15,14 @@ export async function GET(
   const settlementId = Number((await params).id);
   const settlement = await prisma.fnFSettlement.findFirst({
     where: { id: settlementId, companyId: scope.companyId },
-    include: { employee: { select: { employeeCode: true } } },
+    include: { employee: { select: { oldEmployeeCode: true } } },
   });
   if (!settlement) return NextResponse.json({ error: 'Settlement not found' }, { status: 404 });
   const pdf = await generateFnfStatementPdf(settlementId);
   return new NextResponse(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="FNF-${settlement.employee.employeeCode}.pdf"`,
+      'Content-Disposition': `attachment; filename="FNF-${settlement.employee.oldEmployeeCode ?? settlementId}.pdf"`,
     },
   });
 }

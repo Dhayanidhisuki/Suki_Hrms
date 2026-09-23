@@ -99,7 +99,7 @@ export default function PermissionPolicyPage() {
   };
 
   const columns: Column<UsageRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employeeCode} — ${r.employeeName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employeeCode ? `${r.employeeCode} — ${r.employeeName}` : r.employeeName },
     { key: 'department', label: 'Department', render: (r) => r.department ?? '—' },
     { key: 'approvedHours', label: 'Approved', render: (r) => hrs(r.approvedHours) },
     { key: 'pendingHours', label: 'Awaiting', render: (r) => hrs(r.pendingHours) },

@@ -114,7 +114,7 @@ async function findExistingPerson(companyId: number, p: FromCandidatePayload) {
   if (p.personUid) {
     const byUid = await prisma.employee.findFirst({
       where: { companyId, personUid: p.personUid, deletedAt: null },
-      select: { id: true, employeeCode: true, firstName: true, lastName: true, lifecycleState: true, status: true, personUid: true },
+      select: { id: true, employeeCode: true, oldEmployeeCode: true, firstName: true, lastName: true, lifecycleState: true, status: true, personUid: true },
     });
     if (byUid) return byUid;
   }
@@ -123,7 +123,7 @@ async function findExistingPerson(companyId: number, p: FromCandidatePayload) {
     select: {
       panNumberEnc: true,
       aadhaarNumberEnc: true,
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, lifecycleState: true, status: true, personUid: true } },
+      employee: { select: { id: true, employeeCode: true, oldEmployeeCode: true, firstName: true, lastName: true, lifecycleState: true, status: true, personUid: true } },
     },
   });
   for (const row of kycRows) {
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const separated = existing.lifecycleState === 'SEPARATED' || (!existing.lifecycleState && (existing.status === 'terminated' || existing.status === 'resigned'));
     if (!separated) {
       return NextResponse.json(
-        { error: `This person is already employed under employee code ${existing.employeeCode}`, employeeCode: existing.employeeCode },
+        { error: `This person is already employed under employee code ${existing.oldEmployeeCode ?? existing.employeeCode}`, employeeCode: existing.oldEmployeeCode ?? existing.employeeCode },
         { status: 409 }
       );
     }
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           error: 'rehire-candidate',
           message: 'A separated employee matches this person — resend with confirmRehire=true to reinstate their original code',
-          rehireCandidate: { employeeId: existing.id, employeeCode: existing.employeeCode, name: `${existing.firstName} ${existing.lastName}` },
+          rehireCandidate: { employeeId: existing.id, employeeCode: existing.oldEmployeeCode ?? existing.employeeCode, name: `${existing.firstName} ${existing.lastName}` },
         },
         { status: 409 }
       );

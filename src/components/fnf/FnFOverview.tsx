@@ -29,7 +29,7 @@ export type FnFOverviewSettlement = {
   paymentReference?: string | null;
   kunStatement?: KunFnfStatement | null;
   employee: {
-    employeeCode: string;
+    oldEmployeeCode: string | null;
     firstName: string;
     lastName: string;
     bankDetail?: { accountNumber?: string | null; bankName?: string | null; ifscCode?: string | null } | null;
@@ -79,7 +79,7 @@ export default function FnFOverview({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-semibold">
-          {settlement.employee.employeeCode} — {settlement.employee.firstName} {settlement.employee.lastName}
+          {settlement.employee.oldEmployeeCode ? `${settlement.employee.oldEmployeeCode} — ` : ''}{settlement.employee.firstName} {settlement.employee.lastName}
         </h2>
         <StatusBadge tone={FNF_STATUS_TONE[settlement.status] ?? 'neutral'}>{settlement.status}</StatusBadge>
         {(settlement.paymentDate || settlement.paymentReference) && (

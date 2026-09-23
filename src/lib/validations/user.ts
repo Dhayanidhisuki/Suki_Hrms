@@ -9,6 +9,10 @@ export const userCreateSchema = z.object({
   password: z.string().min(6).max(72),
   roleId: z.number().int().positive(),
   isActive: z.boolean().default(true),
+  // Optional — links this account to an Employee (Admin > Users > Add
+  // User's Employee ID picker). The server derives loginId from the
+  // employee's own employeeCode; it never trusts a client-supplied loginId.
+  employeeId: z.coerce.number().int().positive().optional(),
 });
 
 export const userUpdateSchema = z.object({

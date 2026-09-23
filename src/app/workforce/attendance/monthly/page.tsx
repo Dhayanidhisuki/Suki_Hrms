@@ -486,7 +486,7 @@ export default function MonthlyAttendancePage() {
                       {idx + 1}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground)' }}>
-                      {emp.oldEmployeeCode ?? emp.employeeCode}
+                      {emp.oldEmployeeCode ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5" style={{ color: 'var(--foreground-muted)' }}>
                       {emp.employeeCode}

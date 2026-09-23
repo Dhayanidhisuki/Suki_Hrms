@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     where.OR = [
       { firstName: { contains: search } },
       { lastName: { contains: search } },
-      { employeeCode: { contains: search } },
+      { oldEmployeeCode: { contains: search } },
     ];
   }
 
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
       rows.push({
         id: emp.id * 1_000_000 + req.competencyId,
         employeeId: emp.id,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.oldEmployeeCode ?? '',
         employeeName: fullName,
         departmentName: job?.department?.name ?? '—',
         designationName: job?.designation?.name ?? '—',
@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
       rows.push({
         id: emp.id * 2_000_000 + req.skillId,
         employeeId: emp.id,
-        employeeCode: emp.employeeCode,
+        employeeCode: emp.oldEmployeeCode ?? '',
         employeeName: fullName,
         departmentName: job?.department?.name ?? '—',
         designationName: job?.designation?.name ?? '—',

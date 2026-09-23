@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         email: true,
+        loginId: true,
         roleId: true,
         isActive: true,
         deletedAt: true,
@@ -82,25 +83,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid role — it may be inactive or deleted' }, { status: 400 });
   }
 
+  // Optional Employee link (Add User's Employee ID picker). loginId is
+  // derived server-side from the employee's own code — never trust a
+  // client-supplied loginId — and the employee must not already have a
+  // different linked account (same uniqueness rule the Job Profile tab's
+  // own "linked login account" field enforces). "Employee ID/Code"
+  // throughout the app is oldEmployeeCode (company-issued, may be blank),
+  // never substituting employeeCode (the system-generated "Reference Code")
+  // when it's blank.
+  let loginId: string | null = null;
+  let linkedEmployeeId: number | null = null;
+  if (parsed.data.employeeId) {
+    const employee = await prisma.employee.findFirst({
+      where: { id: parsed.data.employeeId, companyId: scope.companyId, deletedAt: null },
+      select: { id: true, oldEmployeeCode: true, userId: true },
+    });
+    if (!employee) {
+      return NextResponse.json({ error: 'Employee not found in this company' }, { status: 400 });
+    }
+    if (employee.userId) {
+      return NextResponse.json({ error: 'This employee already has a linked login account' }, { status: 409 });
+    }
+    loginId = employee.oldEmployeeCode;
+    linkedEmployeeId = employee.id;
+  }
+
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
-  const record = await prisma.user.create({
-    data: {
-      email: parsed.data.email,
-      passwordHash,
-      companyId: scope.companyId,
-      roleId: parsed.data.roleId,
-      isActive: parsed.data.isActive,
-    },
-    select: {
-      id: true,
-      email: true,
-      roleId: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-      role: { select: { id: true, code: true, name: true } },
-    },
+  const record = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: parsed.data.email,
+        loginId,
+        passwordHash,
+        companyId: scope.companyId,
+        roleId: parsed.data.roleId,
+        isActive: parsed.data.isActive,
+      },
+      select: {
+        id: true,
+        email: true,
+        loginId: true,
+        roleId: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        role: { select: { id: true, code: true, name: true } },
+      },
+    });
+    if (linkedEmployeeId) {
+      await tx.employee.update({ where: { id: linkedEmployeeId }, data: { userId: user.id } });
+    }
+    return user;
   });
 
   return NextResponse.json(record, { status: 201 });

@@ -47,7 +47,7 @@ export async function GET(
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           jobInfos: {
@@ -145,7 +145,7 @@ export async function GET(
 
     return {
       employee: {
-        code: emp.employeeCode,
+        code: emp.oldEmployeeCode ?? '',
         name: `${emp.firstName} ${emp.lastName}`.trim(),
         designation: emp.jobInfos[0]?.designation ?? null,
         department: emp.jobInfos[0]?.department ?? null,

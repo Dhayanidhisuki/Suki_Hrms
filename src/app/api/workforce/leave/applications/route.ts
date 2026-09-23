@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       ...managerFilter,
     },
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       leaveMaster: { select: { id: true, code: true, name: true } },
     },
     orderBy: { appliedAt: 'desc' },

@@ -12,6 +12,21 @@ interface FormModalProps {
   onSubmit: (values: Record<string, string | number | boolean>) => Promise<void>;
   submitLabel?: string;
   children?: React.ReactNode;
+  /**
+   * Called once, right after a specific field changes (before compute), with
+   * that field's new value and the form's other current values — for a
+   * one-time "suggest a value" prefill on a different, still-freely-editable
+   * field (e.g. picking an Employee suggests their office/personal email,
+   * but the admin can still type over it afterward). Unlike `compute`, the
+   * returned value isn't reapplied on later unrelated changes, so it never
+   * fights a manual edit. Return a partial values object to merge, or
+   * nothing to leave the rest of the form untouched.
+   */
+  onFieldChange?: (
+    name: string,
+    value: string | number | boolean,
+    values: Record<string, string | number | boolean | undefined>
+  ) => Record<string, string | number | boolean | undefined> | void;
 }
 
 export default function FormModal({
@@ -23,6 +38,7 @@ export default function FormModal({
   onSubmit,
   submitLabel = 'Save',
   children,
+  onFieldChange,
 }: FormModalProps) {
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -63,10 +79,14 @@ export default function FormModal({
 
   const handleChange = useCallback(
     (name: string, value: string | number | boolean) => {
-      setValues((prev) => applyComputedFields({ ...prev, [name]: value }));
+      setValues((prev) => {
+        const merged = { ...prev, [name]: value };
+        const suggested = onFieldChange?.(name, value, merged);
+        return applyComputedFields(suggested ? { ...merged, ...suggested } : merged);
+      });
       setErrors((prev) => ({ ...prev, [name]: '' }));
     },
-    [applyComputedFields]
+    [applyComputedFields, onFieldChange]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {

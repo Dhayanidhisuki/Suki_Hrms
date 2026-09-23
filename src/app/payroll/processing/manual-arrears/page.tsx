@@ -18,7 +18,7 @@ interface Row {
   arrearMonth: number;
   description: string | null;
   status: string;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   [key: string]: unknown;
 }
 
@@ -65,7 +65,7 @@ export default function ManualArrearsPage() {
       const json = await res.json();
       const mapped = (json.data ?? []).map((r: Record<string, unknown>) => ({
         ...r,
-        employeeCode: (r.employee as Record<string, unknown>).employeeCode as string,
+        employeeCode: ((r.employee as Record<string, unknown>).oldEmployeeCode as string | null) ?? '',
         name: `${(r.employee as Record<string, unknown>).firstName} ${(r.employee as Record<string, unknown>).lastName}`.trim(),
         arrearPeriod: `${r.arrearYear}-${String(r.arrearMonth).padStart(2, '0')}`,
       })) as Row[];

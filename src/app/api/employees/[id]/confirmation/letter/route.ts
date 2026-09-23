@@ -40,7 +40,7 @@ export async function GET(
     return NextResponse.json({ error: 'Employee has not been confirmed yet' }, { status: 409 });
   }
 
-  const displayCode = employee.oldEmployeeCode ?? employee.employeeCode;
+  const displayCode = employee.oldEmployeeCode ?? '';
 
   const profile = await loadCompanyProfile(employee.companyId);
   const pdfBytes = await generateConfirmationLetterPdf({

@@ -410,7 +410,7 @@ export function buildTemplateWorkbook(masters: BulkImportMasters): XLSX.WorkBook
     refSheetColumn(
       'Reporting Manager (Employee Code)',
       masters.reportingManagers,
-      (e: EmployeeRef) => `${e.oldEmployeeCode ?? e.employeeCode} — ${e.firstName} ${e.lastName}`
+      (e: EmployeeRef) => e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`
     ),
   ];
   const maxRows = Math.max(...columns.map((c) => c.length));

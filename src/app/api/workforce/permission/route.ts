@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   if ('error' in scope) return scope.error;
 
   const scopeParam = request.nextUrl.searchParams.get('scope') ?? 'mine';
-  const include = { employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } } };
+  const include = { employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } } };
 
   if (scopeParam === 'mine') {
     const ownEmployeeId = await resolveOwnEmployeeId(userId);

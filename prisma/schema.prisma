@@ -923,6 +923,11 @@ model RolePermission {
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique @db.NVarChar(100)
+  // Set from the linked Employee's employeeCode when the account is created
+  // by picking an Employee ID (Admin > Users > Add User) — a convenience
+  // reference, not (yet) an alternate sign-in identifier; login is still by
+  // email. Null for accounts not linked to an employee.
+  loginId      String?   @db.NVarChar(30)
   passwordHash String    @db.NVarChar(255)
   companyId    Int?
   roleId       Int?

@@ -19,7 +19,7 @@ interface Loan {
   outstandingBalance: string;
   installmentsPaid: number;
   disbursementDate: string;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   loanType: { code: string; name: string };
   [key: string]: unknown;
 }
@@ -51,7 +51,7 @@ export default function LoansPage() {
       const json = await res.json();
       const mapped = (json.data ?? []).map((l: Record<string, unknown>) => ({
         ...l,
-        employeeCode: (l.employee as Record<string, unknown>).employeeCode as string,
+        employeeCode: ((l.employee as Record<string, unknown>).oldEmployeeCode as string | null) ?? '',
         employeeName: `${(l.employee as Record<string, unknown>).firstName} ${(l.employee as Record<string, unknown>).lastName}`.trim(),
         loanType: `${(l.loanType as Record<string, unknown>).code}`,
       })) as Loan[];

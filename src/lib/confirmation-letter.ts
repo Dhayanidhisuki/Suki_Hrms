@@ -101,7 +101,7 @@ export async function archiveConfirmationLetter(employeeId: number, actor: impor
     maxFileSizeMb: 10,
   });
 
-  const displayCode = employee.oldEmployeeCode ?? employee.employeeCode;
+  const displayCode = employee.oldEmployeeCode ?? '';
   const profile = await loadCompanyProfile(employee.companyId);
   const pdfBytes = await generateConfirmationLetterPdf({
     companyName: profile?.name ?? employee.company.name,

@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
     prisma.employee.findMany({
       where: { companyId: scope.companyId, deletedAt: null, isActive: true },
       select: {
-        id: true, employeeCode: true, firstName: true, lastName: true,
+        id: true, oldEmployeeCode: true, firstName: true, lastName: true,
         jobInfos: { where: { effectiveTo: null }, take: 1, select: { department: { select: { name: true } } } },
       },
-      orderBy: { employeeCode: 'asc' },
+      orderBy: { oldEmployeeCode: 'asc' },
     }),
     prisma.permissionRequest.findMany({
       where: {
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       // DataTable keys on `id`; kept alongside employeeId for clarity.
       id: e.id,
       employeeId: e.id,
-      employeeCode: e.employeeCode,
+      employeeCode: e.oldEmployeeCode ?? '',
       employeeName: `${e.firstName} ${e.lastName ?? ''}`.trim(),
       department: e.jobInfos[0]?.department?.name ?? null,
       approvedHours,

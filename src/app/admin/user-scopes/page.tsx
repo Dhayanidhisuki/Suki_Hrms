@@ -101,7 +101,7 @@ export default function UserScopesPage() {
             .filter((r) => companyId === null || r.companyId === undefined || r.companyId === companyId)
             .map((r) =>
               scopeType === 'EMPLOYEE_LIST'
-                ? { code: String(r.employeeCode), label: `${r.firstName} ${r.lastName} (${r.oldEmployeeCode ?? r.employeeCode})` }
+                ? { code: String(r.employeeCode), label: r.oldEmployeeCode ? `${r.firstName} ${r.lastName} (${r.oldEmployeeCode})` : `${r.firstName} ${r.lastName}` }
                 : { code: String(r.code), label: `${r.name} (${r.code})` }
             );
         })

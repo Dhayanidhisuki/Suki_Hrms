@@ -16,7 +16,7 @@ interface BonusRow {
   employeeId: number;
   acYear: number;
   employee: {
-    employeeCode: string;
+    oldEmployeeCode: string | null;
     firstName: string;
     lastName: string;
     jobInfos: { department: { name: string } | null; designation: { name: string } | null }[];
@@ -361,7 +361,7 @@ export default function BonusPage() {
   const filtered = records.filter((r) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return r.employee.employeeCode.toLowerCase().includes(q) || `${r.employee.firstName} ${r.employee.lastName}`.toLowerCase().includes(q);
+    return (r.employee.oldEmployeeCode ?? '').toLowerCase().includes(q) || `${r.employee.firstName} ${r.employee.lastName}`.toLowerCase().includes(q);
   });
 
   const editPercent = async (ids: number[], bonusPercent: number) => {
@@ -406,7 +406,7 @@ export default function BonusPage() {
           />
         ) : null,
     },
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'doj', label: 'DOJ', render: (r) => new Date(r.doj).toLocaleDateString() },
     { key: 'department', label: 'Department', render: (r) => r.employee.jobInfos[0]?.department?.name ?? '—' },
     { key: 'designation', label: 'Designation', render: (r) => r.employee.jobInfos[0]?.designation?.name ?? '—' },

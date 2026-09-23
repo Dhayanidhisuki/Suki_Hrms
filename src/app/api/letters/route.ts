@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     });
     if (!emp) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     personName = `${emp.firstName} ${emp.lastName}`.trim();
-    employeeCode = emp.employeeCode;
+    employeeCode = emp.oldEmployeeCode ?? undefined;
     designation = emp.jobInfos[0]?.designation?.name;
     department = emp.jobInfos[0]?.department?.name;
     joinDate = joinDate ?? emp.jobInfos[0]?.joinDate ?? undefined;

@@ -51,7 +51,7 @@ export default function EssFnfPage() {
         <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No F&F settlement is on file for you.</p>
       )}
       {rows.map((s) => (
-        <div key={s.id ?? s.employee.employeeCode} className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
+        <div key={s.id ?? s.employee.oldEmployeeCode ?? undefined} className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
           {s.amountsWithheld ? (
             // Payroll is revising the figures. Saying so beats either showing a
             // number that will change or pretending the settlement isn't there.

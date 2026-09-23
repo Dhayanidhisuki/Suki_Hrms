@@ -34,7 +34,7 @@ export async function GET(
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           jobInfos: { where: { effectiveTo: null }, take: 1, select: { employeeTypeId: true } },
@@ -116,7 +116,7 @@ export async function GET(
       ...data,
     })),
     holdReasons: holdLines.map((l) => ({
-      employeeCode: l.employee.employeeCode,
+      employeeCode: l.employee.oldEmployeeCode ?? '',
       name: `${l.employee.firstName} ${l.employee.lastName}`.trim(),
       holdReason: l.holdReason,
     })),

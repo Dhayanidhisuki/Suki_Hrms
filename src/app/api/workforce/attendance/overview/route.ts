@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     where: { id: employeeId, companyId: scope.companyId, deletedAt: null },
     select: {
       id: true,
-      employeeCode: true,
+      oldEmployeeCode: true,
       firstName: true,
       lastName: true,
       jobInfos: {
@@ -312,7 +312,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     employee: {
       id: employee.id,
-      employeeCode: employee.employeeCode,
+      employeeCode: employee.oldEmployeeCode ?? '',
       name: `${employee.firstName} ${employee.lastName}`.trim(),
       department: job?.department?.name ?? null,
       designation: job?.designation?.name ?? null,
