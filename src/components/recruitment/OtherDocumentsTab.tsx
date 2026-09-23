@@ -7,9 +7,10 @@
 
 'use client';
 
+import { Trash2 } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm, RowAction } from '@/components/ui';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 interface CandidateOption { id: number; applicationNo: string; firstName: string; lastName: string; }
@@ -39,6 +40,7 @@ export default function OtherDocumentsTab() {
 }
 
 function OtherDocumentsInner() {
+  const { confirm } = useConfirm();
   const searchParams = useSearchParams();
   const toast = useToast();
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
@@ -123,7 +125,15 @@ function OtherDocumentsInner() {
   };
 
   const deleteDoc = async (docId: number) => {
-    if (!confirm('Delete this document?')) return;
+    if (
+      !(await confirm({
+        title: 'Delete this document?',
+        message: 'The file will be removed from the candidate record.',
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      }))
+    )
+      return;
     const res = await fetch(`/api/recruitment/candidates/${selectedCandidate}/other-documents/${docId}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json();
@@ -228,7 +238,9 @@ function OtherDocumentsInner() {
                     <button onClick={() => updateStatus(d.id, 'Rejected')} className="text-xs font-medium hover:underline" style={{ color: '#991b1b' }}>Reject</button>
                   </>
                 )}
-                <button onClick={() => deleteDoc(d.id)} className="text-xs font-medium hover:underline" style={{ color: '#991b1b' }}>Delete</button>
+                <RowAction label="Delete" tone="danger" onClick={() => deleteDoc(d.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </RowAction>
               </div>
             </div>
           ))}

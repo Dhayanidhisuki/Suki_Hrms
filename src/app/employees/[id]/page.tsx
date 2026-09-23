@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Field, DataTable, FormModal, ConfirmDialog, useToast, type FieldDef, type Column } from '@/components/ui';
+import { Field, DataTable, FormModal, ConfirmDialog, useToast, useConfirm, type FieldDef, type Column } from '@/components/ui';
 import RepeatableListTab from '@/components/employees/RepeatableListTab';
 import EmployeeDocumentsTab from '@/components/employees/EmployeeDocumentsTab';
 import EmployeeKraTab from '@/components/employees/EmployeeKraTab';
@@ -183,6 +183,7 @@ function ProfileTabForm({
   children?: ReactNode;
 }) {
   const toast = useToast();
+  const { confirm } = useConfirm();
   const [values, setValues] = useState<FormValues>({});
   const [savedValues, setSavedValues] = useState<FormValues>({});
   const [editing, setEditing] = useState(false);
@@ -264,8 +265,18 @@ function ProfileTabForm({
     }
   };
 
-  const handleCancel = () => {
-    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+  const handleCancel = async () => {
+    if (
+      dirty &&
+      !(await confirm({
+        title: 'Discard unsaved changes?',
+        message: 'Your edits on this tab will be lost.',
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        tone: 'danger',
+      }))
+    )
+      return;
     setValues(savedValues);
     setDirty(false);
     setEditing(false);
@@ -2304,6 +2315,7 @@ function JobHistorySection({
 }
 
 export default function EmployeeProfilePage() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -2325,10 +2337,16 @@ export default function EmployeeProfilePage() {
   }, [employeeId, searchParams]);
 
   const handleTabClick = useCallback(
-    (key: TabKey) => {
+    async (key: TabKey) => {
       if (key === activeTab) return;
       if (activeTabDirty) {
-        const proceed = window.confirm('You have unsaved changes on this tab. Discard them and switch tabs?');
+        const proceed = await confirm({
+          title: 'Discard unsaved changes?',
+          message: 'You have unsaved changes on this tab. Switching will lose them.',
+          confirmLabel: 'Discard and switch',
+          cancelLabel: 'Stay here',
+          tone: 'danger',
+        });
         if (!proceed) return;
       }
       setActiveTabDirty(false);

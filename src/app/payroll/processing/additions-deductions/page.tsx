@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { DataTable, useToast, type Column } from '@/components/ui';
+import { DataTable, useToast, type Column, useConfirm } from '@/components/ui';
 
 interface SalaryComponentOption {
   id: number;
@@ -59,6 +59,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 };
 
 function AdditionsDeductionsContent() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const search = useSearchParams();
   const initialRunId = Number(search.get('runId')) || undefined;
@@ -138,7 +139,15 @@ function AdditionsDeductionsContent() {
 
   const handleDelete = async (lineId: number, row: PayrollLineComponent) => {
     if (!isEditable) return;
-    if (!confirm(`Remove ${row.salaryComponent.name} (${row.amount})?`)) return;
+    if (
+      !(await confirm({
+        title: 'Remove this component?',
+        message: `${row.salaryComponent.name} (${row.amount}) will be removed from this payroll line.`,
+        confirmLabel: 'Remove',
+        tone: 'danger',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const res = await fetch(`/api/payroll/runs/${selectedRunId}/lines/${lineId}/adhoc?componentId=${row.id}`, { method: 'DELETE' });

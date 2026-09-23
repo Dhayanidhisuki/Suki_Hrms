@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm } from '@/components/ui';
 import { handleExport } from '@/lib/export-utils';
 
 interface LeaveType {
@@ -61,6 +61,7 @@ const STATUS_LABEL: Record<string, string> = {
 const CANCELLABLE = new Set(['pending_manager', 'pending_hr', 'approved']);
 
 export default function EssLeavePage() {
+  const { confirm } = useConfirm();
   const [year, setYear] = useState(new Date().getFullYear());
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalanceRow[]>([]);
@@ -137,7 +138,16 @@ export default function EssLeavePage() {
   }
 
   async function cancelApplication(id: number) {
-    if (!confirm('Cancel this leave application?')) return;
+    if (
+      !(await confirm({
+        title: 'Cancel this leave application?',
+        message: 'The application will be withdrawn from the approval queue.',
+        confirmLabel: 'Cancel application',
+        cancelLabel: 'Keep it',
+        tone: 'danger',
+      }))
+    )
+      return;
     try {
       const res = await fetch(`/api/workforce/my-leave/${id}/cancel`, { method: 'POST' });
       if (!res.ok) {

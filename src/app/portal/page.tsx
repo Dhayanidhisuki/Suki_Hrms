@@ -9,7 +9,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { BrandLogo } from '@/components/BrandLogo';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm } from '@/components/ui';
 
 interface CandidateInfo {
   id: number;
@@ -99,6 +99,7 @@ export default function PortalPage() {
 }
 
 function PortalInner() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const searchParams = useSearchParams();
   const token = searchParams.get('t') ?? '';
@@ -206,7 +207,16 @@ function PortalInner() {
   };
 
   const offerAction = async (offerId: number, action: 'accept' | 'reject') => {
-    if (action === 'reject' && !confirm('Are you sure you want to reject this offer?')) return;
+    if (
+      action === 'reject' &&
+      !(await confirm({
+        title: 'Reject this offer?',
+        message: 'The employer will be notified and this cannot be undone.',
+        confirmLabel: 'Reject offer',
+        tone: 'danger',
+      }))
+    )
+      return;
     setActionLoading(offerId);
     try {
       const res = await fetch(`/api/portal/offer?t=${token}&action=${action}`, {

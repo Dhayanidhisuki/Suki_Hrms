@@ -25,10 +25,10 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import { AttendanceGauge } from '@/components/ui/AttendanceGauge';
 import {
   ReportAreaChart,
   ReportBarChart,
-  ReportDonutChart,
   ReportLineChart,
   ReportStackedBarChart,
 } from '@/components/ui/ReportCharts';
@@ -48,9 +48,13 @@ const nf = new Intl.NumberFormat('en-IN');
  * rejected regardless of which theme is on.
  */
 const SUCCESS = '#10b981';
+/** Gauge slices. Meaning-carrying, so they do not follow the theme accent. */
+const GAUGE_PRESENT = '#6d4aff';
+const GAUGE_LATE = '#a3e635';
+const GAUGE_LEAVE = '#facc15';
+const GAUGE_ABSENT = '#f26b6b';
 const WARNING = '#f59e0b';
 const DANGER = '#f43f5e';
-const INFO = '#38bdf8';
 
 const LEAVE_SERIES = [
   { key: 'approved', name: 'Approved', label: 'Approved', color: SUCCESS },
@@ -121,7 +125,7 @@ export default function OverviewDashboard() {
             <div key={i} className="card h-[132px] animate-pulse" />
           ))}
         </div>
-        <div className="grid gap-5 xl:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           {[1, 2].map((i) => <div key={i} className="card h-[340px] animate-pulse" />)}
         </div>
       </div>
@@ -162,11 +166,15 @@ export default function OverviewDashboard() {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-  const donut = [
-    { name: 'Present', value: attendanceToday.present, color: SUCCESS },
-    { name: 'On leave', value: attendanceToday.onLeave, color: INFO },
-    { name: 'Absent', value: attendanceToday.absent, color: DANGER },
-  ].filter((d) => d.value > 0);
+  // Late is a subset of present, so it is carved out rather than added — the
+  // four slices have to sum to the number of people actually marked today.
+  const lateToday = Math.min(attendanceToday.late ?? 0, attendanceToday.present);
+  const gaugeSegments = [
+    { label: 'Present', value: attendanceToday.present - lateToday, color: GAUGE_PRESENT },
+    { label: 'Late', value: lateToday, color: GAUGE_LATE },
+    { label: 'On Leave', value: attendanceToday.onLeave, color: GAUGE_LEAVE },
+    { label: 'Absent', value: attendanceToday.absent, color: GAUGE_ABSENT },
+  ];
 
   const statutoryTotal = statutory
     ? statutory.pfEmployee + statutory.pfEmployer + statutory.esiEmployee +
@@ -208,6 +216,8 @@ export default function OverviewDashboard() {
         <KPICard
           label="Monthly Salary Cost"
           value={latestCost ? inrShort(latestCost.gross) : '—'}
+          count={latestCost ? latestCost.gross : undefined}
+          format={inrShort}
           tone="accent"
           icon={<Wallet />}
           subtitle={
@@ -219,6 +229,8 @@ export default function OverviewDashboard() {
         <KPICard
           label="Attrition (12 mo)"
           value={hasAttrition ? `${attrition.rate}%` : '—'}
+          count={hasAttrition ? attrition.rate : undefined}
+          format={(n) => `${n.toFixed(1)}%`}
           tone="danger"
           icon={<TrendingDown />}
           trend={
@@ -234,11 +246,34 @@ export default function OverviewDashboard() {
         />
       </div>
 
-      {/* Lead chart: present above the line, absent below */}
-      <AttendanceOverviewChart overview={data.attendanceOverview} />
+      {/* Lead row: the period trend beside today's live gauge */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <AttendanceOverviewChart overview={data.attendanceOverview} />
+
+        <Panel title="Attendance" caption="Track real-time attendance">
+          <AttendanceGauge
+            segments={gaugeSegments}
+            height={210}
+            centerValue={
+              attendanceToday.marked > 0
+                ? `${nf.format(attendanceToday.present)} (${attendanceToday.rate}%)`
+                : '—'
+            }
+            centerCaption={
+              attendanceToday.marked > 0
+                ? `present of ${nf.format(attendanceToday.marked)} marked`
+                : undefined
+            }
+          />
+          <div className="mt-auto pt-3">
+            <Row label={<Legend color={GAUGE_LATE}>Late arrivals</Legend>} value={nf.format(lateToday)} />
+            <Row label="Not marked yet" value={nf.format(attendanceToday.unmarked)} />
+          </div>
+        </Panel>
+      </div>
 
       {/* Headcount + attendance trend */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <Panel title="Headcount by Department" caption={`Active employees · ${nf.format(headcount.total)} total`}>
           {headcount.byDepartment.length === 0 ? (
             <PanelEmpty message="No active employees with a department assigned." />
@@ -260,7 +295,7 @@ export default function OverviewDashboard() {
           {attendanceTrend.length === 0 ? (
             <PanelEmpty message="No attendance marked in the last 12 weeks." />
           ) : (
-            <div className="h-[300px]">
+            <div style={{ height: 300 }}>
               <ReportAreaChart
                 data={attendanceTrend}
                 xKey="label"
@@ -277,13 +312,13 @@ export default function OverviewDashboard() {
       </div>
 
       {/* Leave / cost / attrition */}
-      <div className="grid gap-5 xl:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         <Panel title="Leave Applications by Status" caption="Last 6 months">
           {leaveByStatus.length === 0 ? (
             <PanelEmpty message="No leave applied for in the last 6 months." />
           ) : (
             <>
-              <div className="h-[240px]">
+              <div style={{ height: 240 }}>
                 <ReportStackedBarChart
                   data={leaveByStatus}
                   xKey="label"
@@ -306,7 +341,7 @@ export default function OverviewDashboard() {
           {salaryCost.length === 0 ? (
             <PanelEmpty message="No payroll run has been calculated yet." />
           ) : (
-            <div className="h-[280px]">
+            <div style={{ height: 280 }}>
               <ReportBarChart
                 data={salaryCost}
                 xKey="label"
@@ -324,7 +359,7 @@ export default function OverviewDashboard() {
           {!hasAttrition ? (
             <PanelEmpty message="No exit records in the last 12 months." />
           ) : (
-            <div className="h-[280px]">
+            <div style={{ height: 280 }}>
               <ReportLineChart
                 data={attrition.months}
                 xKey="label"
@@ -338,32 +373,8 @@ export default function OverviewDashboard() {
         </Panel>
       </div>
 
-      {/* Today / statutory / payroll pipeline */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
-        <Panel title="Today's Attendance" caption={`${nf.format(headcount.total)} employees`}>
-          {donut.length === 0 ? (
-            <PanelEmpty message="Attendance has not been marked for today." />
-          ) : (
-            <div className="flex flex-wrap items-center gap-5">
-              <div className="h-[196px] w-[196px] shrink-0">
-                <ReportDonutChart
-                  data={donut}
-                  centerLabel={`${attendanceToday.rate}%`}
-                  centerSubtext="Present"
-                  showBadges={false}
-                  showLegend={false}
-                />
-              </div>
-              <div className="min-w-[150px] flex-1">
-                <Row label={<Legend color={SUCCESS}>Present</Legend>} value={nf.format(attendanceToday.present)} />
-                <Row label={<Legend color={INFO}>On leave</Legend>} value={nf.format(attendanceToday.onLeave)} />
-                <Row label={<Legend color={DANGER}>Absent</Legend>} value={nf.format(attendanceToday.absent)} />
-                <Row label="Not marked yet" value={nf.format(attendanceToday.unmarked)} />
-              </div>
-            </div>
-          )}
-        </Panel>
-
+      {/* Statutory / payroll pipeline */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Panel
           title="Statutory Summary"
           caption={settledRun ? `${settledRun.label} · payable to authorities` : 'No payroll run'}

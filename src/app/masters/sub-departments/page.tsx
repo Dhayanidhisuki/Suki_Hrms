@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption, StatusPillTabs } from '@/components/ui';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface SubDepartment {
@@ -43,6 +43,9 @@ function SubDepartmentsPageInner() {
   const [records, setRecords] = useState<SubDepartment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Server-side: the list is paginated, so a client-side filter would only
+  // hide rows on the current page and misreport the total.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [modalOpen, setModalOpen] = useState(false);
@@ -82,6 +85,7 @@ function SubDepartmentsPageInner() {
         limit: '20',
         ...(search ? { search } : {}),
         ...(departmentIdFilter ? { departmentId: departmentIdFilter } : {}),
+        ...(status ? { status } : {}),
       });
       const res = await fetch(`/api/masters/sub-departments?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
@@ -93,7 +97,7 @@ function SubDepartmentsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, departmentIdFilter, toast]);
+  }, [page, search, status, departmentIdFilter, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -208,6 +212,19 @@ function SubDepartmentsPageInner() {
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add Sub Department</button>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPillTabs
+          items={[
+            { value: '', label: 'All' },
+            { value: 'active', label: 'Active', tone: 'success' },
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+          ]}
+          value={status}
+          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+          idPrefix="sub-departments-status"
+        />
+      </div>
+
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading}
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />

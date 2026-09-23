@@ -10,10 +10,11 @@ Screens covered:
 | 1–6 | HRMS Dashboard | `pages/dashboard/hrmsdashboard.xhtml` |
 | 7 | Attendance Dashboard (ESSL) | `pages/hrms/attendancedashboardforessl.xhtml` |
 
-Captured without a logged-in session, so the page returned `Please check the User Id....`
-and `java.lang.NullPointerException` and every grid showed **No records found.** The
-layout, filters and grid definitions below are what the page renders; only the *data*
-was missing. Re-capture signed in if you need real row shapes or the FY dropdown values.
+First captured without a session (every grid empty), then corrected from a
+signed-in screenshot on 2026-09-22. Two things the signed-out read got wrong and
+this document now states correctly: **each grid has a paired chart**, and each
+grid carries a **Total row**. Neither renders when there is no data, so a
+signed-out capture cannot be used to conclude a screen lacks them.
 
 ---
 
@@ -29,8 +30,11 @@ One column, top to bottom:
 2. Filter bar (see §2)
 3. Seven month-wise grids stacked vertically (see §3)
 
-There are **no KPI tiles, no charts and no export buttons** on this page — it is seven
-cross-tab tables and nothing else.
+There are **no KPI tiles and no export buttons**. Each of the seven grids is
+paired with its own chart in a right-hand column — Salary Chart, No Of Employee
+Chart, OverTime Amt Chart, No Of Leave Chart and so on — a grouped vertical bar
+chart with one coloured series per department (or per unit for salary) across the
+12 FY months, with a legend.
 
 ## 2. Filter bar
 
@@ -48,8 +52,9 @@ All seven grids share this one filter set. There is no per-grid filter and no au
 
 Every grid has the same shape: one label column, then **12 month columns Apr → Mar**
 (Indian financial year). All are PrimeFaces scrollable datatables with a frozen header
-(`_head` clone) and a fixed label column. None has a paginator, a totals row/column,
-sorting, or an export control. Empty state text is `No records found.`
+(`_head` clone) and a fixed label column. Each ends with a **Total row**, styled red,
+summing every month column. None has a paginator, sorting, or an export control.
+Empty state text is `No records found.`
 
 | # | Component id | Title as rendered | Row grouped by | Measure per month |
 |---|---|---|---|---|
@@ -73,8 +78,8 @@ sorting, or an export control. Empty state text is `No records found.`
   (grid 1 ÷ grid 2), but confirm — it could also mean a side-by-side comparison.
 - **Leave is a count, not days.** "No.of Leave" — confirm whether that is leave
   *applications*, leave *days*, or LOP days.
-- **No totals anywhere.** No row total, column total or grand total. Worth adding in the
-  new build; flagged because the legacy screen deliberately has none.
+- **Column totals, but no row total.** Each grid totals each month across rows (the
+  red Total row); there is no per-row total across the 12 months. Worth adding.
 - **From/To Month vs the 12 fixed columns.** The grids always render all 12 FY months.
   Confirm whether From/To blanks out the excluded months or filters the underlying rows.
 
@@ -218,3 +223,43 @@ underlying punch rows with export.
 5. `Site` on the attendance log — punch location or assigned site?
 6. Should the drill-down be a modal (as legacy) or a filtered route in the new UI?
 7. Do we need the export on drill-downs from day one?
+
+
+---
+
+# Part C — Gap against the current HRMS build
+
+Checked 2026-09-22 against `/` and the Dashboard sub-pages.
+
+**The legacy screen's whole idea is a 12-month FY cross-tab per department.
+We have that for nothing.** Our dashboards answer "what is true now" or "the last
+N runs"; the legacy one answers "Apr through Mar, by department".
+
+| Legacy grid + chart | Nearest thing we have | Same? |
+|---|---|---|
+| Total Salary by **Unit** × 12 months | Salary Cost Trend — total gross, last 6 payroll *runs*, no unit split | No |
+| No. of Employees by Dept × 12 months | Headcount by Department — current snapshot only | No |
+| OverTime Amt by Dept × 12 months | Overtime total on Attendance Summary (minutes, one month) | No |
+| No. of Leave by Dept × 12 months | Leave Summary — one month, by status and leave type | No |
+| Employee PF by Dept × 12 months | Statutory Summary — one run, company-wide, no dept split | No |
+| Employee ESI by Dept × 12 months | Statutory Summary — as above | No |
+| Salary vs Employee by Dept × 12 months | — | No |
+| FY + From/To Month filter | Month + Year pickers per page | Partly |
+| Red Total row per grid | Totals only on the Statutory Heads table | Partly |
+
+What we have that the legacy screen does not: KPI tiles, the attendance overview
+(present above / absent below, week-month-year, department and unit filters), the
+live attendance gauge, attendance-rate trend, leave-by-status, attrition, the
+payroll pipeline, and per-employee drill-down tables.
+
+## To match Part A we would need
+
+1. A month-wise aggregation endpoint keyed on (FY month × department|unit ×
+   measure). The attendance one already exists —
+   `attendanceOverview` in `/api/dashboard/overview` groups on
+   (week, month, year, department, unit) — so the same shape extended to payroll
+   measures would cover salary, OT, PF, ESI and salary-vs-employee.
+2. A cross-tab table component: frozen label column, 12 month columns, total row.
+3. A grouped bar chart with one series per department — `ReportStackedBarChart`
+   is close but stacks rather than groups.
+4. A financial-year selector, which the app currently has nowhere.

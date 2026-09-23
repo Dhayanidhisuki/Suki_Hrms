@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm } from '@/components/ui';
 
 interface VisitorPass {
   id: number;
@@ -32,6 +32,7 @@ const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
 };
 
 export default function VisitorApprovalPage() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const [passes, setPasses] = useState<VisitorPass[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +63,14 @@ export default function VisitorApprovalPage() {
   }, [fetchPasses]);
 
   const handleApprove = async (passId: number) => {
-    if (!confirm('Approve this visitor pass?')) return;
+    if (
+      !(await confirm({
+        title: 'Approve visitor pass?',
+        message: 'The visitor will be cleared for entry.',
+        confirmLabel: 'Approve',
+      }))
+    )
+      return;
     setApproving(true);
     try {
       const res = await fetch(`/api/visitor/gate-passes/${passId}/approve`, {

@@ -7,6 +7,7 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { navIcon } from "./navIconMap";
 import { navigation, allNavLeaves, type NavModule, type NavLeaf } from "./navigation";
+import { fetchCurrentUser } from "@/lib/currentUser";
 
 interface SidebarProps {
   open: boolean;
@@ -62,8 +63,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
+    fetchCurrentUser()
       .then((data) => {
         if (!cancelled && data)
           setMe({

@@ -1,5 +1,6 @@
 'use client';
 
+import { Eye, Pencil, Trash2 } from 'lucide-react';
 import { ReactNode } from 'react';
 
 export interface Column<T> {
@@ -28,6 +29,7 @@ interface DataTableProps<T> {
   /** Extra filter controls rendered inline to the right of the search box. */
   filters?: ReactNode;
   onPageChange?: (page: number) => void;
+  onView?: (row: T) => void;
   onEdit?: (row: T) => void;
   onDelete?: (row: T) => void;
   /** Extra per-row action(s) rendered before Edit/Delete in the Actions cell. */
@@ -87,6 +89,43 @@ const Chevron = ({ dir, double }: { dir: 'left' | 'right'; double?: boolean }) =
   </svg>
 );
 
+
+/**
+ * One row action, as an icon.
+ *
+ * `title` plus `aria-label` on purpose: the glyph alone is the whole control,
+ * so the hover tooltip is what a sighted user reads and the label is what a
+ * screen reader announces. Delete stays neutral until hover — a row of red
+ * buttons reads as a table full of errors.
+ */
+export function RowAction({
+  label,
+  onClick,
+  tone = 'default',
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  tone?: 'default' | 'danger';
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent text-[var(--text-muted)] transition-colors ${
+        tone === 'danger'
+          ? 'hover:border-[var(--color-danger)]/30 hover:bg-[var(--color-danger-bg)] hover:text-[var(--color-danger)]'
+          : 'hover:border-[var(--primary)]/30 hover:bg-[var(--primary-light)] hover:text-[var(--primary)]'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function DataTable<T extends { id: number }>({
   columns,
   data,
@@ -97,6 +136,7 @@ export default function DataTable<T extends { id: number }>({
   onSearchChange,
   filters,
   onPageChange,
+  onView,
   onEdit,
   onDelete,
   rowKey,
@@ -105,7 +145,7 @@ export default function DataTable<T extends { id: number }>({
   variant = 'default',
 }: DataTableProps<T>) {
   const card = variant === 'card';
-  const hasActions = Boolean(onEdit || onDelete || renderRowActions);
+  const hasActions = Boolean(onView || onEdit || onDelete || renderRowActions);
   const colSpan = columns.length + (hasActions ? 1 : 0);
 
   const table = (
@@ -155,30 +195,31 @@ export default function DataTable<T extends { id: number }>({
                   {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
                 </td>
               ))}
+              {/* Narrower padding than a data cell: three icons plus the
+                  default px-4 made the actions column wide enough to push a
+                  table into horizontal scroll on its own. */}
               {hasActions && (
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {renderRowActions && (
-                    <span className={`inline-flex items-center ${onEdit || onDelete ? 'mr-3' : ''}`}>
-                      {renderRowActions(row)}
-                    </span>
-                  )}
-                  {onEdit && (
-                    <button
-                      onClick={() => onEdit(row)}
-                      className="text-xs font-medium mr-3 hover:underline"
-                      style={{ color: 'var(--accent)' }}
-                    >
-                      Edit
-                    </button>
-                  )}
-                  {onDelete && (
-                    <button
-                      onClick={() => onDelete(row)}
-                      className="text-xs font-medium hover:underline text-red-500"
-                    >
-                      Delete
-                    </button>
-                  )}
+                <td className="w-px whitespace-nowrap px-2 py-3 text-right">
+                  <span className="inline-flex items-center justify-end gap-0.5">
+                    {renderRowActions && (
+                      <span className="inline-flex items-center">{renderRowActions(row)}</span>
+                    )}
+                    {onView && (
+                      <RowAction label="View" onClick={() => onView(row)}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </RowAction>
+                    )}
+                    {onEdit && (
+                      <RowAction label="Edit" onClick={() => onEdit(row)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </RowAction>
+                    )}
+                    {onDelete && (
+                      <RowAction label="Delete" tone="danger" onClick={() => onDelete(row)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </RowAction>
+                    )}
+                  </span>
                 </td>
               )}
             </tr>

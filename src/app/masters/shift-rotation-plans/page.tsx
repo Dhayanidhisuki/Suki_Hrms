@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, SearchableSelect, ConfirmDialog, useToast, type Column } from '@/components/ui';
+import { DataTable, SearchableSelect, ConfirmDialog, useToast, type Column, StatusPillTabs } from '@/components/ui';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface ShiftRef {
@@ -54,6 +54,9 @@ export default function ShiftRotationPlansPage() {
   const [shiftOptions, setShiftOptions] = useState<ShiftRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Server-side: the list is paginated, so a client-side filter would only
+  // hide rows on the current page and misreport the total.
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -71,7 +74,12 @@ export default function ShiftRotationPlansPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        ...(search ? { search } : {}),
+        ...(status ? { status } : {}),
+      });
       const [plansRes, shiftsRes] = await Promise.all([
         fetch(`/api/masters/shift-rotation-plans?${params}`),
         fetch('/api/masters/shift-masters?limit=500'),
@@ -89,7 +97,7 @@ export default function ShiftRotationPlansPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -202,6 +210,19 @@ export default function ShiftRotationPlansPage() {
         Defines a weekly shift cycle (e.g. Shift 1 → Shift 2 → Shift 3 → back to Shift 1). Assign it to an employee via Employees &gt; Job
         Profile &gt; Shift Assignment = Rotational — the applicable shift for any day is calculated automatically from the anchor date.
       </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPillTabs
+          items={[
+            { value: '', label: 'All' },
+            { value: 'active', label: 'Active', tone: 'success' },
+            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+          ]}
+          value={status}
+          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+          idPrefix="shift-rotation-plans-status"
+        />
+      </div>
+
       <DataTable
         columns={columns}
         data={records}

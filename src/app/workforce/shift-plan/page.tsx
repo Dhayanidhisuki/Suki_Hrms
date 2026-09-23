@@ -50,6 +50,15 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Month boundaries are compared and formatted in UTC, so build them in UTC too. */
+function utcMonthStart(year: number, monthIndex: number): Date {
+  return new Date(Date.UTC(year, monthIndex, 1));
+}
+
+function daysInUtcMonth(d: Date): number {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
 function addDays(d: Date, days: number): Date {
   const r = new Date(d);
   r.setUTCDate(r.getUTCDate() + days);
@@ -78,7 +87,7 @@ export default function ShiftPlanPage() {
   const toast = useToast();
   const [view, setView] = useState<'week' | 'month'>('week');
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
-  const [monthDate, setMonthDate] = useState(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const [monthDate, setMonthDate] = useState(utcMonthStart(new Date().getUTCFullYear(), new Date().getUTCMonth()));
   const [plan, setPlan] = useState<ShiftPlanRow[]>([]);
   const [shifts, setShifts] = useState<ShiftOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,14 +96,25 @@ export default function ShiftPlanPage() {
   const [overrideReason, setOverrideReason] = useState('');
   const [search, setSearch] = useState('');
 
-  const startDate = view === 'week' ? weekStart : monthDate;
-  const endDate = view === 'week' ? addDays(weekStart, 6) : addDays(addDays(monthDate, 0), new Date(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0).getUTCDate() - 1);
+  // Keep these as *strings* in the dependency graph: a fresh Date object on every
+  // render changes fetchPlan's identity and puts the loading effect in a loop.
+  const { startStr, endStr } = useMemo(() => {
+    const start = view === 'week' ? weekStart : monthDate;
+    const end =
+      view === 'week'
+        ? addDays(weekStart, 6)
+        : addDays(monthDate, daysInUtcMonth(monthDate) - 1);
+    return { startStr: formatDate(start), endStr: formatDate(end) };
+  }, [view, weekStart, monthDate]);
+
+  const startDate = useMemo(() => new Date(`${startStr}T00:00:00Z`), [startStr]);
+  const endDate = useMemo(() => new Date(`${endStr}T00:00:00Z`), [endStr]);
 
   const fetchPlan = useCallback(async () => {
     setLoading(true);
     try {
       const [planRes, shiftsRes] = await Promise.all([
-        fetch(`/api/workforce/shift-plan?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`),
+        fetch(`/api/workforce/shift-plan?startDate=${startStr}&endDate=${endStr}`),
         fetch('/api/masters/shift-masters?limit=50'),
       ]);
       if (!planRes.ok) throw new Error((await planRes.json()).error ?? 'Failed to fetch plan');
@@ -108,7 +128,7 @@ export default function ShiftPlanPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, toast]);
+  }, [startStr, endStr, toast]);
 
   useEffect(() => {
     fetchPlan();
@@ -135,12 +155,15 @@ export default function ShiftPlanPage() {
   }, [empMap, search]);
 
   // Date columns
-  const dates: Date[] = [];
-  const cursor = new Date(startDate);
-  while (cursor <= endDate) {
-    dates.push(new Date(cursor));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
+  const dates: Date[] = useMemo(() => {
+    const out: Date[] = [];
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      out.push(new Date(cursor));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return out;
+  }, [startDate, endDate]);
   const todayStr = formatDate(new Date());
 
   const stats = useMemo(() => {
@@ -200,15 +223,15 @@ export default function ShiftPlanPage() {
 
   const goPrev = () => {
     if (view === 'week') setWeekStart(addDays(weekStart, -7));
-    else setMonthDate(new Date(monthDate.getUTCFullYear(), monthDate.getUTCMonth() - 1, 1));
+    else setMonthDate(utcMonthStart(monthDate.getUTCFullYear(), monthDate.getUTCMonth() - 1));
   };
   const goNext = () => {
     if (view === 'week') setWeekStart(addDays(weekStart, 7));
-    else setMonthDate(new Date(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1));
+    else setMonthDate(utcMonthStart(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1));
   };
   const goToday = () => {
     if (view === 'week') setWeekStart(getWeekStart(new Date()));
-    else setMonthDate(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    else setMonthDate(utcMonthStart(new Date().getUTCFullYear(), new Date().getUTCMonth()));
   };
 
   const periodLabel =

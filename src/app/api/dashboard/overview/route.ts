@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { attendanceOverview } from '@/lib/attendanceOverview';
 
 // DailyAttendance.status is a free string (see schema); these are the values
 // upsertDailyAttendanceWithHistory writes. Anything else falls into "other".
@@ -58,150 +59,6 @@ function monthSpan(end: Date, count: number) {
 }
 
 
-/**
- * Attendance bucketed by period AND by department / unit, for the dashboard's
- * Attendance Overview chart.
- *
- * Done as one raw grouped query rather than through Prisma: attributing a row
- * to a department means joining DailyAttendance -> JobInfo, which groupBy
- * cannot traverse, and pulling employee-day rows into JS to attribute them
- * would scale with headcount x days. Grouping on (week, month, year,
- * department, unit, status) in SQL keeps the result proportional to the number
- * of periods instead.
- *
- * Grouping by week AND month means a week straddling a month boundary comes
- * back as two rows; the week view sums them back together, and the month view
- * gets each half in the right month.
- */
-interface AttendanceDimRow {
-  yr: number;
-  mo: number;
-  wk: Date;
-  department: string | null;
-  unit: string | null;
-  status: string;
-  n: number;
-}
-
-type Granularity = 'week' | 'month' | 'year';
-
-interface OverviewBucket {
-  g: Granularity;
-  label: string;
-  sort: string;
-  department: string;
-  unit: string;
-  present: number;
-  absent: number;
-  counted: number;
-}
-
-const UNASSIGNED = 'Unassigned';
-
-async function attendanceOverview(companyId: number, today: Date) {
-  // Three calendar years back, so the yearly view has something to compare.
-  const scanStart = new Date(Date.UTC(today.getUTCFullYear() - 2, 0, 1));
-
-  const rows = await prisma.$queryRaw<AttendanceDimRow[]>`
-    SELECT
-      DATEPART(year, a.[date])  AS yr,
-      DATEPART(month, a.[date]) AS mo,
-      CAST(DATEADD(day, -((DATEPART(weekday, a.[date]) + @@DATEFIRST - 2) % 7), a.[date]) AS date) AS wk,
-      d.[name] AS department,
-      u.[name] AS unit,
-      a.[status] AS status,
-      COUNT(*) AS n
-    FROM [DailyAttendance] a
-    INNER JOIN [Employee] e ON e.[id] = a.[employeeId]
-    LEFT JOIN [JobInfo] j ON j.[employeeId] = e.[id] AND j.[effectiveTo] IS NULL
-    LEFT JOIN [Department] d ON d.[id] = j.[departmentId]
-    LEFT JOIN [Unit] u ON u.[id] = j.[unitId]
-    WHERE e.[companyId] = ${companyId}
-      AND e.[deletedAt] IS NULL
-      AND a.[date] >= ${scanStart}
-      AND a.[date] <= ${today}
-    GROUP BY
-      DATEPART(year, a.[date]),
-      DATEPART(month, a.[date]),
-      CAST(DATEADD(day, -((DATEPART(weekday, a.[date]) + @@DATEFIRST - 2) % 7), a.[date]) AS date),
-      d.[name], u.[name], a.[status]
-  `;
-
-  const departments = new Set<string>();
-  const units = new Set<string>();
-  // key -> bucket, one map per granularity so labels cannot collide.
-  const acc = new Map<string, OverviewBucket>();
-
-  const bump = (
-    g: Granularity,
-    sort: string,
-    label: string,
-    department: string,
-    unit: string,
-    status: string,
-    n: number
-  ) => {
-    const key = `${g}|${sort}|${department}|${unit}`;
-    let b = acc.get(key);
-    if (!b) {
-      b = { g, label, sort, department, unit, present: 0, absent: 0, counted: 0 };
-      acc.set(key, b);
-    }
-    b.counted += n;
-    if (PRESENT_STATUSES.includes(status)) b.present += n;
-    else if (ABSENT_STATUSES.includes(status)) b.absent += n;
-  };
-
-  for (const row of rows) {
-    // A weekly-off or a holiday is not an attendance opportunity, so counting
-    // it would drag every rate down across the weekend.
-    if (row.status === 'WeeklyOff' || row.status === 'Holiday') continue;
-
-    const department = row.department ?? UNASSIGNED;
-    const unit = row.unit ?? UNASSIGNED;
-    departments.add(department);
-    units.add(unit);
-
-    const n = Number(row.n) || 0;
-    const wk = new Date(row.wk);
-    const yr = Number(row.yr);
-    const mo = Number(row.mo);
-
-    bump('week', wk.toISOString().slice(0, 10),
-      wk.toISOString().slice(5, 10).replace('-', '/'), department, unit, row.status, n);
-
-    const monthStart = new Date(Date.UTC(yr, mo - 1, 1));
-    bump('month', `${yr}-${String(mo).padStart(2, '0')}`,
-      monthStart.toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
-      department, unit, row.status, n);
-
-    bump('year', String(yr), String(yr), department, unit, row.status, n);
-  }
-
-  // Trim each granularity to a readable window: 12 weeks, 12 months, 3 years.
-  const keep = (g: Granularity, limit: number) => {
-    const sorts = Array.from(
-      new Set(Array.from(acc.values()).filter((b) => b.g === g).map((b) => b.sort))
-    ).sort();
-    return new Set(sorts.slice(-limit));
-  };
-  const windows: Record<Granularity, Set<string>> = {
-    week: keep('week', 12),
-    month: keep('month', 12),
-    year: keep('year', 3),
-  };
-
-  const buckets = Array.from(acc.values())
-    .filter((b) => windows[b.g].has(b.sort))
-    .sort((a, b) => (a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0));
-
-  return {
-    departments: Array.from(departments).sort(),
-    units: Array.from(units).sort(),
-    buckets,
-  };
-}
-
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'employee.view');
   if (permErr) return permErr;
@@ -226,6 +83,7 @@ export async function GET(request: NextRequest) {
   const [
     activeEmployees,
     todayRows,
+    lateToday,
     pendingLeave,
     pendingOt,
     pendingCompOff,
@@ -251,6 +109,17 @@ export async function GET(request: NextRequest) {
       by: ['status'],
       where: { date: today, ...employeeScope },
       _count: { _all: true },
+    }),
+    // Late is a property of a present day, not a status of its own — the
+    // gauge needs it as a separate slice, so it is counted separately and
+    // subtracted from Present on the way out.
+    prisma.dailyAttendance.count({
+      where: {
+        date: today,
+        lateMinutes: { gt: 0 },
+        status: { in: PRESENT_STATUSES },
+        ...employeeScope,
+      },
     }),
     prisma.leaveApplication.count({
       where: { status: { in: PENDING_LEAVE_STATUSES }, ...employeeScope },
@@ -489,6 +358,8 @@ export async function GET(request: NextRequest) {
     headcount: { total: totalHeadcount, byDepartment },
     attendanceToday: {
       present,
+      /** Present, but arrived after shift start. A subset of `present`. */
+      late: lateToday,
       onLeave,
       absent,
       marked: markedToday,

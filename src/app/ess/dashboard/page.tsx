@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ReportBarChart, ReportMultiLineChart } from '@/components/ui/ReportCharts';
 import { handleExport } from '@/lib/export-utils';
 
 // ── Types matching /api/workforce/my-dashboard ────────────────────────────────
@@ -108,6 +108,25 @@ const FLAG_META: Record<string, { label: string; color: string }> = {
   none:      { label: 'No Data',   color: '#3d4756' },
 };
 
+/**
+ * DailyAttendance.status is a free string; the flag keys are what the colour
+ * map is built on. flagForDay derives a flag from a whole row (it also reads
+ * late/early minutes); this maps a bare status for the aggregated series,
+ * where those minute columns are not carried.
+ */
+const STATUS_TO_FLAG: Record<string, string> = {
+  Present: 'present',
+  HalfDay: 'halfDay',
+  Absent: 'absent',
+  Leave: 'leave',
+  Permission: 'leave',
+  Holiday: 'holiday',
+  WeeklyOff: 'weeklyOff',
+  MissingPunch: 'missing',
+  OnDuty: 'onDuty',
+  LOP: 'lop',
+};
+
 function flagForDay(d: DayRow | undefined): keyof typeof FLAG_META {
   if (!d) return 'none';
   switch (d.status) {
@@ -184,6 +203,11 @@ export default function EssDashboardPage() {
   const [year, setYear] = useState(now.getUTCFullYear());
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
   const [metric, setMetric] = useState<'worked' | 'ot'>('worked');
+  const [flagRange, setFlagRange] = useState<'week' | 'month' | 'year'>('month');
+  const [flagData, setFlagData] = useState<{
+    statuses: string[];
+    buckets: Array<{ g: string; label: string; sort: string; status: string; count: number }>;
+  } | null>(null);
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [entryTab, setEntryTab] = useState<'missing' | 'absent'>('missing');
@@ -203,6 +227,15 @@ export default function EssDashboardPage() {
   // reflects the previously selected month.
   const refreshing = data !== null && (data.month.year !== year || data.month.month !== month);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/workforce/my-attendance-flags?years=2')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => { if (!cancelled && json) setFlagData(json); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
   const chartData = useMemo(() => {
@@ -218,9 +251,46 @@ export default function EssDashboardPage() {
         hours: Math.round((minutes / 60) * 100) / 100,
         flag,
         status: row?.status ?? 'No record',
+        // The bar's colour IS the attendance flag, so it travels with the row
+        // rather than being looked up again at render time.
+        color: FLAG_META[flag].color,
+        // A day with no hours still shows a stub bar; fading it keeps it from
+        // reading as a real value.
+        fade: minutes === 0 ? 0.45 : 1,
       };
     });
   }, [data, daysInMonth, month, metric]);
+
+  /** One line per attendance status across the chosen period buckets. */
+  const flagSeries = useMemo(() => {
+    const buckets = (flagData?.buckets ?? []).filter((b) => b.g === flagRange);
+    const columns = Array.from(new Set(buckets.map((b) => b.sort)))
+      .sort()
+      .map((sort) => ({ sort, label: buckets.find((b) => b.sort === sort)?.label ?? sort }));
+
+    const byStatus = new Map<string, number[]>();
+    for (const b of buckets) {
+      const idx = columns.findIndex((c) => c.sort === b.sort);
+      if (idx < 0) continue;
+      const cells = byStatus.get(b.status) ?? Array(columns.length).fill(0);
+      cells[idx] += b.count;
+      byStatus.set(b.status, cells);
+    }
+
+    return {
+      columns: columns.map((c) => c.label),
+      series: Array.from(byStatus.entries())
+        // A status the employee never had would be a flat zero line; drop it
+        // rather than crowd the legend with it.
+        .filter(([, values]) => values.some((v) => v > 0))
+        .map(([status, values]) => ({
+          name: FLAG_META[STATUS_TO_FLAG[status] ?? 'none']?.label ?? status,
+          values,
+          color: FLAG_META[STATUS_TO_FLAG[status] ?? 'none']?.color,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [flagData, flagRange]);
 
   const missingEntries = useMemo(
     () => (data?.month.days ?? []).filter((d) => d.status === 'MissingPunch' || (d.status === 'Present' && (!d.inTime || !d.outTime))).slice(-8).reverse(),
@@ -378,6 +448,23 @@ export default function EssDashboardPage() {
                 <option value="worked">Total Worked Hours</option>
                 <option value="ot">OT Hours</option>
               </select>
+              <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: 'var(--border)' }}>
+                {(['week', 'month', 'year'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setFlagRange(r)}
+                    className="cursor-pointer rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors"
+                    style={
+                      flagRange === r
+                        ? { background: 'var(--primary)', color: '#fff' }
+                        : { color: 'var(--foreground-muted)' }
+                    }
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
               <select
                 value={`${year}-${month}`}
                 onChange={(e) => {
@@ -393,38 +480,45 @@ export default function EssDashboardPage() {
             </div>
           </div>
 
-          {/* Legend */}
-          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
-            {Object.values(FLAG_META).filter((f) => f.label !== 'No Data').map((f) => (
-              <span key={f.label} className="flex items-center gap-1.5 text-[11px]" style={muted}>
-                <span className="h-2 w-2 rounded-full" style={{ background: f.color }} />
-                {f.label}
-              </span>
-            ))}
-          </div>
-
           <div className="mt-2 transition-opacity" style={{ height: 240, opacity: refreshing || loading ? 0.45 : 1 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="25%">
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 9, fill: 'var(--foreground-muted)' }} interval={0} angle={-45} textAnchor="end" height={48} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--foreground-muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  cursor={{ fill: 'var(--surface-hover)' }}
-                  contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--foreground)' }}
-                  formatter={(value, _name, item) => [
-                    `${value ?? 0} hrs · ${(item?.payload as { status?: string } | undefined)?.status ?? ''}`,
-                    metric === 'worked' ? 'Worked' : 'OT',
-                  ]}
-                />
-                <Bar dataKey="hours" radius={[3, 3, 0, 0]} minPointSize={2}>
-                  {chartData.map((d, i) => (
-                    <Cell key={i} fill={FLAG_META[d.flag].color} fillOpacity={d.hours === 0 ? 0.45 : 1} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {/* Days counted per attendance flag, one line per flag. The
+                per-day hours bar chart moved below — it answers a different
+                question (how long did I work) than this one (how did my days
+                break down). */}
+            <ReportMultiLineChart
+              columns={flagSeries.columns}
+              series={flagSeries.series}
+              valueFormatter={(v) => `${v} day${v === 1 ? '' : 's'}`}
+            />
           </div>
+        </div>
+      </div>
+
+      {/* Daily worked / OT hours — kept from the original card, which the flag
+          summary above replaced. */}
+      <div className={card}>
+        <h3 className="flex items-center gap-2 text-sm font-bold" style={fg}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--info)" strokeWidth="2" strokeLinecap="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></svg>
+          {metric === 'worked' ? 'Daily Worked Hours' : 'Daily OT Hours'}
+          <span className="ml-auto text-[11px] font-medium" style={muted}>
+            {MONTH_NAMES[month - 1]} {year}
+          </span>
+        </h3>
+        <div className="mt-2 transition-opacity" style={{ height: 220, opacity: refreshing || loading ? 0.45 : 1 }}>
+          <ReportBarChart
+            data={chartData}
+            xKey="day"
+            yKey="hours"
+            colorKey="color"
+            opacityKey="fade"
+            seriesName={metric === 'worked' ? 'Worked' : 'OT'}
+            valueFormatter={(v, row) =>
+              `${v} hrs · ${(row as { status?: string } | undefined)?.status ?? ''}`
+            }
+            xTickAngle={-45}
+            xTickHeight={48}
+            xTickFontSize={9}
+          />
         </div>
       </div>
 

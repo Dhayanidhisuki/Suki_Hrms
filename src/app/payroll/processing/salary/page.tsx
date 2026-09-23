@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { DataTable, PageHeader, StatusBadge, SectionCard, Button, KPICard, KPIGrid, Stepper, useToast, type Column } from '@/components/ui';
+import { DataTable, PageHeader, StatusBadge, SectionCard, Button, KPICard, KPIGrid, Stepper, useToast, type Column, useConfirm } from '@/components/ui';
 import PayrollDetailDialog from '@/components/payroll/PayrollDetailDialog';
 
 interface LineComponent {
@@ -165,6 +165,7 @@ function EditableCell({
 }
 
 export default function PayrollSalaryPage() {
+  const { confirm } = useConfirm();
   const toast = useToast();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -298,7 +299,15 @@ export default function PayrollSalaryPage() {
   // ── Delete line ────────────────────────────────────────────────────
   const handleDeleteLine = async (line: PayrollLine) => {
     if (!run) return;
-    if (!confirm(`Remove ${line.employee.firstName} ${line.employee.lastName} (${line.employee.oldEmployeeCode ?? ''}) from this run?`)) return;
+    if (
+      !(await confirm({
+        title: 'Remove from this run?',
+        message: `${line.employee.firstName} ${line.employee.lastName} (${line.employee.oldEmployeeCode ?? ''}) will be taken out of this payroll run.`,
+        confirmLabel: 'Remove',
+        tone: 'danger',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const res = await fetch(`/api/payroll/runs/${run.id}/lines/${line.id}`, { method: 'DELETE' });

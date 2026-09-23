@@ -51,6 +51,10 @@ const TREND_COLOR: Record<KPITrendDirection, string> = {
 interface KPICardProps {
   label: string;
   value: string | number;
+  /** Animate to this number and render it through `format`. */
+  count?: number;
+  /** Formats each animation frame, e.g. a currency or percentage. */
+  format?: (n: number) => string;
   subtitle?: string;
   tone?: KPITone;
   icon?: ReactNode;
@@ -67,6 +71,8 @@ export default function KPICard({
   tone = 'info',
   icon,
   animationDuration = 600,
+  count,
+  format,
   trend,
   title,
   className = '',
@@ -99,10 +105,15 @@ export default function KPICard({
       </div>
 
       <p
-        className="mt-4 text-[28px] font-bold leading-none tracking-tight tabular-nums"
+        className="mt-4 text-[28px] font-medium leading-none tracking-tight tabular-nums"
         style={{ color: 'var(--text-primary)' }}
       >
-        {typeof value === 'number' ? (
+        {/* `count` + `format` let a currency or percentage figure count up too;
+            a bare number animates on its own; anything else (an em dash for
+            "no data") is printed as-is. */}
+        {typeof count === 'number' ? (
+          <AnimatedCountUp value={count} duration={animationDuration} format={format} />
+        ) : typeof value === 'number' ? (
           <AnimatedCountUp value={value} duration={animationDuration} />
         ) : (
           value

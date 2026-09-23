@@ -16,6 +16,8 @@ export type AttendanceGranularity = 'week' | 'month' | 'year';
  * The client sums these to whatever the dropdowns are set to, so switching
  * department, unit or granularity costs no extra request.
  */
+export type AttendanceDimension = 'department' | 'unit' | 'employee';
+
 export interface AttendanceOverviewBucket {
   g: AttendanceGranularity;
   label: string;
@@ -23,6 +25,8 @@ export interface AttendanceOverviewBucket {
   sort: string;
   department: string;
   unit: string;
+  /** "CODE · Name", or "Unassigned" outside the employee-grouped fetch. */
+  employee: string;
   present: number;
   absent: number;
   /** Rows counted, i.e. excluding weekly-offs and holidays. */
@@ -32,6 +36,8 @@ export interface AttendanceOverviewBucket {
 export interface AttendanceOverview {
   departments: string[];
   units: string[];
+  /** Only populated by the employee-grouped fetch. */
+  employees?: string[];
   buckets: AttendanceOverviewBucket[];
 }
 
@@ -44,6 +50,8 @@ export interface OverviewData {
   };
   attendanceToday: {
     present: number;
+    /** Present but after shift start — a subset of `present`, not an extra. */
+    late: number;
     onLeave: number;
     absent: number;
     marked: number;

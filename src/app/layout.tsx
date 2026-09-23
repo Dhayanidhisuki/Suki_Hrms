@@ -3,7 +3,7 @@ import { Poppins } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import AppShell from "@/components/layout/AppShell";
-import { AppToaster, NavigationLoader, ToastProvider } from "@/components/ui";
+import { AppToaster, ConfirmProvider, NavigationLoader, ToastProvider } from "@/components/ui";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import {
   parseCookieString,
@@ -64,9 +64,11 @@ export default async function RootLayout({
       <body className="min-h-full font-sans">
         <ThemeProvider initialTheme={theme} initialMode={mode}>
           <ToastProvider>
-            <NavigationLoader />
-            <AppToaster />
-            <AppShell>{children}</AppShell>
+            <ConfirmProvider>
+              <NavigationLoader />
+              <AppToaster />
+              <AppShell>{children}</AppShell>
+            </ConfirmProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

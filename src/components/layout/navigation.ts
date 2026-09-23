@@ -68,10 +68,11 @@ export const navigation: NavModule[] = [
       {
         label: "HR",
         items: [
-          { label: "Headcount (Department-wise)", short: "Headcount by Dept", href: "/dashboard/headcount" },
-          { label: "Attrition", href: "/dashboard/attrition" },
+          { label: "Financial Year Summary", short: "FY Summary", href: "/dashboard/fy-summary", ready: true },
+          { label: "Headcount (Department-wise)", short: "Headcount by Dept", href: "/dashboard/headcount", ready: true },
+          { label: "Attrition", href: "/dashboard/attrition", ready: true },
           { label: "Attendance Summary", href: "/dashboard/attendance-summary", ready: true },
-          { label: "Leave Summary", href: "/dashboard/leave-summary" },
+          { label: "Leave Summary", href: "/dashboard/leave-summary", ready: true },
           { label: "Payroll Status", href: "/dashboard/payroll-status" },
         ],
       },
@@ -79,8 +80,8 @@ export const navigation: NavModule[] = [
         label: "Payroll",
         items: [
           { label: "Payroll Processing Status", short: "Processing Status", href: "/dashboard/payroll-processing-status" },
-          { label: "Salary Cost", href: "/dashboard/salary-cost" },
-          { label: "Statutory Summary", href: "/dashboard/statutory-summary" },
+          { label: "Salary Cost", href: "/dashboard/salary-cost", ready: true },
+          { label: "Statutory Summary", href: "/dashboard/statutory-summary", ready: true },
           { label: "Pending Salary", href: "/dashboard/pending-salary" },
         ],
       },
