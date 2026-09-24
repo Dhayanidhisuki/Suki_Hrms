@@ -18,6 +18,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { wfhRequestSchema } from '@/lib/validations/workforce';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -107,6 +108,16 @@ export async function POST(request: NextRequest) {
       reason: parsed.data.reason,
       remarks: parsed.data.remarks ?? null,
     },
+  });
+
+  await notifyEssRequest({
+    kind: 'WFH',
+    action: 'SUBMITTED',
+    employeeId: record.employeeId,
+    requestId: record.id,
+    period: formatPeriod(record.fromDate, record.toDate),
+    reason: record.reason,
+    linkPath: '/ess/wfh',
   });
 
   return NextResponse.json(record, { status: 201 });

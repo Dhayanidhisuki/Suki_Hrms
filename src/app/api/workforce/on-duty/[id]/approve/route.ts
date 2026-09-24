@@ -22,6 +22,7 @@ import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManage
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 function eachDate(from: Date, to: Date): Date[] {
   const dates: Date[] = [];
@@ -95,6 +96,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const updated = await prisma.onDutyRequest.findUnique({ where: { id: requestId } });
+
+    await notifyEssRequest({
+      kind: 'ON_DUTY',
+      action: 'APPROVED',
+      employeeId: record.employeeId,
+      requestId: requestId,
+      period: formatPeriod(record.fromDate, record.toDate),
+      reason: record.purpose,
+      linkPath: '/ess/on-duty',
+    });
+
     return NextResponse.json(updated);
   }
 

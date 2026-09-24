@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
@@ -91,6 +92,19 @@ export async function POST(
     const [y, m] = key.split('-').map(Number);
     await refreshMonthlySummary(application.employeeId, y, m);
   }
+
+  // After the transaction commits, never inside it: a notification must not
+  // hold a database transaction open, nor be sent for work that rolled back.
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'LEAVE',
+    action: 'CANCELLED',
+    employeeId: application.employeeId,
+    requestId: applicationId,
+    period: formatPeriod(application.fromDate, application.toDate),
+    linkPath: '/ess/leave',
+  });
+
 
   return NextResponse.json({ message: 'Leave application cancelled' });
 }

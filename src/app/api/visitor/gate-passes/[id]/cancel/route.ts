@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
+import { notifyVisitorPass } from '@/lib/ess/notifyVisitorPass';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,6 +16,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const pass = await prisma.visitorGatePass.findFirst({
     where: { id: passId, companyId: scope.companyId, deletedAt: null },
+    include: {
+      personToMeet: { select: { firstName: true, lastName: true } },
+    },
   });
   if (!pass) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (pass.status === 'CHECKED_OUT' || pass.status === 'CANCELLED') {
@@ -28,6 +32,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       status: 'CANCELLED',
       updatedBy: userId,
     },
+  });
+
+  await notifyVisitorPass({
+    companyId: scope.companyId,
+    action: 'CANCELLED',
+    pass: updated,
+    hostName: `${pass.personToMeet.firstName} ${pass.personToMeet.lastName}`,
+    reason: undefined,
   });
 
   return NextResponse.json(updated);

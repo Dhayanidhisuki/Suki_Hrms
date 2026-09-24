@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader, Spinner } from '@/components/ui';
 import { CrossTabTable } from '@/components/ui/CrossTabTable';
-import { ReportChartCard, ReportGroupedBarChart } from '@/components/ui/ReportCharts';
+import { ReportAreaChart, ReportChartCard, ReportGroupedBarChart } from '@/components/ui/ReportCharts';
 import { inr, inrShort } from '@/lib/payrollSummaryTypes';
 
 type GroupBy = 'department' | 'unit' | 'employee';
@@ -78,6 +78,7 @@ export default function FySummaryPage() {
 
   const [fy, setFy] = useState(defaultFy);
   const [groupBy, setGroupBy] = useState<GroupBy>('department');
+  const [includeLeavers, setIncludeLeavers] = useState(false);
   const [unit, setUnit] = useState(ALL);
   const [department, setDepartment] = useState(ALL);
   const [fromMonth, setFromMonth] = useState(0);
@@ -89,7 +90,9 @@ export default function FySummaryPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/dashboard/fy-crosstab?fy=${fy}&groupBy=${groupBy}`);
+      const params = new URLSearchParams({ fy: String(fy), groupBy });
+      if (includeLeavers) params.set('exit', 'include');
+      const res = await fetch(`/api/dashboard/fy-crosstab?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `Request failed (${res.status})`);
@@ -102,7 +105,7 @@ export default function FySummaryPage() {
     } finally {
       setLoading(false);
     }
-  }, [fy, groupBy]);
+  }, [fy, groupBy, includeLeavers]);
 
   useEffect(() => {
     // The fetch flips `loading` on entry, which is the point: that state is
@@ -135,6 +138,22 @@ export default function FySummaryPage() {
         .sort((a, b) => a.label.localeCompare(b.label));
     },
     [unit, department, lo, hi]
+  );
+
+  /**
+   * Company-wide (or current-filter-wide) monthly total — sums every row
+   * `shape()` returns, element-wise, into one series. Reuses `shape()` so it
+   * automatically respects whatever unit/department filter and month window
+   * is active, same as the table and per-row chart below it.
+   */
+  const aggregateTrend = useCallback(
+    (rows: CrossTabRow[] | undefined) => {
+      const shaped = shape(rows);
+      const totals = Array(hi - lo + 1).fill(0);
+      shaped.forEach((r) => r.values.forEach((v, i) => { totals[i] += v; }));
+      return totals;
+    },
+    [shape, lo, hi]
   );
 
   const filters = (
@@ -197,6 +216,19 @@ export default function FySummaryPage() {
         {(data?.months ?? []).map((m, i) => <option key={m} value={i}>{`From ${m}`}</option>)}
       </select>
 
+      <button
+        type="button"
+        onClick={() => setIncludeLeavers((v) => !v)}
+        aria-pressed={includeLeavers}
+        className={`h-9 cursor-pointer rounded-lg border px-3 text-[12px] font-semibold transition-colors ${
+          includeLeavers
+            ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+            : 'border-[var(--border-main)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]'
+        }`}
+      >
+        Include leavers
+      </button>
+
       <select
         value={toMonth}
         onChange={(e) => setToMonth(Number(e.target.value))}
@@ -214,7 +246,7 @@ export default function FySummaryPage() {
         title="Financial Year Summary"
         description={
           data
-            ? `${data.fyLabel} · by ${groupBy}${department === ALL ? '' : ` · ${department}`}${unit === ALL ? '' : ` · ${unit}`}`
+            ? `${data.fyLabel} · by ${groupBy}${department === ALL ? '' : ` · ${department}`}${unit === ALL ? '' : ` · ${unit}`} · ${includeLeavers ? 'active and past employees' : 'active employees'}`
             : 'Month-wise cross-tab by department'
         }
         eyebrow="Dashboard"
@@ -231,12 +263,64 @@ export default function FySummaryPage() {
         MEASURES.map((m) => {
           const rows = shape(data.measures[m.key]);
           const fmt = m.money ? inr : nf;
+
+          // Company-wide monthly trend — a plain sum for every measure except
+          // salaryPerEmployee, which is a derived ratio: summing per-department
+          // ratios would give a multiple of the true figure, not a company-wide
+          // one, so it is recomputed here as total salary ÷ total headcount.
+          const trendTotals =
+            m.key === 'salaryPerEmployee'
+              ? (() => {
+                  const salaryTotals = aggregateTrend(data.measures.salary);
+                  const employeeTotals = aggregateTrend(data.measures.employees);
+                  return salaryTotals.map((s, i) => (employeeTotals[i] > 0 ? Math.round(s / employeeTotals[i]) : 0));
+                })()
+              : aggregateTrend(data.measures[m.key]);
+          const trendData = months.map((mo, i) => ({ label: mo, value: trendTotals[i] ?? 0 }));
+          const scopeLabel = [department !== ALL ? department : null, unit !== ALL ? unit : null]
+            .filter(Boolean)
+            .join(' · ') || 'Company-wide';
+
+          // A2: the legacy report has a "Top 3 Dept by OT Allowance" visual.
+          // Rather than a separate chart, every measure names its leading rows
+          // over the selected window — the same answer, on the card that
+          // already shows the data.
+          const ranked = [...rows]
+            .map((r) => ({ label: r.label, total: r.values.reduce((sum, v) => sum + v, 0) }))
+            .filter((r) => r.total > 0)
+            .sort((a, b) => b.total - a.total);
+          const topThree = ranked.slice(0, 3);
           return (
             <section key={m.key} className="space-y-4">
+              <ReportChartCard
+                title={`${m.title} — monthly trend`}
+                subtitle={scopeLabel}
+                className="mb-0"
+                height={220}
+              >
+                <ReportAreaChart
+                  data={trendData}
+                  seriesName={m.title}
+                  valueFormatter={m.money ? inr : undefined}
+                  axisFormatter={m.money ? inrShort : undefined}
+                />
+              </ReportChartCard>
+
               <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-5">
                 <div className="mb-4">
                   <h2 className="text-sm font-semibold text-[var(--text-primary)]">{m.title}</h2>
                   <p className="mt-0.5 text-xs text-[var(--text-muted)]">{m.subtitle}</p>
+                  {topThree.length > 0 && (
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      Top {topThree.length}:{' '}
+                      {topThree.map((r, i) => (
+                        <span key={r.label}>
+                          {i > 0 && ' · '}
+                          <span className="font-semibold">{r.label}</span> {fmt(r.total)}
+                        </span>
+                      ))}
+                    </p>
+                  )}
                 </div>
                 <CrossTabTable
                   columns={months}
@@ -247,7 +331,7 @@ export default function FySummaryPage() {
               </div>
 
               <ReportChartCard
-                title={`${m.title} — chart`}
+                title={`${m.title} — by ${groupBy}`}
                 subtitle={`One series per ${groupBy}`}
                 className="mb-0"
                 height={320}

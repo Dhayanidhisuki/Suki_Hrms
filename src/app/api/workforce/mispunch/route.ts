@@ -19,6 +19,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { mispunchRequestSchema } from '@/lib/validations/workforce';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -132,6 +133,16 @@ export async function POST(request: NextRequest) {
       requestedOutTime: parsed.data.requestedOutTime ?? null,
       reason: parsed.data.reason,
     },
+  });
+
+  await notifyEssRequest({
+    kind: 'MISPUNCH',
+    action: 'SUBMITTED',
+    employeeId: record.employeeId,
+    requestId: record.id,
+    period: formatPeriod(record.date),
+    reason: record.reason,
+    linkPath: '/ess/mispunch',
   });
 
   return NextResponse.json(record, { status: 201 });

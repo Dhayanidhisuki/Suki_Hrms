@@ -4,6 +4,7 @@ import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { notifyVisitorEvent } from '@/lib/visitor-notifications';
+import { notifyVisitorPass } from '@/lib/ess/notifyVisitorPass';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -63,6 +64,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     subject: `Visitor request ${updated.gatePassNo} approved`,
     body: `Visitor ${updated.visitorName} has been approved. QR pass is valid from ${updated.validFrom.toLocaleString()} to ${updated.validTo.toLocaleString()}.`,
     visitorGatePassId: updated.id,
+  });
+
+  await notifyVisitorPass({
+    companyId: scope.companyId,
+    action: 'APPROVED',
+    pass: updated,
+    hostName: `${pass.personToMeet.firstName} ${pass.personToMeet.lastName}`,
+    reason: undefined,
   });
 
   return NextResponse.json(updated);

@@ -14,6 +14,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { creditCompOff } from '@/lib/compOffTransactions';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD expected');
 
@@ -126,6 +127,16 @@ export async function POST(request: NextRequest) {
       reason: parsed.data.reason ?? null,
       createdByUserId: userId,
     },
+  });
+
+  await notifyEssRequest({
+    kind: 'COMP_OFF',
+    action: 'SUBMITTED',
+    employeeId: created.employeeId,
+    requestId: created.id,
+    period: formatPeriod(created.requestedDate),
+    reason: created.reason ?? undefined,
+    linkPath: '/ess/comp-off',
   });
 
   return NextResponse.json(created);

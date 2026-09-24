@@ -9,7 +9,7 @@ export interface ModuleStats {
   pending?: number;
   approved?: number;
   rejected?: number;
-  custom?: Record<string, number>;
+  custom?: Record<string, number | string>;
 }
 
 export async function fetchModuleStats(module: string): Promise<ModuleStats> {

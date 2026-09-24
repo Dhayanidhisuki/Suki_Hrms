@@ -12,6 +12,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { permissionRejectSchema } from '@/lib/validations/workforce';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const scope = getCompanyId(request);
@@ -43,6 +44,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: { id: requestId },
       data: { status: 'rejected', managerRejectionReason: parsed.data.rejectionReason },
     });
+
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'PERMISSION',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: requestId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/permission',
+    });
+
     return NextResponse.json(updated);
   }
 
@@ -55,6 +68,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: { id: requestId },
       data: { status: 'rejected', rejectionReason: parsed.data.rejectionReason },
     });
+
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'PERMISSION',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: requestId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/permission',
+    });
+
     return NextResponse.json(updated);
   }
 

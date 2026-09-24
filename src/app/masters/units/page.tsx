@@ -7,6 +7,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption, StatusPillTabs } from '@/components/ui';
+import { KPICard, KPIGrid } from '@/components/ui';
+import { Factory, CircleCheck, ShieldCheck } from 'lucide-react';
+import { useModuleStats } from '@/hooks/useModuleStats';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface Unit {
@@ -34,6 +37,7 @@ export default function UnitsPage() {
   const [search, setSearch] = useState('');
   // Server-side: the list is paginated, so a client-side filter would only
   // hide rows on the current page and misreport the total.
+  const { stats } = useModuleStats('units');
   const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -156,45 +160,73 @@ export default function UnitsPage() {
   return (
     <div className="space-y-4">
       <MasterGroupTabs groupLabel="Organization" />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Units
-        </h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            Units
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Manage corporate offices, registered establishments, manufacturing units, and plants.
+          </p>
+        </div>
         <button
           onClick={handleAdd}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
           + Add Unit
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-
-        <StatusPillTabs
-
-          items={[
-
-            { value: '', label: 'All' },
-
-            { value: 'active', label: 'Active', tone: 'success' },
-
-            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
-
-          ]}
-
-          value={status}
-
-          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
-
-          idPrefix="units-status"
-
+      <KPIGrid columns={3}>
+        <KPICard
+          label="Total Operating Units"
+          value={stats.total}
+          tone="info"
+          icon={<Factory />}
+          subtitleTone={stats.total > 0 && stats.active === stats.total ? 'success' : undefined}
+          subtitle={
+            stats.total > 0 && stats.active === stats.total
+              ? 'All registered units operational'
+              : `${stats.inactive ?? 0} inactive`
+          }
         />
+        <KPICard
+          label="Active Units"
+          value={stats.active ?? 0}
+          tone="success"
+          icon={<CircleCheck />}
+          subtitle={
+            stats.total > 0
+              ? `${(((stats.active ?? 0) / stats.total) * 100).toFixed(1)}% operational`
+              : undefined
+          }
+        />
+        <KPICard
+          label="GSTIN Compliance"
+          value={`${stats.custom?.gstinCompliancePct ?? 0}%`}
+          tone="accent"
+          icon={<ShieldCheck />}
+          subtitle={`${stats.custom?.withGstin ?? 0} of ${stats.active ?? 0} active units carry a GSTIN`}
+        />
+      </KPIGrid>
 
-      </div>
 
 
       <DataTable
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+            idPrefix="units-status"
+          />
+        }
         columns={columns}
         data={records}
         pagination={pagination}

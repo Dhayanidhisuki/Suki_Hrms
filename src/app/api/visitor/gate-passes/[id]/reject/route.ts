@@ -4,6 +4,7 @@ import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { notifyVisitorEvent } from '@/lib/visitor-notifications';
+import { notifyVisitorPass } from '@/lib/ess/notifyVisitorPass';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const pass = await prisma.visitorGatePass.findFirst({
     where: { id: passId, companyId: scope.companyId, deletedAt: null },
+    include: {
+      personToMeet: { select: { firstName: true, lastName: true } },
+    },
   });
   if (!pass) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -59,6 +63,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     subject: `Visitor request ${updated.gatePassNo} rejected`,
     body: `Visitor ${updated.visitorName} was rejected. Reason: ${String(body.reason)}`,
     visitorGatePassId: updated.id,
+  });
+
+  await notifyVisitorPass({
+    companyId: scope.companyId,
+    action: 'REJECTED',
+    pass: updated,
+    hostName: `${pass.personToMeet.firstName} ${pass.personToMeet.lastName}`,
+    reason: String(body.reason),
   });
 
   return NextResponse.json(updated);

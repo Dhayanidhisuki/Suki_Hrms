@@ -71,7 +71,7 @@ export default function InlineSelect<T extends string = string>({
         disabled={disabled}
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value as T)}
-        className={`${fullWidth ? 'w-full' : ''} min-w-0 appearance-none bg-transparent font-medium focus:outline-none ${
+        className={`${fullWidth ? 'w-full' : ''} min-w-0 select-bare appearance-none bg-transparent font-medium focus:outline-none ${
           disabled ? 'cursor-not-allowed' : 'cursor-pointer'
         } ${sm ? 'py-1 pl-2 pr-6' : 'py-2 pl-3 pr-7'}`}
         style={{ color: 'inherit' }}

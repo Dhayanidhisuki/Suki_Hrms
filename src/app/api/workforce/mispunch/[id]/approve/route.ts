@@ -23,6 +23,7 @@ import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManag
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { resolveEmployeeShiftConfig, resolveDailyShift, deriveStatusAndMinutes, refreshMonthlySummary } from '@/lib/biometricConversion';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -95,6 +96,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
 
     const updated = await prisma.mispunchCorrection.findUnique({ where: { id: mispunchId } });
+
+    await notifyEssRequest({
+      kind: 'MISPUNCH',
+      action: 'APPROVED',
+      employeeId: record.employeeId,
+      requestId: mispunchId,
+      period: formatPeriod(record.date),
+      reason: record.reason,
+      linkPath: '/ess/mispunch',
+    });
+
     return NextResponse.json(updated);
   }
 

@@ -18,6 +18,7 @@ import {
   type Column, type FieldDef, RowAction } from '@/components/ui';
 import { exportToPDF } from '@/lib/export-utils';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
+import { CalendarDays, Landmark, Building2, CalendarClock } from 'lucide-react';
 
 // ─── Shared types ───────────────────────────────────────────────────────
 
@@ -193,6 +194,26 @@ function DeclaredHolidaysTab() {
     return all;
   }, [records, yearlyEntries, search]);
 
+  // Real categories only — HOLIDAY_TYPE_OPTIONS is COMPANY/FESTIVAL/GOVERNMENT/
+  // OTHER, not the National/Restricted split some HRMS tools use, so the
+  // summary counts what the data actually distinguishes.
+  const summary = useMemo(() => {
+    const companyHolidays = records.filter((h) => h.isActive);
+    const government = companyHolidays.filter((h) => h.holidayType === 'GOVERNMENT').length;
+    const today = new Date().toISOString().slice(0, 10);
+    const upcoming = mergedRows.filter((r) => r.date.slice(0, 10) >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const daysAway = upcoming
+      ? Math.round((new Date(upcoming.date).getTime() - new Date(today).getTime()) / 86400000)
+      : null;
+    return {
+      total: mergedRows.length,
+      government,
+      company: companyHolidays.length - government,
+      upcoming,
+      daysAway,
+    };
+  }, [records, mergedRows]);
+
   const handleDownloadPdf = () => {
     if (mergedRows.length === 0) {
       toast.error('Nothing to download — no holidays declared for this filter.');
@@ -308,7 +329,25 @@ function DeclaredHolidaysTab() {
   ];
 
   return (
-    <SectionCard
+    <div className="space-y-4">
+      <KPIGrid columns={4}>
+        <KPICard label="Total Holidays" value={summary.total} tone="info" icon={<CalendarDays />} subtitle={`For ${year}, across sources`} />
+        <KPICard label="Government Holidays" value={summary.government} tone="danger" icon={<Landmark />} subtitle="Statutory closures" />
+        <KPICard label="Company Holidays" value={summary.company} tone="accent" icon={<Building2 />} subtitle="Festival + company-declared" />
+        <KPICard
+          label="Upcoming Holiday"
+          value={summary.upcoming ? summary.upcoming.name : '—'}
+          tone="success"
+          icon={<CalendarClock />}
+          subtitle={
+            summary.upcoming
+              ? `${new Date(summary.upcoming.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · in ${summary.daysAway} day${summary.daysAway === 1 ? '' : 's'}`
+              : 'None scheduled'
+          }
+        />
+      </KPIGrid>
+
+      <SectionCard
       title="Declared Holidays"
       description="Declared holidays feed the OT Approval weekly-off/holiday Comp-Off choice and the Attendance Overview day status. Dates marked on the Yearly Leave Calendar are shown here too (read-only — manage those on that tab)."
       count={loading ? undefined : mergedRows.length}
@@ -357,7 +396,8 @@ function DeclaredHolidaysTab() {
       />
       <FormModal title={editingId ? 'Edit Holiday' : 'Add Holiday'} fields={fields} initialValues={initialValues} isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} submitLabel={editingId ? 'Update' : 'Create'} />
       <ConfirmDialog title="Delete Holiday" message="Are you sure you want to soft-delete this holiday?" isOpen={deleteId !== null} onConfirm={() => deleteId && handleDelete(deleteId)} onClose={() => setDeleteId(null)} />
-    </SectionCard>
+      </SectionCard>
+    </div>
   );
 }
 
@@ -452,9 +492,15 @@ function DepartmentWeeklyOffTab() {
   return (
     <div className="space-y-4">
       <KPIGrid columns={3}>
-        <KPICard label="Departments" value={departments.length} tone="info" />
-        <KPICard label="With Weekly Off Set" value={configuredCount} tone="success" />
-        <KPICard label="Using Default (Sunday)" value={Math.max(0, departments.length - configuredCount)} subtitle="no config → Sunday" tone={departments.length - configuredCount > 0 ? 'warning' : 'success'} />
+        <KPICard label="Departments" value={departments.length} tone="info" icon={<Building2 />} />
+        <KPICard label="With Weekly Off Set" value={configuredCount} tone="success" icon={<CalendarDays />} />
+        <KPICard
+          label="Using Default (Sunday)"
+          value={Math.max(0, departments.length - configuredCount)}
+          subtitle="no config → Sunday"
+          tone={departments.length - configuredCount > 0 ? 'warning' : 'success'}
+          icon={<CalendarClock />}
+        />
       </KPIGrid>
 
       <SectionCard

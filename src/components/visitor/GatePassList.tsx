@@ -78,7 +78,7 @@ function FilterSelect({
 }) {
   return (
     <label className="relative inline-flex min-w-[150px] items-center rounded-lg border text-sm" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full cursor-pointer appearance-none bg-transparent py-2 pl-3 pr-8 focus:outline-none" style={{ color: value ? 'var(--foreground)' : 'var(--foreground-muted)' }}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full cursor-pointer select-bare appearance-none bg-transparent py-2 pl-3 pr-8 focus:outline-none" style={{ color: value ? 'var(--foreground)' : 'var(--foreground-muted)' }}>
         <option value="">{label}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>

@@ -28,6 +28,12 @@ interface DataTableProps<T> {
   onSearchChange?: (value: string) => void;
   /** Extra filter controls rendered inline to the right of the search box. */
   filters?: ReactNode;
+  /**
+   * Put `filters` on the left and let the search box sit hard right, instead
+   * of the default search-first order. Matches the masters layout where the
+   * status pills are the primary control and search is secondary.
+   */
+  filtersLead?: boolean;
   onPageChange?: (page: number) => void;
   onView?: (row: T) => void;
   onEdit?: (row: T) => void;
@@ -135,6 +141,7 @@ export default function DataTable<T extends { id: number }>({
   searchPlaceholder = 'Search...',
   onSearchChange,
   filters,
+  filtersLead = false,
   onPageChange,
   onView,
   onEdit,
@@ -235,13 +242,14 @@ export default function DataTable<T extends { id: number }>({
       <div className="space-y-3">
         {(onSearchChange || filters) && (
           <div className="flex flex-wrap items-center gap-2">
+            {filtersLead && filters}
             {onSearchChange && (
               <input
                 type="text"
                 value={searchValue ?? ''}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="min-w-[200px] flex-1 rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                className={`rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${filtersLead ? 'ml-auto w-full max-w-[320px]' : 'min-w-[200px] flex-1'}`}
                 style={{
                   backgroundColor: 'var(--surface)',
                   color: 'var(--foreground)',
@@ -249,7 +257,7 @@ export default function DataTable<T extends { id: number }>({
                 }}
               />
             )}
-            {filters}
+            {!filtersLead && filters}
           </div>
         )}
 
@@ -294,9 +302,10 @@ export default function DataTable<T extends { id: number }>({
     <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
       {(onSearchChange || filters) && (
         <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+          {filtersLead && filters}
           {onSearchChange && (
             <label
-              className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-sm focus-within:ring-1"
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm focus-within:ring-1 ${filtersLead ? 'ml-auto w-full max-w-[340px]' : 'min-w-[240px] flex-1'}`}
               style={{ backgroundColor: 'var(--bg-subtle)', borderColor: 'var(--border-main)', color: 'var(--text-muted)' }}
             >
               <SearchIcon />
@@ -310,7 +319,7 @@ export default function DataTable<T extends { id: number }>({
               />
             </label>
           )}
-          {filters}
+          {!filtersLead && filters}
         </div>
       )}
 

@@ -14,6 +14,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { resolveEmployeeShiftConfig, resolveDailyShift } from '@/lib/biometricConversion';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD expected');
 
@@ -147,6 +148,17 @@ export async function POST(request: NextRequest) {
       reason: parsed.data.reason ?? null,
       createdByUserId: userId,
     },
+  });
+
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'SHIFT_CHANGE',
+    action: 'SUBMITTED',
+    employeeId: created.employeeId,
+    requestId: created.id,
+    period: formatPeriod(created.requestedDate),
+    reason: created.reason ?? undefined,
+    linkPath: '/ess/shift-change',
   });
 
   return NextResponse.json(created);

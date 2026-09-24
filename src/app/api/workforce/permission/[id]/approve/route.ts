@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
 
@@ -79,6 +80,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const updated = await prisma.permissionRequest.update({
       where: { id: requestId },
       data: { status: 'approved', approvedByUserId: userId, approvedAt: new Date(), exceedsAllowance, excessHours },
+    });
+
+    // Fire-and-forget: a notification must never fail the decision.
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'PERMISSION',
+      action: 'APPROVED',
+      employeeId: record.employeeId,
+      requestId: record.id,
+      period: formatPeriod(record.date),
+      linkPath: '/ess/permission',
     });
 
     return NextResponse.json(updated);

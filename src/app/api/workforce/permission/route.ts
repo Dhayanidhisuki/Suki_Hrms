@@ -22,6 +22,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { permissionRequestSchema } from '@/lib/validations/workforce';
 import { getFreeHoursPerMonth, getFreeHoursPerMonthForEmployee } from '@/lib/permissionPolicy';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -180,6 +181,16 @@ export async function POST(request: NextRequest) {
       hours,
       reason: parsed.data.reason ?? null,
     },
+  });
+
+  await notifyEssRequest({
+    kind: 'PERMISSION',
+    action: 'SUBMITTED',
+    employeeId: record.employeeId,
+    requestId: record.id,
+    period: formatPeriod(record.date),
+    reason: record.reason ?? undefined,
+    linkPath: '/ess/permission',
   });
 
   return NextResponse.json(record, { status: 201 });

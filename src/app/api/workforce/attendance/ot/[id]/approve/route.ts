@@ -33,6 +33,7 @@ import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from '@/lib/weeklyOff'
 
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const bodySchema = z.object({
   settlementType: z.enum(['OT', 'COMP_OFF']).default('OT'),
@@ -112,6 +113,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
       await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
       const updated = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
+      await notifyEssRequest({
+        kind: 'OT',
+        action: 'APPROVED',
+        employeeId: record.employeeId,
+        requestId: attendanceId,
+        period: formatPeriod(record.date),
+        reason: undefined,
+        linkPath: '/ess/ot',
+      });
+
       return NextResponse.json(updated);
     }
 
@@ -130,6 +141,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
     await refreshMonthlySummary(record.employeeId, record.date.getUTCFullYear(), record.date.getUTCMonth() + 1);
     const updated = await prisma.dailyAttendance.findUnique({ where: { id: attendanceId } });
+    await notifyEssRequest({
+      kind: 'OT',
+      action: 'APPROVED',
+      employeeId: record.employeeId,
+      requestId: attendanceId,
+      period: formatPeriod(record.date),
+      reason: undefined,
+      linkPath: '/ess/ot',
+    });
+
     return NextResponse.json(updated);
   }
 

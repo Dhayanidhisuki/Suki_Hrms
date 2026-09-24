@@ -6,7 +6,8 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { Boxes, CircleCheck } from 'lucide-react';
 import { DataTable, FormModal, ConfirmDialog, useToast, StatusPillTabs, type Column, type FieldDef, KPICard, KPIGrid } from '@/components/ui';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
@@ -35,6 +36,17 @@ interface SimpleMasterPageProps {
   title: string;
   apiPath: string;
   addLabel?: string;
+  /** One-line description under the title, matching the masters page pattern. */
+  subtitle?: string;
+  /** Icon for the KPI cards (Total/Active share it; the third card takes its own). */
+  icon?: ReactNode;
+  /**
+   * A third KPI card driven by data the caller already has (e.g. mapped
+   * designations, mapped workforce). Optional because it means something
+   * different per master and cannot be derived generically the way
+   * Total/Active can.
+   */
+  extraStat?: { label: string; value: string | number; icon?: ReactNode; subtitle?: string };
   /**
    * Render as a section inside a larger page (smaller heading) instead of a
    * standalone page with an h1 — used by the combined Employee Masters tabs.
@@ -63,6 +75,9 @@ export default function SimpleMasterPage({
   title,
   apiPath,
   addLabel,
+  subtitle,
+  icon,
+  extraStat,
   embedded = false,
   extraFields = [],
   extraColumns = [],
@@ -171,8 +186,8 @@ export default function SimpleMasterPage({
         <span
           className="px-2 py-0.5 text-xs font-medium rounded-full"
           style={{
-            backgroundColor: row.isActive ? '#dcfce7' : '#fee2e2',
-            color: row.isActive ? '#166534' : '#991b1b',
+            backgroundColor: row.isActive ? 'var(--success-soft)' : 'var(--danger-soft)',
+            color: row.isActive ? 'var(--success)' : 'var(--danger)',
           }}
         >
           {row.isActive ? 'Active' : 'Inactive'}
@@ -183,19 +198,26 @@ export default function SimpleMasterPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        {embedded ? (
-          <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
-            {title}
-          </h2>
-        ) : (
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-            {title}
-          </h1>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          {embedded ? (
+            <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>
+              {title}
+            </h2>
+          ) : (
+            <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+              {title}
+            </h1>
+          )}
+          {subtitle && (
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+              {subtitle}
+            </p>
+          )}
+        </div>
         <button
           onClick={handleAdd}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
           + {addLabel ?? `Add ${title.replace(/s$/, '')}`}
@@ -204,33 +226,57 @@ export default function SimpleMasterPage({
 
       {/* KPI Cards */}
       {statsModule && (
-        <KPIGrid columns={2}>
-          <KPICard label={`Total ${title}`} value={stats.total} tone="info" />
-          <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+        <KPIGrid columns={extraStat ? 3 : 2}>
+          <KPICard
+            label={`Total ${title}`}
+            value={stats.total}
+            tone="info"
+            icon={icon ?? <Boxes />}
+          />
+          <KPICard
+            label="Active"
+            value={stats.active ?? 0}
+            tone="success"
+            icon={<CircleCheck />}
+            subtitle={
+              stats.total > 0
+                ? `${(((stats.active ?? 0) / stats.total) * 100).toFixed(0)}% active`
+                : undefined
+            }
+          />
+          {extraStat && (
+            <KPICard
+              label={extraStat.label}
+              value={extraStat.value}
+              tone="accent"
+              icon={extraStat.icon}
+              subtitle={extraStat.subtitle}
+            />
+          )}
         </KPIGrid>
       )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPillTabs
-          items={[
-            { value: '', label: 'All' },
-            { value: 'active', label: 'Active', tone: 'success' },
-            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
-          ]}
-          value={status}
-          onChange={(v) => {
-            setStatus(v as '' | 'active' | 'inactive');
-            setPage(1);
-          }}
-          idPrefix={`${apiPath}-status`}
-        />
-      </div>
 
       <DataTable
         columns={columns}
         data={records}
         pagination={pagination}
         loading={loading}
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => {
+              setStatus(v as '' | 'active' | 'inactive');
+              setPage(1);
+            }}
+            idPrefix={`${apiPath}-status`}
+          />
+        }
         searchValue={search}
         onSearchChange={(v) => {
           setSearch(v);

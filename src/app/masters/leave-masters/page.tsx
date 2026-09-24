@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid, useToast } from '@/components/ui';
+import { DataTable, ConfirmDialog, type Column, KPICard, KPIGrid, useToast, StatusPillTabs } from '@/components/ui';
+import { CalendarClock, CircleCheck, Sparkles, Users } from 'lucide-react';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import { useModuleStats } from '@/hooks/useModuleStats';
 
@@ -70,6 +71,7 @@ export default function LeaveMastersPage() {
   const [records, setRecords] = useState<LeaveMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -115,7 +117,7 @@ export default function LeaveMastersPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({ page: String(page), limit: '20', ...(search ? { search } : {}), ...(status ? { status } : {}) });
       const res = await fetch(`/api/masters/leave-masters?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const json: ApiResponse = await res.json();
@@ -126,7 +128,7 @@ export default function LeaveMastersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => {
     fetchData();
@@ -242,11 +244,16 @@ export default function LeaveMastersPage() {
   return (
     <div className="space-y-4">
       <MasterGroupTabs groupLabel="Workforce" />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Leave Masters</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Leave Masters</h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Configure annual quota rules, accrual frequencies, carry-forward limits, and encashment policies.
+          </p>
+        </div>
         <button
           onClick={handleAdd}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
           + Add Leave Master
@@ -254,34 +261,65 @@ export default function LeaveMastersPage() {
       </div>
 
       {/* KPI Cards */}
-      <KPIGrid columns={2}>
-        <KPICard label="Total Leave Masters" value={stats.total} tone="info" />
-        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
+      <KPIGrid columns={3}>
+        <KPICard
+          label="Configured Leave Types"
+          value={stats.total}
+          tone="info"
+          icon={<CalendarClock />}
+          subtitle="Active"
+        />
+        <KPICard
+          label="Active"
+          value={stats.active ?? 0}
+          tone="success"
+          icon={<CircleCheck />}
+          subtitle={stats.total > 0 ? `${(((stats.active ?? 0) / stats.total) * 100).toFixed(0)}% of configured types` : undefined}
+        />
+        <KPICard
+          label="Annual Accrual Batch"
+          value={`${accrualYear} Run`}
+          tone="accent"
+          icon={<Users />}
+          subtitle="Applies to all active employees"
+        />
       </KPIGrid>
 
-      <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: 'var(--border)' }}>
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Annual Leave Credit</h2>
-        <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-          Credits every active employee for the selected year — a fixed amount for &ldquo;Fixed amount every year&rdquo; leave types,
-          or days-worked &divide; days-per-unit (rounded down) for &ldquo;Earned per days worked&rdquo; types. Safe to re-run; already
-          availed/adjusted leave for the year is preserved.
-        </p>
-        <div className="flex items-center gap-2 pt-1">
-          <input
-            type="number"
-            value={accrualYear}
-            onChange={(e) => setAccrualYear(Number(e.target.value))}
-            className="w-28 rounded-lg border px-3 py-2 text-sm"
-            style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
-          />
-          <button
-            onClick={runAccrual}
-            disabled={accrualRunning}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            {accrualRunning ? 'Running…' : `Run Credit for ${accrualYear}`}
-          </button>
+      <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4.5 [&_svg]:w-4.5"
+              style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary)' }}
+            >
+              <Sparkles />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Annual Leave Credit Engine</h2>
+              <p className="mt-1 max-w-xl text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Credits every active employee for the selected year — a fixed amount for &ldquo;Fixed amount every year&rdquo; leave types,
+                or days-worked &divide; days-per-unit (rounded down) for &ldquo;Earned per days worked&rdquo; types. Safe to re-run; already
+                availed/adjusted leave for the year is preserved.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              type="number"
+              value={accrualYear}
+              onChange={(e) => setAccrualYear(Number(e.target.value))}
+              className="w-24 rounded-lg border px-3 py-2 text-sm"
+              style={{ backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' }}
+            />
+            <button
+              onClick={runAccrual}
+              disabled={accrualRunning}
+              className="whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              {accrualRunning ? 'Running…' : `Run Credit for ${accrualYear}`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -290,6 +328,19 @@ export default function LeaveMastersPage() {
         data={records}
         pagination={pagination}
         loading={loading}
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+            idPrefix="leave-masters-status"
+          />
+        }
         searchValue={search}
         onSearchChange={(v) => { setSearch(v); setPage(1); }}
         onPageChange={setPage}

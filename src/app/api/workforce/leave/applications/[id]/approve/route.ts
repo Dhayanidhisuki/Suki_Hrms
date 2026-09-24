@@ -17,6 +17,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 import { checkCanApprove, commitLeaveApproval, type LeaveApprovalTarget } from '@/lib/leave/finalizeApproval';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(
   request: NextRequest,
@@ -78,6 +79,18 @@ export async function POST(
     if (blocked) return NextResponse.json({ error: blocked.message }, { status: 409 });
 
     await commitLeaveApproval(target, userId || null);
+
+    // Final stage only: at pending_manager the application has merely moved on,
+    // which is not an outcome the employee needs telling about.
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'LEAVE',
+      action: 'APPROVED',
+      employeeId: application.employeeId,
+      requestId: applicationId,
+      period: formatPeriod(application.fromDate, application.toDate),
+      linkPath: '/ess/leave',
+    });
 
     const updated = await prisma.leaveApplication.findUnique({ where: { id: applicationId } });
     return NextResponse.json(updated);

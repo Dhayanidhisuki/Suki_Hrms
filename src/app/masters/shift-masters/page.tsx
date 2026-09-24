@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, StatusPillTabs } from '@/components/ui';
+import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, StatusPillTabs, KPICard, KPIGrid } from '@/components/ui';
+import { CalendarClock, CircleCheck, Clock3, Download } from 'lucide-react';
+import { useModuleStats } from '@/hooks/useModuleStats';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface ShiftMaster {
@@ -23,6 +25,21 @@ interface ShiftMaster {
 
 interface ApiResponse { data: ShiftMaster[]; pagination: { page: number; limit: number; total: number; totalPages: number }; }
 
+/**
+ * Stable per-shift badge colour — hashed from the code so General/Morning/
+ * Evening/Night (or whatever a company names its shifts) each get a
+ * consistent, distinct colour without anyone maintaining a code→colour map.
+ * Uses the app's own tone tokens, not Stitch's literal palette, so it still
+ * themes correctly across accents and dark mode.
+ */
+const CODE_TONES = ['info', 'warning', 'success', 'accent', 'danger'] as const;
+function codeTone(code: string): { bg: string; fg: string } {
+  let h = 0;
+  for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) >>> 0;
+  const tone = CODE_TONES[h % CODE_TONES.length];
+  return { bg: `var(--${tone}-soft)`, fg: `var(--${tone})` };
+}
+
 const baseFields: FieldDef[] = [
   { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. General Shift' },
   { name: 'startTime', label: 'Start Time', type: 'text', required: true, placeholder: '09:00', helpText: 'HH:mm format' },
@@ -42,6 +59,7 @@ const baseFields: FieldDef[] = [
 
 export default function ShiftMastersPage() {
   const toast = useToast();
+  const { stats } = useModuleStats('shift-masters');
   const [records, setRecords] = useState<ShiftMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -122,8 +140,46 @@ export default function ShiftMastersPage() {
     fetchData();
   };
 
+  const handleExportCsv = useCallback(() => {
+    if (records.length === 0) {
+      toast.warning('Nothing to export for the current filters');
+      return;
+    }
+    const headers = [
+      'Shift Code', 'Name', 'Start', 'End', 'Grace (min)', 'Buffer (min)', 'Break (min)',
+      'Night Allowed', 'Snacks Allowed', 'Meals Allowed', 'Status',
+    ];
+    const cell = (v: string | number | boolean | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = records.map((r) => [
+      cell(r.code), cell(r.name), cell(r.startTime), cell(r.endTime),
+      cell(r.graceMinutes), cell(r.bufferMinutes), cell(r.breakMinutes),
+      cell(r.nightAllowed ? 'Yes' : 'No'), cell(r.snacksAllowed ? 'Yes' : 'No'), cell(r.mealsAllowed ? 'Yes' : 'No'),
+      cell(r.isActive ? 'Active' : 'Inactive'),
+    ].join(','));
+    const blob = new Blob(['\ufeff' + [headers.map(cell).join(','), ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `shift-masters-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${records.length} row${records.length === 1 ? '' : 's'}`);
+  }, [records, toast]);
+
   const columns: Column<ShiftMaster>[] = [
-    { key: 'code', label: 'Shift Code', sortable: true, className: 'font-medium' },
+    {
+      key: 'code',
+      label: 'Shift Code',
+      sortable: true,
+      render: (row) => (
+        <span
+          className="inline-block rounded-md px-2 py-1 font-mono text-xs font-semibold tracking-wide"
+          style={{ backgroundColor: codeTone(row.code).bg, color: codeTone(row.code).fg }}
+        >
+          {row.code}
+        </span>
+      ),
+    },
     { key: 'name', label: 'Name' },
     { key: 'startTime', label: 'Start' },
     { key: 'endTime', label: 'End' },
@@ -185,7 +241,7 @@ export default function ShiftMastersPage() {
       key: 'isActive', label: 'Status',
       render: (row) => (
         <span className="px-2 py-0.5 text-xs font-medium rounded-full"
-          style={{ backgroundColor: row.isActive ? '#dcfce7' : '#fee2e2', color: row.isActive ? '#166534' : '#991b1b' }}>
+          style={{ backgroundColor: row.isActive ? 'var(--success-soft)' : 'var(--danger-soft)', color: row.isActive ? 'var(--success)' : 'var(--danger)' }}>
           {row.isActive ? 'Active' : 'Inactive'}
         </span>
       ),
@@ -195,25 +251,66 @@ export default function ShiftMastersPage() {
   return (
     <div className="space-y-4">
       <MasterGroupTabs groupLabel="Workforce" />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Shift Masters</h1>
-        <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)' }}>+ Add Shift Master</button>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPillTabs
-          items={[
-            { value: '', label: 'All' },
-            { value: 'active', label: 'Active', tone: 'success' },
-            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
-          ]}
-          value={status}
-          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
-          idPrefix="shift-masters-status"
-        />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Shift Masters</h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Configure work schedules, operating windows, grace periods, and shift allowance rules.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={handleExportCsv} className="flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium shadow-sm transition hover:opacity-80"
+            style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+            <Download className="h-4 w-4" />
+            <span>Export CSV</span>
+          </button>
+          <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent)' }}>+ Add Shift Master</button>
+        </div>
       </div>
 
+      <KPIGrid columns={3}>
+        <KPICard
+          label="Configured Shifts"
+          value={stats.total}
+          tone="info"
+          icon={<CalendarClock />}
+          subtitle={typeof stats.custom?.shiftNames === 'string' && stats.custom.shiftNames ? stats.custom.shiftNames : undefined}
+        />
+        <KPICard
+          label="24-Hour Coverage"
+          value={`${stats.custom?.coveragePct ?? 0}%`}
+          tone={Number(stats.custom?.coveragePct ?? 0) >= 100 ? 'success' : 'warning'}
+          icon={<CircleCheck />}
+          subtitle={
+            Number(stats.custom?.coveragePct ?? 0) >= 100
+              ? 'Active shifts span the full day'
+              : 'Gaps exist in the daily shift window'
+          }
+        />
+        <KPICard
+          label="Avg Shift Duration"
+          value={`${stats.custom?.avgShiftHours ?? 0}h ${stats.custom?.avgShiftMinutes ?? 0}m`}
+          tone="accent"
+          icon={<Clock3 />}
+          subtitle="Across active shift definitions"
+        />
+      </KPIGrid>
+
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading}
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+            idPrefix="shift-masters-status"
+          />
+        }
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />
       <FormModal title={editingId ? 'Edit Shift Master' : 'Add Shift Master'} fields={fields}

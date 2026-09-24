@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -80,6 +81,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         createdByUserId: userId,
       },
     });
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'SHIFT_CHANGE',
+      action: 'APPROVED',
+      employeeId: req.employeeId,
+      requestId: reqId,
+      period: formatPeriod(req.requestedDate),
+      reason: req.reason ?? undefined,
+      linkPath: '/ess/shift-change',
+    });
+
     return NextResponse.json({ status: 'approved', message: 'Approved (no chain configured — single-stage default), override created' });
   }
 
@@ -138,6 +150,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       reason: 'Shift change request approved',
       createdByUserId: userId,
     },
+  });
+
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'SHIFT_CHANGE',
+    action: 'APPROVED',
+    employeeId: req.employeeId,
+    requestId: reqId,
+    period: formatPeriod(req.requestedDate),
+    reason: req.reason ?? undefined,
+    linkPath: '/ess/shift-change',
   });
 
   return NextResponse.json({ status: 'approved', message: 'Request approved, shift override created' });

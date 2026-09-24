@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { leaveRejectSchema } from '@/lib/validations/workforce';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 
@@ -60,6 +61,18 @@ export async function POST(
         managerRejectionReason: parsed.data.rejectionReason,
       },
     });
+
+    // Both stages end the application, so both are told to the employee.
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'LEAVE',
+      action: 'REJECTED',
+      employeeId: application.employeeId,
+      requestId: applicationId,
+      period: formatPeriod(application.fromDate, application.toDate),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/leave',
+    });
     return NextResponse.json(updated);
   }
 
@@ -71,6 +84,18 @@ export async function POST(
     const updated = await prisma.leaveApplication.update({
       where: { id: applicationId },
       data: { status: 'rejected', rejectionReason: parsed.data.rejectionReason },
+    });
+
+    // Both stages end the application, so both are told to the employee.
+    await notifyEssRequest({
+      companyId: scope.companyId,
+      kind: 'LEAVE',
+      action: 'REJECTED',
+      employeeId: application.employeeId,
+      requestId: applicationId,
+      period: formatPeriod(application.fromDate, application.toDate),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/leave',
     });
     return NextResponse.json(updated);
   }

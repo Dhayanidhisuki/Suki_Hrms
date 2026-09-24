@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldDef, type FieldOption, StatusPillTabs } from '@/components/ui';
+import { KPICard, KPIGrid } from '@/components/ui';
+import { Network, CircleCheck, Users } from 'lucide-react';
+import { useModuleStats } from '@/hooks/useModuleStats';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface SubDepartment {
@@ -45,6 +48,7 @@ function SubDepartmentsPageInner() {
   const [search, setSearch] = useState('');
   // Server-side: the list is paginated, so a client-side filter would only
   // hide rows on the current page and misreport the total.
+  const { stats } = useModuleStats('sub-departments');
   const [status, setStatus] = useState<'' | 'active' | 'inactive'>('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -196,9 +200,12 @@ function SubDepartmentsPageInner() {
   return (
     <div className="space-y-4">
       <MasterGroupTabs groupLabel="Organization" />
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Sub Departments</h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Configure granular sub-units, functional teams, and reporting linkages within departments.
+          </p>
           {departmentIdFilter && (
             <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
               Showing sub departments under <strong>{filteredDeptName ?? `department #${departmentIdFilter}`}</strong>{' '}
@@ -212,20 +219,58 @@ function SubDepartmentsPageInner() {
         <button onClick={handleAdd} className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}>+ Add Sub Department</button>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPillTabs
-          items={[
-            { value: '', label: 'All' },
-            { value: 'active', label: 'Active', tone: 'success' },
-            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
-          ]}
-          value={status}
-          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
-          idPrefix="sub-departments-status"
+      <KPIGrid columns={3}>
+        <KPICard
+          label="Total Sub-Departments"
+          value={stats.total}
+          tone="info"
+          icon={<Network />}
+          subtitleTone="success"
+          subtitle={
+            stats.custom?.parentDepartments
+              ? <><CircleCheck /> Mapped across {stats.custom.parentDepartments} main departments</>
+              : undefined
+          }
         />
-      </div>
+        <KPICard
+          label="Active Sub-Departments"
+          value={stats.active ?? 0}
+          tone="success"
+          icon={<CircleCheck />}
+          subtitle={
+            stats.total > 0
+              ? `${(((stats.active ?? 0) / stats.total) * 100).toFixed(1)}% operational`
+              : undefined
+          }
+        />
+        <KPICard
+          label="Average Team Size"
+          value={stats.custom?.avgTeamSize ?? 0}
+          suffix="Members"
+          tone="accent"
+          icon={<Users />}
+          subtitle={
+            stats.custom?.sanctionedHeadcount
+              ? `Sanctioned strength variance: ${Math.round((Number(stats.custom.currentHeadcount ?? 0) / Number(stats.custom.sanctionedHeadcount)) * 100)}%`
+              : undefined
+          }
+        />
+      </KPIGrid>
 
       <DataTable columns={columns} data={records} pagination={pagination} loading={loading}
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+            idPrefix="sub-departments-status"
+          />
+        }
         searchValue={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} onPageChange={setPage}
         onEdit={handleEdit} onDelete={(row) => setDeleteId(row.id)} />
       <FormModal title={editingId ? 'Edit Sub Department' : 'Add Sub Department'} fields={fields}

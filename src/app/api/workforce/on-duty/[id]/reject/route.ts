@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 import { mispunchRejectSchema } from '@/lib/validations/workforce';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -48,6 +49,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         managerRejectionReason: parsed.data.rejectionReason,
       },
     });
+
+    await notifyEssRequest({
+      kind: 'ON_DUTY',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: requestId,
+      period: formatPeriod(record.fromDate, record.toDate),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/on-duty',
+    });
+
     return NextResponse.json(updated);
   }
 
@@ -63,6 +75,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         rejectionReason: parsed.data.rejectionReason,
       },
     });
+
+    await notifyEssRequest({
+      kind: 'ON_DUTY',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: requestId,
+      period: formatPeriod(record.fromDate, record.toDate),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/on-duty',
+    });
+
     return NextResponse.json(updated);
   }
 

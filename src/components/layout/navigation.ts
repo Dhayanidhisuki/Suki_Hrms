@@ -62,7 +62,6 @@ export const navigation: NavModule[] = [
         label: "Overview",
         items: [
           { label: "My Dashboard", href: "/", ready: true },
-          { label: "Manager Dashboard", short: "My Team", href: "/manager/dashboard", ready: true },
         ],
       },
       {
@@ -81,6 +80,7 @@ export const navigation: NavModule[] = [
         items: [
           { label: "Payroll Processing Status", short: "Processing Status", href: "/dashboard/payroll-processing-status" },
           { label: "Salary Cost", href: "/dashboard/salary-cost", ready: true },
+          { label: "Salary Dashboard", short: "Salary BI", href: "/dashboard/salary-bi", ready: true },
           { label: "Statutory Summary", href: "/dashboard/statutory-summary", ready: true },
           { label: "Pending Salary", href: "/dashboard/pending-salary" },
         ],

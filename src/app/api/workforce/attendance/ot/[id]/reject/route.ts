@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const bodySchema = z.object({ rejectionReason: z.string().min(1).max(500) });
 
@@ -41,6 +42,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: { id: attendanceId },
       data: { otApprovalStatus: 'rejected', otManagerActionByUserId: userId, otManagerActionAt: new Date(), otRejectionReason: parsed.data.rejectionReason },
     });
+    await notifyEssRequest({
+      kind: 'OT',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: attendanceId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/ot',
+    });
+
     return NextResponse.json(updated);
   }
 
@@ -51,6 +62,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: { id: attendanceId },
       data: { otApprovalStatus: 'rejected', otHrActionByUserId: userId, otHrActionAt: new Date(), otRejectionReason: parsed.data.rejectionReason },
     });
+    await notifyEssRequest({
+      kind: 'OT',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: attendanceId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/ot',
+    });
+
     return NextResponse.json(updated);
   }
 

@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DataTable, FormModal, ConfirmDialog, type Column, type FieldDef, KPICard, KPIGrid, useToast, StatusPillTabs } from '@/components/ui';
+import { Building2, CircleCheck, Users } from 'lucide-react';
 import { useModuleStats } from '@/hooks/useModuleStats';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
@@ -217,13 +218,18 @@ export default function DepartmentPage() {
   return (
     <div className="space-y-4">
       <MasterGroupTabs groupLabel="Organization" />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-          Departments
-        </h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
+            Departments
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Manage organizational departments, sanctioned headcounts, and sub-department mappings.
+          </p>
+        </div>
         <button
           onClick={handleAdd}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)' }}
         >
           + Add Department
@@ -231,34 +237,33 @@ export default function DepartmentPage() {
       </div>
 
       {/* KPI Cards */}
-      <KPIGrid columns={2}>
-        <KPICard label="Total Departments" value={stats.total} tone="info" />
-        <KPICard label="Active" value={stats.active ?? 0} tone="success" />
-      </KPIGrid>
-
-      <div className="flex flex-wrap items-center gap-2">
-
-        <StatusPillTabs
-
-          items={[
-
-            { value: '', label: 'All' },
-
-            { value: 'active', label: 'Active', tone: 'success' },
-
-            { value: 'inactive', label: 'Inactive', tone: 'neutral' },
-
-          ]}
-
-          value={status}
-
-          onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
-
-          idPrefix="departments-status"
-
+      <KPIGrid columns={3}>
+        <KPICard
+          label="Total Departments"
+          value={stats.total}
+          tone="info"
+          icon={<Building2 />}
+          subtitle="Across all business units & facilities"
         />
-
-      </div>
+        <KPICard
+          label="Active Departments"
+          value={stats.active ?? 0}
+          tone="success"
+          icon={<CircleCheck />}
+          subtitle={
+            stats.total > 0
+              ? `${(((stats.active ?? 0) / stats.total) * 100).toFixed(1)}% operational`
+              : undefined
+          }
+        />
+        <KPICard
+          label="Total Headcount"
+          value={stats.custom?.currentHeadcount ?? 0}
+          tone="accent"
+          icon={<Users />}
+          progress={{ max: Number(stats.custom?.sanctionedHeadcount ?? 0), label: 'Sanctioned' }}
+        />
+      </KPIGrid>
 
 
       <DataTable
@@ -266,6 +271,19 @@ export default function DepartmentPage() {
         data={records}
         pagination={pagination}
         loading={loading}
+        filtersLead
+        filters={
+          <StatusPillTabs
+            items={[
+              { value: '', label: 'All' },
+              { value: 'active', label: 'Active', tone: 'success' },
+              { value: 'inactive', label: 'Inactive', tone: 'neutral' },
+            ]}
+            value={status}
+            onChange={(v) => { setStatus(v as '' | 'active' | 'inactive'); setPage(1); }}
+            idPrefix="departments-status"
+          />
+        }
         searchValue={search}
         onSearchChange={(v) => {
           setSearch(v);

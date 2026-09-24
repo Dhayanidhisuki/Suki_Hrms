@@ -9,9 +9,12 @@ import { useEffect, useState } from 'react';
 import SimpleMasterPage from '@/components/SimpleMasterPage';
 import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 import type { FieldOption } from '@/components/ui';
+import { Layers, Users } from 'lucide-react';
+import { useModuleStats } from '@/hooks/useModuleStats';
 
 export default function LevelsPage() {
   const [gradeOptions, setGradeOptions] = useState<FieldOption[]>([]);
+  const { stats } = useModuleStats('levels');
 
   useEffect(() => {
     fetch('/api/masters/grades?limit=500')
@@ -33,6 +36,14 @@ export default function LevelsPage() {
       <SimpleMasterPage
         statsModule="levels"
         title="Levels"
+        subtitle="Define organizational tier bands, reporting authority, and grade mapping structure."
+        icon={<Layers />}
+        extraStat={{
+          label: 'Employees Assigned',
+          value: (stats.custom?.currentHeadcount as number | undefined) ?? 0,
+          icon: <Users />,
+          subtitle: 'Active staff mapped to a tier band',
+        }}
         apiPath="/api/masters/levels"
         codeLabel="Level Code"
         nameLabel="Level Name"

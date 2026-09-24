@@ -20,6 +20,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hasAnyPermissionInModule } from '@/lib/rbac';
 import { getCompanyId } from '@/lib/companyScope';
+import { currentHeadcounts } from '@/lib/master-headcount';
+import type { ModuleStats } from '@/lib/kpiUtils';
 
 const EMPTY = { total: 0, active: 0, inactive: 0, pending: 0, approved: 0, rejected: 0 };
 
@@ -31,9 +33,12 @@ const MODULE_PERMISSION: Record<string, string> = {
   employees: 'employee',
   'jd-master': 'employee',
   departments: 'masters',
+  'sub-departments': 'masters',
+  units: 'masters',
   designations: 'masters',
   grades: 'masters',
   levels: 'masters',
+  'shift-masters': 'masters',
   categories: 'masters',
   'employee-types': 'masters',
   'asset-masters': 'masters',
@@ -128,7 +133,7 @@ export async function GET(
     if ('error' in scope) return scope.error;
     const { companyId } = scope;
 
-    let stats = { ...EMPTY };
+    let stats: ModuleStats = { ...EMPTY };
 
     switch (module) {
       case 'employees': {
@@ -153,24 +158,149 @@ export async function GET(
       }
 
       // ── Global masters — no companyId column to scope by ──────────────────
-      case 'departments':
-        stats = await countSimpleMaster('department');
+      case 'departments': {
+        // Headcount comes back too, so the page can show staffed-vs-sanctioned
+        // without summing the one page of rows it happens to be showing.
+        // currentHeadcounts is the same helper the list route uses, so the
+        // total always agrees with the per-row figures under it.
+        const [base, sanctioned, headcounts] = await Promise.all([
+          countSimpleMaster('department'),
+          prisma.department.aggregate({ where: { deletedAt: null }, _sum: { sanctionedHeadcount: true } }),
+          currentHeadcounts('departmentId'),
+        ]);
+        let current = 0;
+        for (const n of headcounts.values()) current += n;
+        stats = {
+          ...base,
+          custom: {
+            sanctionedHeadcount: sanctioned._sum.sanctionedHeadcount ?? 0,
+            currentHeadcount: current,
+          },
+        };
         break;
+      }
+      case 'sub-departments': {
+        const [base, parents, sanctioned, headcounts] = await Promise.all([
+          countSimpleMaster('subDepartment'),
+          // Distinct parent departments actually covered — the "mapped across
+          // N departments" figure, counted rather than assumed to be all of them.
+          prisma.subDepartment.groupBy({ by: ['departmentId'], where: { deletedAt: null } }),
+          prisma.subDepartment.aggregate({ where: { deletedAt: null }, _sum: { sanctionedHeadcount: true } }),
+          currentHeadcounts('subDepartmentId'),
+        ]);
+        let current = 0;
+        for (const n of headcounts.values()) current += n;
+        stats = {
+          ...base,
+          custom: {
+            parentDepartments: parents.length,
+            currentHeadcount: current,
+            sanctionedHeadcount: sanctioned._sum.sanctionedHeadcount ?? 0,
+            // Average over sub-departments that actually have people, so one
+            // empty shell does not drag the "typical team size" down.
+            avgTeamSize: headcounts.size > 0 ? Math.round(current / headcounts.size) : 0,
+          },
+        };
+        break;
+      }
+
+      case 'units': {
+        // Unit carries companyId, so unlike the org masters above it IS scoped.
+        const where = { deletedAt: null, companyId: scope.companyId };
+        const [active, inactive, withGst] = await Promise.all([
+          prisma.unit.count({ where: { ...where, isActive: true } }),
+          prisma.unit.count({ where: { ...where, isActive: false } }),
+          prisma.unit.count({ where: { ...where, isActive: true, NOT: { gstNumber: null } } }),
+        ]);
+        stats = {
+          ...EMPTY,
+          total: active + inactive,
+          active,
+          inactive,
+          custom: {
+            withGstin: withGst,
+            gstinCompliancePct: active > 0 ? Math.round((withGst / active) * 100) : 0,
+          },
+        };
+        break;
+      }
+
       case 'designations':
         stats = await countSimpleMaster('designation');
         break;
+      case 'shift-masters': {
+        const [active, inactive, shifts] = await Promise.all([
+          prisma.shiftMaster.count({ where: { deletedAt: null, isActive: true } }),
+          prisma.shiftMaster.count({ where: { deletedAt: null, isActive: false } }),
+          prisma.shiftMaster.findMany({
+            where: { deletedAt: null, isActive: true },
+            select: { name: true, startTime: true, endTime: true },
+          }),
+        ]);
+
+        // Coverage: mark every minute of the day a shift window touches
+        // (handling the overnight-wrap shifts, e.g. 22:00–06:00), then check
+        // whether the union spans all 1440 minutes. A JS pass, not SQL — the
+        // wrap-around arithmetic is the same the Shift Hours column already
+        // does per row; this just unions it across every active shift.
+        const covered = new Array<boolean>(24 * 60).fill(false);
+        let totalMinutes = 0;
+        let parsedCount = 0;
+        for (const s of shifts) {
+          const [sh, sm] = s.startTime.split(':').map(Number);
+          const [eh, em] = s.endTime.split(':').map(Number);
+          if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) continue;
+          const start = sh * 60 + sm;
+          let end = eh * 60 + em;
+          if (end <= start) end += 24 * 60;
+          for (let m = start; m < end; m++) covered[m % (24 * 60)] = true;
+          totalMinutes += end - start;
+          parsedCount++;
+        }
+        const coveragePct = Math.round((covered.filter(Boolean).length / (24 * 60)) * 100);
+        const avgMinutes = parsedCount > 0 ? Math.round(totalMinutes / parsedCount) : 0;
+
+        stats = {
+          ...EMPTY,
+          total: active + inactive,
+          active,
+          inactive,
+          custom: {
+            coveragePct,
+            avgShiftHours: Math.floor(avgMinutes / 60),
+            avgShiftMinutes: avgMinutes % 60,
+            shiftNames: shifts.map((s) => s.name).slice(0, 4).join(', '),
+          },
+        };
+        break;
+      }
+
       case 'grades':
         stats = await countSimpleMaster('grade');
         break;
-      case 'levels':
-        stats = await countSimpleMaster('level');
+      case 'levels': {
+        const [base, headcounts] = await Promise.all([
+          countSimpleMaster('level'),
+          currentHeadcounts('levelId'),
+        ]);
+        let current = 0;
+        for (const n of headcounts.values()) current += n;
+        stats = { ...base, custom: { currentHeadcount: current } };
         break;
+      }
       case 'categories':
         stats = await countSimpleMaster('category');
         break;
-      case 'employee-types':
-        stats = await countSimpleMaster('employeeType');
+      case 'employee-types': {
+        const [base, headcounts] = await Promise.all([
+          countSimpleMaster('employeeType'),
+          currentHeadcounts('employeeTypeId'),
+        ]);
+        let current = 0;
+        for (const n of headcounts.values()) current += n;
+        stats = { ...base, custom: { currentHeadcount: current } };
         break;
+      }
       case 'asset-masters':
         stats = await countSimpleMaster('assetMaster');
         break;

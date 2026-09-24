@@ -18,6 +18,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { onDutyRequestSchema } from '@/lib/validations/workforce';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -109,6 +110,16 @@ export async function POST(request: NextRequest) {
       customerProject: parsed.data.customerProject ?? null,
       remarks: parsed.data.remarks ?? null,
     },
+  });
+
+  await notifyEssRequest({
+    kind: 'ON_DUTY',
+    action: 'SUBMITTED',
+    employeeId: record.employeeId,
+    requestId: record.id,
+    period: formatPeriod(record.fromDate, record.toDate),
+    reason: record.purpose,
+    linkPath: '/ess/on-duty',
   });
 
   return NextResponse.json(record, { status: 201 });

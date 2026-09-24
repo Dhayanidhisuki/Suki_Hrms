@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { checkVisitorPermission } from '@/lib/rbac-visitor';
 import { getCompanyId } from '@/lib/companyScope';
 import { notifyVisitorEvent } from '@/lib/visitor-notifications';
+import { notifyVisitorPass } from '@/lib/ess/notifyVisitorPass';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,6 +45,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     subject: `Visitor request ${updated.gatePassNo} submitted for approval`,
     body: `Visitor ${updated.visitorName} is requesting to meet ${pass.personToMeet.firstName} ${pass.personToMeet.lastName} on ${updated.visitDate.toDateString()}.`,
     visitorGatePassId: updated.id,
+  });
+
+  await notifyVisitorPass({
+    companyId: scope.companyId,
+    action: 'SUBMITTED',
+    pass: updated,
+    hostName: `${pass.personToMeet.firstName} ${pass.personToMeet.lastName}`,
+    reason: undefined,
   });
 
   return NextResponse.json(updated);

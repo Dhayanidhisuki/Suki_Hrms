@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const bodySchema = z.object({ rejectionReason: z.string().min(1).max(500) });
 
@@ -81,6 +82,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       rejectedByUserId: userId,
       rejectedAt: new Date(),
     },
+  });
+
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'SHIFT_CHANGE',
+    action: 'REJECTED',
+    employeeId: req.employeeId,
+    requestId: reqId,
+    period: formatPeriod(req.requestedDate),
+    reason: req.reason ?? undefined,
+    linkPath: '/ess/shift-change',
   });
 
   return NextResponse.json(updated);

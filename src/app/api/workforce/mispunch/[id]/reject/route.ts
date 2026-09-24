@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
 import { mispunchRejectSchema } from '@/lib/validations/workforce';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -45,6 +46,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         managerRejectionReason: parsed.data.rejectionReason,
       },
     });
+
+    await notifyEssRequest({
+      kind: 'MISPUNCH',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: mispunchId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/mispunch',
+    });
+
     return NextResponse.json(updated);
   }
 
@@ -60,6 +72,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         hrRejectionReason: parsed.data.rejectionReason,
       },
     });
+
+    await notifyEssRequest({
+      kind: 'MISPUNCH',
+      action: 'REJECTED',
+      employeeId: record.employeeId,
+      requestId: mispunchId,
+      period: formatPeriod(record.date),
+      reason: parsed.data.rejectionReason,
+      linkPath: '/ess/mispunch',
+    });
+
     return NextResponse.json(updated);
   }
 

@@ -9,7 +9,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Clock, Users, Wallet } from 'lucide-react';
+import { Banknote, Clock, TrendingDown, TrendingUp, Users, Wallet } from 'lucide-react';
 import { PageHeader, Spinner } from '@/components/ui';
 import {
   ReportBarChart,
@@ -82,6 +82,14 @@ export default function SalaryCostDashboardPage() {
   );
 
   const t = data?.totals;
+
+  // A4: derived from byDepartment, which the page already has — no second
+  // request for a number we can read off the array we just rendered.
+  const paidDepartments = [...(data?.byDepartment ?? [])]
+    .filter((d) => d.gross > 0)
+    .sort((a, b) => b.gross - a.gross);
+  const highestPaid = paidDepartments[0] ?? null;
+  const lowestPaid = paidDepartments[paidDepartments.length - 1] ?? null;
   // Gross minus net is everything withheld, whatever the individual heads.
   const totalDeductions = t ? t.grossEarnings - t.netSalary : 0;
   const perHead = t && data && data.headcount.ok > 0 ? t.grossEarnings / data.headcount.ok : 0;
@@ -128,6 +136,20 @@ export default function SalaryCostDashboardPage() {
                 value: inrShort(t.otAmount),
                 icon: Clock,
                 subtext: 'Included in gross',
+              },
+              {
+                id: 'highest',
+                label: 'Highest Paid Department',
+                value: highestPaid ? inrShort(highestPaid.gross) : '—',
+                icon: TrendingUp,
+                subtext: highestPaid?.department ?? 'No department has payroll',
+              },
+              {
+                id: 'lowest',
+                label: 'Lowest Paid Department',
+                value: lowestPaid ? inrShort(lowestPaid.gross) : '—',
+                icon: TrendingDown,
+                subtext: lowestPaid?.department ?? 'No department has payroll',
               },
               {
                 id: 'headcount',

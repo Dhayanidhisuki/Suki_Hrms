@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -45,6 +46,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       rejectedByUserId: userId,
       rejectedAt: new Date(),
     },
+  });
+
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'COMP_OFF',
+    action: 'REJECTED',
+    employeeId: req.employeeId,
+    requestId: reqId,
+    period: formatPeriod(req.requestedDate),
+    reason: req.reason ?? undefined,
+    linkPath: '/ess/comp-off',
   });
 
   return NextResponse.json(updated);

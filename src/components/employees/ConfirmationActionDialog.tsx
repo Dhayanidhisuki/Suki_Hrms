@@ -262,7 +262,7 @@ export default function ConfirmationActionDialog({ mode, target, daysOverdue, on
                 <select
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-2"
+                  className="w-full select-bare appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-2"
                   style={{ ...inputStyle, color: reason ? 'var(--foreground)' : 'var(--foreground-muted)' }}
                 >
                   <option value="">Select a reason</option>

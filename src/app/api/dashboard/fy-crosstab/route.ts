@@ -1,5 +1,5 @@
 /**
- * GET /api/dashboard/fy-crosstab?fy=2026&groupBy=department|unit|employee
+ * GET /api/dashboard/fy-crosstab?fy=2026&groupBy=department|unit|employee&exit=include
  *
  * Financial-year cross-tab behind the FY Summary dashboard: every measure
  * aggregated across the 12 months of one Indian financial year (April ->
@@ -21,6 +21,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
@@ -86,6 +87,14 @@ export async function GET(request: NextRequest) {
   const defaultFy = now.getUTCMonth() + 1 >= 4 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
   const fy = Number(request.nextUrl.searchParams.get('fy')) || defaultFy;
 
+  // Leavers are excluded unless asked for, matching the legacy report's EXIT
+  // slicer and the Salary dashboard. Opt-in rather than opt-out so a figure
+  // quoted off this page always means "people currently employed".
+  const includeLeavers = request.nextUrl.searchParams.get('exit') === 'include';
+  const employeeFilter = includeLeavers
+    ? Prisma.sql`e.[deletedAt] IS NULL`
+    : Prisma.sql`e.[deletedAt] IS NULL AND e.[status] = 'active'`;
+
   const requested = request.nextUrl.searchParams.get('groupBy');
   const groupBy: 'department' | 'unit' | 'employee' =
     requested === 'unit' || requested === 'employee' ? requested : 'department';
@@ -116,7 +125,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [Department] d ON d.[id] = j.[departmentId]
       LEFT JOIN [Unit] u ON u.[id] = j.[unitId]
       WHERE r.[companyId] = ${companyId}
-        AND e.[deletedAt] IS NULL
+        AND ${employeeFilter}
         AND (
           (r.[year] = ${fy} AND r.[month] >= 4)
           OR (r.[year] = ${fy + 1} AND r.[month] <= 3)
@@ -141,7 +150,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [Department] d ON d.[id] = j.[departmentId]
       LEFT JOIN [Unit] u ON u.[id] = j.[unitId]
       WHERE r.[companyId] = ${companyId}
-        AND e.[deletedAt] IS NULL
+        AND ${employeeFilter}
         AND (
           (r.[year] = ${fy} AND r.[month] >= 4)
           OR (r.[year] = ${fy + 1} AND r.[month] <= 3)
@@ -164,7 +173,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [Department] d ON d.[id] = j.[departmentId]
       LEFT JOIN [Unit] u ON u.[id] = j.[unitId]
       WHERE e.[companyId] = ${companyId}
-        AND e.[deletedAt] IS NULL
+        AND ${employeeFilter}
         AND a.[status] = 'approved'
         AND a.[fromDate] >= ${fyStart}
         AND a.[fromDate] < ${fyEnd}
@@ -183,7 +192,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [Department] d ON d.[id] = j.[departmentId]
       LEFT JOIN [Unit] u ON u.[id] = j.[unitId]
       WHERE e.[companyId] = ${companyId}
-        AND e.[deletedAt] IS NULL
+        AND ${employeeFilter}
         AND a.[status] = 'approved'
         AND a.[fromDate] >= ${fyStart}
         AND a.[fromDate] < ${fyEnd}
@@ -274,6 +283,7 @@ export async function GET(request: NextRequest) {
     fy,
     fyLabel: `${fy}-${fy + 1}`,
     groupBy,
+    includeLeavers,
     months: FY_MONTHS,
     departments: Array.from(departments).sort(),
     units: Array.from(units).sort(),

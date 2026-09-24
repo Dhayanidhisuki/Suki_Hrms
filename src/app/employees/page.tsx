@@ -132,7 +132,7 @@ function FilterSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         aria-label={label}
-        className="w-full cursor-pointer appearance-none bg-transparent py-2 pl-3 pr-8 focus:outline-none"
+        className="w-full cursor-pointer select-bare appearance-none bg-transparent py-2 pl-3 pr-8 focus:outline-none"
         style={{ color: value ? 'var(--foreground)' : 'var(--foreground-muted)' }}
       >
         <option value="">{label}</option>

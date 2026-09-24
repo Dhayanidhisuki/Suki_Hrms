@@ -16,6 +16,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { leaveApplicationSchema } from '@/lib/validations/workforce';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function GET(request: NextRequest) {
   const scope = getCompanyId(request);
@@ -123,6 +124,19 @@ export async function POST(request: NextRequest) {
 
   const record = await prisma.leaveApplication.create({
     data: { employeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason, status: 'pending_manager' },
+  });
+
+  // Goes to the reporting manager, who has to act on it — not to the employee,
+  // who just pressed the button.
+  await notifyEssRequest({
+    companyId: scope.companyId,
+    kind: 'LEAVE',
+    action: 'SUBMITTED',
+    employeeId,
+    requestId: record.id,
+    period: formatPeriod(fromDate, toDate),
+    reason: reason ?? undefined,
+    linkPath: '/workforce/leave/approval',
   });
 
   return NextResponse.json(record, { status: 201 });
