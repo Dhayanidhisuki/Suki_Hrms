@@ -1077,6 +1077,7 @@ model Employee {
   leaveApplications          LeaveApplication[]
   leaveBalances              LeaveBalance[]
   mispunchCorrections        MispunchCorrection[]
+  otRequests                 OTRequest[]
   permissionRequests         PermissionRequest[]
   pmsIncentives              PmsIncentive[]
   doubleMachineIncentives    DoubleMachineIncentive[]
@@ -2632,6 +2633,42 @@ model MispunchCorrection {
   @@index([employeeId])
   @@index([status])
   @@map("MispunchCorrection")
+}
+
+// Self-raised overtime — an employee asking to be credited OT for a date,
+// distinct from the biometric-flagged OT the /api/workforce/attendance/ot
+// route already approves. Same two-stage shape as MispunchCorrection; only
+// on final HR approval does it touch DailyAttendance (otMinutesCalculated/
+// otMinutesApproved/otApprovalStatus), via upsertDailyAttendanceWithHistory,
+// same as every other request type that ends in a real attendance write.
+model OTRequest {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  date       DateTime @db.Date
+
+  requestedMinutes Int
+  reason           String @db.NVarChar(500)
+
+  // pending_manager | pending_hr | approved | rejected
+  status String @default("pending_manager") @db.NVarChar(20)
+
+  managerActionByUserId  Int?
+  managerActionAt        DateTime?
+  managerRejectionReason String?   @db.NVarChar(500)
+
+  hrActionByUserId  Int?
+  hrActionAt        DateTime?
+  hrRejectionReason String?   @db.NVarChar(500)
+
+  appliedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("OTRequest")
 }
 
 // Per-employee, per-leave-type, per-year balance ledger.

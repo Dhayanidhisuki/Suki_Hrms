@@ -115,6 +115,19 @@ export const mispunchRejectSchema = z.object({
   rejectionReason: z.string().min(1).max(500),
 });
 
+export const otRequestSchema = z.object({
+  date: z.coerce.date(),
+  requestedMinutes: z.coerce.number().int().positive().max(720, 'Cannot request more than 12 hours of OT in one request'),
+  reason: z.string().min(1).max(500),
+}).refine((v) => v.date.getTime() <= Date.now(), {
+  message: 'Cannot request overtime for a future date',
+  path: ['date'],
+});
+
+export const otRequestRejectSchema = z.object({
+  rejectionReason: z.string().min(1).max(500),
+});
+
 export const permissionRequestSchema = z
   .object({
     date: z.coerce.date(),

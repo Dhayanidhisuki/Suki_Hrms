@@ -106,7 +106,7 @@ export async function GET(
     let leaveBalance = null;
     if (displayConfig?.showLeaveBalance) {
       const balances = await prisma.leaveBalance.findMany({
-        where: { employeeId: emp.id },
+        where: { employeeId: emp.id, leaveMaster: { isActive: true, deletedAt: null } },
         include: { leaveMaster: { select: { code: true, name: true } } },
       });
       leaveBalance = balances.map((b) => ({

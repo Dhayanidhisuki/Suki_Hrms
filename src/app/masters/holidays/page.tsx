@@ -262,6 +262,7 @@ function DeclaredHolidaysTab() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success(editingId ? 'Holiday updated successfully.' : 'Holiday created successfully.');
   };
 
   const handleDelete = async (id: number) => {
@@ -272,6 +273,7 @@ function DeclaredHolidaysTab() {
       return;
     }
     fetchData();
+    toast.success('Holiday deleted successfully.');
   };
 
   const columns: Column<DeclaredHolidayRow>[] = [

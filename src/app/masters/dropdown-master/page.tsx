@@ -65,12 +65,14 @@ export default function DropdownMasterPage() {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'Save failed'); }
     fetchData();
+    toast.success(editingId ? 'Dropdown item updated successfully.' : 'Dropdown item created successfully.');
   };
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/dropdown-master/${id}`, { method: 'DELETE' });
     if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Delete failed'); return; }
     fetchData();
+    toast.success('Dropdown item deleted successfully.');
   };
 
   const columns: Column<DropdownItem>[] = [

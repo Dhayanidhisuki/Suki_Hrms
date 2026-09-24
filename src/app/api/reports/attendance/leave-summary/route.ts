@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
     where: {
       employee: { companyId: scope.companyId, deletedAt: null },
       year,
+      leaveMaster: { isActive: true, deletedAt: null },
     },
     include: {
       employee: { select: { employeeCode: true, firstName: true, lastName: true } },

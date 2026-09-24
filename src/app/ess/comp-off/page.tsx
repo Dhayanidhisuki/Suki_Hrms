@@ -13,7 +13,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, useToast, type Column } from '@/components/ui';
+import { DataTable, Button, GaugeCard, PageBreadcrumb, useToast, type Column } from '@/components/ui';
 
 interface CompOffRow {
   id: number;
@@ -23,6 +23,14 @@ interface CompOffRow {
   status: string;
   rejectionReason: string | null;
   createdAt: string;
+}
+
+interface CompOffBalance {
+  available: number;
+  earned: number;
+  used: number;
+  expired: number;
+  encashed: number;
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
@@ -40,6 +48,7 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { tim
 
 export default function EssCompOffPage() {
   const [records, setRecords] = useState<CompOffRow[]>([]);
+  const [balance, setBalance] = useState<CompOffBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const toast = useToast();
@@ -49,8 +58,9 @@ export default function EssCompOffPage() {
     try {
       const res = await fetch('/api/workforce/comp-off-request');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
-      const json: { data: CompOffRow[] } = await res.json();
+      const json: { data: CompOffRow[]; balance: CompOffBalance | null } = await res.json();
       setRecords(json.data ?? []);
+      setBalance(json.balance ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -59,6 +69,7 @@ export default function EssCompOffPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
   }, [fetchData]);
 
@@ -77,6 +88,7 @@ export default function EssCompOffPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     await fetchData();
+    toast.success('Comp-off request submitted successfully.');
   };
 
   const columns: Column<CompOffRow>[] = [
@@ -99,24 +111,46 @@ export default function EssCompOffPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Comp-Off Requests</h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Worked a weekly off or a holiday? Claim it back as a comp-off day, once that day&apos;s overtime is approved.
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          + Request Comp-Off
-        </button>
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'Comp-Off Requests' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Comp-Off Requests</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Worked a weekly off or a holiday? Claim it back as a comp-off day, once that day&apos;s overtime is approved.
+        </p>
       </div>
 
-      <DataTable columns={columns} data={records} loading={loading} emptyMessage="No comp-off requests yet." />
+      {/* Same balance shown on the Leave Requests form when "Compensatory
+          Off" is picked there — surfaced here too, since this is the page
+          an employee actually lands on to check their comp-off status. */}
+      {balance && balance.earned > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <GaugeCard label="Comp-Off" value={balance.available} max={Math.max(balance.earned, balance.available)} deltaPct={null} tone="var(--success)" />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Earned</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{balance.earned}</div>
+            </div>
+            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Used</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{balance.used}</div>
+            </div>
+            <div className="rounded-2xl border p-4" style={{ borderColor: balance.expired > 0 ? '#fcd34d' : 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Expired</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: balance.expired > 0 ? '#854d0e' : 'var(--text-primary)' }}>{balance.expired}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
+          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+        </div>
+
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No comp-off requests yet." />
+      </div>
 
       <CompOffModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />
     </div>
@@ -140,6 +174,7 @@ function CompOffModal({
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(EMPTY_FORM);
     }
   }, [isOpen]);

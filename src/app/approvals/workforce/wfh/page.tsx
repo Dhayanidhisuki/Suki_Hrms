@@ -79,6 +79,7 @@ function WfhQueueSection({ title, scope, description }: { title: string; scope: 
       return;
     }
     setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
+    toast.success('WFH request approved.');
   };
 
   const columns: Column<WfhRow>[] = [

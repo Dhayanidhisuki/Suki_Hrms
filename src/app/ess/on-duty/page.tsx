@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, Button, PageBreadcrumb, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface OnDutyRow {
   id: number;
@@ -57,6 +57,7 @@ export default function OnDutyPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -87,6 +88,7 @@ export default function OnDutyPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success('On-duty request submitted successfully.');
   };
 
   const columns: Column<OnDutyRow>[] = [
@@ -115,27 +117,23 @@ export default function OnDutyPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-            On-Duty (OD) Applications
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Apply when performing official duty outside your normal workplace. Approved days are counted as
-            present, not absent.
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          + Apply for On-Duty
-        </button>
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'On-Duty Requests' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>On-Duty Requests</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Apply when performing official duty outside your normal workplace. Approved days are counted as present, not absent.
+        </p>
       </div>
 
-      <DataTable columns={columns} data={records} loading={loading} emptyMessage="No On-Duty applications yet." />
+      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
+          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+        </div>
+
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No On-Duty applications yet." />
+      </div>
 
       <FormModal
         title="Apply for On-Duty"

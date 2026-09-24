@@ -84,6 +84,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
         return;
       }
       setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
+      toast.success('Leave approved.');
     } finally {
       setApproving(false);
     }
@@ -104,6 +105,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
       }
       setRejectId(null);
       refetch();
+      toast.success('Leave rejected.');
     } finally {
       setRejecting(false);
     }

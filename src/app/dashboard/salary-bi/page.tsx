@@ -13,9 +13,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Clock, TrendingUp, UtensilsCrossed, Wallet } from 'lucide-react';
+import Link from 'next/link';
+import { Banknote, Clock, PlayCircle, TrendingUp, UtensilsCrossed, Wallet } from 'lucide-react';
 import { PageHeader, Spinner } from '@/components/ui';
 import {
+  ReportAreaChart,
   ReportBarChart,
   ReportChartCard,
   ReportDonutChart,
@@ -42,6 +44,35 @@ interface EmpRow {
   professionalTax: number;
   totalDeductions: number;
   net: number;
+  runStatus: string | null;
+}
+
+interface ActivityItem {
+  label: string;
+  timestamp: string;
+  status: string | null;
+}
+
+const RUN_STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  DRAFT: { bg: '#f3f4f6', fg: '#4b5563' },
+  CALCULATED: { bg: '#e0e7ff', fg: '#3730a3' },
+  VALIDATED: { bg: '#dbeafe', fg: '#1e40af' },
+  SUBMITTED: { bg: '#fef9c3', fg: '#854d0e' },
+  APPROVED: { bg: '#dcfce7', fg: '#166534' },
+  LOCKED: { bg: '#ede9fe', fg: '#5b21b6' },
+  POSTED: { bg: '#dcfce7', fg: '#166534' },
+};
+
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-IN');
 }
 
 interface SalaryBi {
@@ -63,6 +94,16 @@ interface SalaryBi {
   breakdown: EmpRow[];
   byYear: Array<{ year: string; gross: number }>;
   components: Array<{ name: string; type: string; amount: number }>;
+  monthlyTrend: Array<{ label: string; year: number; month: number; gross: number }>;
+  composition: {
+    net: number;
+    pf: number;
+    esi: number;
+    professionalTax: number;
+    tds: number;
+    other: number;
+  } | null;
+  recentActivity: ActivityItem[];
 }
 
 const OT_COLORS = ['#6d4aff', '#38bdf8', '#a3e635', '#f59e0b', '#f43f5e'];
@@ -162,6 +203,15 @@ export default function SalaryBiPage() {
       >
         Include leavers
       </button>
+
+      <Link
+        href="/payroll/processing/salary"
+        className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold text-white transition hover:opacity-90"
+        style={{ backgroundColor: 'var(--primary)' }}
+      >
+        <PlayCircle size={14} />
+        Run Payroll
+      </Link>
     </div>
   );
 
@@ -184,6 +234,7 @@ export default function SalaryBiPage() {
         <>
           <ModuleKpiRow
             className="mb-0"
+            columns={5}
             items={[
               {
                 id: 'gross',
@@ -231,6 +282,47 @@ export default function SalaryBiPage() {
               },
             ]}
           />
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <ReportChartCard
+              title="Payroll Trend (Last 6 Months)"
+              subtitle="Total gross · all departments"
+              className="mb-0"
+              height={260}
+            >
+              <ReportAreaChart
+                data={scoped.monthlyTrend}
+                xKey="label"
+                yKey="gross"
+                seriesName="Gross"
+                valueFormatter={inr}
+                axisFormatter={inrShort}
+              />
+            </ReportChartCard>
+
+            <ReportChartCard
+              title="Salary Breakdown"
+              subtitle={`${periodLabel} · net vs everything withheld`}
+              className="mb-0"
+              height={260}
+            >
+              {scoped.composition ? (
+                <ReportDonutChart
+                  data={[
+                    { name: 'Net Salary', value: Math.round(scoped.composition.net), color: '#10b981' },
+                    { name: 'PF', value: Math.round(scoped.composition.pf), color: '#6d4aff' },
+                    { name: 'ESI', value: Math.round(scoped.composition.esi), color: '#38bdf8' },
+                    { name: 'Prof. Tax', value: Math.round(scoped.composition.professionalTax), color: '#f59e0b' },
+                    { name: 'TDS', value: Math.round(scoped.composition.tds), color: '#f43f5e' },
+                    { name: 'Other Deductions', value: Math.round(scoped.composition.other), color: '#94a3b8' },
+                  ]}
+                  centerLabel={inrShort(scoped.cards.totalGross)}
+                  centerSubtext="gross"
+                  showBadges={false}
+                />
+              ) : null}
+            </ReportChartCard>
+          </div>
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <ReportChartCard
@@ -309,14 +401,44 @@ export default function SalaryBiPage() {
             <SalaryTable rows={scoped.topEmployees} compact />
           </div>
 
-          <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-5">
-            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Salary Breakdown</h2>
-              <span className="text-xs text-[var(--text-muted)]">
-                {scoped.breakdown.length} employee{scoped.breakdown.length === 1 ? '' : 's'}
-              </span>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-5">
+              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Salary Breakdown</h2>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {scoped.breakdown.length} employee{scoped.breakdown.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <SalaryTable rows={scoped.breakdown} showStatus={!!month} />
             </div>
-            <SalaryTable rows={scoped.breakdown} />
+
+            <div className="rounded-2xl border border-[var(--border-main)] bg-[var(--bg-card)] p-5">
+              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Recent Activity</h2>
+              </div>
+              {scoped.recentActivity.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--text-muted)]">No recent activity.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {scoped.recentActivity.map((a, i) => {
+                    const tone = a.status ? RUN_STATUS_TONE[a.status] : null;
+                    return (
+                      <li key={i} className="flex items-start justify-between gap-3 border-b border-[var(--border-main)] pb-3 last:border-0 last:pb-0">
+                        <span className="text-xs text-[var(--text-secondary)]">{a.label}</span>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          {tone && (
+                            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+                              {a.status}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-[var(--text-muted)]">{timeAgo(a.timestamp)}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -325,10 +447,11 @@ export default function SalaryBiPage() {
 }
 
 /** The legacy report's "Breakage": gross through to net, per employee. */
-function SalaryTable({ rows, compact = false }: { rows: EmpRow[]; compact?: boolean }) {
+function SalaryTable({ rows, compact = false, showStatus = false }: { rows: EmpRow[]; compact?: boolean; showStatus?: boolean }) {
   const cols = compact
     ? ['Emp Code', 'Employee', 'Department', 'Gross']
     : ['Emp Code', 'Employee', 'Department', 'Gross', 'PF', 'ESI', 'Prof. Tax', 'Total Ded.', 'Net'];
+  if (!compact && showStatus) cols.push('Status');
 
   return (
     <div className="overflow-x-auto">
@@ -338,7 +461,7 @@ function SalaryTable({ rows, compact = false }: { rows: EmpRow[]; compact?: bool
             {cols.map((c, i) => (
               <th
                 key={c}
-                className={`px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] ${i >= 3 ? 'text-right' : 'text-left'}`}
+                className={`px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] ${i >= 3 && c !== 'Status' ? 'text-right' : i === cols.length - 1 && c === 'Status' ? 'text-center' : 'text-left'}`}
               >
                 {c}
               </th>
@@ -346,23 +469,37 @@ function SalaryTable({ rows, compact = false }: { rows: EmpRow[]; compact?: bool
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--border-main)]">
-          {rows.map((e) => (
-            <tr key={e.employeeCode + e.name} className="transition-colors hover:bg-[var(--bg-hover)]">
-              <td className="px-3 py-2.5 font-mono text-xs text-[var(--text-secondary)]">{e.employeeCode}</td>
-              <td className="px-3 py-2.5 text-xs text-[var(--text-primary)]">{e.name}</td>
-              <td className="px-3 py-2.5 text-xs text-[var(--text-secondary)]">{e.department}</td>
-              <td className="px-3 py-2.5 text-right text-xs font-semibold tabular-nums text-[var(--text-primary)]">{inr(e.gross)}</td>
-              {!compact && (
-                <>
-                  <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.pf)}</td>
-                  <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.esi)}</td>
-                  <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.professionalTax)}</td>
-                  <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.totalDeductions)}</td>
-                  <td className="px-3 py-2.5 text-right text-xs font-semibold tabular-nums text-[var(--text-primary)]">{inr(e.net)}</td>
-                </>
-              )}
-            </tr>
-          ))}
+          {rows.map((e) => {
+            const tone = e.runStatus ? RUN_STATUS_TONE[e.runStatus] : null;
+            return (
+              <tr key={e.employeeCode + e.name} className="transition-colors hover:bg-[var(--bg-hover)]">
+                <td className="px-3 py-2.5 font-mono text-xs text-[var(--text-secondary)]">{e.employeeCode}</td>
+                <td className="px-3 py-2.5 text-xs text-[var(--text-primary)]">{e.name}</td>
+                <td className="px-3 py-2.5 text-xs text-[var(--text-secondary)]">{e.department}</td>
+                <td className="px-3 py-2.5 text-right text-xs font-semibold tabular-nums text-[var(--text-primary)]">{inr(e.gross)}</td>
+                {!compact && (
+                  <>
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.pf)}</td>
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.esi)}</td>
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.professionalTax)}</td>
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-[var(--text-secondary)]">{inr(e.totalDeductions)}</td>
+                    <td className="px-3 py-2.5 text-right text-xs font-semibold tabular-nums text-[var(--text-primary)]">{inr(e.net)}</td>
+                    {showStatus && (
+                      <td className="px-3 py-2.5 text-center">
+                        {tone ? (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: tone.bg, color: tone.fg }}>
+                            {e.runStatus}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--text-muted)]">—</span>
+                        )}
+                      </td>
+                    )}
+                  </>
+                )}
+              </tr>
+            );
+          })}
           {rows.length === 0 && (
             <tr>
               <td colSpan={cols.length} className="py-10 text-center text-sm text-[var(--text-muted)]">

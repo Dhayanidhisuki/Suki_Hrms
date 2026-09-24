@@ -162,6 +162,7 @@ export default function SimpleMasterPage({
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success(editingId ? 'Updated successfully.' : 'Created successfully.');
   };
 
   const handleDelete = async (id: number) => {
@@ -172,6 +173,7 @@ export default function SimpleMasterPage({
       return;
     }
     fetchData();
+    toast.success('Deleted successfully.');
   };
 
   const columns: Column<SimpleMaster>[] = [

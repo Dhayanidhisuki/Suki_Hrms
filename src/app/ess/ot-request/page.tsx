@@ -1,7 +1,12 @@
 /**
- * Employee Self Service — Work From Home (WFH) Applications. Self-service
- * like On-Duty: always the logged-in user's own employee record, resolved
- * server-side. Two-stage approval (Reporting Manager → HR).
+ * Employee Self Service — OT Requests. Self-service: always the logged-in
+ * user's own employee record, resolved server-side. Two-stage approval
+ * (Reporting Manager → HR), same engine as Mis-Punch/Permission.
+ *
+ * Distinct from /ess/ot-slip (read-only history of already-decided OT,
+ * whichever origin) — this is where an employee actually asks to be
+ * credited overtime for a date, rather than only ever having it computed
+ * automatically from biometric punches.
  */
 
 'use client';
@@ -9,15 +14,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, FormModal, Button, PageBreadcrumb, useToast, type Column, type FieldDef } from '@/components/ui';
 
-interface WfhRow {
+interface OTRequestRow {
   id: number;
-  fromDate: string;
-  toDate: string;
+  date: string;
+  requestedMinutes: number;
   reason: string;
-  remarks: string | null;
   status: string;
   managerRejectionReason: string | null;
-  rejectionReason: string | null;
+  hrRejectionReason: string | null;
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
@@ -26,7 +30,6 @@ const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
   approved: { bg: '#dcfce7', fg: '#166534' },
   rejected: { bg: '#fee2e2', fg: '#991b1b' },
 };
-
 const STATUS_LABEL: Record<string, string> = {
   pending_manager: 'Pending Manager',
   pending_hr: 'Pending HR',
@@ -34,8 +37,10 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: 'Rejected',
 };
 
-export default function WfhPage() {
-  const [records, setRecords] = useState<WfhRow[]>([]);
+const hrs = (minutes: number) => `${(minutes / 60).toFixed(2).replace(/\.00$/, '')}h`;
+
+export default function OTRequestsPage() {
+  const [records, setRecords] = useState<OTRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const toast = useToast();
@@ -43,10 +48,10 @@ export default function WfhPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/workforce/wfh?scope=mine');
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
-      const json: { data: WfhRow[] } = await res.json();
-      setRecords(json.data);
+      const res = await fetch('/api/workforce/ot-request?scope=mine');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
+      const json: { data: OTRequestRow[] } = await res.json();
+      setRecords(json.data ?? []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -56,25 +61,23 @@ export default function WfhPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   const fields: FieldDef[] = [
-    { name: 'fromDate', label: 'From Date', type: 'date', required: true },
-    { name: 'toDate', label: 'To Date', type: 'date', required: true },
+    { name: 'date', label: 'Date', type: 'date', required: true, helpText: 'The date you worked the overtime.' },
+    { name: 'hours', label: 'Hours', type: 'number', required: true, min: 0.25, step: '0.25', helpText: 'How many hours of OT you are claiming for that date.' },
     { name: 'reason', label: 'Reason', type: 'textarea', required: true },
-    { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
-    const res = await fetch('/api/workforce/wfh', {
+    const res = await fetch('/api/workforce/ot-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        fromDate: values.fromDate,
-        toDate: values.toDate,
+        date: values.date,
+        requestedMinutes: Math.round(Number(values.hours) * 60),
         reason: values.reason,
-        remarks: values.remarks || null,
       }),
     });
     if (!res.ok) {
@@ -82,12 +85,12 @@ export default function WfhPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
-    toast.success('Work from home request submitted successfully.');
+    toast.success('OT request submitted.');
   };
 
-  const columns: Column<WfhRow>[] = [
-    { key: 'fromDate', label: 'From', render: (r) => new Date(r.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
-    { key: 'toDate', label: 'To', render: (r) => new Date(r.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+  const columns: Column<OTRequestRow>[] = [
+    { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'requestedMinutes', label: 'Requested', render: (r) => hrs(r.requestedMinutes) },
     { key: 'reason', label: 'Reason' },
     {
       key: 'status',
@@ -102,19 +105,19 @@ export default function WfhPage() {
       },
     },
     {
-      key: 'remarks',
-      label: 'Notes',
-      render: (r) => r.rejectionReason ?? r.managerRejectionReason ?? r.remarks ?? '—',
+      key: 'rejectionReason',
+      label: 'Rejection Reason',
+      render: (r) => r.managerRejectionReason ?? r.hrRejectionReason ?? '—',
     },
   ];
 
   return (
     <div className="space-y-5">
       <div>
-        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'WFH Requests' }]} />
-        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>WFH Requests</h1>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'OT Requests' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>OT Requests</h1>
         <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Apply to work remotely for a date range. Approved days are counted as present.
+          Worked overtime that your punches don&apos;t already show? Claim it here — your Reporting Manager reviews it first, then HR gives final approval.
         </p>
       </div>
 
@@ -124,16 +127,16 @@ export default function WfhPage() {
           <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
         </div>
 
-        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No WFH applications yet." />
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No OT requests yet." />
       </div>
 
       <FormModal
-        title="Apply for Work From Home"
+        title="Request OT"
         fields={fields}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit}
-        submitLabel="Submit Application"
+        submitLabel="Submit Request"
       />
     </div>
   );

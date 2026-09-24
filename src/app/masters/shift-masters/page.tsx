@@ -132,12 +132,14 @@ export default function ShiftMastersPage() {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'Save failed'); }
     fetchData();
+    toast.success(editingId ? 'Shift updated successfully.' : 'Shift created successfully.');
   };
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/shift-masters/${id}`, { method: 'DELETE' });
     if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Delete failed'); return; }
     fetchData();
+    toast.success('Shift deleted successfully.');
   };
 
   const handleExportCsv = useCallback(() => {

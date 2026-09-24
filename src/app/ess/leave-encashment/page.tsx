@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, useToast, type Column } from '@/components/ui';
+import { DataTable, Button, PageBreadcrumb, useToast, type Column } from '@/components/ui';
 
 interface EncashRow {
   id: number;
@@ -88,6 +88,7 @@ export default function EssLeaveEncashmentPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
   }, [fetchData]);
 
@@ -103,6 +104,7 @@ export default function EssLeaveEncashmentPage() {
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Save failed');
     await fetchData();
+    toast.success('Leave encashment request submitted successfully.');
   };
 
   const columns: Column<EncashRow>[] = [
@@ -128,52 +130,50 @@ export default function EssLeaveEncashmentPage() {
   const canApply = eligibility?.configured && eligibility.encashable.some((b) => b.available > 0);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Leave Encashment</h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Convert unused leave into payment. HR reviews each request and payroll settles the final amount.
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          disabled={!canApply}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          + Request Encashment
-        </button>
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'Leave Encashment' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Leave Encashment</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Convert unused leave into payment. HR reviews each request and payroll settles the final amount.
+        </p>
       </div>
 
       {!loading && eligibility && !eligibility.configured && (
-        <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', color: 'var(--foreground-muted)' }}>
+        <div className="rounded-2xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)' }}>
           Leave encashment is not configured for your company yet — contact HR.
         </div>
       )}
 
       {!loading && eligibility?.configured && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Encashable Days</div>
-            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{eligibility.totalAvailableDays.toFixed(1)}</div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Encashable Days</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{eligibility.totalAvailableDays.toFixed(1)}</div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Annual Limit</div>
-            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{eligibility.maxEncashableDays ?? '—'}</div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Annual Limit</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{eligibility.maxEncashableDays ?? '—'}</div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Per Day (est.)</div>
-            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--foreground)' }}>{money(eligibility.perDaySalary)}</div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Per Day (est.)</div>
+            <div className="mt-1 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{money(eligibility.perDaySalary)}</div>
           </div>
-          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-xs uppercase" style={{ color: 'var(--foreground-muted)' }}>Basis</div>
-            <div className="mt-1 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>{eligibility.calculationBasis ?? '—'}</div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+            <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Basis</div>
+            <div className="mt-1 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{eligibility.calculationBasis ?? '—'}</div>
           </div>
         </div>
       )}
 
-      <DataTable columns={columns} data={records} loading={loading} emptyMessage="No encashment requests yet." />
+      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
+          <Button variant="primary" onClick={() => setModalOpen(true)} disabled={!canApply}>Submit Request</Button>
+        </div>
+
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No encashment requests yet." />
+      </div>
 
       {eligibility && (
         <EncashModal
@@ -206,6 +206,7 @@ function EncashModal({
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(EMPTY_FORM);
     }
   }, [isOpen]);

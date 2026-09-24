@@ -83,6 +83,7 @@ export default function VisitorApprovalPage() {
         throw new Error(data.error ?? 'Failed to approve');
       }
       fetchPasses();
+      toast.success('Visitor pass approved.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
@@ -109,6 +110,7 @@ export default function VisitorApprovalPage() {
       setRejectingId(null);
       setRejectReason('');
       fetchPasses();
+      toast.success('Visitor pass rejected.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to reject');
     } finally {

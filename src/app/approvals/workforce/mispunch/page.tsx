@@ -104,6 +104,7 @@ function MispunchQueueSection({ title, scope, description }: { title: string; sc
       return;
     }
     setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
+    toast.success('Correction request approved.');
   };
 
   const columns: Column<MispunchRow>[] = [

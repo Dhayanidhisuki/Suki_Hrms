@@ -59,6 +59,7 @@ export default function OfferApprovalPage() {
       return;
     }
     fetchData();
+    toast.success(`Offer marked as ${status}.`);
   };
 
   const columns: Column<OfferRow>[] = [

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { ReportBarChart, ReportMultiLineChart } from '@/components/ui/ReportCharts';
 import { handleExport } from '@/lib/export-utils';
+import { useToast } from '@/components/ui';
 
 // ── Types matching /api/workforce/my-dashboard ────────────────────────────────
 
@@ -81,6 +82,20 @@ interface DashboardPayload {
     usedHours: number;
     remainingHours: number;
   } | null;
+  compOffBalance: {
+    available: number;
+    earned: number;
+    used: number;
+    expired: number;
+    encashed: number;
+  } | null;
+  serviceRecords: {
+    wfh: { approvedYear: number; pendingNow: number };
+    onDuty: { approvedYear: number; pendingNow: number };
+    mispunch: { approvedYear: number; pendingNow: number };
+    shiftChange: { approvedYear: number; pendingNow: number };
+    ot: { approvedHoursYear: number; pendingNow: number };
+  };
   requests: Record<string, number>;
   approvals: Record<string, number>;
   isManager: boolean;
@@ -199,6 +214,7 @@ function FingerprintIcon() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function EssDashboardPage() {
+  const toast = useToast();
   const now = new Date();
   const [year, setYear] = useState(now.getUTCFullYear());
   const [month, setMonth] = useState(now.getUTCMonth() + 1);
@@ -218,10 +234,10 @@ export default function EssDashboardPage() {
     fetch(`/api/workforce/my-dashboard?year=${year}&month=${month}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => { if (!cancelled && json) setData(json); })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) toast.error('Failed to load dashboard.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [year, month]);
+  }, [year, month, toast]);
 
   // True while a month switch fetch is in flight — the loaded payload still
   // reflects the previously selected month.
@@ -232,9 +248,9 @@ export default function EssDashboardPage() {
     fetch('/api/workforce/my-attendance-flags?years=2')
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => { if (!cancelled && json) setFlagData(json); })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) toast.error('Failed to load attendance flags.'); });
     return () => { cancelled = true; };
-  }, []);
+  }, [toast]);
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
@@ -311,6 +327,7 @@ export default function EssDashboardPage() {
     { key: 'loan',        label: 'Loan Requests',              href: '/ess/loans' },
     { key: 'compOff',     label: 'Comp-Off Requests',          href: '/ess/comp-off' },
     { key: 'encashment',  label: 'Leave Encashment Requests',  href: '/ess/leave-encashment' },
+    { key: 'otRequest',   label: 'OT Requests',                href: '/ess/ot-request' },
   ];
 
   const approvalItems = [
@@ -678,6 +695,41 @@ export default function EssDashboardPage() {
               </Link>
             </div>
           )}
+
+          {/* Comp-off balance — earned by working a weekly-off/holiday, spent by
+              taking a day off. `used` and `expired` are all-time running totals
+              off CompOffBalance, not scoped to `year`; the balance is a running
+              account, not something that resets each year the way leave does. */}
+          {data?.compOffBalance && (
+            <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold" style={fg}>Comp-Off Balance</span>
+                <span className="text-xs" style={muted}>days</span>
+              </div>
+              <div className="mt-2 flex items-baseline gap-1">
+                <span className="text-2xl font-bold" style={{ color: data.compOffBalance.available > 0 ? 'var(--info)' : muted.color }}>
+                  {data.compOffBalance.available}
+                </span>
+                <span className="text-xs" style={muted}>available of {data.compOffBalance.earned} earned</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--border)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, data.compOffBalance.earned > 0 ? (data.compOffBalance.used / data.compOffBalance.earned) * 100 : 0)}%`,
+                    backgroundColor: 'var(--info)',
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs" style={muted}>
+                <span>Used {data.compOffBalance.used}</span>
+                {data.compOffBalance.expired > 0 && <span>{data.compOffBalance.expired} expired</span>}
+              </div>
+              <Link href="/ess/comp-off" className="mt-3 block text-center text-xs font-semibold" style={{ color: 'var(--info)' }}>
+                View comp-off →
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* My Requests / My approvals */}
@@ -733,6 +785,62 @@ export default function EssDashboardPage() {
               <p className="px-2 py-4 text-xs" style={muted}>You don&apos;t have any reportees — nothing to approve.</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* My Service Records — the "used vs. still pending" view for every
+          request type, in one place. Leave and Permission already get their
+          own detail above (balance table, monthly stat card); this covers
+          the rest, none of which has a quota to show a balance for, so
+          "approved this year" stands in for it — the plain answer to "how
+          much of this have I actually taken." */}
+      <div className={card}>
+        <h3 className="text-sm font-bold" style={fg}>My Service Records ({year})</h3>
+        <p className="mt-1 text-xs" style={muted}>
+          What you&apos;ve had approved this year, and what&apos;s still waiting on a decision.
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--border)', ...muted }}>
+                <th className="px-3 py-2 font-medium">Service</th>
+                <th className="px-3 py-2 font-medium">Approved ({year})</th>
+                <th className="px-3 py-2 font-medium">Pending Now</th>
+                <th className="px-3 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { key: 'wfh', label: 'Work From Home', unit: 'days', value: data?.serviceRecords?.wfh.approvedYear, pending: data?.serviceRecords?.wfh.pendingNow, href: '/ess/wfh' },
+                { key: 'onDuty', label: 'On-Duty', unit: 'days', value: data?.serviceRecords?.onDuty.approvedYear, pending: data?.serviceRecords?.onDuty.pendingNow, href: '/ess/on-duty' },
+                { key: 'mispunch', label: 'Mis-Punch Corrections', unit: '', value: data?.serviceRecords?.mispunch.approvedYear, pending: data?.serviceRecords?.mispunch.pendingNow, href: '/ess/mis-punch' },
+                { key: 'shiftChange', label: 'Shift Change', unit: '', value: data?.serviceRecords?.shiftChange.approvedYear, pending: data?.serviceRecords?.shiftChange.pendingNow, href: '/ess/shift-change' },
+                { key: 'ot', label: 'Overtime', unit: 'h', value: data?.serviceRecords?.ot.approvedHoursYear, pending: data?.serviceRecords?.ot.pendingNow, href: '/ess/ot-request' },
+              ].map((row) => (
+                <tr key={row.key} className="border-b last:border-0" style={{ borderColor: 'var(--border)', ...fg }}>
+                  <td className="px-3 py-2 font-medium">{row.label}</td>
+                  <td className="px-3 py-2">{row.value ?? '—'}{row.value != null && row.unit ? ` ${row.unit}` : ''}</td>
+                  <td className="px-3 py-2">
+                    {(row.pending ?? 0) > 0 ? (
+                      <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
+                        {row.pending} pending
+                      </span>
+                    ) : (
+                      <span style={muted}>None</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Link href={row.href} className="font-semibold" style={{ color: 'var(--info)' }}>
+                      View →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {!data && (
+                <tr><td colSpan={4} className="px-3 py-6 text-center" style={muted}>Loading…</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

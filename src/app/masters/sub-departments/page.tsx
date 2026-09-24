@@ -134,12 +134,14 @@ function SubDepartmentsPageInner() {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'Save failed'); }
     fetchData();
+    toast.success(editingId ? 'Sub-department updated successfully.' : 'Sub-department created successfully.');
   };
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`/api/masters/sub-departments/${id}`, { method: 'DELETE' });
     if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Delete failed'); return; }
     fetchData();
+    toast.success('Sub-department deleted successfully.');
   };
 
   const columns: Column<SubDepartment>[] = [

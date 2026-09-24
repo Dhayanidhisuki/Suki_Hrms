@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   const [balances, applications] = await Promise.all([
     prisma.leaveBalance.findMany({
-      where: { employeeId, year },
+      where: { employeeId, year, leaveMaster: { isActive: true, deletedAt: null } },
       include: { leaveMaster: { select: { id: true, code: true, name: true } } },
     }),
     prisma.leaveApplication.findMany({

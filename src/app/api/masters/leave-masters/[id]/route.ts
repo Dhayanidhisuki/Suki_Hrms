@@ -28,6 +28,9 @@ export async function PUT(
   const existing = await prisma.leaveMaster.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
+  const nameConflict = await prisma.leaveMaster.findFirst({ where: { name: parsed.data.name, deletedAt: null, NOT: { id: parseInt(id) } } });
+  if (nameConflict) return NextResponse.json({ error: 'A leave type with this name already exists' }, { status: 409 });
+
   const record = await prisma.leaveMaster.update({ where: { id: parseInt(id) }, data: parsed.data });
   return NextResponse.json(record);
 }

@@ -116,6 +116,7 @@ export default function VisitorPassRequestPage() {
         qrValidHours: 24,
         noOfPersons: 1,
       });
+      toast.success('Visitor pass request submitted successfully.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create visitor pass');
     } finally {
