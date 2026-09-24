@@ -250,6 +250,8 @@ export async function GET(request: NextRequest) {
       permissionStatus: perm?.status ?? null,
       permissionDetail: perm ? perm.entries.join('\n') : null,
       source: rec?.source ?? null,
+      inSource: rec?.inSource ?? null,
+      outSource: rec?.outSource ?? null,
       remarks: rec?.remarks ?? null,
     };
   });
@@ -302,7 +304,9 @@ export async function GET(request: NextRequest) {
     expectedWorkingMinutes: days
       .filter((d) => !['WeeklyOff', 'Holiday', 'Upcoming'].includes(d.status))
       .reduce((acc, d) => acc + d.shiftMinutes, 0),
-    biometricDays: count((d) => d.source === 'biometric'),
+    biometricDays: count((d) => d.source === 'biometric' || d.source === 'biometric+app'),
+    appDays: count((d) => d.source === 'app' || d.source === 'biometric+app'),
+    mergedDays: count((d) => d.source === 'biometric+app'),
     manualDays: count((d) => d.source === 'manual'),
   };
 

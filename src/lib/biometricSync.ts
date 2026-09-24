@@ -26,6 +26,7 @@ import { prisma } from './prisma';
 import { fetchDeviceDailyAttendance, type ParsedDeviceDay } from './biometricApi';
 import { upsertDailyAttendanceWithHistory } from './attendanceHistory';
 import { deriveStatusAndMinutes, resolveDailyShift, resolveEmployeeShiftConfig, refreshMonthlySummary, type EmployeeShiftConfig } from './biometricConversion';
+import { appMergeEnabled, recordSourceContribution, reconcileAttendanceDay } from './attendanceMerge';
 
 export interface SyncOptions {
   companyId: number;
@@ -49,6 +50,9 @@ export interface SyncOutcome {
   daysUpdated: number;
   daysUnchanged: number;
   skippedFrozen: number;
+  /** App-merge mode only — days the merge held for review / refused to touch. */
+  skippedProtected?: number;
+  needsReview?: number;
   unmatched: UnmatchedDeviceUser[];
   error?: string;
 }
@@ -65,7 +69,7 @@ export function normaliseDeviceUserId(raw: string): string {
  * on. There is deliberately NO fallback to the system code (EMPnnn): the
  * device's own test user "1" would otherwise land on EMP001.
  */
-async function buildEmployeeLookup(companyId: number): Promise<Map<string, number>> {
+export async function buildEmployeeLookup(companyId: number): Promise<Map<string, number>> {
   const employees = await prisma.employee.findMany({
     where: { companyId, deletedAt: null, isActive: true, oldEmployeeCode: { not: null } },
     select: { id: true, oldEmployeeCode: true },
@@ -107,7 +111,7 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
     },
   });
 
-  const counts = { rowsFetched: 0, daysCreated: 0, daysUpdated: 0, daysUnchanged: 0, skippedFrozen: 0 };
+  const counts = { rowsFetched: 0, daysCreated: 0, daysUpdated: 0, daysUnchanged: 0, skippedFrozen: 0, needsReview: 0 };
   const unmatched = new Map<string, UnmatchedDeviceUser>();
 
   try {
@@ -138,11 +142,6 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         continue;
       }
 
-      if (await isMonthFrozen(employeeId, day.date)) {
-        counts.skippedFrozen += 1;
-        continue;
-      }
-
       let config = shiftConfigs.get(employeeId);
       if (!config) {
         config = await resolveEmployeeShiftConfig(employeeId);
@@ -156,28 +155,57 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         carried.closes.get(day) ??
         (day.lastOut && day.firstIn && day.lastOut.at.getTime() !== day.firstIn.at.getTime() ? day.lastOut.at : null);
 
-      const derived = deriveStatusAndMinutes(null, inTime, outTime, shift, config.otThresholdMinutes, config.maxOtMinutesPerDay);
-      const status = inTime && !outTime ? 'MissingPunch' : derived.status;
-
-      const result = await upsertDailyAttendanceWithHistory(
-        prisma,
-        employeeId,
-        day.date,
-        {
-          status,
+      if (appMergeEnabled()) {
+        // Merged mode: record THIS source's contribution, then let the
+        // shared merge decide the final row from both feeds. The merge
+        // itself enforces the locked-month and human-decision protections.
+        await recordSourceContribution(prisma, employeeId, day.date, 'biometric', {
           inTime,
           outTime,
-          workingMinutes: derived.workingMinutes,
-          otMinutesCalculated: derived.otMinutes,
-          lateMinutes: derived.lateMinutes,
-          source: 'biometric',
-          shiftMasterId: shift.shiftMasterId,
-        },
-        { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
-      );
-      if (result.outcome === 'created') counts.daysCreated += 1;
-      else if (result.outcome === 'updated') counts.daysUpdated += 1;
-      else counts.daysUnchanged += 1;
+          sourceRowId: `bio:${day.userid}:${day.date.toISOString().slice(0, 10)}`,
+        });
+        const outcome = await reconcileAttendanceDay(prisma, employeeId, day.date, {
+          companyId: opts.companyId,
+          userId: opts.triggeredByUserId ?? null,
+          shiftConfig: config,
+        });
+        if (outcome === 'created') counts.daysCreated += 1;
+        else if (outcome === 'updated') counts.daysUpdated += 1;
+        else if (outcome === 'unchanged') counts.daysUnchanged += 1;
+        else if (outcome === 'skipped_locked_month') counts.skippedFrozen += 1;
+        else if (outcome === 'needs_review') {
+          counts.needsReview = (counts.needsReview ?? 0) + 1;
+        }
+      } else {
+        // Original single-source path — unchanged when the app merge is off.
+        if (await isMonthFrozen(employeeId, day.date)) {
+          counts.skippedFrozen += 1;
+          continue;
+        }
+
+        const derived = deriveStatusAndMinutes(null, inTime, outTime, shift, config.otThresholdMinutes, config.maxOtMinutesPerDay);
+        const status = inTime && !outTime ? 'MissingPunch' : derived.status;
+
+        const result = await upsertDailyAttendanceWithHistory(
+          prisma,
+          employeeId,
+          day.date,
+          {
+            status,
+            inTime,
+            outTime,
+            workingMinutes: derived.workingMinutes,
+            otMinutesCalculated: derived.otMinutes,
+            lateMinutes: derived.lateMinutes,
+            source: 'biometric',
+            shiftMasterId: shift.shiftMasterId,
+          },
+          { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
+        );
+        if (result.outcome === 'created') counts.daysCreated += 1;
+        else if (result.outcome === 'updated') counts.daysUpdated += 1;
+        else counts.daysUnchanged += 1;
+      }
 
       touchedMonths.add(`${employeeId}:${day.date.getUTCFullYear()}-${day.date.getUTCMonth() + 1}`);
     }
@@ -189,18 +217,21 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
     }
 
     const unmatchedList = Array.from(unmatched.values()).sort((a, b) => b.days - a.days);
+    // BiometricSyncRun has no needsReview column — strip it before the update.
+    const { needsReview: _needsReview, ...runCounts } = counts;
     await prisma.biometricSyncRun.update({
       where: { id: run.id },
-      data: { ...counts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
+      data: { ...runCounts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
     });
     return { runId: run.id, status: 'success', ...counts, unmatched: unmatchedList };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const unmatchedList = Array.from(unmatched.values());
+    const { needsReview: _needsReview, ...runCounts } = counts;
     await prisma.biometricSyncRun
       .update({
         where: { id: run.id },
-        data: { ...counts, status: 'failed', error: message.slice(0, 2000), unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
+        data: { ...runCounts, status: 'failed', error: message.slice(0, 2000), unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
       })
       .catch(() => {});
     console.error('[biometric-sync] run failed', { runId: run.id, message });

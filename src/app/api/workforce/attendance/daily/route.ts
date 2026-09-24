@@ -64,6 +64,10 @@ export async function GET(request: NextRequest) {
   ]);
 
   const data = records.map((r) => {
+    // GPS stays server-side for now — strip it from the response (inSource/
+    // outSource do flow through for the per-endpoint source badges).
+    const { inLatitude, inLongitude, outLatitude, outLongitude, ...rest } = r;
+    void inLatitude; void inLongitude; void outLatitude; void outLongitude;
     const shift = r.shiftMaster
       ? { startTime: r.shiftMaster.startTime, endTime: r.shiftMaster.endTime, graceMinutes: r.shiftMaster.graceMinutes }
       : null;
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
       otPlan ? { applicableAfterMinutes: otPlan.applicableAfterMinutes, maxOtHoursPerDay: otPlan.maxOtHoursPerDay, roundingSlabMinutes: otPlan.roundingSlabMinutes } : null,
       shift ? parseShiftTime(shift.endTime) : undefined
     );
-    return { ...r, lomMinutes, otPayableMinutes, permissionExcusedMinutes };
+    return { ...rest, lomMinutes, otPayableMinutes, permissionExcusedMinutes };
   });
 
   return NextResponse.json({
