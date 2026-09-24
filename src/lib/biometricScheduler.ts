@@ -13,6 +13,8 @@
 
 import { biometricApiConfigured } from './biometricApi';
 import { defaultSyncRange, runBiometricSync } from './biometricSync';
+import { appSyncEnabled } from './appAttendanceDb';
+import { runAppSync } from './appAttendanceSync';
 
 interface SchedulerState {
   timer: NodeJS.Timeout | null;
@@ -35,15 +37,39 @@ async function tick(state: SchedulerState) {
   state.lastStartedAt = new Date();
   try {
     const { rangeStart, rangeEnd } = defaultSyncRange();
-    const outcome = await runBiometricSync({
-      companyId: Number(process.env.BIOMETRIC_COMPANY_ID ?? 1),
-      rangeStart,
-      rangeEnd,
-      trigger: 'scheduled',
-    });
-    console.log(
-      `[biometric-sync] scheduled run #${outcome.runId} ${outcome.status}: fetched ${outcome.rowsFetched}, created ${outcome.daysCreated}, updated ${outcome.daysUpdated}, unchanged ${outcome.daysUnchanged}, frozen-skipped ${outcome.skippedFrozen}, unmatched ${outcome.unmatched.length}`
-    );
+    const companyId = Number(process.env.BIOMETRIC_COMPANY_ID ?? 1);
+
+    if (biometricApiConfigured() && process.env.BIOMETRIC_SYNC_ENABLED !== 'false') {
+      const outcome = await runBiometricSync({
+        companyId,
+        rangeStart,
+        rangeEnd,
+        trigger: 'scheduled',
+      });
+      console.log(
+        `[biometric-sync] scheduled run #${outcome.runId} ${outcome.status}: fetched ${outcome.rowsFetched}, created ${outcome.daysCreated}, updated ${outcome.daysUpdated}, unchanged ${outcome.daysUnchanged}, frozen-skipped ${outcome.skippedFrozen}, unmatched ${outcome.unmatched.length}`
+      );
+    }
+
+    // App-database sync runs on the same tick AFTER biometric, inside the
+    // same `running` guard, so scheduled runs of the two feeds can never
+    // overlap in this process. A failed app run is logged, never fatal to
+    // the biometric side (which has already completed above).
+    if (appSyncEnabled()) {
+      try {
+        const outcome = await runAppSync({
+          companyId,
+          rangeStart,
+          rangeEnd,
+          trigger: 'scheduled',
+        });
+        console.log(
+          `[app-sync] scheduled run #${outcome.runId} ${outcome.status}: fetched ${outcome.rowsFetched}, created ${outcome.daysCreated}, updated ${outcome.daysUpdated}, unchanged ${outcome.daysUnchanged}, frozen-skipped ${outcome.skippedFrozen}, needs-review ${outcome.needsReview}, unmatched ${outcome.unmatched.length}`
+        );
+      } catch (err) {
+        console.error('[app-sync] scheduled run crashed', err);
+      }
+    }
   } catch (err) {
     console.error('[biometric-sync] scheduled run crashed', err);
   } finally {
@@ -55,12 +81,12 @@ async function tick(state: SchedulerState) {
 
 export function startBiometricScheduler(): void {
   if (g.__biometricScheduler) return;
-  if (process.env.BIOMETRIC_SYNC_ENABLED === 'false') {
+  if (process.env.BIOMETRIC_SYNC_ENABLED === 'false' && !appSyncEnabled()) {
     console.log('[biometric-sync] scheduler disabled by BIOMETRIC_SYNC_ENABLED=false');
     return;
   }
-  if (!biometricApiConfigured()) {
-    console.log('[biometric-sync] scheduler not started: BIOMETRIC_API_URL / BIOMETRIC_API_KEY missing');
+  if (!biometricApiConfigured() && !appSyncEnabled()) {
+    console.log('[biometric-sync] scheduler not started: no attendance source configured (BIOMETRIC_API_* / ESSL_DB_*)');
     return;
   }
 

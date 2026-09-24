@@ -38,6 +38,27 @@ export interface DailyAttendanceValues {
   source?: string;
   remarks?: string | null;
   shiftMasterId?: number | null;
+  // App-merge phase — endpoint attribution + GPS. GPS fields follow the
+  // punch that won the endpoint; a write that replaces an endpoint must
+  // pass the new coordinates (or null) explicitly.
+  inLatitude?: number | null;
+  inLongitude?: number | null;
+  outLatitude?: number | null;
+  outLongitude?: number | null;
+  inSource?: string | null;
+  outSource?: string | null;
+  inSourceRef?: string | null;
+  outSourceRef?: string | null;
+}
+
+/** Behaviour switches for the sync/merge writers (manual callers don't pass this). */
+export interface UpsertOptions {
+  /**
+   * When true, the auto-queue logic never resets an already-decided OT or
+   * LOM approval ('approved'/'rejected') back to pending — the merge
+   * service checks this before writing, and this guard is the backstop.
+   */
+  preserveDecidedApprovals?: boolean;
 }
 
 function sameTime(a: Date | null | undefined, b: Date | null | undefined) {
@@ -67,6 +88,14 @@ function isUnchanged(
     source: string;
     remarks: string | null;
     shiftMasterId: number | null;
+    inLatitude: number | null;
+    inLongitude: number | null;
+    outLatitude: number | null;
+    outLongitude: number | null;
+    inSource: string | null;
+    outSource: string | null;
+    inSourceRef: string | null;
+    outSourceRef: string | null;
   },
   next: DailyAttendanceValues
 ) {
@@ -85,6 +114,14 @@ function isUnchanged(
   if (next.source !== undefined && next.source !== current.source) return false;
   if (next.remarks !== undefined && next.remarks !== current.remarks) return false;
   if (next.shiftMasterId !== undefined && next.shiftMasterId !== current.shiftMasterId) return false;
+  if (next.inLatitude !== undefined && next.inLatitude !== current.inLatitude) return false;
+  if (next.inLongitude !== undefined && next.inLongitude !== current.inLongitude) return false;
+  if (next.outLatitude !== undefined && next.outLatitude !== current.outLatitude) return false;
+  if (next.outLongitude !== undefined && next.outLongitude !== current.outLongitude) return false;
+  if (next.inSource !== undefined && next.inSource !== current.inSource) return false;
+  if (next.outSource !== undefined && next.outSource !== current.outSource) return false;
+  if (next.inSourceRef !== undefined && next.inSourceRef !== current.inSourceRef) return false;
+  if (next.outSourceRef !== undefined && next.outSourceRef !== current.outSourceRef) return false;
   return true;
 }
 
@@ -111,8 +148,21 @@ export async function upsertDailyAttendanceWithHistory(
   employeeId: number,
   date: Date,
   values: DailyAttendanceValues,
-  actor: { userId: number | null; changedBySource: string }
+  actor: { userId: number | null; changedBySource: string },
+  opts: UpsertOptions = {}
 ): Promise<UpsertResult> {
+  const existing = await db.dailyAttendance.findUnique({
+    where: { employeeId_date: { employeeId, date } },
+  });
+
+  // An OT/LOM decision a human already made ('approved'/'rejected') is never
+  // reopened by an automatic sync write. The merge service skips such days
+  // before it gets here; this is the backstop for any automatic writer that
+  // reaches this helper directly. Pending queues are unaffected — a changed
+  // punch re-pends them exactly as before.
+  const otDecided = Boolean(opts.preserveDecidedApprovals && existing && ['approved', 'rejected'].includes(existing.otApprovalStatus ?? ''));
+  const lomDecided = Boolean(opts.preserveDecidedApprovals && existing && ['approved', 'rejected'].includes(existing.lomApprovalStatus ?? ''));
+
   // Auto-queue OT for approval the moment a write gives a day real OT
   // minutes — the OT Approval workflow (src/app/api/workforce/attendance/ot)
   // reads otApprovalStatus='pending_manager' as its queue, so every writer
@@ -123,7 +173,7 @@ export async function upsertDailyAttendanceWithHistory(
   // the `=== undefined` guard. Employees without JobInfo.overtimeAllowed
   // never queue at all: their calculated OT is informational only.
   let resolvedValues = values;
-  if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined) {
+  if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined && !otDecided) {
     const otEligible = values.otMinutesCalculated > 0 && (await resolveOtEligibility(db, employeeId));
     resolvedValues = { ...values, otApprovalStatus: otEligible ? 'pending_manager' : null, otMinutesApproved: null };
   }
@@ -140,14 +190,10 @@ export async function upsertDailyAttendanceWithHistory(
   // (The OT block above already has the equivalent guard via
   // `values.otMinutesCalculated !== undefined`.)
   const carriesLomMinutes = 'lateMinutes' in values || 'earlyOutMinutes' in values;
-  if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes) {
+  if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes && !lomDecided) {
     const lomMinutes = (resolvedValues.lateMinutes ?? 0) + (resolvedValues.earlyOutMinutes ?? 0);
     resolvedValues = { ...resolvedValues, lomApprovalStatus: lomMinutes > 0 ? 'pending' : null };
   }
-
-  const existing = await db.dailyAttendance.findUnique({
-    where: { employeeId_date: { employeeId, date } },
-  });
 
   if (!existing) {
     await db.dailyAttendance.create({
@@ -169,6 +215,14 @@ export async function upsertDailyAttendanceWithHistory(
         source: resolvedValues.source ?? 'manual',
         remarks: resolvedValues.remarks ?? null,
         shiftMasterId: resolvedValues.shiftMasterId ?? null,
+        inLatitude: resolvedValues.inLatitude ?? null,
+        inLongitude: resolvedValues.inLongitude ?? null,
+        outLatitude: resolvedValues.outLatitude ?? null,
+        outLongitude: resolvedValues.outLongitude ?? null,
+        inSource: resolvedValues.inSource ?? null,
+        outSource: resolvedValues.outSource ?? null,
+        inSourceRef: resolvedValues.inSourceRef ?? null,
+        outSourceRef: resolvedValues.outSourceRef ?? null,
         createdByUserId: actor.userId,
       },
     });
@@ -196,6 +250,14 @@ export async function upsertDailyAttendanceWithHistory(
       isHolidayWorked: existing.isHolidayWorked,
       source: existing.source,
       remarks: existing.remarks,
+      inLatitude: existing.inLatitude,
+      inLongitude: existing.inLongitude,
+      outLatitude: existing.outLatitude,
+      outLongitude: existing.outLongitude,
+      inSource: existing.inSource,
+      outSource: existing.outSource,
+      inSourceRef: existing.inSourceRef,
+      outSourceRef: existing.outSourceRef,
       changedByUserId: actor.userId,
       changedBySource: actor.changedBySource,
     },

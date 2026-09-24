@@ -39,6 +39,8 @@ interface AttendanceRow {
   lomMinutes: number;
   otPayableMinutes: number;
   remarks: string | null;
+  inSource: string | null;
+  outSource: string | null;
   employee: { id: number; employeeCode: string; firstName: string; lastName: string };
   shiftMaster: { id: number; code: string; name: string; startTime: string; endTime: string; graceMinutes: number } | null;
 }
@@ -76,6 +78,20 @@ function formatWallClockTime(iso: string | null): string {
   const period = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
+/** Small "App"/"Bio" tag under a punch time when the merge recorded which feed supplied it. */
+function SourceTag({ source }: { source: string | null }) {
+  if (!source) return null;
+  const label = source === 'app' ? 'App' : source === 'biometric' ? 'Bio' : source;
+  return (
+    <span
+      className="mt-0.5 inline-block rounded px-1 text-[10px] font-medium"
+      style={{ backgroundColor: 'var(--border)', color: 'var(--muted-foreground, var(--foreground))' }}
+    >
+      {label}
+    </span>
+  );
 }
 
 export default function DailyAttendancePage() {
@@ -206,8 +222,26 @@ export default function DailyAttendancePage() {
     { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'shiftMaster', label: 'Shift', render: (r) => r.shiftMaster?.code ?? '—' },
     { key: 'status', label: 'Status' },
-    { key: 'inTime', label: 'In', render: (r) => formatWallClockTime(r.inTime) },
-    { key: 'outTime', label: 'Out', render: (r) => formatWallClockTime(r.outTime) },
+    {
+      key: 'inTime',
+      label: 'In',
+      render: (r) => (
+        <span className="inline-flex flex-col">
+          {formatWallClockTime(r.inTime)}
+          <SourceTag source={r.inTime ? r.inSource : null} />
+        </span>
+      ),
+    },
+    {
+      key: 'outTime',
+      label: 'Out',
+      render: (r) => (
+        <span className="inline-flex flex-col">
+          {formatWallClockTime(r.outTime)}
+          <SourceTag source={r.outTime ? r.outSource : null} />
+        </span>
+      ),
+    },
     { key: 'workingMinutes', label: 'Work (min)' },
     { key: 'lateMinutes', label: 'Late (min)' },
     { key: 'earlyOutMinutes', label: 'Early (min)' },
