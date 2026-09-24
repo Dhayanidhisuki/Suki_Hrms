@@ -30,7 +30,7 @@ interface PayrollLineComponent {
 interface PayrollLine {
   id: number;
   employeeId: number;
-  employee: { id: number; employeeCode: string; firstName: string; lastName: string };
+  employee: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string };
   otherEarningsTotal: string;
   otherDeductionsTotal: string;
   components: PayrollLineComponent[];
@@ -162,7 +162,7 @@ function AdditionsDeductionsContent() {
   };
 
   const lineColumns: Column<PayrollLine>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'otherEarningsTotal', label: 'Other Earnings' },
     { key: 'otherDeductionsTotal', label: 'Other Deductions' },
     {
@@ -236,7 +236,7 @@ function AdditionsDeductionsContent() {
 
           <div className="rounded-lg border p-4 space-y-4" style={{ borderColor: 'var(--border)' }}>
             <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-              {selectedLine ? `${selectedLine.employee.employeeCode} — ${selectedLine.employee.firstName}` : 'Select an employee'}
+              {selectedLine ? selectedLine.employee.oldEmployeeCode ? `${selectedLine.employee.oldEmployeeCode} — ${selectedLine.employee.firstName}` : selectedLine.employee.firstName : 'Select an employee'}
             </h2>
 
             {selectedLine ? (

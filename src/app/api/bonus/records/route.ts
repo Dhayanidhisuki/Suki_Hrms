@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           jobInfos: {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         },
       },
     },
-    orderBy: [{ acYear: 'desc' }, { employee: { employeeCode: 'asc' } }],
+    orderBy: [{ acYear: 'desc' }, { employee: { oldEmployeeCode: 'asc' } }],
   });
 
   return NextResponse.json({ data });

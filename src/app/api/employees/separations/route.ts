@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const data = await prisma.exitInterview.findMany({
     where: { employee: { companyId: scope.companyId, deletedAt: null } },
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       gratuityRecord: { select: { id: true, status: true } },
       clearanceChecks: true,
     },

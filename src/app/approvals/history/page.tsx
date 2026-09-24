@@ -102,7 +102,7 @@ export default function ApprovalHistoryPage() {
 
   const columns: Column<Row>[] = [
     { key: 'moduleLabel', label: 'Type', render: (r) => r.moduleLabel },
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employeeCode} — ${r.employeeName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employeeCode ? `${r.employeeCode} — ${r.employeeName}` : r.employeeName },
     { key: 'period', label: 'Period', render: (r) => r.period },
     { key: 'detail', label: 'Detail', render: (r) => r.detail },
     { key: 'appliedAt', label: 'Applied', render: (r) => stamp(r.appliedAt) },

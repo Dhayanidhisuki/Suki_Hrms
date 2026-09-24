@@ -48,7 +48,7 @@ interface PayrollLine {
   netSalary: string;
   status: string;
   holdReason: string | null;
-  employee: { id: number; employeeCode: string; firstName: string; lastName: string };
+  employee: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string };
   components: LineComponent[];
 }
 
@@ -188,7 +188,7 @@ export default function PayrollSalaryPage() {
   // Add employee dialog
   const [addOpen, setAddOpen] = useState(false);
   const [addEmployeeId, setAddEmployeeId] = useState('');
-  const [availableEmployees, setAvailableEmployees] = useState<{ id: number; employeeCode: string; firstName: string; lastName: string }[]>([]);
+  const [availableEmployees, setAvailableEmployees] = useState<{ id: number; oldEmployeeCode: string | null; firstName: string; lastName: string }[]>([]);
 
   const fetchRun = useCallback(async () => {
     setLoading(true);
@@ -302,7 +302,7 @@ export default function PayrollSalaryPage() {
     if (
       !(await confirm({
         title: 'Remove from this run?',
-        message: `${line.employee.firstName} ${line.employee.lastName} (${line.employee.employeeCode}) will be taken out of this payroll run.`,
+        message: `${line.employee.firstName} ${line.employee.lastName} (${line.employee.oldEmployeeCode ?? ''}) will be taken out of this payroll run.`,
         confirmLabel: 'Remove',
         tone: 'danger',
       }))
@@ -328,7 +328,7 @@ export default function PayrollSalaryPage() {
     try {
       const res = await fetch('/api/employees?limit=500');
       const json = await res.json();
-      const allEmps: { id: number; employeeCode: string; firstName: string; lastName: string }[] = json.data ?? json ?? [];
+      const allEmps: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string }[] = json.data ?? json ?? [];
       const inRun = new Set(run.lines.map((l) => l.employeeId));
       setAvailableEmployees(allEmps.filter((e) => !inRun.has(e.id)));
       setAddEmployeeId('');
@@ -395,7 +395,7 @@ export default function PayrollSalaryPage() {
   const filteredLines = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return lines;
-    return lines.filter((l) => `${l.employee.employeeCode} ${l.employee.firstName} ${l.employee.lastName}`.toLowerCase().includes(q));
+    return lines.filter((l) => `${l.employee.oldEmployeeCode ?? ''} ${l.employee.firstName} ${l.employee.lastName}`.toLowerCase().includes(q));
   }, [lines, search]);
 
   const stepperSteps = useMemo(() => {
@@ -472,7 +472,7 @@ export default function PayrollSalaryPage() {
       render: (r) => (
         <div className="leading-tight">
           <div className="font-medium">{r.employee.firstName} {r.employee.lastName}</div>
-          <div className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>{r.employee.employeeCode}</div>
+          <div className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>{r.employee.oldEmployeeCode ?? ''}</div>
         </div>
       ),
     },
@@ -795,7 +795,7 @@ export default function PayrollSalaryPage() {
                   <div className="space-y-1">
                     {lines.filter((l) => l.status === 'PROCESSED').map((l) => (
                       <div key={l.id} className="flex justify-between text-xs" style={{ color: 'var(--foreground)' }}>
-                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.employeeCode})</span>
+                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.oldEmployeeCode ?? ''})</span>
                         <span className="tabular-nums">{fmt(l.netSalary)}</span>
                       </div>
                     ))}
@@ -810,7 +810,7 @@ export default function PayrollSalaryPage() {
                   <div className="space-y-1">
                     {lines.filter((l) => l.status === 'HOLD').map((l) => (
                       <div key={l.id} className="flex justify-between text-xs" style={{ color: 'var(--foreground)' }}>
-                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.employeeCode})</span>
+                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.oldEmployeeCode ?? ''})</span>
                         <span className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>{l.holdReason ?? 'No reason'}</span>
                       </div>
                     ))}
@@ -825,7 +825,7 @@ export default function PayrollSalaryPage() {
                   <div className="space-y-1">
                     {lines.filter((l) => l.status === 'OK').map((l) => (
                       <div key={l.id} className="flex justify-between text-xs" style={{ color: 'var(--foreground)' }}>
-                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.employeeCode})</span>
+                        <span>{l.employee.firstName} {l.employee.lastName} ({l.employee.oldEmployeeCode ?? ''})</span>
                         <span className="tabular-nums">{fmt(l.netSalary)}</span>
                       </div>
                     ))}
@@ -854,7 +854,7 @@ export default function PayrollSalaryPage() {
                 >
                   <option value="">Select employee…</option>
                   {availableEmployees.map((e) => (
-                    <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeCode})</option>
+                    <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.oldEmployeeCode ?? ''})</option>
                   ))}
                 </select>
               </>

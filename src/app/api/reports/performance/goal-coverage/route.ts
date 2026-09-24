@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         ...(q
           ? {
               OR: [
-                { employeeCode: { contains: q } },
+                { oldEmployeeCode: { contains: q } },
                 { firstName: { contains: q } },
                 { lastName: { contains: q } },
               ],
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       },
       select: {
         id: true,
-        employeeCode: true,
+        oldEmployeeCode: true,
         firstName: true,
         lastName: true,
         jobInfos: {
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         },
         reportingManager: { select: { firstName: true, lastName: true } },
       },
-      orderBy: [{ employeeCode: 'asc' }],
+      orderBy: [{ oldEmployeeCode: 'asc' }],
     });
 
     // Not eligible for this cycle — joined after it ended.
@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
 
       return {
         employeeId: e.id,
-        employeeCode: e.employeeCode,
+        employeeCode: e.oldEmployeeCode ?? '',
         employeeName: `${e.firstName} ${e.lastName}`.trim(),
         designation: job?.designation?.name ?? null,
         department: job?.department?.name ?? null,

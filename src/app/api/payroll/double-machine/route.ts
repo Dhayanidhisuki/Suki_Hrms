@@ -40,7 +40,7 @@ function employeeSelect() {
 }
 
 function displayCode(emp: { employeeCode: string; oldEmployeeCode: string | null }) {
-  return emp.oldEmployeeCode?.trim() || emp.employeeCode;
+  return emp.oldEmployeeCode?.trim() || '';
 }
 
 export async function GET(request: NextRequest) {

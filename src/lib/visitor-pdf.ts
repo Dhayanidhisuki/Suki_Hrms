@@ -139,7 +139,7 @@ export async function generateGatePassPdf(pass: PassWithIncludes): Promise<Uint8
 
   write('HOST & LOGISTICS', { bold: true });
   write(`Person To Meet: ${pass.personToMeet?.firstName ?? ''} ${pass.personToMeet?.lastName ?? ''}` +
-        ` (${pass.personToMeet?.oldEmployeeCode ?? pass.personToMeet?.employeeCode ?? ''})`);
+        ` (${pass.personToMeet?.oldEmployeeCode ?? ''})`);
   write(`No. of Persons: ${pass.noOfPersons}`);
   write(`Planned In: ${pass.plannedInTime ?? '—'}`);
   write(`Planned Out: ${pass.plannedOutTime ?? '—'}`);

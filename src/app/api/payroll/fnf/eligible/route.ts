@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           jobInfos: {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       fnfId: row.fnfSettlement?.id ?? null,
       employee: {
         id: row.employee.id,
-        employeeCode: row.employee.employeeCode,
+        employeeCode: row.employee.oldEmployeeCode ?? '',
         firstName: row.employee.firstName,
         lastName: row.employee.lastName,
         department: job?.department?.name,

@@ -83,7 +83,7 @@ export async function loadPayslip(companyId: number, runId: number, employeeId: 
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           companyId: true,
@@ -121,7 +121,7 @@ export async function loadPayslip(companyId: number, runId: number, employeeId: 
     companyPhone: company?.phone ?? null,
     companyEmail: company?.email ?? null,
     employeeId: emp.id,
-    employeeCode: emp.employeeCode,
+    employeeCode: emp.oldEmployeeCode ?? '',
     employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
     designation: emp.jobInfos[0]?.designation?.name ?? null,
     department: emp.jobInfos[0]?.department?.name ?? null,

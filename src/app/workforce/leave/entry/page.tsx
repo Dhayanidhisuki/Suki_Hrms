@@ -51,6 +51,7 @@ interface BulkResponse {
 interface EmployeeOption {
   id: number;
   employeeCode: string;
+  oldEmployeeCode: string | null;
   firstName: string;
   lastName: string;
 }
@@ -67,7 +68,7 @@ interface LeaveApplicationRow {
   isHalfDay: boolean;
   reason: string | null;
   status: string;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   leaveMaster: { code: string; name: string };
 }
 
@@ -123,7 +124,7 @@ export default function LeaveEntryPage() {
   }, [fetchData]);
 
   const fields: FieldDef[] = [
-    { name: 'employeeId', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ label: `${e.employeeCode} — ${e.firstName} ${e.lastName}`, value: e.id })) },
+    { name: 'employeeId', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ label: e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`, value: e.id })) },
     { name: 'leaveMasterId', label: 'Leave Type', type: 'select', required: true, options: leaveMasters.map((l) => ({ label: `${l.name} (${l.code})`, value: l.id })) },
     { name: 'fromDate', label: 'From Date', type: 'date', required: true },
     { name: 'toDate', label: 'To Date', type: 'date', required: true },
@@ -160,7 +161,7 @@ export default function LeaveEntryPage() {
   const downloadTemplate = () => {
     const wb = buildLeaveTemplateWorkbook(
       leaveMasters.map((l) => ({ id: l.id, code: l.code, name: l.name })),
-      employees.map((e) => ({ id: e.id, employeeCode: e.employeeCode, oldEmployeeCode: null, firstName: e.firstName, lastName: e.lastName }))
+      employees.map((e) => ({ id: e.id, employeeCode: e.employeeCode, oldEmployeeCode: e.oldEmployeeCode, firstName: e.firstName, lastName: e.lastName }))
     );
     XLSX.writeFile(wb, 'leave-bulk-upload-template.xlsx');
   };
@@ -202,7 +203,7 @@ export default function LeaveEntryPage() {
     bulkResult?.mode === 'validate' && bulkResult.summary.ok > 0 && bulkBusy === null;
 
   const columns: Column<LeaveApplicationRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'leaveMaster', label: 'Leave Type', render: (r) => r.leaveMaster.name },
     { key: 'fromDate', label: 'From', render: (r) => new Date(r.fromDate).toLocaleDateString() },
     { key: 'toDate', label: 'To', render: (r) => new Date(r.toDate).toLocaleDateString() },

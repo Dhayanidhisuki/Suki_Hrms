@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const data = await prisma.salaryArrear.findMany({
     where: { companyId: scope.companyId },
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       salaryRevisionRequest: { select: { id: true, revisionType: true } },
     },
     orderBy: { createdAt: 'desc' },

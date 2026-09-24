@@ -239,7 +239,7 @@ export async function loadKunFnfStatement(settlementId: number): Promise<KunFnfS
     logoSrc: KUN_LOGO_PUBLIC,
     title: `Full & Final Settlement_${fy.start}-${fy.end}`,
     employeeName: `${s.employee.firstName} ${s.employee.lastName}`.trim().toUpperCase(),
-    employeeCode: s.employee.employeeCode,
+    employeeCode: s.employee.oldEmployeeCode ?? '',
     designation: job?.designation?.name ?? '',
     department: job?.department?.name ?? '',
     fnfDate: formatKunDate(s.settlementDate ?? s.updatedAt),

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     include: {
       employee: {
         select: {
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           bankDetail: { select: { accountNumber: true, bankName: true, ifscCode: true } },
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     const bank = r.employee.bankDetail;
     lines.push(
       [
-        csvCell(r.employee.employeeCode),
+        csvCell(r.employee.oldEmployeeCode ?? ''),
         csvCell(name),
         csvCell(bank?.accountNumber),
         csvCell(bank?.ifscCode),

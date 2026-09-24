@@ -2521,7 +2521,7 @@ export default function EmployeeProfilePage() {
   }
 
   const siblingName = (s: SiblingRef) => `${s.firstName} ${s.lastName}`;
-  const siblingCode = (s: SiblingRef) => s.oldEmployeeCode ?? s.employeeCode;
+  const siblingCode = (s: SiblingRef) => s.oldEmployeeCode ?? '—';
 
   return (
     <div className="space-y-4">
@@ -2562,7 +2562,7 @@ export default function EmployeeProfilePage() {
               className="rounded-md px-2 py-0.5 text-xs font-medium"
               style={{ backgroundColor: 'var(--surface-muted)', color: 'var(--foreground)' }}
             >
-              {header.oldEmployeeCode ?? header.employeeCode}
+              {header.oldEmployeeCode ?? '—'}
             </span>
             <StatusPill status={header.status} />
             <LifecycleBadge state={lifecycle?.state ?? header.lifecycleState} />

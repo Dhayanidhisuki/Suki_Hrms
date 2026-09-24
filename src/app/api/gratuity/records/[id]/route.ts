@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const record = await prisma.gratuityRecord.findFirst({
     where: { id: Number(id), companyId: scope.companyId },
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       exitInterview: { select: { exitType: true, exitReason: true } },
     },
   });

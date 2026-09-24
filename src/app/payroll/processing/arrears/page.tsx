@@ -13,7 +13,7 @@ import { DataTable, useToast, type Column } from '@/components/ui';
 
 interface ArrearRow {
   id: number;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   oldGross: string;
   revisedGross: string;
   arrearFromYear: number;
@@ -226,7 +226,7 @@ export default function SalaryArrearPage() {
   };
 
   const columns: Column<ArrearRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'oldGross', label: 'Old Gross' },
     { key: 'revisedGross', label: 'Revised Gross' },
     { key: 'period', label: 'Arrear Period', render: (r) => `${monthLabel(r.arrearFromYear, r.arrearFromMonth)} – ${monthLabel(r.arrearToYear, r.arrearToMonth)}` },

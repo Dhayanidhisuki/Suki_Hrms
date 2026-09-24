@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       ...(employeeId ? { employeeId: Number(employeeId) } : {}),
     },
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       arrear: { select: { id: true, status: true, netArrearTotal: true } },
     },
     orderBy: { createdAt: 'desc' },

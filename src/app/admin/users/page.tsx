@@ -14,6 +14,7 @@ import { DataTable, FormModal, ConfirmDialog, useToast, type Column, type FieldD
 interface User {
   id: number;
   email: string;
+  loginId: string | null;
   roleId: number;
   isActive: boolean;
   deletedAt: string | null;
@@ -25,6 +26,30 @@ interface User {
 interface ApiResponse {
   data: User[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+/** Just enough of an Employee to power the Add User picker's auto-fill —
+ * name, code (becomes Login ID), and the office/personal email fallback.
+ * "Employee ID/Code" throughout the rest of the app is oldEmployeeCode (the
+ * company-issued code, may be blank) — employeeCode is the system-generated
+ * "Reference Code", always present, used only as a fallback when
+ * oldEmployeeCode is blank (same convention as employee-form-fields.ts's
+ * toReportingManagerOptions). */
+interface EmployeePickerRow {
+  id: number;
+  employeeCode: string;
+  oldEmployeeCode: string | null;
+  firstName: string;
+  lastName: string;
+  officeEmail: string | null;
+  personalDetails: { personalEmail: string | null } | null;
+}
+
+/** The "Employee ID/Code" used everywhere else in the app is oldEmployeeCode
+ * (company-issued) — shown as-is, never substituting employeeCode (the
+ * system-generated "Reference Code") when it's blank. */
+function employeeIdOf(e: EmployeePickerRow): string {
+  return e.oldEmployeeCode ?? '';
 }
 
 export default function UsersPage() {
@@ -42,6 +67,12 @@ export default function UsersPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [roleOptions, setRoleOptions] = useState<FieldOption[]>([]);
 
+  // Employee ID picker (Add User only) — fetched once, keyed by id, so
+  // picking one can synchronously derive Name / Login ID (via `compute`)
+  // and suggest an Email (via `onFieldChange`) without a second round trip.
+  const [employeeOptions, setEmployeeOptions] = useState<FieldOption[]>([]);
+  const [employeesById, setEmployeesById] = useState<Record<number, EmployeePickerRow>>({});
+
   useEffect(() => {
     fetch('/api/admin/roles?limit=100')
       .then((r) => r.json())
@@ -54,9 +85,58 @@ export default function UsersPage() {
         )
       )
       .catch(() => setRoleOptions([]));
+
+    fetch('/api/employees?limit=500')
+      .then((r) => r.json())
+      .then((json: { data: EmployeePickerRow[] }) => {
+        const rows = json.data ?? [];
+        setEmployeeOptions(
+          rows.map((e) => ({
+            label: employeeIdOf(e) ? `${employeeIdOf(e)} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`,
+            value: e.id,
+          }))
+        );
+        setEmployeesById(Object.fromEntries(rows.map((e) => [e.id, e])));
+      })
+      .catch(() => {
+        setEmployeeOptions([]);
+        setEmployeesById({});
+      });
   }, []);
 
   const fields: FieldDef[] = [
+    ...(editingId === null
+      ? ([
+          {
+            name: 'employeeId',
+            label: 'Employee ID',
+            type: 'select',
+            options: employeeOptions,
+            helpText: 'Optional — link this login to an employee to auto-fill their name, email and login ID.',
+          },
+          {
+            name: 'employeeName',
+            label: 'Employee Name',
+            type: 'text',
+            compute: (v) => {
+              const emp = v.employeeId ? employeesById[Number(v.employeeId)] : undefined;
+              return emp ? `${emp.firstName} ${emp.lastName}` : '';
+            },
+            showIf: (v) => Boolean(v.employeeId),
+          },
+          {
+            name: 'loginId',
+            label: 'Login ID',
+            type: 'text',
+            compute: (v) => {
+              const emp = v.employeeId ? employeesById[Number(v.employeeId)] : undefined;
+              return emp ? employeeIdOf(emp) : '';
+            },
+            showIf: (v) => Boolean(v.employeeId),
+            helpText: 'Set to the employee\'s own code.',
+          },
+        ] as FieldDef[])
+      : []),
     { name: 'email', label: 'Email', type: 'text', required: true, placeholder: 'e.g. jane.doe@company.com' },
     {
       name: 'password',
@@ -114,6 +194,9 @@ export default function UsersPage() {
     if (values.password) {
       payload.password = values.password;
     }
+    if (editingId === null && values.employeeId) {
+      payload.employeeId = Number(values.employeeId);
+    }
 
     const url = editingId ? `/api/admin/users/${editingId}` : '/api/admin/users';
     const method = editingId ? 'PUT' : 'POST';
@@ -144,6 +227,7 @@ export default function UsersPage() {
 
   const columns: Column<User>[] = [
     { key: 'email', label: 'Email', sortable: true, className: 'font-medium' },
+    { key: 'loginId', label: 'Login ID', render: (row) => row.loginId ?? '—' },
     { key: 'role', label: 'Role', render: (row) => row.role?.name ?? '—' },
     {
       key: 'isActive',
@@ -201,6 +285,16 @@ export default function UsersPage() {
         onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit}
         submitLabel={editingId ? 'Update' : 'Create'}
+        onFieldChange={(name, value) => {
+          // One-time suggestion when an Employee is picked — office email
+          // first, personal email as fallback, blank if neither is set.
+          // Doesn't fire again on later edits, so it never fights a manual
+          // correction to the suggested address.
+          if (name !== 'employeeId') return;
+          const emp = value ? employeesById[Number(value)] : undefined;
+          if (!emp) return;
+          return { email: emp.officeEmail || emp.personalDetails?.personalEmail || '' };
+        }}
       />
 
       <ConfirmDialog

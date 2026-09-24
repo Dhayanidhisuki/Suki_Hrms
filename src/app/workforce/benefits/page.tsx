@@ -151,7 +151,7 @@ export default function BenefitsOverviewPage() {
                 <tbody>
                   {selectedBenefit.employees.map((e) => (
                     <tr key={e.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                      <td className="px-2 py-1.5" style={{ color: 'var(--foreground)' }}>{e.oldEmployeeCode ?? e.employeeCode}</td>
+                      <td className="px-2 py-1.5" style={{ color: 'var(--foreground)' }}>{e.oldEmployeeCode ?? '—'}</td>
                       <td className="px-2 py-1.5" style={{ color: 'var(--foreground-muted)' }}>{e.employeeCode}</td>
                       <td className="px-2 py-1.5" style={{ color: 'var(--foreground)' }}>{e.name}</td>
                     </tr>

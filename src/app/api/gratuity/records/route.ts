@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           jobInfos: {

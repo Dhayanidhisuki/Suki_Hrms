@@ -15,7 +15,7 @@ interface GratuityRow {
   id: number;
   employeeId: number;
   employee: {
-    employeeCode: string;
+    oldEmployeeCode: string | null;
     firstName: string;
     lastName: string;
     jobInfos: { department: { name: string } | null; designation: { name: string } | null }[];
@@ -39,7 +39,7 @@ interface GratuityRow {
 interface SeparationOption {
   id: number;
   employeeId: number;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
   gratuityRecord: { id: number; status: string } | null;
 }
 
@@ -283,7 +283,7 @@ export default function GratuityPage() {
   const candidateEmployees = separations.filter((s) => !s.gratuityRecord);
 
   const columns: Column<GratuityRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'department', label: 'Department', render: (r) => r.employee.jobInfos[0]?.department?.name ?? '—' },
     { key: 'doj', label: 'DOJ', render: (r) => new Date(r.doj).toLocaleDateString() },
     { key: 'separationDate', label: 'Separation Date', render: (r) => new Date(r.separationDate).toLocaleDateString() },
@@ -373,7 +373,7 @@ export default function GratuityPage() {
             <label className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>Separated Employee</label>
             <SearchableSelect
               value={calcEmployeeId}
-              options={candidateEmployees.map((s) => ({ label: `${s.employee.employeeCode} — ${s.employee.firstName} ${s.employee.lastName}`, value: s.employeeId }))}
+              options={candidateEmployees.map((s) => ({ label: s.employee.oldEmployeeCode ? `${s.employee.oldEmployeeCode} — ${s.employee.firstName} ${s.employee.lastName}` : `${s.employee.firstName} ${s.employee.lastName}`, value: s.employeeId }))}
               onChange={(v) => setCalcEmployeeId(v === '' ? '' : Number(v))}
             />
           </div>

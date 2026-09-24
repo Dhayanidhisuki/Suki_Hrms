@@ -2,7 +2,7 @@ export const fnfInclude = {
   employee: {
     select: {
       id: true,
-      employeeCode: true,
+      oldEmployeeCode: true,
       firstName: true,
       lastName: true,
       bankDetail: { select: { accountNumber: true, bankName: true, ifscCode: true } },

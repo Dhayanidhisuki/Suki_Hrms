@@ -185,7 +185,7 @@ export function buildLeaveTemplateWorkbook(
   const typeCol = ['Leave Type Code', ...leaveTypes.map((t) => `${t.code} — ${t.name}`)];
   const empCol = [
     'Employee Code',
-    ...employees.map((e) => `${e.oldEmployeeCode ?? e.employeeCode} — ${e.firstName} ${e.lastName}`.trim()),
+    ...employees.map((e) => (e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`).trim()),
   ];
   const maxRows = Math.max(typeCol.length, empCol.length);
   const refRows: string[][] = [];

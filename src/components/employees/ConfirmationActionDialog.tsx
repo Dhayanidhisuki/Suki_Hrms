@@ -204,7 +204,7 @@ export default function ConfirmationActionDialog({ mode, target, daysOverdue, on
                 {target.firstName} {target.lastName}
               </div>
               <div className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                {target.oldEmployeeCode ?? target.employeeCode}
+                {target.oldEmployeeCode ?? '—'}
                 {target.department?.name ? ` · ${target.department.name}` : ''}
               </div>
               {target.designation?.name && (

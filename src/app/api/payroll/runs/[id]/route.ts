@@ -24,7 +24,7 @@ export async function GET(
     include: {
       lines: {
         include: {
-          employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+          employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
           components: { include: { salaryComponent: { select: { id: true, code: true, name: true, type: true } } } },
         },
         orderBy: { employeeId: 'asc' },

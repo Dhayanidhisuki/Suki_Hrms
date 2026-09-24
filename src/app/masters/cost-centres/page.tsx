@@ -26,7 +26,7 @@ export default function CostCentresPage() {
     fetch('/api/employees?limit=500')
       .then(async (res) => (res.ok ? ((await res.json()) as { data: EmployeeRef[] }) : { data: [] }))
       .then((json) =>
-        setEmployeeOptions(json.data.map((e) => ({ label: `${e.firstName} ${e.lastName} (${e.oldEmployeeCode ?? e.employeeCode})`, value: e.id })))
+        setEmployeeOptions(json.data.map((e) => ({ label: e.oldEmployeeCode ? `${e.firstName} ${e.lastName} (${e.oldEmployeeCode})` : `${e.firstName} ${e.lastName}`, value: e.id })))
       )
       .catch(() => setEmployeeOptions([]));
   }, []);

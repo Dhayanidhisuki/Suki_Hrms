@@ -36,7 +36,7 @@ export async function GET(
       employee: {
         select: {
           id: true,
-          employeeCode: true,
+          oldEmployeeCode: true,
           firstName: true,
           lastName: true,
           bankDetail: { select: { accountNumber: true } },
@@ -83,7 +83,7 @@ export async function GET(
     // Check: missing bank details (for OK lines with net > 0).
     if (line.status === 'OK' && Number(line.netSalary) > 0 && !line.employee.bankDetail?.accountNumber) {
       discrepancies.push({
-        employeeCode: line.employee.employeeCode,
+        employeeCode: line.employee.oldEmployeeCode ?? '',
         name: empName,
         type: 'MISSING_BANK',
         detail: 'No bank account on file — bank file generation will skip this employee',
@@ -93,7 +93,7 @@ export async function GET(
     // Check: missing salary structure.
     if (line.employee.salaryRevisions.length === 0) {
       discrepancies.push({
-        employeeCode: line.employee.employeeCode,
+        employeeCode: line.employee.oldEmployeeCode ?? '',
         name: empName,
         type: 'MISSING_SALARY',
         detail: 'No active salary revision — payroll may be incorrect',
@@ -103,7 +103,7 @@ export async function GET(
     // Check: negative net salary.
     if (Number(line.netSalary) < 0) {
       discrepancies.push({
-        employeeCode: line.employee.employeeCode,
+        employeeCode: line.employee.oldEmployeeCode ?? '',
         name: empName,
         type: 'NEGATIVE_NET',
         detail: `Net salary is negative (${Number(line.netSalary).toFixed(2)})`,
@@ -118,7 +118,7 @@ export async function GET(
     const grossDiff = Math.abs(totalEarnings - earningsSum);
     if (grossDiff > 1) {
       discrepancies.push({
-        employeeCode: line.employee.employeeCode,
+        employeeCode: line.employee.oldEmployeeCode ?? '',
         name: empName,
         type: 'GROSS_MISMATCH',
         detail: `Gross+OtherEarnings (${totalEarnings.toFixed(2)}) vs component sum (${earningsSum.toFixed(2)}) differ by ${grossDiff.toFixed(2)}`,

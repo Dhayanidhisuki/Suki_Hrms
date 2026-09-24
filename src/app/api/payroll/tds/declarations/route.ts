@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const data = await prisma.tdsInvestmentDeclaration.findMany({
     where,
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       proofs: true,
     },
     orderBy: [{ financialYear: 'desc' }, { createdAt: 'desc' }],
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       employeeId: Number(employeeId),
       companyId: scope.companyId,
     },
-    include: { employee: { select: { employeeCode: true, firstName: true, lastName: true } } },
+    include: { employee: { select: { oldEmployeeCode: true, firstName: true, lastName: true } } },
   });
 
   return NextResponse.json(record, { status: 201 });

@@ -55,9 +55,9 @@ interface HistoryRow {
 }
 
 const d = (x: Date | null | undefined) => (x ? new Date(x).toISOString().slice(0, 10) : '—');
-const empOf = (e: { id: number; employeeCode: string; firstName: string; lastName: string | null }) => ({
+const empOf = (e: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string | null }) => ({
   employeeId: e.id,
-  employeeCode: e.employeeCode,
+  employeeCode: e.oldEmployeeCode ?? '',
   employeeName: `${e.firstName} ${e.lastName ?? ''}`.trim(),
 });
 
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     ...(employeeId ? { employeeId } : {}),
     ...(appliedAt ? { appliedAt } : {}),
   };
-  const employee = { select: { id: true, employeeCode: true, firstName: true, lastName: true } };
+  const employee = { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } };
   const take = limit;
   const orderBy = { appliedAt: 'desc' } as const;
 
@@ -192,8 +192,8 @@ export async function GET(request: NextRequest) {
   const empByUserId = new Map(
     (await prisma.employee.findMany({
       where: { userId: { in: userIds.length ? userIds : [-1] }, deletedAt: null },
-      select: { userId: true, employeeCode: true, firstName: true, lastName: true },
-    })).map((e) => [e.userId!, `${e.employeeCode} — ${e.firstName} ${e.lastName ?? ''}`.trim()])
+      select: { userId: true, oldEmployeeCode: true, firstName: true, lastName: true },
+    })).map((e) => [e.userId!, e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName ?? ''}`.trim() : `${e.firstName} ${e.lastName ?? ''}`.trim()])
   );
   const actor = (id: number | null) => (id == null ? null : empByUserId.get(id) ?? emailById.get(id) ?? `User #${id}`);
 

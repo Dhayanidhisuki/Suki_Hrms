@@ -225,8 +225,9 @@ export async function GET(request: NextRequest) {
         recordId: record?.id ?? null,
         employeeId: emp.id,
         // Employee Master's "Employee Code" column is oldEmployeeCode (E125);
-        // employeeCode (RC…) is only the internal reference.
-        employeeCode: emp.oldEmployeeCode ?? emp.employeeCode,
+        // employeeCode (RC…) is only the internal Reference Code — never
+        // substituted in when oldEmployeeCode is blank.
+        employeeCode: emp.oldEmployeeCode ?? '',
         employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
         department: emp.jobInfos[0]?.department ?? null,
         designation: emp.jobInfos[0]?.designation ?? null,

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const data = await prisma.loan.findMany({
     where,
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
       loanType: { select: { id: true, code: true, name: true } },
     },
     orderBy: [{ createdAt: 'desc' }],
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       requestedByUserId: userId,
     },
     include: {
-      employee: { select: { employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { oldEmployeeCode: true, firstName: true, lastName: true } },
       loanType: { select: { code: true, name: true } },
     },
   });

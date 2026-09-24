@@ -186,7 +186,7 @@ export default function GoalCoverageReportPage() {
       label: 'Employee',
       render: (r) => (
         <div className="leading-tight">
-          <div className="font-medium">{r.employeeCode} — {r.employeeName}</div>
+          <div className="font-medium">{r.employeeCode ? `${r.employeeCode} — ${r.employeeName}` : r.employeeName}</div>
           <div className="text-[11px]" style={{ color: 'var(--foreground-muted)' }}>
             {[r.designation, r.department].filter(Boolean).join(' · ') || '—'}
           </div>

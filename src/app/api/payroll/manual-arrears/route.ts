@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const data = await prisma.manualArrear.findMany({
     where,
     include: {
-      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, oldEmployeeCode: true, firstName: true, lastName: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       createdByUserId: userId,
     },
     include: {
-      employee: { select: { employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { oldEmployeeCode: true, firstName: true, lastName: true } },
     },
   });
 

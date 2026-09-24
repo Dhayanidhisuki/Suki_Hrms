@@ -358,7 +358,7 @@ function wrap(page: PDFPage, font: PDFFont, text: string, x: number, y: number, 
 export async function archiveFnfStatement(settlementId: number, actor: PlatformActor): Promise<void> {
   const s = await prisma.fnFSettlement.findUnique({
     where: { id: settlementId },
-    include: { employee: { select: { employeeCode: true, companyId: true } } },
+    include: { employee: { select: { oldEmployeeCode: true, companyId: true } } },
   });
   if (!s) return;
   const pdf = await generateFnfStatementPdf(settlementId);
@@ -378,7 +378,7 @@ export async function archiveFnfStatement(settlementId: number, actor: PlatformA
     companyId: s.companyId,
     documentTypeCode: 'FNF_STATEMENT',
     ownerEntityId: s.employeeId,
-    fileName: `FNF-${s.employee.employeeCode}.pdf`,
+    fileName: `FNF-${s.employee.oldEmployeeCode ?? settlementId}.pdf`,
     bytes,
     actor: { ...actor, source: 'system' },
   });

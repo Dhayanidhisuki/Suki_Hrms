@@ -50,7 +50,7 @@ interface FnFSettlement {
   paymentReference: string | null;
   snapshotJson: string | null;
   employee: {
-    employeeCode: string;
+    oldEmployeeCode: string | null;
     firstName: string;
     lastName: string;
     bankDetail?: { accountNumber?: string | null; bankName?: string | null; ifscCode?: string | null } | null;
@@ -79,7 +79,7 @@ interface EligibleExit {
   clearanceStatus?: string;
   fnfId?: number | null;
   eligibility?: { ok: boolean; issues: { code: string; message: string }[] };
-  employee: { id: number; employeeCode: string; firstName: string; lastName: string; department?: string; designation?: string };
+  employee: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string; department?: string; designation?: string };
 }
 
 function money(v: string | number | null | undefined) {
@@ -130,7 +130,7 @@ export default function FnFPage() {
       const json = await listRes.json();
       const mapped = (json.data ?? []).map((s: FnFSettlement) => ({
         ...s,
-        employeeCode: s.employee.employeeCode,
+        employeeCode: s.employee.oldEmployeeCode ?? '',
         name: `${s.employee.firstName} ${s.employee.lastName}`.trim(),
         lastWorkingDay: s.lastWorkingDay?.slice(0, 10) ?? '',
         lines: s.lines ?? [],
@@ -163,7 +163,7 @@ export default function FnFPage() {
     const res = await fetch(`/api/payroll/fnf/${id}`);
     if (!res.ok) return;
     const s: FnFSettlement = await res.json();
-    s.employeeCode = s.employee.employeeCode;
+    s.employeeCode = s.employee.oldEmployeeCode ?? '';
     s.name = `${s.employee.firstName} ${s.employee.lastName}`.trim();
     s.lastWorkingDay = s.lastWorkingDay?.slice(0, 10) ?? '';
     setSelected(s);
@@ -266,7 +266,7 @@ export default function FnFPage() {
               value={exitId}
               options={eligible.filter((e) => !e.fnfId).map((e) => ({
                 value: e.id,
-                label: `${e.employee.employeeCode} — ${e.employee.firstName} ${e.employee.lastName} (${e.exitType}, LWD ${(e.lastWorkingDay ?? e.exitDate).slice(0, 10)}${e.employee.designation ? `, ${e.employee.designation}` : ''}${e.eligibility && !e.eligibility.ok ? ' — clearance pending' : ''})`,
+                label: `${e.employee.oldEmployeeCode ?? ''} — ${e.employee.firstName} ${e.employee.lastName} (${e.exitType}, LWD ${(e.lastWorkingDay ?? e.exitDate).slice(0, 10)}${e.employee.designation ? `, ${e.employee.designation}` : ''}${e.eligibility && !e.eligibility.ok ? ' — clearance pending' : ''})`,
               }))}
               onChange={(v) => setExitId(v === '' ? '' : Number(v))}
             />
