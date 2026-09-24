@@ -18,8 +18,10 @@ import { runAppSync } from './appAttendanceSync';
 
 interface SchedulerState {
   timer: NodeJS.Timeout | null;
+  appTimer: NodeJS.Timeout | null;
   running: boolean;
   intervalMs: number;
+  appIntervalMs: number;
   lastStartedAt: Date | null;
   lastFinishedAt: Date | null;
   nextRunAt: Date | null;
@@ -29,6 +31,38 @@ const g = globalThis as unknown as { __biometricScheduler?: SchedulerState };
 
 export function getSchedulerState(): SchedulerState | null {
   return g.__biometricScheduler ?? null;
+}
+
+/**
+ * App-database sync on its own cadence (ESSL_SYNC_INTERVAL_MINUTES,
+ * default = the shared interval). Shares the same `running` guard as the
+ * main tick, so an app run and a biometric run can never overlap — a
+ * collision just defers the app run to the next minute, and the lookback
+ * window makes every skipped tick safe.
+ */
+async function appTick(state: SchedulerState) {
+  if (state.running) return;
+  if (!appSyncEnabled()) return;
+  state.running = true;
+  try {
+    const { rangeStart, rangeEnd } = defaultSyncRange();
+    const companyId = Number(process.env.BIOMETRIC_COMPANY_ID ?? 1);
+    const outcome = await runAppSync({
+      companyId,
+      rangeStart,
+      rangeEnd,
+      trigger: 'scheduled',
+    });
+    if (outcome.status !== 'success' || outcome.daysCreated + outcome.daysUpdated > 0 || outcome.needsReview > 0) {
+      console.log(
+        `[app-sync] scheduled run #${outcome.runId} ${outcome.status}: fetched ${outcome.rowsFetched}, created ${outcome.daysCreated}, updated ${outcome.daysUpdated}, unchanged ${outcome.daysUnchanged}, frozen-skipped ${outcome.skippedFrozen}, needs-review ${outcome.needsReview}, unmatched ${outcome.unmatched.length}`
+      );
+    }
+  } catch (err) {
+    console.error('[app-sync] scheduled run crashed', err);
+  } finally {
+    state.running = false;
+  }
 }
 
 async function tick(state: SchedulerState) {
@@ -92,12 +126,17 @@ export function startBiometricScheduler(): void {
 
   const hours = Number(process.env.BIOMETRIC_SYNC_INTERVAL_HOURS ?? 8);
   const intervalMs = Math.max(5 * 60 * 1000, (Number.isFinite(hours) && hours > 0 ? hours : 8) * 60 * 60 * 1000);
+  // App sync has its own cadence — default 1 minute, never faster.
+  const appMinutes = Number(process.env.ESSL_SYNC_INTERVAL_MINUTES ?? 1);
+  const appIntervalMs = Math.max(60 * 1000, (Number.isFinite(appMinutes) && appMinutes > 0 ? appMinutes : 1) * 60 * 1000);
   const initialDelayMs = Number(process.env.BIOMETRIC_SYNC_INITIAL_DELAY_MS ?? 60 * 1000);
 
   const state: SchedulerState = {
     timer: null,
+    appTimer: null,
     running: false,
     intervalMs,
+    appIntervalMs,
     lastStartedAt: null,
     lastFinishedAt: null,
     nextRunAt: new Date(Date.now() + initialDelayMs),
@@ -110,6 +149,16 @@ export function startBiometricScheduler(): void {
     state.timer.unref?.();
   }, initialDelayMs);
   first.unref?.();
+
+  if (appSyncEnabled()) {
+    const firstApp = setTimeout(() => {
+      void appTick(state);
+      state.appTimer = setInterval(() => void appTick(state), appIntervalMs);
+      state.appTimer.unref?.();
+    }, initialDelayMs);
+    firstApp.unref?.();
+    console.log(`[app-sync] scheduler started: every ${Math.round(appIntervalMs / 60000)}min`);
+  }
 
   console.log(`[biometric-sync] scheduler started: every ${intervalMs / 3600000}h, first run in ${Math.round(initialDelayMs / 1000)}s`);
 }

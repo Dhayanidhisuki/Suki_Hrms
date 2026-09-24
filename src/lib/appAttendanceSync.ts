@@ -121,6 +121,28 @@ export async function runAppSync(opts: AppSyncOptions): Promise<SyncOutcome & { 
       where: { id: run.id },
       data: { ...counts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
     });
+    // At a per-minute cadence identical scheduled runs are pure noise —
+    // drop the previous run row when this one produced the same outcome,
+    // so the log keeps one row per state change (latest timestamp wins).
+    if (opts.trigger === 'scheduled') {
+      const prev = await prisma.attendanceSyncRun.findFirst({
+        where: { id: { not: run.id }, source: 'app', trigger: 'scheduled', status: 'success' },
+        orderBy: { id: 'desc' },
+      });
+      if (
+        prev &&
+        prev.rowsFetched === counts.rowsFetched &&
+        prev.daysCreated === counts.daysCreated &&
+        prev.daysUpdated === counts.daysUpdated &&
+        prev.daysUnchanged === counts.daysUnchanged &&
+        prev.skippedFrozen === counts.skippedFrozen &&
+        prev.skippedProtected === counts.skippedProtected &&
+        prev.needsReview === counts.needsReview &&
+        prev.unmatchedUserIds === JSON.stringify(unmatchedList)
+      ) {
+        await prisma.attendanceSyncRun.delete({ where: { id: prev.id } }).catch(() => {});
+      }
+    }
     return { runId: run.id, status: 'success', ...counts, unmatched: unmatchedList };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
