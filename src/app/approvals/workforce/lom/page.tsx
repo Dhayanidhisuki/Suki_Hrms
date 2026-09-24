@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataTable, ConfirmDialog, FormModal, PageHeader, StatusBadge, SectionCard, Tabs, Button, KPICard, KPIGrid, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface LomRow {
   id: number;
@@ -324,6 +325,7 @@ export default function LomApprovalPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <PageHeader
         eyebrow="Time Office · Approvals"
         title="LOM Approval"

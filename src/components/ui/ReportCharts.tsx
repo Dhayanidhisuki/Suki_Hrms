@@ -454,6 +454,7 @@ export function ReportMultiLineChart({
   axisFormatter,
   domain,
   loading = false,
+  filled = false,
 }: {
   columns: string[];
   series: Array<{ name: string; values: number[]; color?: string }>;
@@ -461,6 +462,8 @@ export function ReportMultiLineChart({
   axisFormatter?: Formatter;
   domain?: [number, number];
   loading?: boolean;
+  /** Gradient-filled, thicker rounded lines instead of the plain default. Opt-in per caller. */
+  filled?: boolean;
 }) {
   const accent = useAccent();
   const palette = [accent, ACCENT.emerald, ACCENT.amber, ACCENT.rose, ACCENT.violet, ACCENT.sky];
@@ -474,9 +477,58 @@ export function ReportMultiLineChart({
     return row;
   });
 
+  if (!filled) {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 8, right: 16, left: -8, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--border-main)" strokeOpacity={0.85} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={tick} interval="preserveStartEnd" />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={tick}
+            domain={domain}
+            tickFormatter={axisFormatter}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            isAnimationActive={false}
+            formatter={(value, name) => {
+              const n = typeof value === "number" ? value : Number(value) || 0;
+              return [valueFormatter ? valueFormatter(n) : n.toLocaleString(), String(name)];
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
+          {series.map((s, i) => (
+            <Line
+              key={s.name}
+              type="monotone"
+              dataKey={s.name}
+              stroke={s.color ?? palette[i % palette.length]}
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 5 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 8, right: 16, left: -8, bottom: 4 }}>
+      <AreaChart data={data} margin={{ top: 8, right: 16, left: -8, bottom: 4 }}>
+        <defs>
+          {series.map((s, i) => {
+            const color = s.color ?? palette[i % palette.length];
+            return (
+              <linearGradient key={s.name} id={`multiLineFill-${s.name}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              </linearGradient>
+            );
+          })}
+        </defs>
         <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--border-main)" strokeOpacity={0.85} />
         <XAxis dataKey="label" axisLine={false} tickLine={false} tick={tick} interval="preserveStartEnd" />
         <YAxis
@@ -495,18 +547,23 @@ export function ReportMultiLineChart({
           }}
         />
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
-        {series.map((s, i) => (
-          <Line
-            key={s.name}
-            type="monotone"
-            dataKey={s.name}
-            stroke={s.color ?? palette[i % palette.length]}
-            strokeWidth={2.5}
-            dot={false}
-            activeDot={{ r: 5 }}
-          />
-        ))}
-      </LineChart>
+        {series.map((s, i) => {
+          const color = s.color ?? palette[i % palette.length];
+          return (
+            <Area
+              key={s.name}
+              type="monotone"
+              dataKey={s.name}
+              stroke={color}
+              fill={`url(#multiLineFill-${s.name})`}
+              strokeWidth={3}
+              strokeLinecap="round"
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--surface)" }}
+            />
+          );
+        })}
+      </AreaChart>
     </ResponsiveContainer>
   );
 }

@@ -71,6 +71,9 @@ export default function EssLeavePage() {
   const toast = useToast();
 
   const [form, setForm] = useState({ leaveMasterId: '', fromDate: '', toDate: '', isHalfDay: false, reason: '' });
+  const [compOffModalOpen, setCompOffModalOpen] = useState(false);
+  const [compOffWorkedDate, setCompOffWorkedDate] = useState('');
+  const [compOffLeaveDate, setCompOffLeaveDate] = useState('');
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -184,6 +187,10 @@ export default function EssLeavePage() {
   const inputClass = 'w-full rounded-lg border px-3 py-2 text-sm';
   const inputStyle = { backgroundColor: 'var(--surface)', color: 'var(--foreground)', borderColor: 'var(--border)' };
   const previewDays = computeDays(form.fromDate, form.toDate, form.isHalfDay);
+  const selectedType = types.find((t) => String(t.id) === form.leaveMasterId);
+  const isCompOff = selectedType?.code === 'COMPOFF';
+  const compOffBalance = balances.find((b) => b.leaveMaster.code === 'COMPOFF');
+  const compOffAvailable = compOffBalance ? Number(compOffBalance.closingBalance) : 0;
 
   return (
     <div className="space-y-6">
@@ -267,7 +274,16 @@ export default function EssLeavePage() {
                 className={inputClass}
                 style={inputStyle}
                 value={form.leaveMasterId}
-                onChange={(e) => setForm({ ...form, leaveMasterId: e.target.value })}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const chosen = types.find((t) => String(t.id) === value);
+                  setForm({ ...form, leaveMasterId: value, fromDate: '', toDate: '' });
+                  if (chosen?.code === 'COMPOFF') {
+                    setCompOffWorkedDate('');
+                    setCompOffLeaveDate('');
+                    setCompOffModalOpen(true);
+                  }
+                }}
                 required
               >
                 <option value="">Select leave type</option>
@@ -275,32 +291,55 @@ export default function EssLeavePage() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              <input
-                className={inputClass}
-                style={inputStyle}
-                type="date"
-                value={form.fromDate}
-                onChange={(e) => setForm({ ...form, fromDate: e.target.value })}
-                required
-              />
-              {!form.isHalfDay && (
-                <input
-                  className={inputClass}
+              {isCompOff ? (
+                <button
+                  type="button"
+                  onClick={() => setCompOffModalOpen(true)}
+                  className={`${inputClass} text-left`}
                   style={inputStyle}
-                  type="date"
-                  value={form.toDate}
-                  onChange={(e) => setForm({ ...form, toDate: e.target.value })}
-                  required
-                />
+                >
+                  {form.fromDate ? (
+                    <>
+                      Worked <span style={{ color: '#16a34a', fontWeight: 600 }}>{compOffWorkedDate}</span>
+                      {' → Off '}
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}>{form.fromDate}</span>
+                    </>
+                  ) : (
+                    'Choose comp-off dates…'
+                  )}
+                </button>
+              ) : (
+                <>
+                  <input
+                    className={inputClass}
+                    style={inputStyle}
+                    type="date"
+                    value={form.fromDate}
+                    onChange={(e) => setForm({ ...form, fromDate: e.target.value })}
+                    required
+                  />
+                  {!form.isHalfDay && (
+                    <input
+                      className={inputClass}
+                      style={inputStyle}
+                      type="date"
+                      value={form.toDate}
+                      onChange={(e) => setForm({ ...form, toDate: e.target.value })}
+                      required
+                    />
+                  )}
+                </>
               )}
-              <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
-                <input
-                  type="checkbox"
-                  checked={form.isHalfDay}
-                  onChange={(e) => setForm({ ...form, isHalfDay: e.target.checked, toDate: e.target.checked ? form.fromDate : form.toDate })}
-                />
-                Half day
-              </label>
+              {!isCompOff && (
+                <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.isHalfDay}
+                    onChange={(e) => setForm({ ...form, isHalfDay: e.target.checked, toDate: e.target.checked ? form.fromDate : form.toDate })}
+                  />
+                  Half day
+                </label>
+              )}
               <input
                 className={inputClass}
                 style={inputStyle}
@@ -309,7 +348,12 @@ export default function EssLeavePage() {
                 onChange={(e) => setForm({ ...form, reason: e.target.value })}
               />
             </div>
-            {previewDays > 0 && (
+            {isCompOff && (
+              <div className="mt-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                Available Comp-Off balance: <strong>{compOffAvailable.toFixed(1)} day{compOffAvailable === 1 ? '' : 's'}</strong>
+              </div>
+            )}
+            {!isCompOff && previewDays > 0 && (
               <div className="mt-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
                 {previewDays} day{previewDays !== 1 ? 's' : ''} will be requested.
               </div>
@@ -361,6 +405,106 @@ export default function EssLeavePage() {
             </table>
           </div>
         </>
+      )}
+
+      {compOffModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setCompOffModalOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-xl shadow-2xl"
+            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
+              <h2 className="text-base font-semibold" style={{ color: 'var(--foreground)' }}>Compensatory Off</h2>
+              <button onClick={() => setCompOffModalOpen(false)} className="text-lg leading-none hover:opacity-70" style={{ color: 'var(--foreground-muted)' }}>×</button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(59,130,246,0.06)' }}>
+                Available Comp-Off balance: <strong>{compOffAvailable.toFixed(1)} day{compOffAvailable === 1 ? '' : 's'}</strong>
+              </div>
+
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#16a34a' }} />
+                  Date You Worked
+                </label>
+                <input
+                  type="date"
+                  value={compOffWorkedDate}
+                  onChange={(e) => setCompOffWorkedDate(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className={inputClass}
+                  style={{ ...inputStyle, borderColor: '#16a34a' }}
+                />
+                <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>The weekly-off / holiday you came in and worked.</p>
+              </div>
+
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#dc2626' }} />
+                  Date You Want Off
+                </label>
+                <input
+                  type="date"
+                  value={compOffLeaveDate}
+                  onChange={(e) => setCompOffLeaveDate(e.target.value)}
+                  min={compOffWorkedDate || undefined}
+                  className={inputClass}
+                  style={{ ...inputStyle, borderColor: '#dc2626' }}
+                />
+                <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>The day you will take off in lieu.</p>
+              </div>
+
+              {(compOffWorkedDate || compOffLeaveDate) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {compOffWorkedDate && (
+                    <span className="rounded-full px-2.5 py-1 font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+                      Worked: {compOffWorkedDate}
+                    </span>
+                  )}
+                  {compOffLeaveDate && (
+                    <span className="rounded-full px-2.5 py-1 font-medium" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
+                      Off: {compOffLeaveDate}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {compOffAvailable <= 0 && (
+                <p className="text-xs font-medium" style={{ color: '#dc2626' }}>
+                  You have no Comp-Off balance available right now.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompOffModalOpen(false);
+                    if (!form.fromDate) setForm({ ...form, leaveMasterId: '' });
+                  }}
+                  className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!compOffWorkedDate || !compOffLeaveDate}
+                  onClick={() => {
+                    setForm({ ...form, fromDate: compOffLeaveDate, toDate: compOffLeaveDate, isHalfDay: false });
+                    setCompOffModalOpen(false);
+                  }}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

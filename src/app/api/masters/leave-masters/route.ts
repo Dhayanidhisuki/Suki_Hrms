@@ -28,6 +28,22 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 }
 
+const CODE_PREFIX = 'LT-';
+
+/** Next LT-NNN code — scans existing LT- codes (including soft-deleted, so a
+ *  deleted row's code is never reissued) and picks one past the highest. */
+async function allocateLeaveMasterCode(): Promise<string> {
+  const existing = await prisma.leaveMaster.findMany({
+    where: { code: { startsWith: CODE_PREFIX } },
+    select: { code: true },
+  });
+  const maxSeq = existing.reduce((max, e) => {
+    const n = parseInt(e.code.slice(CODE_PREFIX.length), 10);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  return `${CODE_PREFIX}${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
 export async function POST(request: NextRequest) {
   const permErr = await checkMasterPermission(request);
   if (permErr) return permErr;
@@ -35,9 +51,14 @@ export async function POST(request: NextRequest) {
   const parsed = leaveMasterSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
 
-  const existing = await prisma.leaveMaster.findUnique({ where: { code: parsed.data.code } });
+  // The Add form no longer collects a code — it's always auto-generated
+  // (LT-001, LT-002, ...). A caller that still sends one (e.g. a script) is
+  // honored as-is, matching the pre-existing manual codes (SL, CL, EL, ...).
+  const code = parsed.data.code || (await allocateLeaveMasterCode());
+
+  const existing = await prisma.leaveMaster.findUnique({ where: { code } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
-  const record = await prisma.leaveMaster.create({ data: parsed.data });
+  const record = await prisma.leaveMaster.create({ data: { ...parsed.data, code } });
   return NextResponse.json(record, { status: 201 });
 }

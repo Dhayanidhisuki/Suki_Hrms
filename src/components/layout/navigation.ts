@@ -23,6 +23,8 @@ export type NavLeaf = {
    * hidden from manager logins, which would otherwise just get an empty list.
    */
   managerQueue?: boolean;
+  /** Hidden entirely unless the logged-in login manages at least one employee. */
+  managerOnly?: boolean;
 };
 
 export type NavGroup = {
@@ -584,6 +586,7 @@ export const navigation: NavModule[] = [
         label: "Overview",
         items: [
           { label: "Employee Dashboard", href: "/ess/dashboard", ready: true },
+          { label: "My Team", href: "/ess/team", ready: true, managerOnly: true },
           { label: "Announcements", href: "/ess/announcements", ready: true },
         ],
       },

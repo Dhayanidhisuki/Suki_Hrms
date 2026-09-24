@@ -32,7 +32,10 @@ const createSchema = z.object({
 async function buildEligibility(employeeId: number, companyId: number) {
   const [config, balances, lastLine] = await Promise.all([
     prisma.leaveEncashmentConfig.findUnique({ where: { companyId } }),
-    prisma.leaveBalance.findMany({ where: { employeeId }, include: { leaveMaster: true } }),
+    prisma.leaveBalance.findMany({
+      where: { employeeId, leaveMaster: { deletedAt: null, isActive: true } },
+      include: { leaveMaster: true },
+    }),
     prisma.payrollLine.findFirst({
       where: { employeeId },
       orderBy: { payrollRun: { year: 'desc' } },

@@ -113,6 +113,8 @@ export async function GET(request: NextRequest) {
     reqShiftChange,
     reqLoan,
     reqEncashment,
+    monthLeaveApplications,
+    monthCompOffRequests,
   ] = await Promise.all([
     prisma.dailyAttendance.findMany({
       where: { employeeId: ownEmployeeId, date: { gte: monthStart, lt: monthEnd } },
@@ -127,7 +129,9 @@ export async function GET(request: NextRequest) {
       where: { employeeId_year_month: { employeeId: ownEmployeeId, year, month } },
     }),
     prisma.leaveBalance.findMany({
-      where: { employeeId: ownEmployeeId, year },
+      // A soft-deleted leave type shouldn't keep showing on the dashboard
+      // even though its old LeaveBalance rows remain.
+      where: { employeeId: ownEmployeeId, year, leaveMaster: { deletedAt: null } },
       include: { leaveMaster: { select: { id: true, code: true, name: true } } },
       orderBy: { leaveMaster: { name: 'asc' } },
     }),
@@ -155,7 +159,41 @@ export async function GET(request: NextRequest) {
     prisma.shiftChangeRequest.count({ where: { employeeId: ownEmployeeId, status: 'pending' } }),
     prisma.loan.count({ where: { employeeId: ownEmployeeId, status: 'pending' } }),
     prisma.leaveEncashmentRequest.count({ where: { employeeId: ownEmployeeId, status: 'SUBMITTED' } }),
+    // For labeling the Absent/LOP list below with what was actually applied
+    // for that day, rather than the generic attendance status.
+    prisma.leaveApplication.findMany({
+      where: {
+        employeeId: ownEmployeeId,
+        status: { notIn: ['rejected', 'cancelled'] },
+        fromDate: { lt: monthEnd },
+        toDate: { gte: monthStart },
+      },
+      select: { fromDate: true, toDate: true, status: true, leaveMaster: { select: { name: true } } },
+    }),
+    prisma.compOffRequest.findMany({
+      where: {
+        employeeId: ownEmployeeId,
+        status: { not: 'rejected' },
+        requestedDate: { gte: monthStart, lt: monthEnd },
+      },
+      select: { requestedDate: true, status: true },
+    }),
   ]);
+
+  // date (yyyy-mm-dd) -> label to show instead of the raw attendance status,
+  // e.g. "Casual Leave" or "Comp-Off" instead of a flat "LOP" — the attendance
+  // status only reflects punches, not what the employee actually applied for.
+  const dayLabel = new Map<string, string>();
+  const dKey = (d: Date) => d.toISOString().slice(0, 10);
+  for (const la of monthLeaveApplications) {
+    const suffix = la.status === 'approved' ? '' : ' (Pending)';
+    for (let d = new Date(la.fromDate); d <= la.toDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      dayLabel.set(dKey(d), `${la.leaveMaster.name}${suffix}`);
+    }
+  }
+  for (const co of monthCompOffRequests) {
+    dayLabel.set(dKey(co.requestedDate), co.status === 'approved' ? 'Comp-Off' : 'Comp-Off (Pending)');
+  }
 
   // Pending approvals awaiting this employee as reporting manager (level 1
   // or 2 — listAllReports covers both). Zero for pure ICs.
@@ -224,7 +262,12 @@ export async function GET(request: NextRequest) {
         reportingManagerCode: employee.reportingManager?.employeeCode ?? null,
       },
       today,
-      month: { year, month, days: monthDays, summary: monthSummary },
+      month: {
+        year,
+        month,
+        days: monthDays.map((d) => ({ ...d, requestLabel: dayLabel.get(dKey(d.date)) ?? null })),
+        summary: monthSummary,
+      },
       leaveBalances: leaveBalances.map((b) => ({
         leaveMasterId: b.leaveMasterId,
         code: b.leaveMaster.code,

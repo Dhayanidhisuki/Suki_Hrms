@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   const [balances, applications] = await Promise.all([
     prisma.leaveBalance.findMany({
-      where: { employeeId: ownEmployeeId, year },
+      where: { employeeId: ownEmployeeId, year, leaveMaster: { deletedAt: null } },
       include: { leaveMaster: { select: { id: true, code: true, name: true } } },
       orderBy: { leaveMaster: { name: 'asc' } },
     }),

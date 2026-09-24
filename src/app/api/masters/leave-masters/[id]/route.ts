@@ -24,6 +24,7 @@ export async function PUT(
   const { id } = await params;
   const parsed = leaveMasterSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.data.code) return NextResponse.json({ error: 'code is required' }, { status: 400 });
 
   const existing = await prisma.leaveMaster.findFirst({ where: { code: parsed.data.code, NOT: { id: parseInt(id), deletedAt: null } } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });

@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface WfhRow {
   id: number;
@@ -226,6 +227,7 @@ function WfhHistorySection() {
 export default function WfhApprovalPage() {
   return (
     <div className="space-y-6">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
         WFH Approval
       </h1>

@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface MispunchRow {
   id: number;
@@ -254,6 +255,7 @@ function MispunchHistorySection() {
 export default function MispunchApprovalPage() {
   return (
     <div className="space-y-6">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
         Mispunch Approval
       </h1>

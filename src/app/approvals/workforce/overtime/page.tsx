@@ -20,6 +20,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DataTable, ConfirmDialog, FormModal, PageHeader, Alert, StatusBadge, SectionCard, Button, KPICard, KPIGrid, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface OtRow {
   id: number;
@@ -494,6 +495,7 @@ export default function OvertimeApprovalPage() {
 
   return (
     <div className="space-y-4">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <PageHeader
         eyebrow="Time Office · Approvals"
         title="OT Approval"
