@@ -129,6 +129,7 @@ export default function DepartmentPage() {
     }
 
     fetchData();
+    toast.success(editingId ? 'Department updated successfully.' : 'Department created successfully.');
   };
 
   const handleDelete = async (id: number) => {
@@ -139,6 +140,7 @@ export default function DepartmentPage() {
       return;
     }
     fetchData();
+    toast.success('Department deleted successfully.');
   };
 
   const columns: Column<Department>[] = [

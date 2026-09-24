@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         otMinutesCalculated: true,
         otMinutesApproved: true,
         otApprovalStatus: true,
+        lomApprovalStatus: true,
+        lomApprovedMinutes: true,
         shiftMaster: { select: { code: true, name: true } },
       },
       orderBy: { date: 'asc' },

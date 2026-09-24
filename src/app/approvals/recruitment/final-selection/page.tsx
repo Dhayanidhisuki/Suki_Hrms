@@ -62,6 +62,7 @@ export default function FinalSelectionApprovalPage() {
     }
     setApproveRow(null);
     fetchData();
+    toast.success('Selection approved.');
   };
 
   const columns: Column<SelectionRow>[] = [
@@ -122,6 +123,7 @@ export default function FinalSelectionApprovalPage() {
           }
           setRejectRow(null);
           fetchData();
+          toast.success('Selection rejected.');
         }}
         submitLabel="Reject"
       />

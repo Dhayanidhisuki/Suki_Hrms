@@ -13,7 +13,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
-import { creditCompOff } from '@/lib/compOffTransactions';
+import { creditCompOff, getCompOffBalance } from '@/lib/compOffTransactions';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD expected');
@@ -47,12 +47,25 @@ export async function GET(request: NextRequest) {
     employee: { companyId: scope.companyId },
   };
 
+  // A running balance only means something for one specific employee — for
+  // the HR "all requests" view there is no single "the" balance to attach,
+  // so this stays null there and is only ever populated on the self-service
+  // path, same shape /api/workforce/permission?scope=mine already uses.
+  let balance = null;
   if (!isHr) {
     const ownEmployeeId = await resolveOwnEmployeeId(userId);
     if (!ownEmployeeId) {
       return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
     }
     where.employeeId = ownEmployeeId;
+    const b = await getCompOffBalance(ownEmployeeId);
+    balance = {
+      available: Number(b.balance),
+      earned: Number(b.earned),
+      used: Number(b.used),
+      expired: Number(b.expired),
+      encashed: Number(b.encashed),
+    };
   }
 
   if (statusFilter) where.status = statusFilter;
@@ -65,7 +78,7 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, balance });
 }
 
 export async function POST(request: NextRequest) {

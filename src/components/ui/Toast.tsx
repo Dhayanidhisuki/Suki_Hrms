@@ -27,7 +27,7 @@ const tones: Record<ToastTone, { bg: string; fg: string; icon: ReactNode }> = {
     bg: 'var(--success-soft)',
     fg: 'var(--success)',
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20 6 9 17l-5-5" />
       </svg>
     ),
@@ -36,7 +36,7 @@ const tones: Record<ToastTone, { bg: string; fg: string; icon: ReactNode }> = {
     bg: 'var(--warning-soft)',
     fg: 'var(--warning)',
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 9v4M12 17h.01" />
         <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
       </svg>
@@ -46,7 +46,7 @@ const tones: Record<ToastTone, { bg: string; fg: string; icon: ReactNode }> = {
     bg: 'var(--danger-soft)',
     fg: 'var(--danger)',
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
         <path d="m15 9-6 6M9 9l6 6" />
       </svg>
@@ -56,7 +56,7 @@ const tones: Record<ToastTone, { bg: string; fg: string; icon: ReactNode }> = {
     bg: 'var(--info-soft)',
     fg: 'var(--info)',
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
         <path d="M12 16v-4M12 8h.01" />
       </svg>
@@ -109,36 +109,40 @@ export default function ToastProvider({ children }: ToastProviderProps) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed top-4 right-4 z-[100] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2"
+        className="pointer-events-none fixed top-4 right-4 z-[100] flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2.5"
       >
-        <style>{`@keyframes toast-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+        <style>{`@keyframes toast-in { from { opacity: 0; transform: translateX(16px) scale(0.98); } to { opacity: 1; transform: translateX(0) scale(1); } }`}</style>
         {items.map((t) => {
           const tone = tones[t.tone];
           return (
             <div
               key={t.id}
               role={t.tone === 'danger' ? 'alert' : 'status'}
-              className="pointer-events-auto flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-sm shadow-lg"
+              className="pointer-events-auto flex items-center gap-3 rounded-2xl px-4 py-3.5 shadow-lg"
               style={{
-                backgroundColor: 'var(--surface)',
-                color: 'var(--foreground)',
-                border: `1px solid ${tone.fg}55`,
-                borderLeft: `4px solid ${tone.fg}`,
-                animation: 'toast-in 0.18s ease-out',
+                backgroundColor: tone.bg,
+                animation: 'toast-in 0.2s ease-out',
               }}
             >
-              <span className="mt-0.5 shrink-0" style={{ color: tone.fg }}>
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: tone.fg }}
+              >
                 {tone.icon}
               </span>
-              <div className="min-w-0 flex-1">{t.message}</div>
+              <div className="min-w-0 flex-1 text-[15px] font-semibold" style={{ color: tone.fg }}>
+                {t.message}
+              </div>
               <button
                 type="button"
                 onClick={() => dismiss(t.id)}
                 aria-label="Dismiss"
-                className="shrink-0 rounded px-1 text-xs font-medium opacity-70 transition hover:opacity-100"
+                className="shrink-0 rounded-full p-1 transition hover:opacity-70"
                 style={{ color: tone.fg }}
               >
-                ✕
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
               </button>
             </div>
           );

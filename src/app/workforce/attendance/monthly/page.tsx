@@ -21,6 +21,9 @@ interface DayRecord {
   otMinutesCalculated: number;
   otMinutesApproved: number | null;
   remarks: string | null;
+  source: string | null;
+  inSource: string | null;
+  outSource: string | null;
 }
 
 interface EmployeeMonth {
@@ -134,6 +137,7 @@ function cellTooltip(day: DayRecord | undefined, dateLabel: string): string {
     `In: ${formatTime(day.inTime)}  Out: ${formatTime(day.outTime)}`,
     `Late: ${day.lateMinutes}m  Early-Out: ${day.earlyOutMinutes}m`,
     `OT: ${day.otMinutesApproved ?? day.otMinutesCalculated}m`,
+    day.source ? `Source: ${day.source === 'biometric+app' ? 'Biometric + App' : day.source === 'app' ? 'App' : day.source}` : '',
     day.remarks ? `Remarks: ${day.remarks}` : '',
   ]
     .filter(Boolean)

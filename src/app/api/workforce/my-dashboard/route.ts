@@ -44,6 +44,10 @@ export async function GET(request: NextRequest) {
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const todayEnd = new Date(todayStart);
   todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+  // Same `year` the leave balance table below is scoped to — "taken this
+  // year" should mean the same year across every service on this page.
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
 
   const employee = await prisma.employee.findFirst({
     where: { id: ownEmployeeId, deletedAt: null },
@@ -115,6 +119,14 @@ export async function GET(request: NextRequest) {
     reqEncashment,
     monthLeaveApplications,
     monthCompOffRequests,
+    reqOtRequest,
+    compOffBalance,
+    wfhApprovedYear,
+    onDutyApprovedYear,
+    mispunchApprovedYear,
+    shiftChangeApprovedYear,
+    otApprovedYear,
+    otPendingNow,
   ] = await Promise.all([
     prisma.dailyAttendance.findMany({
       where: { employeeId: ownEmployeeId, date: { gte: monthStart, lt: monthEnd } },
@@ -129,9 +141,9 @@ export async function GET(request: NextRequest) {
       where: { employeeId_year_month: { employeeId: ownEmployeeId, year, month } },
     }),
     prisma.leaveBalance.findMany({
-      // A soft-deleted leave type shouldn't keep showing on the dashboard
-      // even though its old LeaveBalance rows remain.
-      where: { employeeId: ownEmployeeId, year, leaveMaster: { deletedAt: null } },
+      // A soft-deleted/deactivated leave type shouldn't keep showing on the
+      // dashboard even though its old LeaveBalance rows remain.
+      where: { employeeId: ownEmployeeId, year, leaveMaster: { isActive: true, deletedAt: null } },
       include: { leaveMaster: { select: { id: true, code: true, name: true } } },
       orderBy: { leaveMaster: { name: 'asc' } },
     }),
@@ -178,6 +190,22 @@ export async function GET(request: NextRequest) {
       },
       select: { requestedDate: true, status: true },
     }),
+    prisma.oTRequest.count({ where: { employeeId: ownEmployeeId, status: { in: TWO_STAGE_PENDING } } }),
+    // The "how much have I taken / how much is left" side of the picture —
+    // the counts above are pending-only, which answers "what's still in
+    // flight" but not "what have I actually used this year." Comp-off has a
+    // real running balance (earned/used/expired); the rest have no quota
+    // concept, so "approved this year" is the closest analogue to a balance.
+    prisma.compOffBalance.findUnique({ where: { employeeId: ownEmployeeId } }),
+    prisma.wfhRequest.count({ where: { employeeId: ownEmployeeId, status: 'approved', fromDate: { gte: yearStart, lt: yearEnd } } }),
+    prisma.onDutyRequest.count({ where: { employeeId: ownEmployeeId, status: 'approved', fromDate: { gte: yearStart, lt: yearEnd } } }),
+    prisma.mispunchCorrection.count({ where: { employeeId: ownEmployeeId, status: 'approved', date: { gte: yearStart, lt: yearEnd } } }),
+    prisma.shiftChangeRequest.count({ where: { employeeId: ownEmployeeId, status: 'approved', requestedDate: { gte: yearStart, lt: yearEnd } } }),
+    prisma.dailyAttendance.aggregate({
+      where: { employeeId: ownEmployeeId, otApprovalStatus: 'approved', date: { gte: yearStart, lt: yearEnd } },
+      _sum: { otMinutesApproved: true },
+    }),
+    prisma.dailyAttendance.count({ where: { employeeId: ownEmployeeId, otApprovalStatus: { in: TWO_STAGE_PENDING } } }),
   ]);
 
   // date (yyyy-mm-dd) -> label to show instead of the raw attendance status,
@@ -293,6 +321,7 @@ export async function GET(request: NextRequest) {
         shiftChange: reqShiftChange,
         loan: reqLoan,
         encashment: reqEncashment,
+        otRequest: reqOtRequest,
       },
       permission: {
         freeHoursPerMonth: permFreeHours,
@@ -300,6 +329,33 @@ export async function GET(request: NextRequest) {
         pendingHours: Number(permPending.toFixed(2)),
         usedHours: Number(permUsed.toFixed(2)),
         remainingHours: Number(Math.max(0, permFreeHours - permUsed).toFixed(2)),
+      },
+      compOffBalance: compOffBalance
+        ? {
+            available: Number(compOffBalance.balance),
+            earned: Number(compOffBalance.earned),
+            used: Number(compOffBalance.used),
+            expired: Number(compOffBalance.expired),
+            encashed: Number(compOffBalance.encashed),
+          }
+        : null,
+      // One row per service with no quota/balance of its own — "approved this
+      // year" is the closest analogue to "how much have I used," alongside
+      // the same pending count `requests` above already carries.
+      serviceRecords: {
+        wfh: { approvedYear: wfhApprovedYear, pendingNow: reqWfh },
+        onDuty: { approvedYear: onDutyApprovedYear, pendingNow: reqOnDuty },
+        mispunch: { approvedYear: mispunchApprovedYear, pendingNow: reqMispunch },
+        shiftChange: { approvedYear: shiftChangeApprovedYear, pendingNow: reqShiftChange },
+        ot: {
+          approvedHoursYear: Math.round(((otApprovedYear._sum.otMinutesApproved ?? 0) / 60) * 100) / 100,
+          // Two independent sources can each have OT awaiting a decision for
+          // this employee: biometric-flagged claims (DailyAttendance.
+          // otApprovalStatus) and self-raised OTRequest rows. Both count
+          // toward "how much OT of mine is still pending," so they're summed
+          // rather than shown as two separate, easy-to-miss figures.
+          pendingNow: otPendingNow + reqOtRequest,
+        },
       },
       approvals,
       isManager: reportIds.length > 0,

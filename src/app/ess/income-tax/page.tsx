@@ -361,6 +361,7 @@ function ProofSection({ declarationId, editable }: { declarationId: number; edit
       setAmount(''); setDescription('');
       if (fileRef.current) fileRef.current.value = '';
       await load();
+      toast.success('Proof uploaded successfully.');
     } catch (e2) {
       toast.error(e2 instanceof Error ? e2.message : 'Upload failed');
     } finally { setBusy(false); }

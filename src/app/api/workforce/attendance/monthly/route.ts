@@ -104,7 +104,12 @@ export async function GET(request: NextRequest) {
       department: job?.department?.name ?? null,
       designation: job?.designation?.name ?? null,
       employeeType: job?.employeeType?.name ?? null,
-      days: e.dailyAttendances,
+      // GPS stays server-side for now — strip it, keep the endpoint
+      // source attribution for the grid's source tooltip.
+      days: e.dailyAttendances.map(({ inLatitude, inLongitude, outLatitude, outLongitude, ...d }) => {
+        void inLatitude; void inLongitude; void outLatitude; void outLongitude;
+        return d;
+      }),
       summary: summary
         ? { ...summary, reopenedByName: summary.reopenedByUserId ? reopenerNames.get(summary.reopenedByUserId) ?? null : null }
         : null,

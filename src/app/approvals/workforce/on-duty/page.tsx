@@ -82,6 +82,7 @@ function OnDutyQueueSection({ title, scope, description }: { title: string; scop
       return;
     }
     setActioned((prev) => ({ ...prev, [id]: body?.status ?? body?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
+    toast.success('On-duty request approved.');
   };
 
   const columns: Column<OnDutyRow>[] = [

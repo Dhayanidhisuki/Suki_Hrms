@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, useToast, type Column } from '@/components/ui';
+import { DataTable, Button, PageBreadcrumb, useToast, type Column } from '@/components/ui';
 
 interface MispunchRow {
   id: number;
@@ -90,6 +90,7 @@ export default function MisPunchRequestsPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -112,6 +113,7 @@ export default function MisPunchRequestsPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success('Correction request submitted successfully.');
   };
 
   const columns: Column<MispunchRow>[] = [
@@ -139,26 +141,23 @@ export default function MisPunchRequestsPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-            Mis-Punch Requests
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Missed or wrong in/out punch? Request a correction — your Reporting Manager reviews it first, then HR gives final approval.
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          + Request Correction
-        </button>
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'Mis-Punch Requests' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Mis-Punch Requests</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Missed or wrong in/out punch? Request a correction — your Reporting Manager reviews it first, then HR gives final approval.
+        </p>
       </div>
 
-      <DataTable columns={columns} data={records} loading={loading} emptyMessage="No mis-punch requests yet." />
+      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
+          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+        </div>
+
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No mis-punch requests yet." />
+      </div>
 
       <MisPunchModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />
     </div>
@@ -185,6 +184,7 @@ function MisPunchModal({
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(EMPTY_FORM);
       setRecorded(null);
       setLookedUp(false);

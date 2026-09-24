@@ -109,12 +109,14 @@ export default function SlabPage<T extends SlabRecord>({
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? 'Save failed'); }
     fetchData();
+    toast.success(editingId ? 'Updated successfully.' : 'Created successfully.');
   };
 
   const handleDelete = async (id: number) => {
     const res = await fetch(`${apiPath}/${id}`, { method: 'DELETE' });
     if (!res.ok) { const err = await res.json(); toast.error(err.error ?? 'Deactivate failed'); return; }
     fetchData();
+    toast.success('Deactivated successfully.');
   };
 
   // Add standard columns: effectiveFrom, effectiveTo, status

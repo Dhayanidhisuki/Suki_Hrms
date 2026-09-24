@@ -609,6 +609,7 @@ export const navigation: NavModule[] = [
           { label: "Work From Home", short: "WFH", href: "/ess/wfh", ready: true },
           { label: "Shift Change Request", short: "Shift Change", href: "/ess/shift-change", ready: true },
           { label: "Comp-Off Request", short: "Comp-Off", href: "/ess/comp-off", ready: true },
+          { label: "OT Requests", short: "OT Request", href: "/ess/ot-request", ready: true },
           { label: "Leave Encashment", short: "Encashment", href: "/ess/leave-encashment", ready: true },
           { label: "Holiday Calendar", short: "Holidays", href: "/ess/holiday-calendar", ready: true },
           { label: "My Trainings", href: "/ess/my-trainings", ready: true },

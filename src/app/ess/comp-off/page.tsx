@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, KPICard, KPIGrid, useToast, type Column } from '@/components/ui';
+import { DataTable, KPICard, KPIGrid, PageBreadcrumb, useToast, type Column } from '@/components/ui';
 
 interface CompOffRow {
   id: number;
@@ -22,19 +22,12 @@ interface CompOffRow {
   createdAt: string;
 }
 
-interface LeaveBalanceRow {
-  id: number;
-  accrued: string;
-  availed: string;
-  closingBalance: string;
-  leaveMaster: { code: string; name: string };
-}
-
-interface LeaveApplicationRow {
-  fromDate: string;
-  toDate: string;
-  status: string;
-  leaveMaster: { code: string };
+interface CompOffBalance {
+  available: number;
+  earned: number;
+  used: number;
+  expired: number;
+  encashed: number;
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
@@ -52,31 +45,18 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { tim
 
 export default function EssCompOffPage() {
   const [records, setRecords] = useState<CompOffRow[]>([]);
-  const [balance, setBalance] = useState<LeaveBalanceRow | null>(null);
-  const [usedDates, setUsedDates] = useState<string[]>([]);
+  const [balance, setBalance] = useState<CompOffBalance | null>(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const year = new Date().getFullYear();
-      const [compOffRes, leaveRes] = await Promise.all([
-        fetch('/api/workforce/comp-off-request'),
-        fetch(`/api/workforce/my-leave?year=${year}`),
-      ]);
-      if (!compOffRes.ok) throw new Error((await compOffRes.json().catch(() => ({}))).error ?? 'Failed to fetch');
-      const compOffJson: { data: CompOffRow[] } = await compOffRes.json();
-      setRecords(compOffJson.data ?? []);
-
-      if (leaveRes.ok) {
-        const leaveJson: { balances: LeaveBalanceRow[]; applications: LeaveApplicationRow[] } = await leaveRes.json();
-        setBalance((leaveJson.balances ?? []).find((b) => b.leaveMaster.code === 'COMPOFF') ?? null);
-        const dates = (leaveJson.applications ?? [])
-          .filter((a) => a.leaveMaster.code === 'COMPOFF' && a.status === 'approved')
-          .map((a) => (a.fromDate === a.toDate ? fmtDate(a.fromDate) : `${fmtDate(a.fromDate)} – ${fmtDate(a.toDate)}`));
-        setUsedDates(dates);
-      }
+      const res = await fetch('/api/workforce/comp-off-request');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
+      const json: { data: CompOffRow[]; balance: CompOffBalance | null } = await res.json();
+      setRecords(json.data ?? []);
+      setBalance(json.balance ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -85,6 +65,7 @@ export default function EssCompOffPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
   }, [fetchData]);
 
@@ -107,30 +88,25 @@ export default function EssCompOffPage() {
     { key: 'rejectionReason', label: 'Rejection Reason', render: (r) => r.rejectionReason ?? '—' },
   ];
 
-  const credited = balance ? Number(balance.accrued) : 0;
-  const used = balance ? Number(balance.availed) : 0;
-  const remaining = balance ? Number(balance.closingBalance) : 0;
+  const credited = balance ? balance.earned : 0;
+  const used = balance ? balance.used : 0;
+  const remaining = balance ? balance.available : 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>Comp-Off</h1>
-        <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'Comp-Off' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Comp-Off</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
           To take a comp-off day, apply through <strong>Leave</strong> and pick <strong>Compensatory Off</strong> as the leave type,
           once it&apos;s been credited to your balance. This page shows your balance and comp-off history only.
         </p>
       </div>
 
-      {!loading && (
+      {!loading && balance && balance.earned > 0 && (
         <KPIGrid columns={3}>
-          <KPICard label="Available" value={credited} suffix="days" tone="info" />
-          <KPICard
-            label="Used"
-            value={used}
-            suffix="days"
-            tone="warning"
-            subtitle={usedDates.length > 0 ? usedDates.join(', ') : 'None used yet'}
-          />
+          <KPICard label="Earned" value={credited} suffix="days" tone="info" />
+          <KPICard label="Used" value={used} suffix="days" tone="warning" />
           <KPICard label="Remaining" value={remaining} suffix="days" tone={remaining > 0 ? 'success' : 'danger'} />
         </KPIGrid>
       )}

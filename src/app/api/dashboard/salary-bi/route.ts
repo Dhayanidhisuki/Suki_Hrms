@@ -23,6 +23,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 
 const UNASSIGNED = 'Unassigned';
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
  * Salary bands, matching the legacy report so the two can be compared.
@@ -59,10 +60,21 @@ interface EmpRow {
   professionalTax: number;
   totalDeductions: number;
   net: number;
+  runStatus: string | null;
+  runStatusCount: number;
 }
 
 interface YearRow { yr: number; gross: number }
 interface ComponentRow { name: string; type: string; amount: number }
+interface MonthTrendRow { yr: number; mo: number; gross: number }
+interface CompositionRow {
+  net: number;
+  pf: number;
+  esi: number;
+  pt: number;
+  tds: number;
+  other: number;
+}
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'payroll.processing.view');
@@ -87,7 +99,14 @@ export async function GET(request: NextRequest) {
     ? Prisma.sql`e.[deletedAt] IS NULL`
     : Prisma.sql`e.[deletedAt] IS NULL AND e.[status] = 'active'`;
 
-  const [deptRows, empRows, yearRows, componentRows] = await Promise.all([
+  // Last 6 calendar months of gross payroll, independent of the year/month
+  // slicer above — the mockup's "Payroll Trend (Last 6 Months)" reads as a
+  // rolling window, not the selected period.
+  const trendStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+  const trendStartYear = trendStart.getUTCFullYear();
+  const trendStartMonth = trendStart.getUTCMonth() + 1;
+
+  const [deptRows, empRows, yearRows, componentRows, monthTrendRows, compositionRows] = await Promise.all([
     prisma.$queryRaw<DeptRow[]>`
       SELECT
         d.[name] AS department,
@@ -119,7 +138,9 @@ export async function GET(request: NextRequest) {
         SUM(l.[esiEmployee]) AS esi,
         SUM(l.[professionalTax]) AS professionalTax,
         SUM(l.[grossEarnings]) - SUM(l.[netSalary]) AS totalDeductions,
-        SUM(l.[netSalary]) AS net
+        SUM(l.[netSalary]) AS net,
+        MAX(r.[status]) AS runStatus,
+        COUNT(DISTINCT r.[status]) AS runStatusCount
       FROM [PayrollLine] l
       INNER JOIN [PayrollRun] r ON r.[id] = l.[payrollRunId]
       INNER JOIN [Employee] e ON e.[id] = l.[employeeId]
@@ -151,6 +172,33 @@ export async function GET(request: NextRequest) {
       WHERE r.[companyId] = ${companyId} AND ${periodFilter} AND ${employeeFilter}
       GROUP BY sc.[name], sc.[type]
     `,
+
+    prisma.$queryRaw<MonthTrendRow[]>`
+      SELECT r.[year] AS yr, r.[month] AS mo, SUM(l.[grossEarnings]) AS gross
+      FROM [PayrollLine] l
+      INNER JOIN [PayrollRun] r ON r.[id] = l.[payrollRunId]
+      INNER JOIN [Employee] e ON e.[id] = l.[employeeId]
+      WHERE r.[companyId] = ${companyId} AND e.[deletedAt] IS NULL
+        AND ((r.[year] = ${trendStartYear} AND r.[month] >= ${trendStartMonth}) OR r.[year] > ${trendStartYear})
+      GROUP BY r.[year], r.[month]
+    `,
+
+    // Gross composition for the selected period: net paid plus every
+    // statutory/ad-hoc deduction head, matching salary-cost's "Where the
+    // Gross Goes" donut so the two dashboards agree on the same math.
+    prisma.$queryRaw<CompositionRow[]>`
+      SELECT
+        SUM(l.[netSalary]) AS net,
+        SUM(l.[pfEmployee]) AS pf,
+        SUM(l.[esiEmployee]) AS esi,
+        SUM(l.[professionalTax]) AS pt,
+        SUM(l.[tds]) AS tds,
+        SUM(l.[otherDeductionsTotal] + l.[lomAmount] + l.[lwfAmount] + l.[healthInsurance] + l.[licAmount]) AS other
+      FROM [PayrollLine] l
+      INNER JOIN [PayrollRun] r ON r.[id] = l.[payrollRunId]
+      INNER JOIN [Employee] e ON e.[id] = l.[employeeId]
+      WHERE r.[companyId] = ${companyId} AND ${periodFilter} AND ${employeeFilter}
+    `,
   ]);
 
   // ---- departments ---------------------------------------------------------
@@ -181,6 +229,11 @@ export async function GET(request: NextRequest) {
       professionalTax: Number(e.professionalTax) || 0,
       totalDeductions: Number(e.totalDeductions) || 0,
       net: Number(e.net) || 0,
+      // Only meaningful for a single-month slice — one PayrollLine, one
+      // PayrollRun.status. For "Whole year" (multiple runs summed per
+      // employee), runStatusCount > 1 whenever those runs disagree, so we
+      // report null rather than an arbitrary MAX() pick.
+      runStatus: month && Number(e.runStatusCount) <= 1 ? e.runStatus : null,
     }))
     .sort((a, b) => b.gross - a.gross);
 
@@ -203,6 +256,95 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.amount - a.amount);
   const canteen = components.find((c) => /canteen/i.test(c.name)) ?? null;
 
+  // ---- 6-month trend --------------------------------------------------------
+  const trendByKey = new Map(monthTrendRows.map((r) => [`${r.yr}-${r.mo}`, Number(r.gross) || 0]));
+  const monthlyTrend: Array<{ label: string; year: number; month: number; gross: number }> = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(Date.UTC(trendStartYear, trendStartMonth - 1 + i, 1));
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth() + 1;
+    monthlyTrend.push({
+      label: SHORT_MONTHS[m - 1],
+      year: y,
+      month: m,
+      gross: trendByKey.get(`${y}-${m}`) ?? 0,
+    });
+  }
+
+  // ---- gross composition ----------------------------------------------------
+  const comp = compositionRows[0];
+  const composition = comp
+    ? {
+        net: Number(comp.net) || 0,
+        pf: Number(comp.pf) || 0,
+        esi: Number(comp.esi) || 0,
+        professionalTax: Number(comp.pt) || 0,
+        tds: Number(comp.tds) || 0,
+        other: Number(comp.other) || 0,
+      }
+    : null;
+
+  // ---- recent activity --------------------------------------------------------
+  // Assembled from real timestamps across three tables — there is no single
+  // unified audit feed behind this yet, so this reads only what already has
+  // a genuine "when did this happen" column rather than claiming to be a
+  // full activity log.
+  const [recentRuns, recentBonuses, recentHires] = await Promise.all([
+    prisma.payrollRun.findMany({
+      where: { companyId },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+      select: { id: true, year: true, month: true, status: true, updatedAt: true },
+    }),
+    prisma.bonusRecord.findMany({
+      where: { companyId, status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        updatedAt: true,
+        employee: { select: { firstName: true, lastName: true } },
+      },
+    }),
+    prisma.employee.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { firstName: true, lastName: true, createdAt: true },
+    }),
+  ]);
+
+  const RUN_STATUS_LABEL: Record<string, string> = {
+    DRAFT: 'created',
+    CALCULATED: 'calculated',
+    VALIDATED: 'validated',
+    SUBMITTED: 'submitted',
+    APPROVED: 'approved',
+    LOCKED: 'locked',
+    POSTED: 'posted',
+  };
+
+  const recentActivity = [
+    ...recentRuns.map((r) => ({
+      label: `Payroll for ${SHORT_MONTHS[r.month - 1]} ${r.year} ${RUN_STATUS_LABEL[r.status] ?? r.status.toLowerCase()}`,
+      timestamp: r.updatedAt.toISOString(),
+      status: r.status,
+    })),
+    ...recentBonuses.map((b) => ({
+      label: `Bonus ${b.status === 'PENDING' ? 'requested' : b.status.toLowerCase()} — ${b.employee.firstName} ${b.employee.lastName ?? ''}`.trim(),
+      timestamp: b.updatedAt.toISOString(),
+      status: b.status,
+    })),
+    ...recentHires.map((e) => ({
+      label: `New employee added — ${e.firstName} ${e.lastName ?? ''}`.trim(),
+      timestamp: e.createdAt.toISOString(),
+      status: null,
+    })),
+  ]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 8);
+
   return NextResponse.json({
     period: { year, month, includeLeavers },
     units: Array.from(unitSet).sort(),
@@ -224,5 +366,8 @@ export async function GET(request: NextRequest) {
       .map((y) => ({ year: String(y.yr), gross: Number(y.gross) || 0 }))
       .sort((a, b) => a.year.localeCompare(b.year)),
     components: components.slice(0, 12),
+    monthlyTrend,
+    composition,
+    recentActivity,
   });
 }

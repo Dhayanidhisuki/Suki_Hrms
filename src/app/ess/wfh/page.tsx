@@ -7,7 +7,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import { DataTable, FormModal, Button, PageBreadcrumb, useToast, type Column, type FieldDef } from '@/components/ui';
 
 interface WfhRow {
   id: number;
@@ -55,6 +55,7 @@ export default function WfhPage() {
   }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -81,6 +82,7 @@ export default function WfhPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success('Work from home request submitted successfully.');
   };
 
   const columns: Column<WfhRow>[] = [
@@ -107,26 +109,23 @@ export default function WfhPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
-            Work From Home (WFH) Applications
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            Apply to work remotely for a date range. Approved days are counted as present.
-          </p>
-        </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          + Apply for WFH
-        </button>
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb items={[{ label: 'Dashboard', href: '/ess/dashboard' }, { label: 'WFH Requests' }]} />
+        <h1 className="mt-1 text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>WFH Requests</h1>
+        <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Apply to work remotely for a date range. Approved days are counted as present.
+        </p>
       </div>
 
-      <DataTable columns={columns} data={records} loading={loading} emptyMessage="No WFH applications yet." />
+      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
+          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+        </div>
+
+        <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No WFH applications yet." />
+      </div>
 
       <FormModal
         title="Apply for Work From Home"

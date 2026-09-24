@@ -65,6 +65,7 @@ export default function HiringApprovalPage() {
     }
     setApproveRow(null);
     fetchData();
+    toast.success('Job posting approved.');
   };
 
   const columns: Column<JobPostingRow>[] = [
@@ -125,6 +126,7 @@ export default function HiringApprovalPage() {
           }
           setRejectRow(null);
           fetchData();
+          toast.success('Job posting rejected.');
         }}
         submitLabel="Reject"
       />

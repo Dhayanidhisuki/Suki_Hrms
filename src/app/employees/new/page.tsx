@@ -238,6 +238,7 @@ export default function NewEmployeePage() {
         throw new Error(err.error ?? 'Failed to create employee');
       }
       const created = await res.json();
+      toast.success('Employee created successfully.');
       router.push(`/employees/${created.id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create employee');

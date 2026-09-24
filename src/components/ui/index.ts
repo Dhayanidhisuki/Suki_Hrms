@@ -11,6 +11,8 @@ export { default as SearchableSelect } from './SearchableSelect';
 export { default as KPICard } from './KPICard';
 export type { KPITone, KPITrend, KPITrendDirection } from './KPICard';
 export { default as KPIGrid } from './KPIGrid';
+export { default as GaugeCard, GAUGE_TONES } from './GaugeCard';
+export { default as PageBreadcrumb } from './PageBreadcrumb';
 export { default as PageHeader } from './PageHeader';
 export { default as Alert } from './Alert';
 export type { AlertTone } from './Alert';

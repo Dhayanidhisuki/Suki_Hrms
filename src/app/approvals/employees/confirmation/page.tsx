@@ -97,6 +97,7 @@ export default function ConfirmationApprovalPage() {
       }
       setRecommendId(null);
       fetchEmployees();
+      toast.success('Recommendation submitted successfully.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to submit recommendation');
     } finally {
@@ -118,6 +119,7 @@ export default function ConfirmationApprovalPage() {
       }
       setApproveId(null);
       fetchEmployees();
+      toast.success('Confirmation approved.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to approve confirmation');
     } finally {

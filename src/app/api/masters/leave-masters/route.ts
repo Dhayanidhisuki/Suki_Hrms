@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.leaveMaster.findUnique({ where: { code } });
   if (existing && existing.deletedAt === null) return NextResponse.json({ error: 'Code already exists' }, { status: 409 });
 
+  const nameConflict = await prisma.leaveMaster.findFirst({ where: { name: parsed.data.name, deletedAt: null } });
+  if (nameConflict) return NextResponse.json({ error: 'A leave type with this name already exists' }, { status: 409 });
+
   const record = await prisma.leaveMaster.create({ data: { ...parsed.data, code } });
   return NextResponse.json(record, { status: 201 });
 }

@@ -95,6 +95,8 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
     // just advances the request, so there is nothing to warn about there.
     if (data.exceedsAllowance) {
       toast.warning(`Approved — this pushes the employee ${Number(data.excessHours).toFixed(2)}h over their monthly free allowance. Handle the excess as an LOP adjustment.`);
+    } else {
+      toast.success('Permission approved.');
     }
     setActioned((prev) => ({ ...prev, [id]: data?.status ?? data?.data?.status ?? (scope === 'manager' ? 'pending_hr' : 'approved') }));
   };

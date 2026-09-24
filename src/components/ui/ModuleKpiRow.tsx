@@ -39,8 +39,8 @@ export function ModuleKpiRow({
   items: ModuleKpiItem[];
   /** simple = label + number only, equal 4-col grid (History Card) */
   variant?: "default" | "simple";
-  /** Grid columns — use 2 for chart-beside KPI panels */
-  columns?: 2 | 4;
+  /** Grid columns — use 2 for chart-beside KPI panels, 5 for a 5-card row */
+  columns?: 2 | 4 | 5;
   className?: string;
 }) {
   if (variant === "simple") {
@@ -69,6 +69,8 @@ export function ModuleKpiRow({
   const gridCols =
     columns === 2
       ? "grid-cols-2 gap-4"
+      : columns === 5
+      ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
       : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4";
 
   return (

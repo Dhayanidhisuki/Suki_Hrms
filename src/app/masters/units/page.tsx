@@ -124,6 +124,7 @@ export default function UnitsPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
+    toast.success(editingId ? 'Unit updated successfully.' : 'Unit created successfully.');
   };
 
   const handleDelete = async (id: number) => {
@@ -134,6 +135,7 @@ export default function UnitsPage() {
       return;
     }
     fetchData();
+    toast.success('Unit deleted successfully.');
   };
 
   const columns: Column<Unit>[] = [

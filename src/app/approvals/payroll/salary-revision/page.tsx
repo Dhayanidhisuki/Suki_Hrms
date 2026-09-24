@@ -69,6 +69,7 @@ export default function SalaryRevisionApprovalPage() {
         throw new Error(data.error ?? 'Approve failed');
       }
       fetchRevisions();
+      toast.success('Salary revision approved.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to approve');
     } finally {
@@ -90,6 +91,7 @@ export default function SalaryRevisionApprovalPage() {
       }
       setRejectId(null);
       fetchRevisions();
+      toast.success('Salary revision rejected.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to reject');
     } finally {
