@@ -93,7 +93,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     const isWeeklyOff = await isWeeklyOffForEmployee(employee.companyId, record.employeeId, record.date);
     const isHoliday = await isHolidayOrYearlyLeave(employee.companyId, record.date);
-    const settlementType = isWeeklyOff || isHoliday ? parsed.data.settlementType : 'OT';
+    // OT-eligible employees are paid overtime, not Comp-Off — mutually
+    // exclusive by JobInfo.overtimeAllowed, so their OT can only ever be
+    // settled as OT regardless of what the approver requested.
+    const jobInfo = await prisma.jobInfo.findFirst({ where: { employeeId: record.employeeId, effectiveTo: null }, select: { overtimeAllowed: true } });
+    const otEligible = jobInfo?.overtimeAllowed ?? false;
+    const settlementType = (isWeeklyOff || isHoliday) && !otEligible ? parsed.data.settlementType : 'OT';
 
     if (settlementType === 'COMP_OFF') {
       await grantCompOff(record.employeeId, record.date);

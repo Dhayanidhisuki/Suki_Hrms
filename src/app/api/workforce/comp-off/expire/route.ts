@@ -10,7 +10,13 @@
  *   2. For each employee with a positive CompOffBalance:
  *      a. Find CREDIT transactions older than (today - expiryMonths).
  *      b. Sum the unexpired days (credits minus debits/encashments since).
- *      c. If the expired portion > 0, call expireCompOff.
+ *      c. If the expired portion > 0:
+ *         - policy.allowEncashment + a rate + an editable payroll run for
+ *           the current period: encash into that run's Other Earnings via
+ *           encashCompOffIntoPayroll (COMPOFF_ENCASH ad-hoc line).
+ *         - allowEncashment on but no editable run yet: leave the credits
+ *           alone so a later run of this job can still catch them.
+ *         - otherwise: forfeit via expireCompOff.
  *
  * This is a simplified first-in-first-out (FIFO) expiry — oldest credits
  * expire first. A more sophisticated per-credit expiry would track each
@@ -23,6 +29,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { expireCompOff } from '@/lib/compOffTransactions';
+import { encashCompOffIntoPayroll } from '@/lib/compOffEncashApply';
 
 export async function POST(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'workforce.attendance.manage');
@@ -46,8 +53,27 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // When the policy allows encashment, route what would otherwise be
+  // forfeited into the current month's payroll run as an ad-hoc earning
+  // instead — same rate lookup encashCompOff() already applies. Only
+  // possible while that run exists and is still editable (not
+  // APPROVED/LOCKED); if there's no such run yet, the credits are left
+  // alone (not forfeited) so a later run of this job can still catch them.
+  const now = new Date();
+  const currentRun = policy.allowEncashment && policy.encashmentRatePerDay
+    ? await prisma.payrollRun.findFirst({
+        where: {
+          companyId: scope.companyId,
+          year: now.getUTCFullYear(),
+          month: now.getUTCMonth() + 1,
+          status: { notIn: ['APPROVED', 'LOCKED'] },
+        },
+      })
+    : null;
+
   let totalExpired = 0;
-  const expiredEmployees: Array<{ employeeId: number; expiredDays: number }> = [];
+  let totalEncashed = 0;
+  const expiredEmployees: Array<{ employeeId: number; expiredDays: number; encashed: boolean }> = [];
 
   for (const bal of balances) {
     // Sum credits older than the cutoff that haven't been debited yet.
@@ -81,6 +107,26 @@ export async function POST(request: NextRequest) {
     const expirable = Math.max(0, Math.min(expiredCredits - usedAfter, Number(bal.balance)));
     if (expirable <= 0) continue;
 
+    if (currentRun) {
+      await encashCompOffIntoPayroll(
+        bal.employeeId,
+        expirable,
+        Number(policy.encashmentRatePerDay),
+        currentRun.id,
+        `Comp-off encashed at expiry: credits older than ${policy.expiryMonths} month(s)`
+      );
+      totalEncashed += expirable;
+      expiredEmployees.push({ employeeId: bal.employeeId, expiredDays: expirable, encashed: true });
+      continue;
+    }
+
+    if (policy.allowEncashment && policy.encashmentRatePerDay) {
+      // Encashment is enabled but no editable payroll run exists for the
+      // current period yet — leave the credits as-is rather than forfeit
+      // days the employee is entitled to be paid for.
+      continue;
+    }
+
     await expireCompOff(
       bal.employeeId,
       expirable,
@@ -88,12 +134,13 @@ export async function POST(request: NextRequest) {
       `Auto-expiry: credits older than ${policy.expiryMonths} month(s)`
     );
     totalExpired += expirable;
-    expiredEmployees.push({ employeeId: bal.employeeId, expiredDays: expirable });
+    expiredEmployees.push({ employeeId: bal.employeeId, expiredDays: expirable, encashed: false });
   }
 
   return NextResponse.json({
-    message: `Expired ${totalExpired} comp-off day(s) across ${expiredEmployees.length} employee(s)`,
+    message: `Expired ${totalExpired} day(s) and encashed ${totalEncashed} day(s) across ${expiredEmployees.length} employee(s)`,
     expired: totalExpired,
+    encashed: totalEncashed,
     employees: expiredEmployees,
     cutoffDate: cutoffDate.toISOString().slice(0, 10),
   });

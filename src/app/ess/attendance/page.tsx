@@ -54,6 +54,10 @@ interface DayRow {
   lomApprovalStatus: string | null;
   lomApprovedMinutes: number | null;
   shiftMaster: { code: string; name: string } | null;
+  /** Present + covered by a leave application on this date — see
+   * src/lib/leave/finalizeApproval.ts's skip-if-present guard, which keeps
+   * the real Present punch instead of overwriting it with 'Leave'. */
+  appliedLeave: { status: string; leaveCode: string } | null;
 }
 
 interface PermissionRow {
@@ -507,6 +511,17 @@ const STATUS_META: Record<string, DayMeta> = {
 const WFH_META: DayMeta = { label: 'WFH (Work From Home)', bg: 'var(--accent-soft, var(--info-soft))', fg: 'var(--accent, var(--info))' };
 const PENDING_LEAVE_META: DayMeta = { label: 'Leave Request Pending', bg: 'var(--danger-soft)', fg: 'var(--danger)' };
 
+/** Present, but a leave (Comp-Off or otherwise) is applied on the same date —
+ * orange while the request is still pending either approval stage, green
+ * once HR has approved it. Rejected/cancelled requests never reach here
+ * since appliedLeave only carries pending_manager/pending_hr/approved. */
+function presentWithLeaveMeta(applied: { status: string; leaveCode: string }): DayMeta {
+  const tag = applied.leaveCode === 'COMPOFF' ? 'Comp-Off Applied' : 'Leave Applied';
+  return applied.status === 'approved'
+    ? { label: `Present (${tag})`, bg: 'var(--success-soft, #dcfce7)', fg: 'var(--success, #166534)' }
+    : { label: `Present (${tag})`, bg: '#ffedd5', fg: '#9a3412' };
+}
+
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -573,6 +588,7 @@ function permissionDisplay(dateStr: string, permissions: PermissionRow[]): strin
  * the two views can never disagree about what a given day was. */
 function resolveDayMeta(dateStr: string, row: DayRow | undefined, wfhRanges: WfhRow[], pendingLeave: LeaveAppRow[]): DayMeta | null {
   if (row) {
+    if (row.status === 'Present' && row.appliedLeave) return presentWithLeaveMeta(row.appliedLeave);
     if (row.status === 'Present' && coversDate(wfhRanges, dateStr)) return WFH_META;
     return STATUS_META[row.status] ?? { label: row.status, bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' };
   }

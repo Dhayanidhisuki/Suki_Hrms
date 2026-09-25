@@ -22,7 +22,7 @@ export interface DefaultSalaryComponent {
   isSystemDefined: boolean;
 }
 
-const SYSTEM_DEFINED_CODES = new Set(['BASIC', 'PF', 'ESI', 'ARREAR_GROSS', 'ARREAR_PF', 'ARREAR_ESI', 'BONUS']);
+const SYSTEM_DEFINED_CODES = new Set(['BASIC', 'PF', 'ESI', 'ARREAR_GROSS', 'ARREAR_PF', 'ARREAR_ESI', 'BONUS', 'COMPOFF_ENCASH']);
 
 // [code, name, type] — the original 35 rows are from payroll.rpt's
 // COMPONENT / DEFAULT_LABLE / LOGIC_TYPE columns (no formulas seeded, spec
@@ -68,6 +68,7 @@ const RAW: [string, string, DefaultSalaryComponent['type']][] = [
   ['ARREAR_PF', 'PF Arrear', 'deduction'],
   ['ARREAR_ESI', 'ESI Arrear', 'deduction'],
   ['BONUS', 'Bonus', 'earning'],
+  ['COMPOFF_ENCASH', 'Comp-Off Encashment', 'earning'],
 
   // Employee Benefits & Allowances (client BRD): CANTEEN_DED is deliberately
   // separate from the existing CANTEEN earning row — the BRD's "Canteen

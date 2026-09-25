@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Field, { FieldDef } from './Field';
 
 interface FormModalProps {
@@ -45,6 +45,20 @@ export default function FormModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Mirrors `values` synchronously so handleChange can read the latest state
+  // without the functional setState form — needed because onFieldChange may
+  // itself call setState on the CALLER's component (e.g. to mirror a field
+  // into local state). Calling that from inside setValues's updater trips
+  // React's "Cannot update a component while rendering a different
+  // component" check, since the updater runs as part of this component's
+  // state-update pass. Reading/writing a ref outside setValues keeps
+  // onFieldChange as a plain synchronous call from the event handler, which
+  // is always safe.
+  const valuesRef = useRef(values);
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+
   const applyComputedFields = useCallback(
     (v: Record<string, string | number | boolean | undefined>) => {
       let next = v;
@@ -79,11 +93,11 @@ export default function FormModal({
 
   const handleChange = useCallback(
     (name: string, value: string | number | boolean) => {
-      setValues((prev) => {
-        const merged = { ...prev, [name]: value };
-        const suggested = onFieldChange?.(name, value, merged);
-        return applyComputedFields(suggested ? { ...merged, ...suggested } : merged);
-      });
+      const merged = { ...valuesRef.current, [name]: value };
+      const suggested = onFieldChange?.(name, value, merged);
+      const next = applyComputedFields(suggested ? { ...merged, ...suggested } : merged);
+      valuesRef.current = next;
+      setValues(next);
       setErrors((prev) => ({ ...prev, [name]: '' }));
     },
     [applyComputedFields, onFieldChange]

@@ -159,28 +159,50 @@ export async function commitLeaveApproval(
       data: { status: 'approved', approvedByUserId: userId, approvedAt: new Date() },
     });
 
-    await tx.leaveBalance.upsert({
-      where: {
-        employeeId_leaveMasterId_year: {
+    // Comp-Off never gets a LeaveBalance row — it draws from CompOffBalance
+    // instead (debited below via debitCompOff), same split
+    // checkSufficientBalance already applies. Writing one here anyway
+    // created a phantom "Compensatory Off" balance row alongside the real
+    // ledger, showing as a duplicate/negative KPI card.
+    if (target.leaveCode !== 'COMPOFF') {
+      await tx.leaveBalance.upsert({
+        where: {
+          employeeId_leaveMasterId_year: {
+            employeeId: target.employeeId,
+            leaveMasterId: target.leaveMasterId,
+            year,
+          },
+        },
+        update: {
+          availed: { increment: target.numberOfDays },
+          closingBalance: { decrement: target.numberOfDays },
+        },
+        create: {
           employeeId: target.employeeId,
           leaveMasterId: target.leaveMasterId,
           year,
+          availed: target.numberOfDays,
+          closingBalance: -target.numberOfDays,
         },
-      },
-      update: {
-        availed: { increment: target.numberOfDays },
-        closingBalance: { decrement: target.numberOfDays },
-      },
-      create: {
-        employeeId: target.employeeId,
-        leaveMasterId: target.leaveMasterId,
-        year,
-        availed: target.numberOfDays,
-        closingBalance: -target.numberOfDays,
-      },
-    });
+      });
+    }
 
     for (const date of leaveDates) {
+      // An employee who actually came in and punched on an approved leave
+      // day (comp-off or otherwise) keeps their real Present attendance —
+      // stamping it 'Leave' would erase a genuine punch. The day still
+      // reads as "on approved leave" via the LeaveApplication itself; the
+      // UI composes that into a "Present (Leave/Comp-Off Applied)" badge
+      // rather than this write silently overwriting what happened.
+      const existing = await tx.dailyAttendance.findUnique({
+        where: { employeeId_date: { employeeId: target.employeeId, date } },
+        select: { status: true },
+      });
+      if (existing?.status === 'Present') {
+        touchedMonths.add(`${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`);
+        continue;
+      }
+
       await upsertDailyAttendanceWithHistory(
         tx,
         target.employeeId,

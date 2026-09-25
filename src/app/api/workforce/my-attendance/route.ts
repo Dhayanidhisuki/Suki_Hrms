@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 1));
 
-  const [days, summary] = await Promise.all([
+  const [days, summary, overlappingLeaves] = await Promise.all([
     prisma.dailyAttendance.findMany({
       where: { employeeId: ownEmployeeId, date: { gte: monthStart, lt: monthEnd } },
       select: {
@@ -57,7 +57,38 @@ export async function GET(request: NextRequest) {
     prisma.monthlyAttendanceSummary.findUnique({
       where: { employeeId_year_month: { employeeId: ownEmployeeId, year, month } },
     }),
+    // A day can be both "Present" (real punch, kept by
+    // commitLeaveApproval's skip-if-present guard) AND covered by an
+    // approved/pending leave — the UI composes those into a
+    // "Present (Leave/Comp-Off Applied)" badge instead of the two facts
+    // silently conflicting.
+    prisma.leaveApplication.findMany({
+      where: {
+        employeeId: ownEmployeeId,
+        status: { in: ['pending_manager', 'pending_hr', 'approved'] },
+        fromDate: { lt: monthEnd },
+        toDate: { gte: monthStart },
+      },
+      select: { fromDate: true, toDate: true, status: true, leaveMaster: { select: { code: true } } },
+    }),
   ]);
 
-  return NextResponse.json({ data: days, summary });
+  const leaveByDate = new Map<string, { status: string; leaveCode: string }>();
+  for (const leave of overlappingLeaves) {
+    const cursor = new Date(Date.UTC(leave.fromDate.getUTCFullYear(), leave.fromDate.getUTCMonth(), leave.fromDate.getUTCDate()));
+    const end = new Date(Date.UTC(leave.toDate.getUTCFullYear(), leave.toDate.getUTCMonth(), leave.toDate.getUTCDate()));
+    while (cursor <= end) {
+      leaveByDate.set(cursor.toISOString().slice(0, 10), { status: leave.status, leaveCode: leave.leaveMaster.code });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  const daysWithLeaveFlag = days.map((d) => {
+    const applied = leaveByDate.get(d.date.toISOString().slice(0, 10));
+    return d.status === 'Present' && applied
+      ? { ...d, appliedLeave: applied }
+      : { ...d, appliedLeave: null };
+  });
+
+  return NextResponse.json({ data: daysWithLeaveFlag, summary });
 }

@@ -14,7 +14,10 @@ import { DataTable, KPICard, KPIGrid, PageBreadcrumb, useToast, type Column } fr
 
 interface CompOffRow {
   id: number;
-  workedDate: string;
+  // null for a Comp-Off applied through the regular Apply for Leave form —
+  // that path (LeaveApplication) has no worked-date column of its own, only
+  // the dedicated Comp-Off request form does.
+  workedDate: string | null;
   requestedDate: string;
   reason: string | null;
   status: string;
@@ -31,17 +34,26 @@ interface CompOffBalance {
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  // The dedicated Comp-Off request form (CompOffRequest table) has a single
+  // 'pending' stage. Comp-Off applied through the regular Apply for Leave
+  // calendar (LeaveApplication) has two — pending_manager/pending_hr — kept
+  // distinct here instead of collapsed, same coloring as the Leave page's
+  // own status chips, so it's clear which stage a request is actually at.
   pending: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_manager: { bg: '#fef9c3', fg: '#854d0e' },
+  pending_hr: { bg: '#dbeafe', fg: '#1e40af' },
   approved: { bg: '#dcfce7', fg: '#166534' },
   rejected: { bg: '#fee2e2', fg: '#991b1b' },
 };
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pending',
+  pending_manager: 'Pending Manager',
+  pending_hr: 'Pending HR',
   approved: 'Approved',
   rejected: 'Rejected',
 };
 
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { timeZone: 'UTC' });
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { timeZone: 'UTC' }) : '—');
 
 export default function EssCompOffPage() {
   const [records, setRecords] = useState<CompOffRow[]>([]);

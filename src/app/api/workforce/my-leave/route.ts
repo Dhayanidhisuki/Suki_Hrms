@@ -7,7 +7,9 @@
  *   Apply for leave on one of the employee's own leave types. New
  *   applications start at 'pending_manager' (two-stage approval:
  *   Manager → HR — same engine as /api/workforce/leave/applications,
- *   just self-scoped instead of RBAC-gated). Checks LeaveBalance if one
+ *   just self-scoped instead of RBAC-gated) — except when the applicant is
+ *   themselves a reporting manager, who has no one at Stage 1 to act on
+ *   their request, so it starts at 'pending_hr' instead. Checks LeaveBalance if one
  *   exists; if none exists yet the application is allowed through, same
  *   as the HR-side route (Phase 1 has no automated accrual job for every
  *   employee/type/year combination).
@@ -142,8 +144,27 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // A reporting manager applying for their own leave has no one at Stage 1
+  // to act on it — isManagerOfAnyLevel would reject every caller, per
+  // /api/workforce/leave/applications/[id]/approve. Skip straight to HR for
+  // applicants who are themselves a reporting manager (same "isManager"
+  // check as /api/auth/me), regardless of their own reportingManagerId.
+  const isManagerApplicant =
+    (await prisma.employee.count({
+      where: { reportingManagerId: ownEmployeeId, deletedAt: null, isActive: true },
+    })) > 0;
+
   const record = await prisma.leaveApplication.create({
-    data: { employeeId: ownEmployeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason: reason ?? null, status: 'pending_manager' },
+    data: {
+      employeeId: ownEmployeeId,
+      leaveMasterId,
+      fromDate,
+      toDate,
+      numberOfDays,
+      isHalfDay,
+      reason: reason ?? null,
+      status: isManagerApplicant ? 'pending_hr' : 'pending_manager',
+    },
     include: { leaveMaster: { select: { code: true, name: true } } },
   });
 
