@@ -19,6 +19,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { onDutyRequestSchema } from '@/lib/validations/workforce';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkRangeNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const freezeErr = await checkRangeNotFrozen(ownEmployeeId, parsed.data.fromDate, parsed.data.toDate);
+  if (freezeErr) return freezeErr;
+
   const record = await prisma.onDutyRequest.create({
     data: {
       employeeId: ownEmployeeId,
@@ -109,6 +113,10 @@ export async function POST(request: NextRequest) {
       purpose: parsed.data.purpose,
       customerProject: parsed.data.customerProject ?? null,
       remarks: parsed.data.remarks ?? null,
+      durationType: parsed.data.durationType ?? null,
+      latitude: parsed.data.latitude ?? null,
+      longitude: parsed.data.longitude ?? null,
+      locationCapturedAt: parsed.data.latitude != null && parsed.data.longitude != null ? new Date() : null,
     },
   });
 
@@ -119,7 +127,7 @@ export async function POST(request: NextRequest) {
     requestId: record.id,
     period: formatPeriod(record.fromDate, record.toDate),
     reason: record.purpose,
-    linkPath: '/ess/on-duty',
+    linkPath: '/approvals/workforce/on-duty',
   });
 
   return NextResponse.json(record, { status: 201 });

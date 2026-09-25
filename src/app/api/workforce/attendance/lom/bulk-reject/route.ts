@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 
 const bodySchema = z.object({
@@ -42,6 +43,11 @@ export async function POST(request: NextRequest) {
 
   for (const record of records) {
     try {
+      if (await checkMonthNotFrozen(record.employeeId, record.date)) {
+        results.push({ id: record.id, status: 'skipped', message: 'Month is locked' });
+        skipped++;
+        continue;
+      }
       await prisma.dailyAttendance.update({
         where: { id: record.id },
         data: {
@@ -59,10 +65,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const notPending = ids.length - records.length;
-  if (notPending > 0) {
-    skipped = notPending;
-  }
+  skipped += ids.length - records.length;
 
   return NextResponse.json({ rejected, skipped, total: ids.length, results });
 }

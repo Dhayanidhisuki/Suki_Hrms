@@ -13,6 +13,8 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { findLinkedLeaveDates, linkedLeaveMessage } from '@/lib/leave/leaveDays';
+
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { dailyAttendanceSchema } from '@/lib/validations/workforce';
@@ -105,6 +107,11 @@ export async function POST(request: NextRequest) {
 
   const freezeErr = await checkMonthNotFrozen(parsed.data.employeeId, parsed.data.date);
   if (freezeErr) return freezeErr;
+
+  // An approved full-day leave is corrected through the leave (cancel or
+  // conflict decision), not by overwriting the day here.
+  const linked = await findLinkedLeaveDates(parsed.data.employeeId, [parsed.data.date], { allowHalf: true });
+  if (linked.length > 0) return NextResponse.json({ error: linkedLeaveMessage(linked) }, { status: 409 });
 
   const userId = Number(request.headers.get('x-user-id'));
   const { employeeId, date, ...rest } = parsed.data;

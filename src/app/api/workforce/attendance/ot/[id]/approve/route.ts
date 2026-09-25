@@ -58,6 +58,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!ownEmployeeId || !(await isReportingManagerOf(ownEmployeeId, record.employeeId))) {
       return NextResponse.json({ error: "Forbidden — only this employee's Reporting Manager can approve this stage" }, { status: 403 });
     }
+    const freezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
+    if (freezeErr) return freezeErr;
     await upsertDailyAttendanceWithHistory(
       prisma,
       record.employeeId,
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         requestId: attendanceId,
         period: formatPeriod(record.date),
         reason: undefined,
-        linkPath: '/ess/ot',
+        linkPath: '/ess/ot-request',
       });
 
       return NextResponse.json(updated);
@@ -148,7 +150,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       requestId: attendanceId,
       period: formatPeriod(record.date),
       reason: undefined,
-      linkPath: '/ess/ot',
+      linkPath: '/ess/ot-request',
     });
 
     return NextResponse.json(updated);

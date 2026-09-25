@@ -41,6 +41,7 @@ const hrs = (minutes: number) => `${(minutes / 60).toFixed(2).replace(/\.00$/, '
 
 export default function OTRequestsPage() {
   const [records, setRecords] = useState<OTRequestRow[]>([]);
+  const [overtimeAllowed, setOvertimeAllowed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const toast = useToast();
@@ -50,8 +51,9 @@ export default function OTRequestsPage() {
     try {
       const res = await fetch('/api/workforce/ot-request?scope=mine');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Failed to fetch');
-      const json: { data: OTRequestRow[] } = await res.json();
+      const json: { data: OTRequestRow[]; overtimeAllowed: boolean } = await res.json();
       setRecords(json.data ?? []);
+      setOvertimeAllowed(json.overtimeAllowed ?? false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -121,10 +123,19 @@ export default function OTRequestsPage() {
         </p>
       </div>
 
+      {!loading && !overtimeAllowed && (
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{ borderColor: '#fde68a', backgroundColor: '#fffbeb', color: '#854d0e' }}
+        >
+          Your job profile is not marked eligible for overtime, so an OT request from you cannot be approved. Contact HR if you believe this is incorrect.
+        </div>
+      )}
+
       <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
-          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+          <Button variant="primary" onClick={() => setModalOpen(true)} disabled={!loading && !overtimeAllowed}>Submit Request</Button>
         </div>
 
         <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No OT requests yet." />

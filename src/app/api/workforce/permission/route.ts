@@ -23,6 +23,7 @@ import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { permissionRequestSchema } from '@/lib/validations/workforce';
 import { getFreeHoursPerMonth, getFreeHoursPerMonthForEmployee } from '@/lib/permissionPolicy';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -133,6 +134,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const freezeErr = await checkMonthNotFrozen(ownEmployeeId, parsed.data.date);
+  if (freezeErr) return freezeErr;
+
   const hours = Math.round(((parsed.data.toTime.getTime() - parsed.data.fromTime.getTime()) / 3600000) * 100) / 100;
 
   // Hard cap at the company's monthly slab: a request that would take the
@@ -190,7 +194,7 @@ export async function POST(request: NextRequest) {
     requestId: record.id,
     period: formatPeriod(record.date),
     reason: record.reason ?? undefined,
-    linkPath: '/ess/permission',
+    linkPath: '/approvals/workforce/permission',
   });
 
   return NextResponse.json(record, { status: 201 });

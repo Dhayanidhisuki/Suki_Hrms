@@ -77,6 +77,12 @@ export async function POST(request: NextRequest) {
           skipped++;
           continue;
         }
+        const managerFreezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
+        if (managerFreezeErr) {
+          results.push({ id: record.id, status: 'skipped', message: 'Month is locked' });
+          skipped++;
+          continue;
+        }
         await upsertDailyAttendanceWithHistory(
           prisma,
           record.employeeId,
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
         }
         const freezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
         if (freezeErr) {
-          results.push({ id: record.id, status: 'skipped', message: 'Month is frozen' });
+          results.push({ id: record.id, status: 'skipped', message: 'Month is locked' });
           skipped++;
           continue;
         }

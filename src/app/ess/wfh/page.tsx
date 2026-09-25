@@ -62,7 +62,7 @@ export default function WfhPage() {
   const fields: FieldDef[] = [
     { name: 'fromDate', label: 'From Date', type: 'date', required: true },
     { name: 'toDate', label: 'To Date', type: 'date', required: true },
-    { name: 'reason', label: 'Reason', type: 'textarea', required: true },
+    { name: 'reason', label: 'Reason', type: 'textarea', required: true, helpText: 'Required — a WFH request without a reason will not be accepted.' },
     { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];
 

@@ -72,12 +72,6 @@ interface LeaveApplicationRow {
   leaveMaster: { code: string; name: string };
 }
 
-function daysBetweenInclusive(from: string, to: string) {
-  const a = new Date(from);
-  const b = new Date(to);
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-}
-
 export default function LeaveEntryPage() {
   const toast = useToast();
   const [records, setRecords] = useState<LeaveApplicationRow[]>([]);
@@ -127,16 +121,16 @@ export default function LeaveEntryPage() {
     { name: 'employeeId', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ label: e.oldEmployeeCode ? `${e.oldEmployeeCode} — ${e.firstName} ${e.lastName}` : `${e.firstName} ${e.lastName}`, value: e.id })) },
     { name: 'leaveMasterId', label: 'Leave Type', type: 'select', required: true, options: leaveMasters.map((l) => ({ label: `${l.name} (${l.code})`, value: l.id })) },
     { name: 'fromDate', label: 'From Date', type: 'date', required: true },
-    { name: 'toDate', label: 'To Date', type: 'date', required: true },
+    { name: 'toDate', label: 'To Date', type: 'date', required: true, showIf: (v) => !v.isHalfDay },
     { name: 'isHalfDay', label: 'Half Day', type: 'checkbox' },
     { name: 'reason', label: 'Reason', type: 'textarea' },
   ];
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
     const fromDate = String(values.fromDate);
-    const toDate = String(values.toDate);
     const isHalfDay = Boolean(values.isHalfDay);
-    const numberOfDays = isHalfDay ? 0.5 : daysBetweenInclusive(fromDate, toDate);
+    // A half day is one date; the working-day count is computed on the server.
+    const toDate = isHalfDay ? fromDate : String(values.toDate);
 
     const res = await fetch('/api/workforce/leave/applications', {
       method: 'POST',
@@ -147,13 +141,17 @@ export default function LeaveEntryPage() {
         fromDate,
         toDate,
         isHalfDay,
-        numberOfDays,
         reason: values.reason || null,
       }),
     });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error ?? 'Save failed');
+    }
+    const created = await res.json();
+    if (created?.plan) {
+      const skipped = created.plan.skippedDates?.length ?? 0;
+      toast.success(`Applied for ${created.plan.count} working day(s)${skipped ? ` — ${skipped} weekly off/holiday skipped` : ''}.`);
     }
     fetchData();
   };

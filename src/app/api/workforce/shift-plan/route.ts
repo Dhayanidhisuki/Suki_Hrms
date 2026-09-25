@@ -21,6 +21,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveEmployeeShiftConfig, resolveDailyShift } from '@/lib/biometricConversion';
+import { getAttendanceLock, checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD expected');
 
@@ -182,8 +183,14 @@ export async function POST(request: NextRequest) {
 
   let created = 0;
   let updated = 0;
+  const locked: { employeeId: number; date: string; error: string }[] = [];
   for (const ov of parsed.data.overrides) {
     const date = parseUtc(ov.date);
+    const lock = await getAttendanceLock(ov.employeeId, date);
+    if (lock) {
+      locked.push({ employeeId: ov.employeeId, date: ov.date, error: lock.message });
+      continue;
+    }
     const existing = await prisma.shiftAssignmentOverride.findUnique({
       where: { employeeId_date: { employeeId: ov.employeeId, date } },
     });
@@ -201,7 +208,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ created, updated, total: parsed.data.overrides.length });
+  return NextResponse.json({ created, updated, skippedLocked: locked.length, locked, total: parsed.data.overrides.length });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -216,6 +223,8 @@ export async function DELETE(request: NextRequest) {
   }
 
   const date = parseUtc(dateStr);
+  const freezeErr = await checkMonthNotFrozen(employeeId, date);
+  if (freezeErr) return freezeErr;
   const deleted = await prisma.shiftAssignmentOverride.deleteMany({
     where: { employeeId, date },
   });

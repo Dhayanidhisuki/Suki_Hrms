@@ -70,6 +70,23 @@ export async function getDepartmentWeeklyOffDays(companyId: number, departmentId
   return configs.map((c) => c.weekOffDay);
 }
 
+/**
+ * Batch form of isHolidayOrYearlyLeave for callers that walk a date range —
+ * two queries for the whole range instead of two per day. Keys are
+ * "YYYY-MM-DD".
+ */
+export async function buildHolidayLookup(companyId: number, from: Date, to: Date): Promise<Set<string>> {
+  const range = { gte: from, lte: to };
+  const [holidays, yearlyLeaves] = await Promise.all([
+    prisma.holidayMaster.findMany({ where: { companyId, date: range, isActive: true, deletedAt: null }, select: { date: true } }),
+    prisma.yearlyLeaveCalendar.findMany({ where: { companyId, date: range, isActive: true, deletedAt: null }, select: { date: true } }),
+  ]);
+  const keys = new Set<string>();
+  for (const h of holidays) keys.add(h.date.toISOString().slice(0, 10));
+  for (const y of yearlyLeaves) keys.add(y.date.toISOString().slice(0, 10));
+  return keys;
+}
+
 /** True if the date is a declared holiday or a yearly leave calendar entry for the company. */
 export async function isHolidayOrYearlyLeave(companyId: number, date: Date): Promise<boolean> {
   const holiday = await prisma.holidayMaster.findFirst({

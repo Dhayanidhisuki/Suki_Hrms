@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { computeLomMinutes, type LomConfigLite } from '@/lib/attendanceCalc';
 import { getApprovedPermissionMinutes, excusedMinutesFor } from '@/lib/permissionExcuse';
@@ -66,6 +67,11 @@ export async function POST(request: NextRequest) {
 
   for (const record of records) {
     try {
+      if (await checkMonthNotFrozen(record.employeeId, record.date)) {
+        results.push({ id: record.id, status: 'skipped', message: 'Month is locked' });
+        skipped++;
+        continue;
+      }
       const approvedMinutes = computeLomMinutes(
         record.lateMinutes,
         record.earlyOutMinutes,
@@ -91,11 +97,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Count IDs that weren't pending (skipped)
-  const notPending = ids.length - records.length;
-  if (notPending > 0) {
-    skipped = notPending;
-  }
+  // IDs that weren't pending are skipped too.
+  skipped += ids.length - records.length;
 
   return NextResponse.json({ approved, skipped, total: ids.length, results });
 }

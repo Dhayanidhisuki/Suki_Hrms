@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
 
   let unmatchedCount = 0;
   let importedCount = 0;
-  const conversionTotals = { converted: 0, skippedFrozen: 0, unmatchedTimes: 0 };
+  const conversionTotals = { converted: 0, skippedFrozen: 0, skippedProtected: 0, unmatchedTimes: 0, conflicts: 0 };
 
   for (const { merged: r, duplicateCount } of mergedRows) {
     duplicatesMerged += duplicateCount;
@@ -209,6 +209,11 @@ export async function POST(request: NextRequest) {
 
     const dayData: Record<string, unknown> = {};
     for (const f of fields) dayData[f] = r[f] ?? null;
+    // On UPDATE only the days the file actually carries are written. Writing
+    // the nulls too wiped every day a previous file of the same source had
+    // supplied for this period (audit A7, 2026-09-25) — an out-time file for
+    // day 10 must not erase day 9's in-time from last week's file.
+    const dayDataUpdate = Object.fromEntries(Object.entries(dayData).filter(([, v]) => v !== null));
 
     const sourceOnlyData: Record<string, unknown> =
       source === 'hours'
@@ -239,7 +244,7 @@ export async function POST(request: NextRequest) {
         fromWhere,
         matchedEmployeeId: employee?.id ?? null,
         ...sourceOnlyData,
-        ...dayData,
+        ...dayDataUpdate,
       },
       create: {
         companyId: scope.companyId,
@@ -259,6 +264,8 @@ export async function POST(request: NextRequest) {
       const result = await convertImportToDailyAttendance(saved.id, userId || null);
       conversionTotals.converted += result.converted;
       conversionTotals.skippedFrozen += result.skippedFrozen;
+      conversionTotals.skippedProtected += result.skippedProtected;
+      conversionTotals.conflicts += result.conflicts.length;
       conversionTotals.unmatchedTimes += result.unmatchedTimes;
     }
   }

@@ -20,6 +20,34 @@ interface OnDutyRow {
   status: string;
   managerRejectionReason: string | null;
   rejectionReason: string | null;
+  durationType: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+const DURATION_LABEL: Record<string, string> = {
+  full_day: 'Full Day',
+  half_day: 'Half Day',
+  '3_hours': '3 Hours',
+  '4_hours': '4 Hours',
+};
+
+// Best-effort, one-shot — captured at the moment of submit as a location
+// reference for the request, not a check-in/check-out pair. Never blocks
+// submission: browsers routinely deny/timeout this (no permission, no GPS
+// fix indoors), and On-Duty requests need to go through regardless.
+function captureLocation(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise((resolve) => {
+    if (!('geolocation' in navigator)) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, maximumAge: 60000 }
+    );
+  });
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
@@ -40,6 +68,7 @@ export default function OnDutyPage() {
   const [records, setRecords] = useState<OnDutyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [formDurationType, setFormDurationType] = useState('full_day');
   const toast = useToast();
 
   const fetchData = useCallback(async () => {
@@ -64,6 +93,19 @@ export default function OnDutyPage() {
   const fields: FieldDef[] = [
     { name: 'fromDate', label: 'From Date', type: 'date', required: true },
     { name: 'toDate', label: 'To Date', type: 'date', required: true },
+    {
+      name: 'durationType',
+      label: 'Duration',
+      type: 'select',
+      required: true,
+      defaultValue: 'full_day',
+      options: [
+        { value: 'full_day', label: 'Full Day' },
+        { value: 'half_day', label: 'Half Day' },
+        { value: '3_hours', label: '3 Hours' },
+        { value: '4_hours', label: '4 Hours' },
+      ],
+    },
     { name: 'location', label: 'Location', type: 'text', required: true },
     { name: 'purpose', label: 'Purpose', type: 'textarea', required: true },
     { name: 'customerProject', label: 'Customer / Project', type: 'text' },
@@ -71,16 +113,20 @@ export default function OnDutyPage() {
   ];
 
   const handleSubmit = async (values: Record<string, string | number | boolean>) => {
+    const location = await captureLocation();
     const res = await fetch('/api/workforce/on-duty', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fromDate: values.fromDate,
         toDate: values.toDate,
+        durationType: values.durationType || 'full_day',
         location: values.location,
         purpose: values.purpose,
         customerProject: values.customerProject || null,
         remarks: values.remarks || null,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
       }),
     });
     if (!res.ok) {
@@ -88,12 +134,17 @@ export default function OnDutyPage() {
       throw new Error(err.error ?? 'Save failed');
     }
     fetchData();
-    toast.success('On-duty request submitted successfully.');
+    toast.success(
+      location
+        ? 'On-duty request submitted successfully with your current location.'
+        : 'On-duty request submitted successfully. (Location was not available — you can still proceed.)'
+    );
   };
 
   const columns: Column<OnDutyRow>[] = [
     { key: 'fromDate', label: 'From', render: (r) => new Date(r.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
     { key: 'toDate', label: 'To', render: (r) => new Date(r.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
+    { key: 'durationType', label: 'Duration', render: (r) => DURATION_LABEL[r.durationType ?? 'full_day'] ?? 'Full Day' },
     { key: 'location', label: 'Location' },
     { key: 'purpose', label: 'Purpose' },
     { key: 'customerProject', label: 'Customer/Project', render: (r) => r.customerProject ?? '—' },
@@ -129,7 +180,15 @@ export default function OnDutyPage() {
       <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
-          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setFormDurationType('full_day');
+              setModalOpen(true);
+            }}
+          >
+            Submit Request
+          </Button>
         </div>
 
         <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No On-Duty applications yet." />
@@ -138,11 +197,21 @@ export default function OnDutyPage() {
       <FormModal
         title="Apply for On-Duty"
         fields={fields}
+        initialValues={{}}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit}
         submitLabel="Submit Application"
-      />
+        onFieldChange={(name, value) => {
+          if (name === 'durationType') setFormDurationType(String(value));
+        }}
+      >
+        {formDurationType !== 'full_day' && (
+          <div className="text-xs" style={{ color: '#854d0e' }}>
+            A {DURATION_LABEL[formDurationType] ?? formDurationType} On-Duty should be confirmed with your reporting manager before applying.
+          </div>
+        )}
+      </FormModal>
     </div>
   );
 }

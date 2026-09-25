@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
     requestId: created.id,
     period: formatPeriod(created.requestedDate),
     reason: created.reason ?? undefined,
-    linkPath: '/ess/shift-change',
+    linkPath: '/workforce/shift-change-request',
   });
 
   return NextResponse.json(created);

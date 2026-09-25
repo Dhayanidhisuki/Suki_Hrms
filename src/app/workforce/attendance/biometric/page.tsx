@@ -312,6 +312,7 @@ interface ImportSummary {
   duplicatesMerged: number;
   converted: number;
   skippedFrozen: number;
+  skippedProtected: number;
   unmatchedTimes: number;
   rowErrors: string[];
   apiErrors: string[];
@@ -394,6 +395,7 @@ export default function BiometricAttendancePage() {
       duplicatesMerged: 0,
       converted: 0,
       skippedFrozen: 0,
+      skippedProtected: 0,
       unmatchedTimes: 0,
       rowErrors,
       apiErrors: [],
@@ -425,6 +427,7 @@ export default function BiometricAttendancePage() {
           summary.duplicatesMerged += json.duplicatesMerged;
           summary.converted += json.conversion.converted;
           summary.skippedFrozen += json.conversion.skippedFrozen;
+          summary.skippedProtected += json.conversion.skippedProtected ?? 0;
           summary.unmatchedTimes += json.conversion.unmatchedTimes;
         }
       }
@@ -535,7 +538,7 @@ export default function BiometricAttendancePage() {
       const json = await res.json();
       if (!res.ok && !json.runId) throw new Error(json.error ?? 'Sync failed');
       if (json.status === 'success') {
-        toast.success(`Synced: ${json.rowsFetched} device rows → ${json.daysCreated} new, ${json.daysUpdated} updated, ${json.daysUnchanged} unchanged, ${json.skippedFrozen} frozen-skipped, ${json.unmatched.length} unmatched IDs.`);
+        toast.success(`Synced: ${json.rowsFetched} device rows → ${json.daysCreated} new, ${json.daysUpdated} updated, ${json.daysUnchanged} unchanged, ${json.skippedFrozen} locked-skipped, ${json.skippedProtected ?? 0} kept as corrected by HR, ${json.unmatched.length} unmatched IDs.`);
       } else {
         toast.error(`Sync failed: ${json.error}`);
       }
@@ -891,7 +894,7 @@ export default function BiometricAttendancePage() {
             <div>Unmatched EMP_IDs: {importResult.unmatched}</div>
             {importResult.duplicatesMerged > 0 && <div>Duplicate rows for the same employee/period merged: {importResult.duplicatesMerged}</div>}
             <div>
-              Pushed to Daily Attendance: {importResult.converted} day(s), skipped (frozen month): {importResult.skippedFrozen}, unparseable
+              Pushed to Daily Attendance: {importResult.converted} day(s), skipped (locked month): {importResult.skippedFrozen}, kept as corrected by HR: {importResult.skippedProtected}, unparseable
               punch times: {importResult.unmatchedTimes}
             </div>
             {importResult.rowErrors.length > 0 && (

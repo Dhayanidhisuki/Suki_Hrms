@@ -24,8 +24,18 @@
 
 import { prisma } from './prisma';
 import { fetchDeviceDailyAttendance, type ParsedDeviceDay } from './biometricApi';
-import { upsertDailyAttendanceWithHistory } from './attendanceHistory';
-import { deriveStatusAndMinutes, resolveDailyShift, resolveEmployeeShiftConfig, refreshMonthlySummary, type EmployeeShiftConfig } from './biometricConversion';
+import { upsertDailyAttendanceWithHistory, isProtectedFromDeviceOverwrite, recordLeaveConflict } from './attendanceHistory';
+import { notifyLeaveConflict, type LeaveConflictNotice } from './ess/notifyRequest';
+import { isAttendanceLocked } from './attendanceFreeze';
+import { buildWeeklyOffResolver, buildHolidayLookup } from './weeklyOff';
+import {
+  deriveStatusAndMinutes,
+  resolveDailyShift,
+  resolveDailyShiftWithOverride,
+  resolveEmployeeShiftConfig,
+  refreshMonthlySummary,
+  type EmployeeShiftConfig,
+} from './biometricConversion';
 
 export interface SyncOptions {
   companyId: number;
@@ -49,6 +59,8 @@ export interface SyncOutcome {
   daysUpdated: number;
   daysUnchanged: number;
   skippedFrozen: number;
+  /** Days left alone because a person had already corrected / approved them — see isProtectedFromDeviceOverwrite. */
+  skippedProtected: number;
   unmatched: UnmatchedDeviceUser[];
   error?: string;
 }
@@ -85,14 +97,6 @@ function utcMidnight(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-async function isMonthFrozen(employeeId: number, date: Date): Promise<boolean> {
-  const summary = await prisma.monthlyAttendanceSummary.findUnique({
-    where: { employeeId_year_month: { employeeId, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 } },
-    select: { status: true },
-  });
-  return summary?.status === 'FROZEN';
-}
-
 export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> {
   const rangeStart = utcMidnight(opts.rangeStart);
   const rangeEnd = utcMidnight(opts.rangeEnd);
@@ -107,7 +111,11 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
     },
   });
 
+  // skippedProtected is not a BiometricSyncRun column (derived, reported in
+  // the outcome only) — keep it out of the `counts` spread written to the run.
   const counts = { rowsFetched: 0, daysCreated: 0, daysUpdated: 0, daysUnchanged: 0, skippedFrozen: 0 };
+  let skippedProtected = 0;
+  const conflicts: LeaveConflictNotice[] = [];
   const unmatched = new Map<string, UnmatchedDeviceUser>();
 
   try {
@@ -117,6 +125,16 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
     const lookup = await buildEmployeeLookup(opts.companyId);
     const shiftConfigs = new Map<number, EmployeeShiftConfig>();
     const touchedMonths = new Set<string>();
+
+    // Weekly-off / holiday flags: resolved once for the run, not per day.
+    // The device range can carry an overnight out-punch one day past
+    // rangeEnd, so the holiday window is padded by a day.
+    const weeklyOff = await buildWeeklyOffResolver(opts.companyId, Array.from(new Set(lookup.values())));
+    const holidayKeys = await buildHolidayLookup(
+      opts.companyId,
+      rangeStart,
+      new Date(rangeEnd.getTime() + 24 * 60 * 60 * 1000)
+    );
 
     // The device buckets punches by calendar date, so an overnight shift's
     // exit punch arrives as the NEXT day's firstIn rather than closing the
@@ -138,8 +156,34 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         continue;
       }
 
-      if (await isMonthFrozen(employeeId, day.date)) {
+      // Locked = FROZEN / READY_FOR_PAYROLL / payroll processed — never written.
+      if (await isAttendanceLocked(employeeId, day.date)) {
         counts.skippedFrozen += 1;
+        continue;
+      }
+
+      // A day a person already decided (manual entry, mispunch correction,
+      // leave / on-duty / WFH approval) is not re-derived from the device.
+      // Before this guard the 8-hourly sync flipped such days back to
+      // whatever the device reported and undid the approval (audit A1).
+      const existingRow = await prisma.dailyAttendance.findUnique({
+        where: { employeeId_date: { employeeId, date: day.date } },
+        select: { id: true, source: true, status: true, leaveApplicationId: true, leaveDayKind: true, leaveConflictInTime: true, leaveConflictOutTime: true },
+      });
+      const isHalfDayLeave = existingRow?.leaveApplicationId != null && existingRow.leaveDayKind === 'HALF';
+      if (existingRow && !isHalfDayLeave && isProtectedFromDeviceOverwrite(existingRow, 'biometric')) {
+        skippedProtected += 1;
+        // A punch on an approved full leave day is a conflict for HR to
+        // decide (leave core 2026-09-25), never applied silently.
+        if (existingRow.leaveApplicationId != null) {
+          const inTime = day.firstIn?.at ?? null;
+          const outTime =
+            carried.closes.get(day) ??
+            (day.lastOut && day.firstIn && day.lastOut.at.getTime() !== day.firstIn.at.getTime() ? day.lastOut.at : null);
+          if (await recordLeaveConflict(prisma, existingRow, { inTime, outTime, source: 'biometric' })) {
+            conflicts.push({ employeeId, date: day.date, leaveApplicationId: existingRow.leaveApplicationId });
+          }
+        }
         continue;
       }
 
@@ -148,7 +192,9 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         config = await resolveEmployeeShiftConfig(employeeId);
         shiftConfigs.set(employeeId, config);
       }
-      const shift = resolveDailyShift(config, day.date);
+      // Override-aware: an approved shift change / roster override for the
+      // day must be what late, early-out and OT are measured against.
+      const shift = await resolveDailyShiftWithOverride(employeeId, day.date, config);
 
       const inTime = day.firstIn?.at ?? null;
       // A single punch is not a pair — keep it as the in-punch and flag the day.
@@ -157,7 +203,31 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         (day.lastOut && day.firstIn && day.lastOut.at.getTime() !== day.firstIn.at.getTime() ? day.lastOut.at : null);
 
       const derived = deriveStatusAndMinutes(null, inTime, outTime, shift, config.otThresholdMinutes, config.maxOtMinutesPerDay);
+
+      if (isHalfDayLeave) {
+        // Half-day leave: the worked half's punches merge into the day; it
+        // stays HalfDay and never queues OT or LOM (the other half is leave).
+        const result = await upsertDailyAttendanceWithHistory(
+          prisma,
+          employeeId,
+          day.date,
+          { inTime, outTime, workingMinutes: derived.workingMinutes, shiftMasterId: shift.shiftMasterId, otMinutesCalculated: 0, lateMinutes: 0, earlyOutMinutes: 0 },
+          { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
+        );
+        if (result.outcome === 'updated') counts.daysUpdated += 1;
+        else counts.daysUnchanged += 1;
+        touchedMonths.add(`${employeeId}:${day.date.getUTCFullYear()}-${day.date.getUTCMonth() + 1}`);
+        continue;
+      }
+
       const status = inTime && !outTime ? 'MissingPunch' : derived.status;
+
+      // Same rule as the import path: any punch on a weekly off / holiday
+      // flags the day so OT approval can offer comp-off settlement and the
+      // day-type OT factor applies. Gated on "any punch", not both.
+      const worked = Boolean(inTime || outTime) && status !== 'Absent';
+      const isWeeklyOffWorked = worked && weeklyOff.isWeeklyOff(employeeId, day.date);
+      const isHolidayWorked = worked && holidayKeys.has(day.date.toISOString().slice(0, 10));
 
       const result = await upsertDailyAttendanceWithHistory(
         prisma,
@@ -170,8 +240,11 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
           workingMinutes: derived.workingMinutes,
           otMinutesCalculated: derived.otMinutes,
           lateMinutes: derived.lateMinutes,
+          earlyOutMinutes: derived.earlyOutMinutes,
           source: 'biometric',
           shiftMasterId: shift.shiftMasterId,
+          isWeeklyOffWorked,
+          isHolidayWorked,
         },
         { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
       );
@@ -188,12 +261,16 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
       await refreshMonthlySummary(Number(emp), y, m);
     }
 
+    // After the loop, never inside it: HR is told once per newly recorded
+    // conflict, and a notification failure cannot fail the run.
+    for (const c of conflicts) await notifyLeaveConflict(opts.companyId, c);
+
     const unmatchedList = Array.from(unmatched.values()).sort((a, b) => b.days - a.days);
     await prisma.biometricSyncRun.update({
       where: { id: run.id },
       data: { ...counts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
     });
-    return { runId: run.id, status: 'success', ...counts, unmatched: unmatchedList };
+    return { runId: run.id, status: 'success', ...counts, skippedProtected, unmatched: unmatchedList };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const unmatchedList = Array.from(unmatched.values());
@@ -204,7 +281,7 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
       })
       .catch(() => {});
     console.error('[biometric-sync] run failed', { runId: run.id, message });
-    return { runId: run.id, status: 'failed', ...counts, unmatched: unmatchedList, error: message };
+    return { runId: run.id, status: 'failed', ...counts, skippedProtected, unmatched: unmatchedList, error: message };
   }
 }
 

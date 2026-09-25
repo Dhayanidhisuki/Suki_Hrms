@@ -61,7 +61,9 @@ export const leaveApplicationSchema = z.object({
   leaveMasterId: z.number().int().positive(),
   fromDate: z.coerce.date(),
   toDate: z.coerce.date(),
-  numberOfDays: z.number().positive(),
+  // Computed on the server from working days (leave core 2026-09-25);
+  // accepted for backwards compatibility and ignored.
+  numberOfDays: z.number().positive().optional(),
   isHalfDay: z.boolean().default(false),
   reason: z.string().max(500).optional().nullable(),
 });
@@ -73,7 +75,7 @@ export const myLeaveApplicationSchema = z
     leaveMasterId: z.coerce.number().int().positive(),
     fromDate: z.coerce.date(),
     toDate: z.coerce.date(),
-    numberOfDays: z.coerce.number().positive(),
+    numberOfDays: z.coerce.number().positive().optional(),
     isHalfDay: z.coerce.boolean().default(false),
     reason: z.string().max(500).optional().nullable(),
   })
@@ -145,6 +147,9 @@ export const onDutyRequestSchema = z
     purpose: z.string().min(1).max(500),
     customerProject: z.string().max(200).optional().nullable(),
     remarks: z.string().max(500).optional().nullable(),
+    durationType: z.enum(['half_day', '3_hours', '4_hours', 'full_day']).optional().nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
   })
   .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });
 
@@ -152,7 +157,7 @@ export const wfhRequestSchema = z
   .object({
     fromDate: z.coerce.date(),
     toDate: z.coerce.date(),
-    reason: z.string().min(1).max(500),
+    reason: z.string().trim().min(1, 'Reason is required').max(500),
     remarks: z.string().max(500).optional().nullable(),
   })
   .refine((v) => v.toDate >= v.fromDate, { message: 'toDate must be on or after fromDate', path: ['toDate'] });

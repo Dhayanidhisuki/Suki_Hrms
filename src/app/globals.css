@@ -881,3 +881,35 @@ textarea.form-control {
     animation: none;
   }
 }
+
+/* Topbar notification bell — rings (rotates about its top pivot) while there
+   are unread notifications, then rests; see NotificationDropdown.tsx. */
+@keyframes bell-ring {
+  0%   { transform: rotate(0); }
+  4%   { transform: rotate(14deg); }
+  8%   { transform: rotate(-12deg); }
+  12%  { transform: rotate(10deg); }
+  16%  { transform: rotate(-8deg); }
+  20%  { transform: rotate(6deg); }
+  24%  { transform: rotate(-4deg); }
+  28%  { transform: rotate(2deg); }
+  32%  { transform: rotate(0); }
+  100% { transform: rotate(0); }
+}
+@keyframes bell-badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+  50%      { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+.bell-ringing {
+  transform-origin: 50% 0;
+  animation: bell-ring 3s ease-in-out infinite;
+}
+.bell-badge-live {
+  animation: bell-badge-pulse 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-ringing,
+  .bell-badge-live {
+    animation: none;
+  }
+}

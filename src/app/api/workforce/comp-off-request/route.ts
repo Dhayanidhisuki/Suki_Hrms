@@ -15,6 +15,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { creditCompOff, getCompOffBalance } from '@/lib/compOffTransactions';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD expected');
 
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
   const workedDate = new Date(parsed.data.workedDate);
   const requestedDate = new Date(parsed.data.requestedDate);
 
+  const freezeErr = await checkMonthNotFrozen(ownEmployeeId, workedDate);
+  if (freezeErr) return freezeErr;
+
   // Validate that the employee has attendance on the worked date with
   // isWeeklyOffWorked or isHolidayWorked = true and OT approved
   const attendance = await prisma.dailyAttendance.findUnique({
@@ -149,7 +153,7 @@ export async function POST(request: NextRequest) {
     requestId: created.id,
     period: formatPeriod(created.requestedDate),
     reason: created.reason ?? undefined,
-    linkPath: '/ess/comp-off',
+    linkPath: '/workforce/comp-off-request',
   });
 
   return NextResponse.json(created);

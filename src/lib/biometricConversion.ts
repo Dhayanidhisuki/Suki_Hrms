@@ -46,8 +46,9 @@
  */
 
 import { prisma } from './prisma';
-import { checkMonthNotFrozen } from './attendanceFreeze';
-import { upsertDailyAttendanceWithHistory } from './attendanceHistory';
+import { checkMonthNotFrozen, getAttendanceLock } from './attendanceFreeze';
+import { upsertDailyAttendanceWithHistory, isProtectedFromDeviceOverwrite, recordLeaveConflict } from './attendanceHistory';
+import { notifyLeaveConflict, type LeaveConflictNotice } from './ess/notifyRequest';
 import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from './weeklyOff';
 import type { BiometricAttendanceImport } from '@prisma/client';
 import { getFreeHoursPerMonthForEmployee } from './permissionPolicy';
@@ -215,7 +216,11 @@ export async function resolveDailyShiftWithOverride(
 export interface ConversionResult {
   converted: number;
   skippedFrozen: number;
+  /** Days left alone because a person had already corrected / approved them — see isProtectedFromDeviceOverwrite. */
+  skippedProtected: number;
   unmatchedTimes: number;
+  /** Punches recorded as conflicts on approved leave days (HR queue). */
+  conflicts: LeaveConflictNotice[];
 }
 
 function daysInMonth(year: number, month: number) {
@@ -355,7 +360,7 @@ export async function convertImportToDailyAttendance(
 ): Promise<ConversionResult> {
   const row = await prisma.biometricAttendanceImport.findUniqueOrThrow({ where: { id: importId } });
 
-  const result: ConversionResult = { converted: 0, skippedFrozen: 0, unmatchedTimes: 0 };
+  const result: ConversionResult = { converted: 0, skippedFrozen: 0, skippedProtected: 0, unmatchedTimes: 0, conflicts: [] };
   if (!row.matchedEmployeeId) return result; // unmatched EMP_ID — nothing to push yet
 
   const employeeId = row.matchedEmployeeId;
@@ -384,8 +389,35 @@ export async function convertImportToDailyAttendance(
       continue;
     }
 
+    // A day a person already decided (manual entry, mispunch / leave /
+    // on-duty / WFH approval) must not be undone by device data — a device
+    // import is a fresh reading of the same punches, not a correction of a
+    // correction. A MANUAL file upload is itself a human act and may still
+    // overwrite; only status Leave / OnDuty is protected from it.
+    const incomingSource = row.fromWhere === 'BIOMETRIC' ? 'biometric' : 'manual';
+    const existingRow = await prisma.dailyAttendance.findUnique({
+      where: { employeeId_date: { employeeId, date } },
+      select: { id: true, source: true, status: true, leaveApplicationId: true, leaveDayKind: true, leaveConflictInTime: true, leaveConflictOutTime: true },
+    });
+    const isHalfDayLeave = existingRow?.leaveApplicationId != null && existingRow.leaveDayKind === 'HALF';
+
     const parsedIn = parseHHMM(inRaw);
     const parsedOut = parseHHMM(outRaw);
+
+    if (existingRow && !isHalfDayLeave && isProtectedFromDeviceOverwrite(existingRow, incomingSource)) {
+      result.skippedProtected++;
+      // A punch on an approved full leave day is a conflict for HR to
+      // decide (leave core 2026-09-25), never applied silently.
+      if (existingRow.leaveApplicationId != null && (parsedIn || parsedOut)) {
+        const recorded = await recordLeaveConflict(prisma, existingRow, {
+          inTime: parsedIn ? combineDateAndTime(date, parsedIn) : null,
+          outTime: parsedOut ? combineDateAndTime(date, parsedOut) : null,
+          source: incomingSource,
+        });
+        if (recorded) result.conflicts.push({ employeeId, date, leaveApplicationId: existingRow.leaveApplicationId });
+      }
+      continue;
+    }
     if ((inRaw !== null && inRaw !== undefined && Number(inRaw) > 0 && !parsedIn) ||
         (outRaw !== null && outRaw !== undefined && Number(outRaw) > 0 && !parsedOut)) {
       result.unmatchedTimes++;
@@ -400,6 +432,21 @@ export async function convertImportToDailyAttendance(
 
     // Use snapped inTime if early check-in was normalized
     const effectiveInTime = snappedInTime ?? inTime;
+
+    if (isHalfDayLeave) {
+      // Half-day leave: the worked half's punches merge into the day; it
+      // stays HalfDay and never queues OT or LOM (the other half is leave).
+      await upsertDailyAttendanceWithHistory(
+        prisma,
+        employeeId,
+        date,
+        { inTime: effectiveInTime, outTime, workingMinutes, shiftMasterId: dailyShift.shiftMasterId, otMinutesCalculated: 0, lateMinutes: 0, earlyOutMinutes: 0 },
+        { userId: triggeredByUserId ?? null, changedBySource: 'biometric' }
+      );
+      result.converted++;
+      touchedMonths.add(`${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`);
+      continue;
+    }
 
     // ── Auto-detect weekly-off/holiday worked ──────────────────────
     // If the employee has at least one punch on a day that is their
@@ -456,6 +503,8 @@ export async function convertImportToDailyAttendance(
     data: { processedAt: new Date() },
   });
 
+  for (const c of result.conflicts) await notifyLeaveConflict(row.companyId, c);
+
   return result;
 }
 
@@ -463,10 +512,21 @@ export async function convertImportToDailyAttendance(
  * Recomputes MonthlyAttendanceSummary's count fields for one employee/month
  * from its current DailyAttendance rows — same aggregation the manual
  * Finalize action uses, but never touches `status` (only Finalize/Freeze do).
+ *
+ * Refuses a locked month (FROZEN / READY_FOR_PAYROLL / payroll processed):
+ * every approval and reject route calls this after writing, and until
+ * 2026-09-25 a frozen month's counts could still drift through it. Returns
+ * false when it skipped, true when it wrote.
  */
-export async function refreshMonthlySummary(employeeId: number, year: number, month: number) {
+export async function refreshMonthlySummary(employeeId: number, year: number, month: number): Promise<boolean> {
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 1));
+
+  const lock = await getAttendanceLock(employeeId, monthStart);
+  if (lock) {
+    console.warn(`[refreshMonthlySummary] skipped employee ${employeeId} ${year}-${month}: ${lock.reason}`);
+    return false;
+  }
 
   const days = await prisma.dailyAttendance.findMany({
     where: { employeeId, date: { gte: monthStart, lt: monthEnd } },
@@ -495,21 +555,54 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
   const excessHours = Math.max(0, totalPermissionHours - freeHoursPerMonth);
   const permissionLopDays = excessHours / 8; // 8 hours = 1 LOP day
 
+  // Leave core (2026-09-25): rows written by a leave approval carry the
+  // application; its type decides whether a half day's other half is paid
+  // leave or LOP, and which per-type column the day counts in.
+  const linkedAppIds = Array.from(new Set(days.map((d) => d.leaveApplicationId).filter((id): id is number => id != null)));
+  const linkedApps = linkedAppIds.length
+    ? await prisma.leaveApplication.findMany({
+        where: { id: { in: linkedAppIds } },
+        select: { id: true, leaveMaster: { select: { code: true, isPaid: true } } },
+      })
+    : [];
+  const typeByAppId = new Map(linkedApps.map((a) => [a.id, a.leaveMaster]));
+
   let presentDays = 0;
   let absentDays = 0;
   let leaveDays = 0;
   let lopDays = 0;
-  let halfDays = 0;
+  let halfDays = 0; // unlinked half days only — half absent, half present
   let weeklyOffDays = 0;
   let holidayDays = 0;
   let otMinutesApprovedTotal = 0;
   let lateMinutesTotal = 0;
   let earlyOutMinutesTotal = 0;
   let holidayWorkedDays = 0;
+  let elDays = 0, clDays = 0, slDays = 0, mlDays = 0, plDays = 0, compOffDays = 0, otherLeaveDays = 0;
+
+  const countLeaveType = (code: string, n: number) => {
+    if (code === 'EL') elDays += n;
+    else if (code === 'CL') clDays += n;
+    else if (code === 'SL') slDays += n;
+    else if (code === 'ML') mlDays += n;
+    else if (code === 'PL') plDays += n;
+    else if (code === 'COMPOFF' || code === 'CO' || code === 'COMP_OFF') compOffDays += n;
+    else otherLeaveDays += n;
+  };
 
   for (const d of days) {
+    const leaveType = d.leaveApplicationId != null ? typeByAppId.get(d.leaveApplicationId) : undefined;
     if (d.status === 'Present' || d.status === 'OnDuty') {
       presentDays += 1;
+    } else if (d.status === 'HalfDay' && leaveType) {
+      // Half-day leave: half worked, half leave (paid) or half LOP (unpaid).
+      presentDays += 0.5;
+      if (leaveType.isPaid) {
+        leaveDays += 0.5;
+        countLeaveType(leaveType.code, 0.5);
+      } else {
+        lopDays += 0.5;
+      }
     } else if (d.status === 'HalfDay') {
       presentDays += 0.5;
       halfDays += 1;
@@ -517,6 +610,7 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
       absentDays += 1;
     } else if (d.status === 'Leave') {
       leaveDays += 1;
+      if (leaveType) countLeaveType(leaveType.code, 1);
     } else if (d.status === 'LOP') {
       lopDays += 1;
     } else if (d.status === 'WeeklyOff') {
@@ -537,31 +631,26 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     earlyOutMinutesTotal += d.earlyOutMinutes;
   }
 
-  // Phase 12 — leave-type breakdown from approved LeaveApplications.
+  // Legacy leaves (approved before the day rows carried a link, and not
+  // backfilled because two applications covered one date): prorate the
+  // application span by calendar days, as before, ONLY when none of its
+  // rows in this month are linked.
   const leaveApps = await prisma.leaveApplication.findMany({
     where: {
       employeeId,
       status: 'approved',
       fromDate: { lt: monthEnd },
       toDate: { gte: monthStart },
+      id: { notIn: linkedAppIds },
     },
     include: { leaveMaster: { select: { code: true } } },
   });
-
-  let elDays = 0, clDays = 0, slDays = 0, mlDays = 0, plDays = 0, compOffDays = 0, otherLeaveDays = 0;
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0));
   for (const app of leaveApps) {
-    // Prorate leave days that span across month boundaries.
     const from = app.fromDate < monthStart ? monthStart : app.fromDate;
-    const to = app.toDate > monthEnd ? monthEnd : app.toDate;
+    const to = app.toDate > lastDayOfMonth ? lastDayOfMonth : app.toDate;
     const daysInThisMonth = Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const code = app.leaveMaster?.code ?? '';
-    if (code === 'EL') elDays += daysInThisMonth;
-    else if (code === 'CL') clDays += daysInThisMonth;
-    else if (code === 'SL') slDays += daysInThisMonth;
-    else if (code === 'ML') mlDays += daysInThisMonth;
-    else if (code === 'PL') plDays += daysInThisMonth;
-    else if (code === 'CO' || code === 'COMP_OFF') compOffDays += daysInThisMonth;
-    else otherLeaveDays += daysInThisMonth;
+    countLeaveType(app.leaveMaster?.code ?? '', app.isHalfDay ? 0.5 : daysInThisMonth);
   }
 
   const totalCalendarDays = daysInMonth(year, month);
@@ -597,6 +686,7 @@ export async function refreshMonthlySummary(employeeId: number, year: number, mo
     update: counts,
     create: { employeeId, year, month, ...counts },
   });
+  return true;
 }
 
 export type { BiometricAttendanceImport };

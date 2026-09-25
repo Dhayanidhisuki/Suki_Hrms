@@ -536,6 +536,8 @@ export const navigation: NavModule[] = [
         label: "Workforce",
         items: [
           { label: "Leave Approval", short: "Leave", href: "/approvals/workforce/leave", ready: true, managerQueue: true },
+          // Punches that landed on approved leave days — HR decides present / keep leave.
+          { label: "Leave Conflicts", short: "Conflicts", href: "/approvals/workforce/leave-conflicts", ready: true },
           { label: "Mispunch Approval", short: "Mispunch", href: "/approvals/workforce/mispunch", ready: true, managerQueue: true },
           { label: "On-Duty Approval", short: "On-Duty", href: "/approvals/workforce/on-duty", ready: true, managerQueue: true },
           { label: "WFH Approval", short: "WFH", href: "/approvals/workforce/wfh", ready: true, managerQueue: true },

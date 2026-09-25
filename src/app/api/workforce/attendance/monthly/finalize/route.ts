@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
-import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { checkMonthNotFrozen, isPayrollProcessed, LOCKED_SUMMARY_STATUSES } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
 import { buildWeeklyOffResolver } from '@/lib/weeklyOff';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
@@ -46,20 +46,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'year and month (1-12) are required' }, { status: 400 });
   }
 
-  // Guard: do not re-finalize a frozen month
+  // Guard: do not re-finalize a locked month. Locked = FROZEN or
+  // READY_FOR_PAYROLL (re-finalizing the latter used to silently downgrade
+  // the hand-off state back to FINALIZED) or payroll already processed.
   if (employeeIdFilter) {
     const freezeErr = await checkMonthNotFrozen(employeeIdFilter, new Date(Date.UTC(year, month - 1, 1)));
     if (freezeErr) return freezeErr;
   } else {
-    const frozenCount = await prisma.monthlyAttendanceSummary.count({
+    const payrollStatus = await isPayrollProcessed(scope.companyId, year, month);
+    if (payrollStatus) {
+      return NextResponse.json(
+        { error: `Payroll for ${year}-${String(month).padStart(2, '0')} is ${payrollStatus.toLowerCase()} — attendance can no longer be re-finalized.` },
+        { status: 409 }
+      );
+    }
+    const lockedCount = await prisma.monthlyAttendanceSummary.count({
       where: {
-        year, month, status: 'FROZEN',
+        year, month, status: { in: [...LOCKED_SUMMARY_STATUSES] },
         employee: { companyId: scope.companyId, deletedAt: null },
       },
     });
-    if (frozenCount > 0) {
+    if (lockedCount > 0) {
       return NextResponse.json(
-        { error: `${frozenCount} employee(s) have FROZEN attendance for ${year}-${month}. Reopen before re-finalizing.` },
+        { error: `${lockedCount} employee(s) have frozen or ready-for-payroll attendance for ${year}-${month}. Reopen before re-finalizing.` },
         { status: 409 }
       );
     }

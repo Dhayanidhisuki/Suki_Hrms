@@ -12,6 +12,7 @@ import * as XLSX from 'xlsx';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
+import { getAttendanceLock } from '@/lib/attendanceFreeze';
 
 interface BulkRow {
   employeeCode: string;
@@ -112,6 +113,13 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      const lock = await getAttendanceLock(employeeId, date);
+      if (lock) {
+        results.push({ row: rowNum, employeeCode, date: dateStr, shiftCode, status: 'error', message: lock.message });
+        errors++;
+        continue;
+      }
+
       // Create or update the override
       await prisma.shiftAssignmentOverride.upsert({
         where: { employeeId_date: { employeeId, date } },

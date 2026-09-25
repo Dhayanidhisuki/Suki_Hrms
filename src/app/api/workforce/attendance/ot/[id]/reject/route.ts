@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 const bodySchema = z.object({ rejectionReason: z.string().min(1).max(500) });
@@ -33,6 +34,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 });
   }
 
+  // A rejection is still a decision on a pay input — locked month, no change.
+  const freezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
+  if (freezeErr) return freezeErr;
+
   if (record.otApprovalStatus === 'pending_manager') {
     const ownEmployeeId = await resolveOwnEmployeeId(userId);
     if (!ownEmployeeId || !(await isReportingManagerOf(ownEmployeeId, record.employeeId))) {
@@ -49,7 +54,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       requestId: attendanceId,
       period: formatPeriod(record.date),
       reason: parsed.data.rejectionReason,
-      linkPath: '/ess/ot',
+      linkPath: '/ess/ot-request',
     });
 
     return NextResponse.json(updated);
@@ -69,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       requestId: attendanceId,
       period: formatPeriod(record.date),
       reason: parsed.data.rejectionReason,
-      linkPath: '/ess/ot',
+      linkPath: '/ess/ot-request',
     });
 
     return NextResponse.json(updated);

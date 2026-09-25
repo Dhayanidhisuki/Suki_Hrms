@@ -2267,15 +2267,33 @@ model DailyAttendance {
   createdByUserId Int?
   updatedByUserId Int?
 
+  // Leave core (2026-09-25). A day written by a leave approval is linked to
+  // the application so cancel / resolve restore exactly those rows.
+  // leaveDayKind: LEAVE (full paid day, punches cleared) | HALF (half-day,
+  // punches kept) | SANDWICH (weekly off between two unpaid leave days → LOP).
+  leaveApplicationId Int?
+  leaveDayKind       String? @db.NVarChar(20)
+  // A punch that arrived on an approved leave day. Never applied silently:
+  // HR decides on /approvals/workforce/leave-conflicts. Decision is
+  // 'present' (date leaves the leave, punches applied) or 'keep_leave'.
+  leaveConflictInTime          DateTime?
+  leaveConflictOutTime         DateTime?
+  leaveConflictSource          String?   @db.NVarChar(20) // biometric | manual
+  leaveConflictDecision        String?   @db.NVarChar(20) // present | keep_leave
+  leaveConflictDecidedAt       DateTime?
+  leaveConflictDecidedByUserId Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee    Employee     @relation(fields: [employeeId], references: [id])
-  shiftMaster ShiftMaster? @relation(fields: [shiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  shiftMaster      ShiftMaster?      @relation(fields: [shiftMasterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  leaveApplication LeaveApplication? @relation(fields: [leaveApplicationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([employeeId, date])
   @@index([employeeId])
   @@index([date])
+  @@index([leaveApplicationId])
   @@map("DailyAttendance")
 }
 
@@ -2312,6 +2330,7 @@ model DailyAttendanceHistory {
   isHolidayWorked     Boolean   @default(false)
   source              String    @db.NVarChar(20)
   remarks             String?   @db.NVarChar(500)
+  leaveApplicationId  Int?
 
   // What replaced them.
   changedByUserId Int?
@@ -2586,12 +2605,17 @@ model LeaveApplication {
   approvedAt             DateTime?
   rejectionReason        String?   @db.NVarChar(500)
   appliedAt              DateTime  @default(now())
+  // Days HR gave back after approval by resolving a punch-on-leave conflict
+  // as "present" (leave core 2026-09-25). numberOfDays is reduced in step.
+  daysReversed           Decimal   @default(0) @db.Decimal(5, 2)
+  reversalNote           String?   @db.NVarChar(500)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee    Employee    @relation(fields: [employeeId], references: [id])
-  leaveMaster LeaveMaster @relation(fields: [leaveMasterId], references: [id])
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  leaveMaster      LeaveMaster       @relation(fields: [leaveMasterId], references: [id])
+  dailyAttendances DailyAttendance[]
 
   @@index([employeeId])
   @@index([leaveMasterId])
@@ -6763,6 +6787,17 @@ model OnDutyRequest {
   purpose         String   @db.NVarChar(500)
   customerProject String?  @db.NVarChar(200)
   remarks         String?  @db.NVarChar(500)
+
+  // half_day | 3_hours | 4_hours | full_day — anything shorter than a full
+  // day is expected to be agreed with the reporting manager beforehand; the
+  // ESS form surfaces that as a note, this just records what was picked.
+  durationType String? @db.NVarChar(20)
+  // Captured once, client-side, at the moment the employee submits the
+  // request — proof of where they were when they filed it, not a
+  // check-in/check-out pair.
+  latitude           Float?
+  longitude          Float?
+  locationCapturedAt DateTime?
 
   // pending_manager | pending_hr | approved | rejected
   status                 String    @default("pending_manager") @db.NVarChar(20)

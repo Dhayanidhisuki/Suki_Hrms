@@ -81,6 +81,20 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
+/** GET /api/workforce/my-leave/preview — the plan the server will debit. */
+interface LeavePreview {
+  count: number;
+  calendarDays: number;
+  skippedDates: { date: string; reason: 'WeeklyOff' | 'Holiday' }[];
+  punchedDates: string[];
+  workedFullDayDates: string[];
+  sandwichDates: string[];
+}
+
+function fmtShort(ymd: string): string {
+  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
+}
+
 export default function EssLeavePage() {
   const { confirm } = useConfirm();
   const [year, setYear] = useState(new Date().getFullYear());
@@ -140,7 +154,6 @@ export default function EssLeavePage() {
     const isHalfDay = Boolean(values.isHalfDay);
     const fromDate = String(values.fromDate);
     const toDate = isHalfDay ? fromDate : String(values.toDate);
-    const numberOfDays = computeDays(fromDate, toDate, isHalfDay);
 
     const res = await fetch('/api/workforce/my-leave', {
       method: 'POST',
@@ -149,7 +162,6 @@ export default function EssLeavePage() {
         leaveMasterId,
         fromDate,
         toDate,
-        numberOfDays,
         isHalfDay,
         reason: values.reason || null,
       }),
@@ -222,7 +234,38 @@ export default function EssLeavePage() {
   const [formHalfDay, setFormHalfDay] = useState(false);
   const selectedType = types.find((t) => String(t.id) === formLeaveMasterId);
   const isCompOff = selectedType?.code === 'COMPOFF';
-  const previewDays = computeDays(formFromDate, formHalfDay ? formFromDate : formToDate, formHalfDay);
+  // Working days come from the server (weekly offs / holidays skipped, the
+  // same computation approval debits); the local calendar count only fills
+  // in while the preview is loading.
+  const [serverPreview, setServerPreview] = useState<LeavePreview | null>(null);
+  useEffect(() => {
+    if (!formLeaveMasterId || !formFromDate || (!formHalfDay && !formToDate)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setServerPreview(null);
+      return;
+    }
+    const to = formHalfDay ? formFromDate : formToDate;
+    const controller = new AbortController();
+    fetch(`/api/workforce/my-leave/preview?leaveMasterId=${formLeaveMasterId}&from=${formFromDate}&to=${to}&isHalfDay=${formHalfDay}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: LeavePreview | null) => setServerPreview(j))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [formLeaveMasterId, formFromDate, formToDate, formHalfDay]);
+  const previewDays = serverPreview ? serverPreview.count : computeDays(formFromDate, formHalfDay ? formFromDate : formToDate, formHalfDay);
+
+  // Comp-Off draws from a separate running ledger (CompOffBalance), not
+  // LeaveBalance, so its remaining count has to be looked up there instead.
+  const remainingByTypeId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const b of balances) map.set(b.leaveMaster.id, Number(b.closingBalance));
+    const compOffType = types.find((t) => t.code === 'COMPOFF');
+    if (compOffType && compOffBalance) map.set(compOffType.id, compOffBalance.available);
+    return map;
+  }, [balances, compOffBalance, types]);
+
+  const selectedRemaining = selectedType ? remainingByTypeId.get(selectedType.id) : undefined;
+  const remainingAfter = selectedRemaining !== undefined ? selectedRemaining - previewDays : undefined;
 
   const fields: FieldDef[] = [
     {
@@ -230,7 +273,10 @@ export default function EssLeavePage() {
       label: 'Leave Type',
       type: 'select',
       required: true,
-      options: types.map((t) => ({ value: String(t.id), label: t.name })),
+      options: types.map((t) => {
+        const remaining = remainingByTypeId.get(t.id);
+        return { value: String(t.id), label: remaining !== undefined ? `${t.name} (${remaining} left)` : t.name };
+      }),
     },
     { name: 'fromDate', label: 'From Date', type: 'date', required: true },
     { name: 'toDate', label: 'To Date', type: 'date', required: true, showIf: (v) => !v.isHalfDay },
@@ -401,8 +447,28 @@ export default function EssLeavePage() {
         }}
       >
         {previewDays > 0 && (
-          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {previewDays} day{previewDays !== 1 ? 's' : ''} will be requested.
+          <div className="text-xs" style={{ color: remainingAfter !== undefined && remainingAfter < 0 ? '#991b1b' : 'var(--text-muted)' }}>
+            {previewDays} working day{previewDays !== 1 ? 's' : ''} will be requested
+            {serverPreview && serverPreview.skippedDates.length > 0 && (
+              <> ({serverPreview.skippedDates.map((d) => `${fmtShort(d.date)} ${d.reason === 'WeeklyOff' ? 'weekly off' : 'holiday'}`).join(', ')} skipped)</>
+            )}
+            {serverPreview && serverPreview.sandwichDates.length > 0 && (
+              <> — {serverPreview.sandwichDates.map((d) => fmtShort(d)).join(', ')} counted as LOP (sandwiched)</>
+            )}
+            .
+            {remainingAfter !== undefined && (
+              remainingAfter < 0
+                ? ` Only ${selectedRemaining} available — this exceeds your balance.`
+                : ` ${remainingAfter} will remain after this request.`
+            )}
+          </div>
+        )}
+        {serverPreview && serverPreview.count === 0 && (
+          <div className="text-xs" style={{ color: '#991b1b' }}>Every date in this range is a weekly off or holiday — nothing to apply for.</div>
+        )}
+        {serverPreview && (formHalfDay ? serverPreview.workedFullDayDates : serverPreview.punchedDates).length > 0 && (
+          <div className="text-xs" style={{ color: '#991b1b' }}>
+            Attendance is already punched on {(formHalfDay ? serverPreview.workedFullDayDates : serverPreview.punchedDates).map(fmtShort).join(', ')} — leave cannot be applied for a worked day.
           </div>
         )}
 

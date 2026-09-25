@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { generateGatePassNo, generateQrToken } from '@/lib/visitor-helpers';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { z } from 'zod';
 
 const requestSchema = z.object({
@@ -130,6 +131,17 @@ export async function POST(request: NextRequest) {
           createdBy: userId,
         },
       });
+    });
+
+    await notifyEssRequest({
+      kind: 'VISITOR_PASS',
+      action: 'SUBMITTED',
+      companyId: employee.companyId,
+      employeeId,
+      requestId: pass.id,
+      period: formatPeriod(pass.visitDate),
+      reason: `${data.visitorName} — ${data.purposeValue}`,
+      linkPath: '/ess/visitor-approval',
     });
 
     return NextResponse.json(pass, { status: 201 });

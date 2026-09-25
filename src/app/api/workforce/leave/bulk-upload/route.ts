@@ -32,9 +32,12 @@ import {
 import {
   checkFrozenMonths,
   checkSufficientBalance,
+  checkPlan,
   commitLeaveApproval,
+  planFor,
   type LeaveApprovalTarget,
 } from '@/lib/leave/finalizeApproval';
+import type { LeavePlan } from '@/lib/leave/leaveDays';
 
 export interface RowResult {
   row: number;
@@ -64,6 +67,8 @@ interface ReadyRow {
   toDate: Date;
   numberOfDays: number;
   plannedStatus: 'approved' | 'pending_manager';
+  target: LeaveApprovalTarget;
+  plan: LeavePlan;
 }
 
 const utc = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -119,7 +124,7 @@ export async function POST(request: NextRequest) {
 
   const leaveTypes = await prisma.leaveMaster.findMany({
     where: { isActive: true, deletedAt: null },
-    select: { id: true, code: true },
+    select: { id: true, code: true, isPaid: true, countSandwichedNonWorking: true },
   });
   const typeByCode = new Map(leaveTypes.map((t) => [t.code.toUpperCase(), t]));
 
@@ -183,18 +188,34 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // Days: calculate from the range unless the sheet stated a figure, and
-    // warn (don't fail) when the two disagree — a spreadsheet is easy to get
-    // wrong and HR should see the discrepancy rather than have it silently
-    // accepted or silently overridden.
-    const calculated = p.isHalfDay ? 0.5 : daysInclusive(p.fromDate, p.toDate);
-    const numberOfDays = p.statedDays ?? calculated;
-    if (p.statedDays !== null && p.statedDays !== calculated) {
+    // Days: WORKING days in the range (weekly offs / holidays skipped, unpaid
+    // sandwich counted) — the same plan approval will write. A figure stated
+    // on the sheet is reported when it disagrees, never used: the ledger must
+    // match the rows written.
+    const target: LeaveApprovalTarget = {
+      id: 0, // not yet created; set before the commit
+      companyId: scope.companyId,
+      employeeId: employee.id,
+      leaveMasterId: leaveType.id,
+      fromDate: utc(p.fromDate),
+      toDate: p.isHalfDay ? utc(p.fromDate) : utc(p.toDate),
+      numberOfDays: 0,
+      isHalfDay: p.isHalfDay,
+      leaveCode: leaveType.code,
+      isPaid: leaveType.isPaid,
+      countSandwichedNonWorking: leaveType.countSandwichedNonWorking,
+    };
+    const plan = await planFor(target);
+    const numberOfDays = plan.count;
+    target.numberOfDays = numberOfDays;
+    if (p.statedDays !== null && p.statedDays !== numberOfDays) {
       result.warnings.push(
-        `Sheet says ${p.statedDays} day(s) but the dates give ${calculated} — using ${p.statedDays} as stated`
+        `Sheet says ${p.statedDays} day(s) but the working days give ${numberOfDays} (${daysInclusive(p.fromDate, p.toDate)} calendar) — using ${numberOfDays}`
       );
     }
     result.numberOfDays = numberOfDays;
+    const planBlock = checkPlan(target, plan);
+    if (planBlock) result.errors.push(planBlock.message);
 
     const plannedStatus = statusForRow(p.fromDate);
     result.plannedStatus = plannedStatus;
@@ -228,16 +249,6 @@ export async function POST(request: NextRequest) {
     if (inFile) {
       result.errors.push(`Overlaps row ${inFile.row} in this file for the same employee`);
     }
-
-    const target: LeaveApprovalTarget = {
-      id: 0, // not yet created; only used by the commit path
-      employeeId: employee.id,
-      leaveMasterId: leaveType.id,
-      fromDate: utc(p.fromDate),
-      toDate: utc(p.toDate),
-      numberOfDays,
-      leaveCode: leaveType.code,
-    };
 
     // Balance and freeze only gate rows that will be approved on import —
     // a pending row writes neither the ledger nor attendance, so it is held
@@ -276,6 +287,8 @@ export async function POST(request: NextRequest) {
       toDate: target.toDate,
       numberOfDays,
       plannedStatus,
+      target,
+      plan,
     });
   }
 
@@ -309,28 +322,21 @@ export async function POST(request: NextRequest) {
           fromDate: r.fromDate,
           toDate: r.toDate,
           numberOfDays: r.numberOfDays,
+          calendarDays: r.plan.calendarDays,
+          nonWorkingDaysCounted: r.plan.nonWorkingCounted,
           isHalfDay: r.parsed.isHalfDay,
           reason: r.parsed.reason,
           contactDuringLeave: r.parsed.contactDuringLeave,
           addressDuringLeave: r.parsed.addressDuringLeave,
-          status: r.plannedStatus,
+          status: r.plannedStatus === 'approved' ? 'pending_hr' : r.plannedStatus,
         },
       });
       r.result.applicationId = created.id;
 
       if (r.plannedStatus === 'approved') {
-        await commitLeaveApproval(
-          {
-            id: created.id,
-            employeeId: r.employeeId,
-            leaveMasterId: r.leaveMasterId,
-            fromDate: r.fromDate,
-            toDate: r.toDate,
-            numberOfDays: r.numberOfDays,
-            leaveCode: r.leaveCode,
-          },
-          userId
-        );
+        // Back-dated rows land approved directly; the commit's status guard
+        // expects pending_hr, so the row is created in that state above.
+        await commitLeaveApproval({ ...r.target, id: created.id }, r.plan, userId);
       }
       imported++;
     } catch (err) {

@@ -24,6 +24,7 @@ import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManage
 import {
   checkCanApprove,
   commitLeaveApproval,
+  planFor,
   type LeaveApprovalTarget,
   type BulkLeaveResult,
 } from '@/lib/leave/finalizeApproval';
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
   const records = await prisma.leaveApplication.findMany({
     where: { id: { in: ids }, employee: { companyId: scope.companyId, deletedAt: null } },
     include: {
-      leaveMaster: { select: { code: true } },
+      leaveMaster: { select: { code: true, isPaid: true, countSandwichedNonWorking: true } },
       employee: { select: { employeeCode: true } },
     },
   });
@@ -96,20 +97,25 @@ export async function POST(request: NextRequest) {
         }
         const target: LeaveApprovalTarget = {
           id: record.id,
+          companyId: scope.companyId,
           employeeId: record.employeeId,
           leaveMasterId: record.leaveMasterId,
           fromDate: record.fromDate,
           toDate: record.toDate,
           numberOfDays: Number(record.numberOfDays),
+          isHalfDay: record.isHalfDay,
           leaveCode: record.leaveMaster.code,
+          isPaid: record.leaveMaster.isPaid,
+          countSandwichedNonWorking: record.leaveMaster.countSandwichedNonWorking,
         };
-        const blocked = await checkCanApprove(target);
+        const plan = await planFor(target);
+        const blocked = await checkCanApprove(target, plan);
         if (blocked) {
           results.push({ ...base, status: 'skipped', stage: 'hr', message: blocked.message });
           skipped++;
           continue;
         }
-        await commitLeaveApproval(target, userId);
+        await commitLeaveApproval(target, plan, userId);
         results.push({ ...base, status: 'ok', stage: 'hr', message: 'Approved' });
         approved++;
       } else {

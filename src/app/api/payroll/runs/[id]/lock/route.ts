@@ -34,10 +34,28 @@ export async function POST(
     return NextResponse.json({ error: `Cannot lock a run that is ${run.status} — approve it first` }, { status: 409 });
   }
 
-  const updated = await prisma.payrollRun.update({
-    where: { id: runId },
-    data: { status: 'LOCKED', lockedAt: new Date() },
-  });
+  // Locking payroll IS the attendance hard lock (client rule 2026-09-07:
+  // "attendance must not be editable after payroll is processed"). Freeze
+  // every summary for the period in the same transaction so the Monthly
+  // page shows the truth and no writer can slip through on a summary that
+  // was only FINALIZED. (getAttendanceLock also checks the run status, so
+  // even an employee with no summary row is covered.)
+  const now = new Date();
+  const [updated, frozen] = await prisma.$transaction([
+    prisma.payrollRun.update({
+      where: { id: runId },
+      data: { status: 'LOCKED', lockedAt: now },
+    }),
+    prisma.monthlyAttendanceSummary.updateMany({
+      where: {
+        year: run.year,
+        month: run.month,
+        status: { not: 'FROZEN' },
+        employee: { companyId: scope.companyId, deletedAt: null },
+      },
+      data: { status: 'FROZEN', frozenAt: now },
+    }),
+  ]);
 
   // File the payslips, but never fail the lock over it — the run is already
   // locked, and archiving is idempotent, so a failure here can be retried via
@@ -52,5 +70,5 @@ export async function POST(
     console.error('[payroll/lock] payslip archival failed', err);
   }
 
-  return NextResponse.json({ ...updated, payslips, payslipError });
+  return NextResponse.json({ ...updated, attendanceFrozen: frozen.count, payslips, payslipError });
 }

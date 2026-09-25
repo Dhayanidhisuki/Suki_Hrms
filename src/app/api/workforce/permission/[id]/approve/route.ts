@@ -20,6 +20,7 @@ import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 import { getFreeHoursPerMonth } from '@/lib/permissionPolicy';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const scope = getCompanyId(request);
@@ -61,6 +62,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (record.status === 'pending_hr') {
     const permErr = await checkSpecificPermission(request, 'workforce.permission.approve');
     if (permErr) return permErr;
+
+    // Approved permission excuses LOM minutes and its excess becomes LOP —
+    // both are pay inputs, so a locked month cannot take a new approval.
+    const freezeErr = await checkMonthNotFrozen(record.employeeId, record.date);
+    if (freezeErr) return freezeErr;
 
     const monthStart = new Date(Date.UTC(record.date.getUTCFullYear(), record.date.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(record.date.getUTCFullYear(), record.date.getUTCMonth() + 1, 1));

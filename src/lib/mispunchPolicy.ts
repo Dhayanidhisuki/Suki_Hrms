@@ -11,7 +11,7 @@ import { prisma } from './prisma';
 
 /** Used only when a company has no MispunchPolicy row of its own. */
 export const DEFAULT_MAX_BACKDATE_DAYS = 60;
-export const DEFAULT_MAX_REQUESTS_PER_MONTH = 3;
+export const DEFAULT_MAX_REQUESTS_PER_MONTH = 15;
 
 export interface MispunchPolicyValues {
   maxBackdateDays: number;

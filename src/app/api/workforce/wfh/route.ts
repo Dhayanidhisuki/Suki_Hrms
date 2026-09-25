@@ -19,6 +19,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { wfhRequestSchema } from '@/lib/validations/workforce';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkRangeNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const freezeErr = await checkRangeNotFrozen(ownEmployeeId, parsed.data.fromDate, parsed.data.toDate);
+  if (freezeErr) return freezeErr;
+
   const record = await prisma.wfhRequest.create({
     data: {
       employeeId: ownEmployeeId,
@@ -117,7 +121,7 @@ export async function POST(request: NextRequest) {
     requestId: record.id,
     period: formatPeriod(record.fromDate, record.toDate),
     reason: record.reason,
-    linkPath: '/ess/wfh',
+    linkPath: '/approvals/workforce/wfh',
   });
 
   return NextResponse.json(record, { status: 201 });

@@ -38,6 +38,15 @@ export interface DailyAttendanceValues {
   source?: string;
   remarks?: string | null;
   shiftMasterId?: number | null;
+  // Leave core (2026-09-25) — see prisma/schema.prisma DailyAttendance.
+  leaveApplicationId?: number | null;
+  leaveDayKind?: string | null;
+  leaveConflictInTime?: Date | null;
+  leaveConflictOutTime?: Date | null;
+  leaveConflictSource?: string | null;
+  leaveConflictDecision?: string | null;
+  leaveConflictDecidedAt?: Date | null;
+  leaveConflictDecidedByUserId?: number | null;
 }
 
 function sameTime(a: Date | null | undefined, b: Date | null | undefined) {
@@ -67,6 +76,14 @@ function isUnchanged(
     source: string;
     remarks: string | null;
     shiftMasterId: number | null;
+    leaveApplicationId: number | null;
+    leaveDayKind: string | null;
+    leaveConflictInTime: Date | null;
+    leaveConflictOutTime: Date | null;
+    leaveConflictSource: string | null;
+    leaveConflictDecision: string | null;
+    leaveConflictDecidedAt: Date | null;
+    leaveConflictDecidedByUserId: number | null;
   },
   next: DailyAttendanceValues
 ) {
@@ -85,12 +102,78 @@ function isUnchanged(
   if (next.source !== undefined && next.source !== current.source) return false;
   if (next.remarks !== undefined && next.remarks !== current.remarks) return false;
   if (next.shiftMasterId !== undefined && next.shiftMasterId !== current.shiftMasterId) return false;
+  if (next.leaveApplicationId !== undefined && next.leaveApplicationId !== current.leaveApplicationId) return false;
+  if (next.leaveDayKind !== undefined && next.leaveDayKind !== current.leaveDayKind) return false;
+  if (next.leaveConflictInTime !== undefined && !sameTime(next.leaveConflictInTime, current.leaveConflictInTime)) return false;
+  if (next.leaveConflictOutTime !== undefined && !sameTime(next.leaveConflictOutTime, current.leaveConflictOutTime)) return false;
+  if (next.leaveConflictSource !== undefined && next.leaveConflictSource !== current.leaveConflictSource) return false;
+  if (next.leaveConflictDecision !== undefined && next.leaveConflictDecision !== current.leaveConflictDecision) return false;
+  if (next.leaveConflictDecidedAt !== undefined && !sameTime(next.leaveConflictDecidedAt, current.leaveConflictDecidedAt)) return false;
+  if (next.leaveConflictDecidedByUserId !== undefined && next.leaveConflictDecidedByUserId !== current.leaveConflictDecidedByUserId) return false;
   return true;
 }
 
 export interface UpsertResult {
   /** 'created' — no prior row; 'updated' — prior values snapshotted to history; 'unchanged' — nothing written. */
   outcome: 'created' | 'updated' | 'unchanged';
+}
+
+/** Statuses only a person (approval / manual entry) ever writes — never the device. */
+const HUMAN_DECIDED_STATUSES = new Set(['Leave', 'OnDuty']);
+
+/**
+ * Should an ingestion write (device sync / file import) leave this row alone?
+ *
+ * A row with source 'manual' was written by a person: the Daily Attendance
+ * screen, a mispunch correction, or a leave / on-duty / WFH approval. The
+ * device re-reporting the same day is not new information about that
+ * decision, so a 'biometric' write must not undo it. Until 2026-09-25 the
+ * 8-hourly sync (2-day look-back) did exactly that — see
+ * docs/TIME_OFFICE_FLOW_AUDIT_2026-09-25.md A1.
+ *
+ * A human-uploaded MANUAL file (incoming 'manual') is itself a human act and
+ * may overwrite a manual row, but never an approved Leave / OnDuty day.
+ */
+export function isProtectedFromDeviceOverwrite(
+  existing: { source: string; status: string; leaveApplicationId?: number | null },
+  incomingSource: 'biometric' | 'manual'
+): boolean {
+  if (HUMAN_DECIDED_STATUSES.has(existing.status)) return true;
+  // A day written by a leave approval (full, half, or sandwiched LOP) is a
+  // decision, whatever its status string says. Callers that want to MERGE
+  // punches into a half-day leave, or record a conflict on a full-day one,
+  // check leaveDayKind themselves before asking this.
+  if (existing.leaveApplicationId != null) return true;
+  return incomingSource === 'biometric' && existing.source === 'manual';
+}
+
+/**
+ * A punch arrived on an approved leave day. Store it on the row for HR to
+ * decide (/approvals/workforce/leave-conflicts) — never applied silently.
+ * Returns true when a NEW conflict was recorded (caller notifies HR), false
+ * when the same punch pair was already stored, decided or not, so an
+ * 8-hourly re-sync never re-flags or re-notifies the same evidence. A
+ * genuinely different pair replaces the stored one and clears the decision.
+ */
+export async function recordLeaveConflict(
+  db: Db,
+  row: { id: number; leaveConflictInTime: Date | null; leaveConflictOutTime: Date | null },
+  incoming: { inTime: Date | null; outTime: Date | null; source: 'biometric' | 'manual' }
+): Promise<boolean> {
+  if (!incoming.inTime && !incoming.outTime) return false;
+  if (sameTime(row.leaveConflictInTime, incoming.inTime) && sameTime(row.leaveConflictOutTime, incoming.outTime)) return false;
+  await db.dailyAttendance.update({
+    where: { id: row.id },
+    data: {
+      leaveConflictInTime: incoming.inTime,
+      leaveConflictOutTime: incoming.outTime,
+      leaveConflictSource: incoming.source,
+      leaveConflictDecision: null,
+      leaveConflictDecidedAt: null,
+      leaveConflictDecidedByUserId: null,
+    },
+  });
+  return true;
 }
 
 /**
@@ -113,6 +196,10 @@ export async function upsertDailyAttendanceWithHistory(
   values: DailyAttendanceValues,
   actor: { userId: number | null; changedBySource: string }
 ): Promise<UpsertResult> {
+  const existing = await db.dailyAttendance.findUnique({
+    where: { employeeId_date: { employeeId, date } },
+  });
+
   // Auto-queue OT for approval the moment a write gives a day real OT
   // minutes — the OT Approval workflow (src/app/api/workforce/attendance/ot)
   // reads otApprovalStatus='pending_manager' as its queue, so every writer
@@ -122,32 +209,38 @@ export async function upsertDailyAttendanceWithHistory(
   // (its own decision) — that's the only case this must NOT override, hence
   // the `=== undefined` guard. Employees without JobInfo.overtimeAllowed
   // never queue at all: their calculated OT is informational only.
+  //
+  // Re-queue ONLY when the calculated minutes actually change. The device
+  // sync re-writes the same day every 8 hours; until 2026-09-25 each pass
+  // reset an approved day back to pending_manager and nulled the approved
+  // minutes (audit A2). Same minutes = same evidence = same decision.
   let resolvedValues = values;
   if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined) {
-    const otEligible = values.otMinutesCalculated > 0 && (await resolveOtEligibility(db, employeeId));
-    resolvedValues = { ...values, otApprovalStatus: otEligible ? 'pending_manager' : null, otMinutesApproved: null };
+    const otMinutesChanged = !existing || existing.otMinutesCalculated !== values.otMinutesCalculated;
+    if (otMinutesChanged) {
+      const otEligible = values.otMinutesCalculated > 0 && (await resolveOtEligibility(db, employeeId));
+      resolvedValues = { ...values, otApprovalStatus: otEligible ? 'pending_manager' : null, otMinutesApproved: null };
+    }
   }
 
   // Auto-queue LOM for approval when late/early-out minutes are written.
   // The LOM Approval workflow reads lomApprovalStatus='pending' as its
   // queue. Only queue when the writer doesn't explicitly set
   // lomApprovalStatus (the LOM approval route sets it explicitly) AND the
-  // patch actually carries late/early-out minutes. Writers that touch
-  // other fields only (OT approve, mispunch approve, leave cancel) must
-  // leave the key absent so HR's existing approved/rejected decision in
-  // the DB persists — previously they got 0 + 0 = 0 → status reset to
+  // patch actually carries late/early-out minutes that DIFFER from what is
+  // stored. Writers that touch other fields only (OT approve, leave cancel)
+  // must leave the key absent so HR's existing approved/rejected decision
+  // in the DB persists — previously they got 0 + 0 = 0 → status reset to
   // null, and payroll's fallback then deducted rejected minutes.
-  // (The OT block above already has the equivalent guard via
-  // `values.otMinutesCalculated !== undefined`.)
   const carriesLomMinutes = 'lateMinutes' in values || 'earlyOutMinutes' in values;
   if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes) {
-    const lomMinutes = (resolvedValues.lateMinutes ?? 0) + (resolvedValues.earlyOutMinutes ?? 0);
-    resolvedValues = { ...resolvedValues, lomApprovalStatus: lomMinutes > 0 ? 'pending' : null };
+    const nextLate = resolvedValues.lateMinutes ?? existing?.lateMinutes ?? 0;
+    const nextEarly = resolvedValues.earlyOutMinutes ?? existing?.earlyOutMinutes ?? 0;
+    const lomChanged = !existing || existing.lateMinutes !== nextLate || existing.earlyOutMinutes !== nextEarly;
+    if (lomChanged) {
+      resolvedValues = { ...resolvedValues, lomApprovalStatus: nextLate + nextEarly > 0 ? 'pending' : null };
+    }
   }
-
-  const existing = await db.dailyAttendance.findUnique({
-    where: { employeeId_date: { employeeId, date } },
-  });
 
   if (!existing) {
     await db.dailyAttendance.create({
@@ -169,6 +262,14 @@ export async function upsertDailyAttendanceWithHistory(
         source: resolvedValues.source ?? 'manual',
         remarks: resolvedValues.remarks ?? null,
         shiftMasterId: resolvedValues.shiftMasterId ?? null,
+        leaveApplicationId: resolvedValues.leaveApplicationId ?? null,
+        leaveDayKind: resolvedValues.leaveDayKind ?? null,
+        leaveConflictInTime: resolvedValues.leaveConflictInTime ?? null,
+        leaveConflictOutTime: resolvedValues.leaveConflictOutTime ?? null,
+        leaveConflictSource: resolvedValues.leaveConflictSource ?? null,
+        leaveConflictDecision: resolvedValues.leaveConflictDecision ?? null,
+        leaveConflictDecidedAt: resolvedValues.leaveConflictDecidedAt ?? null,
+        leaveConflictDecidedByUserId: resolvedValues.leaveConflictDecidedByUserId ?? null,
         createdByUserId: actor.userId,
       },
     });
@@ -196,6 +297,7 @@ export async function upsertDailyAttendanceWithHistory(
       isHolidayWorked: existing.isHolidayWorked,
       source: existing.source,
       remarks: existing.remarks,
+      leaveApplicationId: existing.leaveApplicationId,
       changedByUserId: actor.userId,
       changedBySource: actor.changedBySource,
     },

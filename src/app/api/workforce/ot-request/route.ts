@@ -27,6 +27,7 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { otRequestSchema } from '@/lib/validations/workforce';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -46,12 +47,15 @@ export async function GET(request: NextRequest) {
     if (!ownEmployeeId) {
       return NextResponse.json({ error: 'This login has no linked employee record' }, { status: 403 });
     }
-    const data = await prisma.oTRequest.findMany({
-      where: { employeeId: ownEmployeeId },
-      include,
-      orderBy: { appliedAt: 'desc' },
-    });
-    return NextResponse.json({ data });
+    const [data, jobInfo] = await Promise.all([
+      prisma.oTRequest.findMany({
+        where: { employeeId: ownEmployeeId },
+        include,
+        orderBy: { appliedAt: 'desc' },
+      }),
+      prisma.jobInfo.findFirst({ where: { employeeId: ownEmployeeId }, select: { overtimeAllowed: true } }),
+    ]);
+    return NextResponse.json({ data, overtimeAllowed: jobInfo?.overtimeAllowed ?? false });
   }
 
   if (scopeParam === 'manager') {
@@ -110,6 +114,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const freezeErr = await checkMonthNotFrozen(ownEmployeeId, parsed.data.date);
+  if (freezeErr) return freezeErr;
+
   // One open OT request per day — same guard Mis-Punch uses. Without it an
   // employee could stack several claims for the same date and whichever the
   // approver actioned last would silently be the one that landed.
@@ -144,7 +151,7 @@ export async function POST(request: NextRequest) {
     requestId: record.id,
     period: formatPeriod(record.date),
     reason: record.reason,
-    linkPath: '/ess/ot-request',
+    linkPath: '/approvals/workforce/overtime',
   });
 
   return NextResponse.json(record, { status: 201 });

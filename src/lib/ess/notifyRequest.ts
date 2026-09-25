@@ -26,7 +26,7 @@ export type EssRequestKind =
   | 'ON_DUTY'
   | 'VISITOR_PASS';
 
-export type EssRequestAction = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type EssRequestAction = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'CONFLICT' | 'CONFLICT_RESOLVED';
 
 export interface EssNotifyOptions {
   /**
@@ -95,4 +95,29 @@ export function formatPeriod(from: Date | string, to?: Date | string | null): st
   if (!to) return a;
   const b = fmt(to);
   return a === b ? a : `${a} – ${b}`;
+}
+
+/** A punch recorded on an approved leave day — what the HR queue needs to be told. */
+export interface LeaveConflictNotice {
+  employeeId: number;
+  date: Date;
+  leaveApplicationId: number;
+}
+
+/**
+ * Tell HR a punch landed on an approved leave day (event LEAVE_CONFLICT,
+ * recipients ROLE:hr-admin). Called by the sync / import paths AFTER their
+ * write loop, once per newly recorded conflict.
+ */
+export async function notifyLeaveConflict(companyId: number, c: LeaveConflictNotice): Promise<void> {
+  await notifyEssRequest({
+    companyId,
+    kind: 'LEAVE',
+    action: 'CONFLICT',
+    employeeId: c.employeeId,
+    requestId: c.leaveApplicationId,
+    period: formatPeriod(c.date),
+    reason: 'Attendance punched on an approved leave day',
+    linkPath: '/approvals/workforce/leave-conflicts',
+  });
 }

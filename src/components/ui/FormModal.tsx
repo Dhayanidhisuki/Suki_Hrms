@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Field, { FieldDef } from './Field';
 
 interface FormModalProps {
@@ -41,6 +41,7 @@ export default function FormModal({
   onFieldChange,
 }: FormModalProps) {
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
+  const valuesRef = useRef(values);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -58,8 +59,18 @@ export default function FormModal({
     [fields]
   );
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen && initialValues) {
+    // Reset only on the closed→open transition. `initialValues` is commonly
+    // passed as an inline object literal by callers, so it gets a new
+    // reference on every render of the caller — including ones triggered by
+    // this very modal's own onFieldChange callback updating the caller's
+    // state. Resetting on every such reference change would wipe out
+    // whatever the user just typed/selected while the modal stays open.
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (justOpened && initialValues) {
       // A field's defaultValue is a fallback for whatever the caller's
       // initialValues didn't set — most load-bearing for hidden fields
       // (e.g. an enum the UI no longer asks about), which would otherwise
@@ -70,7 +81,9 @@ export default function FormModal({
           seeded = { ...seeded, [f.name]: f.defaultValue };
         }
       }
-      setValues(applyComputedFields(seeded));
+      const finalSeeded = applyComputedFields(seeded);
+      valuesRef.current = finalSeeded;
+      setValues(finalSeeded);
       setErrors({});
       setSubmitError(null);
     }
@@ -79,11 +92,11 @@ export default function FormModal({
 
   const handleChange = useCallback(
     (name: string, value: string | number | boolean) => {
-      setValues((prev) => {
-        const merged = { ...prev, [name]: value };
-        const suggested = onFieldChange?.(name, value, merged);
-        return applyComputedFields(suggested ? { ...merged, ...suggested } : merged);
-      });
+      const merged = { ...valuesRef.current, [name]: value };
+      const suggested = onFieldChange?.(name, value, merged);
+      const next = applyComputedFields(suggested ? { ...merged, ...suggested } : merged);
+      valuesRef.current = next;
+      setValues(next);
       setErrors((prev) => ({ ...prev, [name]: '' }));
     },
     [applyComputedFields, onFieldChange]

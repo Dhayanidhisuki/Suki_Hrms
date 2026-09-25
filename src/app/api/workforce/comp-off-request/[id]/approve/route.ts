@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { creditCompOff } from '@/lib/compOffTransactions';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (req.status !== 'pending') {
     return NextResponse.json({ error: `Request is already ${req.status}` }, { status: 409 });
   }
+
+  // BRD §29: comp-off is frozen with the month it was earned in.
+  const freezeErr = await checkMonthNotFrozen(req.employeeId, req.workedDate);
+  if (freezeErr) return freezeErr;
 
   // Credit 1 comp-off day to the employee's leave balance
   await creditCompOff(req.employeeId, 1, req.requestedDate, 'COMP_OFF_REQUEST', reqId, `Comp-off request approved for working on ${req.workedDate.toISOString().slice(0, 10)}`);

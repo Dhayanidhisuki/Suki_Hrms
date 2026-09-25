@@ -21,6 +21,8 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isManagerOfAnyLevel } from '@/lib/reportingManager';
 import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
+import { findLinkedLeaveDates, linkedLeaveMessage } from '@/lib/leave/leaveDays';
+
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
@@ -72,6 +74,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const freezeErr = await checkMonthNotFrozen(record.employeeId, date);
       if (freezeErr) return freezeErr;
     }
+    const linked = await findLinkedLeaveDates(record.employeeId, dates);
+    if (linked.length > 0) return NextResponse.json({ error: linkedLeaveMessage(linked) }, { status: 409 });
 
     await prisma.$transaction(async (tx) => {
       for (const date of dates) {

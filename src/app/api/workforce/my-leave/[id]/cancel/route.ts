@@ -1,24 +1,17 @@
 /**
  * POST /api/workforce/my-leave/[id]/cancel
- *   The logged-in employee cancels one of their own leave applications.
- *   Cancellable from any non-terminal state (pending_manager, pending_hr)
- *   or from approved. Per BRD §11, "Cancelled leave shall restore the
- *   applicable balance" — if it was approved, reverses the LeaveBalance
- *   deduction and clears the "Leave" DailyAttendance rows this application
- *   created (same heuristic as the HR-side cancel route: no FK links a
- *   DailyAttendance row back to the application that created it in Phase 1,
- *   so a day manually re-marked to something else after approval is
- *   deliberately left alone).
+ *   The logged-in employee cancels one of their own leave applications —
+ *   pending (either stage) or approved. The work is in
+ *   src/lib/leave/cancel.ts, shared with the HR route: an approved leave's
+ *   days are restored to what the evidence says (never a blanket LOP) and
+ *   the balance still debited is refunded.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
-import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
-import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
-import { refreshMonthlySummary } from '@/lib/biometricConversion';
-
-const CANCELLABLE_STATUSES = ['pending_manager', 'pending_hr', 'approved'];
+import { cancelLeaveApplication } from '@/lib/leave/cancel';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -35,64 +28,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const application = await prisma.leaveApplication.findFirst({
     where: { id: applicationId, employeeId: ownEmployeeId },
+    include: { leaveMaster: { select: { code: true, isPaid: true } }, employee: { select: { companyId: true } } },
   });
   if (!application) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (!CANCELLABLE_STATUSES.includes(application.status)) {
-    return NextResponse.json({ error: `Cannot cancel a ${application.status} application` }, { status: 409 });
-  }
 
-  const wasApproved = application.status === 'approved';
-  const numberOfDays = Number(application.numberOfDays);
-  const year = application.fromDate.getUTCFullYear();
+  const result = await cancelLeaveApplication(application, application.employee.companyId, userId);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  if (wasApproved) {
-    const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
-    if (freezeErrFrom) return freezeErrFrom;
-    const freezeErrTo = await checkMonthNotFrozen(application.employeeId, application.toDate);
-    if (freezeErrTo) return freezeErrTo;
-  }
-
-  const touchedMonths = new Set<string>();
-
-  await prisma.$transaction(async (tx) => {
-    await tx.leaveApplication.update({
-      where: { id: applicationId },
-      data: { status: 'cancelled' },
-    });
-
-    if (wasApproved) {
-      await tx.leaveBalance.updateMany({
-        where: { employeeId: application.employeeId, leaveMasterId: application.leaveMasterId, year },
-        data: { availed: { decrement: numberOfDays }, closingBalance: { increment: numberOfDays } },
-      });
-
-      const leaveRows = await tx.dailyAttendance.findMany({
-        where: {
-          employeeId: application.employeeId,
-          date: { gte: application.fromDate, lte: application.toDate },
-          status: 'Leave',
-        },
-      });
-
-      for (const row of leaveRows) {
-        await upsertDailyAttendanceWithHistory(
-          tx,
-          application.employeeId,
-          row.date,
-          { status: 'LOP' },
-          { userId, changedBySource: 'manual' }
-        );
-        touchedMonths.add(`${row.date.getUTCFullYear()}-${row.date.getUTCMonth() + 1}`);
-      }
-    }
+  await notifyEssRequest({
+    companyId: application.employee.companyId,
+    kind: 'LEAVE',
+    action: 'CANCELLED',
+    employeeId: application.employeeId,
+    requestId: applicationId,
+    period: formatPeriod(application.fromDate, application.toDate),
+    linkPath: '/ess/leave',
   });
 
-  for (const key of touchedMonths) {
-    const [y, m] = key.split('-').map(Number);
-    await refreshMonthlySummary(application.employeeId, y, m);
-  }
-
-  return NextResponse.json({ message: 'Leave application cancelled' });
+  return NextResponse.json({ message: 'Leave application cancelled', ...result });
 }

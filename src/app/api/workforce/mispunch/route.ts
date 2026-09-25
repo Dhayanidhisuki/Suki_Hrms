@@ -21,6 +21,9 @@ import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { mispunchRequestSchema } from '@/lib/validations/workforce';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 import { getMispunchPolicy } from '@/lib/mispunchPolicy';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
+import { findLinkedLeaveDates, linkedLeaveMessage } from '@/lib/leave/leaveDays';
+
 
 const OPEN_OR_APPROVED = ['pending_manager', 'pending_hr', 'approved'] as const;
 
@@ -131,6 +134,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
 
+  // Locked month (frozen / handed to payroll / payroll processed): tell the
+  // employee now rather than let a request sit that HR can never approve.
+  const freezeErr = await checkMonthNotFrozen(ownEmployeeId, parsed.data.date);
+  if (freezeErr) return freezeErr;
+
+  // A full-day approved leave cannot be "corrected" into a worked day —
+  // that is a leave conflict for HR (or a leave cancel). Half-day leave is
+  // fine: the worked half may need its punch fixed.
+  const linked = await findLinkedLeaveDates(ownEmployeeId, [parsed.data.date], { allowHalf: true });
+  if (linked.length > 0) return NextResponse.json({ error: linkedLeaveMessage(linked) }, { status: 409 });
+
   const policy = await getMispunchPolicy(scope.companyId);
 
   // How far back this correction can be dated — configured in Masters, not hardcoded.
@@ -167,7 +181,7 @@ export async function POST(request: NextRequest) {
   });
   if (existing) {
     return NextResponse.json(
-      { error: `You already have a correction request for this date awaiting approval (#${existing.id}). Cancel or wait for it to be actioned before raising another.` },
+      { error: `You already have a correction request for this date awaiting approval (#${existing.id}). Withdraw it or wait for it to be actioned before raising another.` },
       { status: 409 }
     );
   }
@@ -189,7 +203,7 @@ export async function POST(request: NextRequest) {
     requestId: record.id,
     period: formatPeriod(record.date),
     reason: record.reason,
-    linkPath: '/ess/mispunch',
+    linkPath: '/approvals/workforce/mispunch',
   });
 
   return NextResponse.json(record, { status: 201 });

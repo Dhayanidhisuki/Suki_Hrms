@@ -21,7 +21,7 @@ export default function MispunchPolicyPage() {
             icon: <Fingerprint />,
             fields: [
               { name: 'maxBackdateDays', label: 'Max Back-dated Days', type: 'number', required: true, min: 0, defaultValue: 60, helpText: 'A correction cannot be requested for a date older than this many days.' },
-              { name: 'maxRequestsPerMonth', label: 'Max Requests Per Month', type: 'number', required: true, min: 0, defaultValue: 3, helpText: 'Hard cap on mis-punch requests an employee can submit in a calendar month.' },
+              { name: 'maxRequestsPerMonth', label: 'Max Requests Per Month', type: 'number', required: true, min: 0, defaultValue: 15, helpText: 'Hard cap on mis-punch requests an employee can submit in a calendar month.' },
               { name: 'isActive', label: 'Active', type: 'checkbox', defaultValue: true },
             ] as FieldDef[],
           },

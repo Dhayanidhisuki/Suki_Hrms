@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { resolveOwnEmployeeId, isReportingManagerOf } from '@/lib/reportingManager';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { refreshMonthlySummary } from '@/lib/biometricConversion';
 
 const bodySchema = z.object({
@@ -54,6 +55,11 @@ export async function POST(request: NextRequest) {
 
   for (const record of records) {
     try {
+      if (await checkMonthNotFrozen(record.employeeId, record.date)) {
+        results.push({ id: record.id, status: 'skipped', message: 'Month is locked' });
+        skipped++;
+        continue;
+      }
       if (record.otApprovalStatus === 'pending_manager') {
         if (!ownEmployeeId || !(await isReportingManagerOf(ownEmployeeId, record.employeeId))) {
           results.push({ id: record.id, status: 'skipped', message: 'Not the reporting manager' });

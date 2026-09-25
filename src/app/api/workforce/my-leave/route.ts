@@ -23,8 +23,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
-import { getCompOffBalance } from '@/lib/compOffTransactions';
 import { myLeaveApplicationSchema } from '@/lib/validations/workforce';
+import { validateLeaveSubmission, planSummary } from '@/lib/leave/submission';
+import { getCompOffBalance } from '@/lib/compOffTransactions';
+import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkRangeNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -102,50 +105,44 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
-  const { leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason } = parsed.data;
+  const { leaveMasterId, fromDate, toDate, isHalfDay, reason } = parsed.data;
 
-  if (toDate < fromDate) {
-    return NextResponse.json({ error: 'toDate cannot be before fromDate' }, { status: 400 });
-  }
+  const freezeErr = await checkRangeNotFrozen(ownEmployeeId, fromDate, isHalfDay ? fromDate : toDate);
+  if (freezeErr) return freezeErr;
 
-  const leaveMaster = await prisma.leaveMaster.findFirst({
-    where: { id: leaveMasterId, isActive: true, deletedAt: null },
-  });
-  if (!leaveMaster) {
-    return NextResponse.json({ error: 'Invalid or inactive leave type' }, { status: 400 });
-  }
+  const companyId = (await prisma.employee.findUnique({ where: { id: ownEmployeeId }, select: { companyId: true } }))?.companyId;
+  if (!companyId) return NextResponse.json({ error: 'Employee has no company' }, { status: 400 });
 
-  const year = fromDate.getUTCFullYear();
-
-  if (leaveMaster.code === 'COMPOFF') {
-    // No LeaveBalance row exists for this type — it draws from the comp-off
-    // ledger instead. Checked here so a shortfall is caught at submission,
-    // not silently accepted and only caught by checkSufficientBalance() at
-    // approval time.
-    const compOff = await getCompOffBalance(ownEmployeeId);
-    const available = Number(compOff.balance);
-    if (available < numberOfDays) {
-      return NextResponse.json(
-        { error: `Insufficient comp-off balance: ${available.toFixed(2)} day(s) available, ${numberOfDays} requested` },
-        { status: 400 }
-      );
-    }
-  } else {
-    const balance = await prisma.leaveBalance.findUnique({
-      where: { employeeId_leaveMasterId_year: { employeeId: ownEmployeeId, leaveMasterId, year } },
-    });
-    if (balance && Number(balance.closingBalance) < numberOfDays) {
-      return NextResponse.json(
-        { error: `Insufficient leave balance: ${balance.closingBalance} available, ${numberOfDays} requested` },
-        { status: 400 }
-      );
-    }
-  }
+  const checked = await validateLeaveSubmission({ companyId, employeeId: ownEmployeeId, leaveMasterId, fromDate, toDate, isHalfDay });
+  if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
 
   const record = await prisma.leaveApplication.create({
-    data: { employeeId: ownEmployeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason: reason ?? null, status: 'pending_manager' },
+    data: {
+      employeeId: ownEmployeeId,
+      leaveMasterId,
+      companyId,
+      fromDate: checked.fromDate,
+      toDate: checked.toDate,
+      numberOfDays: checked.plan.count,
+      calendarDays: checked.plan.calendarDays,
+      nonWorkingDaysCounted: checked.plan.nonWorkingCounted,
+      isHalfDay,
+      reason: reason ?? null,
+      status: 'pending_manager',
+    },
     include: { leaveMaster: { select: { code: true, name: true } } },
   });
 
-  return NextResponse.json(record, { status: 201 });
+  await notifyEssRequest({
+    companyId,
+    kind: 'LEAVE',
+    action: 'SUBMITTED',
+    employeeId: ownEmployeeId,
+    requestId: record.id,
+    period: formatPeriod(record.fromDate, record.toDate),
+    reason: reason ?? undefined,
+    linkPath: '/approvals/workforce/leave',
+  });
+
+  return NextResponse.json({ ...record, plan: planSummary(checked.plan) }, { status: 201 });
 }

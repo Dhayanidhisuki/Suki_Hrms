@@ -54,7 +54,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       requestId: mispunchId,
       period: formatPeriod(record.date),
       reason: parsed.data.rejectionReason,
-      linkPath: '/ess/mispunch',
+      linkPath: '/ess/mis-punch',
     });
 
     return NextResponse.json(updated);
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       requestId: mispunchId,
       period: formatPeriod(record.date),
       reason: parsed.data.rejectionReason,
-      linkPath: '/ess/mispunch',
+      linkPath: '/ess/mis-punch',
     });
 
     return NextResponse.json(updated);

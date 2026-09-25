@@ -15,8 +15,10 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId, findEmployeeInCompany } from '@/lib/companyScope';
 import { leaveApplicationSchema } from '@/lib/validations/workforce';
+import { validateLeaveSubmission, planSummary } from '@/lib/leave/submission';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { checkRangeNotFrozen } from '@/lib/attendanceFreeze';
 
 export async function GET(request: NextRequest) {
   const scope = getCompanyId(request);
@@ -93,37 +95,33 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  const { employeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason } = parsed.data;
-
-  if (toDate < fromDate) {
-    return NextResponse.json({ error: 'toDate cannot be before fromDate' }, { status: 400 });
-  }
+  const { employeeId, leaveMasterId, fromDate, toDate, isHalfDay, reason } = parsed.data;
 
   const employee = await findEmployeeInCompany(employeeId, scope.companyId);
   if (!employee) {
     return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
   }
 
-  const leaveMaster = await prisma.leaveMaster.findFirst({
-    where: { id: leaveMasterId, isActive: true, deletedAt: null },
-  });
-  if (!leaveMaster) {
-    return NextResponse.json({ error: 'Invalid or inactive leave type' }, { status: 400 });
-  }
+  const freezeErr = await checkRangeNotFrozen(employeeId, fromDate, isHalfDay ? fromDate : toDate);
+  if (freezeErr) return freezeErr;
 
-  const year = fromDate.getUTCFullYear();
-  const balance = await prisma.leaveBalance.findUnique({
-    where: { employeeId_leaveMasterId_year: { employeeId, leaveMasterId, year } },
-  });
-  if (balance && Number(balance.closingBalance) < numberOfDays) {
-    return NextResponse.json(
-      { error: `Insufficient leave balance: ${balance.closingBalance} available, ${numberOfDays} requested` },
-      { status: 400 }
-    );
-  }
+  const checked = await validateLeaveSubmission({ companyId: scope.companyId, employeeId, leaveMasterId, fromDate, toDate, isHalfDay });
+  if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
 
   const record = await prisma.leaveApplication.create({
-    data: { employeeId, leaveMasterId, fromDate, toDate, numberOfDays, isHalfDay, reason, status: 'pending_manager' },
+    data: {
+      employeeId,
+      leaveMasterId,
+      companyId: scope.companyId,
+      fromDate: checked.fromDate,
+      toDate: checked.toDate,
+      numberOfDays: checked.plan.count,
+      calendarDays: checked.plan.calendarDays,
+      nonWorkingDaysCounted: checked.plan.nonWorkingCounted,
+      isHalfDay,
+      reason,
+      status: 'pending_manager',
+    },
   });
 
   // Goes to the reporting manager, who has to act on it — not to the employee,
@@ -139,5 +137,5 @@ export async function POST(request: NextRequest) {
     linkPath: '/workforce/leave/approval',
   });
 
-  return NextResponse.json(record, { status: 201 });
+  return NextResponse.json({ ...record, plan: planSummary(checked.plan) }, { status: 201 });
 }

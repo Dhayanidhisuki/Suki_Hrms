@@ -106,6 +106,34 @@ for (const r of REQUESTS) {
   });
 }
 
+// Leave core (2026-09-25): a punch on an approved leave day goes to HR to
+// decide, and the employee is told the outcome. Neither fits the
+// submit → decide lifecycle above.
+EVENTS.push({
+  code: 'LEAVE_CONFLICT',
+  name: 'Attendance punched on an approved leave day',
+  moduleCode: 'LEAV',
+  category: 'TRANSACTIONAL',
+  defaultPriority: 'NORMAL',
+  defaultRecipients: 'ROLE:hr-admin',
+  contextSchemaJson: ctx,
+  link: '/approvals/workforce/leave-conflicts',
+  subject: 'Punch on approved leave — {{Employee.FullName|default:—}} ({{Request.Period|default:—}})',
+  body: `Dear {{Recipient.FirstName|default:Colleague}},\n\n{{Employee.FullName|default:An employee}} ({{Employee.Code|default:—}}) has attendance punched on {{Request.Period|default:—}}, a day covered by approved leave application #{{Request.Id|default:—}}.\n\nPlease decide whether the day counts as present (leave restored) or the leave stands: {{Link.RequestDetail}}` + SIGN,
+});
+EVENTS.push({
+  code: 'LEAVE_CONFLICT_RESOLVED',
+  name: 'Leave-day punch decided by HR',
+  moduleCode: 'LEAV',
+  category: 'TRANSACTIONAL',
+  defaultPriority: 'NORMAL',
+  defaultRecipients: 'SUBJECT_EMPLOYEE',
+  contextSchemaJson: ctx,
+  link: '/ess/leave',
+  subject: 'Your leave day on {{Request.Period|default:—}} has been reviewed',
+  body: `Dear {{Recipient.FirstName|default:Colleague}},\n\nHR has reviewed the attendance punched on {{Request.Period|default:—}}, a day covered by your leave application #{{Request.Id|default:—}}.\n\nOutcome: {{Request.Reason|default:—}}\n\nDetails: {{Link.RequestDetail}}` + SIGN,
+});
+
 // Payslip release is not a request — it has no approver and no outcome, so it
 // stands on its own rather than being forced into the lifecycle above.
 EVENTS.push({

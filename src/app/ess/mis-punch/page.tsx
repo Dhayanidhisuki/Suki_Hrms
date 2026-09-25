@@ -44,12 +44,14 @@ const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
   pending_hr: { bg: '#fef9c3', fg: '#854d0e' },
   approved: { bg: '#dcfce7', fg: '#166534' },
   rejected: { bg: '#fee2e2', fg: '#991b1b' },
+  cancelled: { bg: '#f3f4f6', fg: '#4b5563' },
 };
 const STATUS_LABEL: Record<string, string> = {
   pending_manager: 'Pending Manager',
   pending_hr: 'Pending HR',
   approved: 'Approved',
   rejected: 'Rejected',
+  cancelled: 'Withdrawn',
 };
 
 function formatWallClockTime(iso: string | null): string {
@@ -125,6 +127,20 @@ export default function MisPunchRequestsPage() {
     toast.success('Correction request submitted successfully.');
   };
 
+  // Withdraw a request still awaiting a decision — nothing has been written
+  // to attendance at that point, so it simply leaves the approval queues.
+  const handleWithdraw = async (id: number) => {
+    if (!window.confirm('Withdraw this correction request?')) return;
+    const res = await fetch(`/api/workforce/mispunch/${id}/cancel`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error ?? 'Could not withdraw the request');
+      return;
+    }
+    toast.success('Correction request withdrawn.');
+    fetchData();
+  };
+
   const columns: Column<MispunchRow>[] = [
     { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString() },
     { key: 'requestedInTime', label: 'Requested In', render: (r) => formatWallClockTime(r.requestedInTime) },
@@ -146,6 +162,16 @@ export default function MisPunchRequestsPage() {
       key: 'rejectionReason',
       label: 'Rejection Reason',
       render: (r) => r.managerRejectionReason ?? r.hrRejectionReason ?? '—',
+    },
+    {
+      key: 'actions',
+      label: '',
+      render: (r) =>
+        r.status === 'pending_manager' || r.status === 'pending_hr' ? (
+          <Button variant="secondary" size="sm" onClick={() => handleWithdraw(r.id)}>
+            Withdraw
+          </Button>
+        ) : null,
     },
   ];
 

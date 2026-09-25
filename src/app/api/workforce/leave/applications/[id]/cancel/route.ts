@@ -1,13 +1,12 @@
 /**
  * POST /api/workforce/leave/applications/[id]/cancel
  *
- * Cancellable from pending or approved. Per BRD §11, "Cancelled leave shall
- * restore the applicable balance" — if it was approved, reverses the
- * LeaveBalance deduction and clears the "Leave" DailyAttendance rows this
- * application created. (Heuristic: clears rows in [fromDate, toDate] that
- * are still status "Leave" — there's no FK linking a DailyAttendance row
- * back to the application that created it in Phase 1, so a day manually
- * re-marked to something else after approval is deliberately left alone.)
+ * HR cancels a leave application — pending (either stage) or approved. Per
+ * BRD §11, "Cancelled leave shall restore the applicable balance". The work
+ * is in src/lib/leave/cancel.ts, shared with the employee route: an
+ * approved leave's days (linked by leaveApplicationId) are restored to what
+ * the evidence says — punches, weekly off, holiday, else Absent — never a
+ * blanket LOP, and the balance still debited is refunded.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,10 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
-import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
-
-import { upsertDailyAttendanceWithHistory } from '@/lib/attendanceHistory';
-import { refreshMonthlySummary } from '@/lib/biometricConversion';
+import { cancelLeaveApplication } from '@/lib/leave/cancel';
 
 export async function POST(
   request: NextRequest,
@@ -30,68 +26,18 @@ export async function POST(
   if ('error' in scope) return scope.error;
   const { id } = await params;
   const applicationId = parseInt(id);
+  const userId = Number(request.headers.get('x-user-id')) || null;
 
   const application = await prisma.leaveApplication.findFirst({
     where: { id: applicationId, employee: { companyId: scope.companyId, deletedAt: null } },
+    include: { leaveMaster: { select: { code: true, isPaid: true } } },
   });
   if (!application) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (application.status !== 'pending' && application.status !== 'approved') {
-    return NextResponse.json({ error: `Cannot cancel a ${application.status} application` }, { status: 409 });
-  }
 
-  const wasApproved = application.status === 'approved';
-  const numberOfDays = Number(application.numberOfDays);
-  const year = application.fromDate.getUTCFullYear();
-  const userId = Number(request.headers.get('x-user-id'));
-
-  if (wasApproved) {
-    const freezeErrFrom = await checkMonthNotFrozen(application.employeeId, application.fromDate);
-    if (freezeErrFrom) return freezeErrFrom;
-    const freezeErrTo = await checkMonthNotFrozen(application.employeeId, application.toDate);
-    if (freezeErrTo) return freezeErrTo;
-  }
-
-  const touchedMonths = new Set<string>();
-
-  await prisma.$transaction(async (tx) => {
-    await tx.leaveApplication.update({
-      where: { id: applicationId },
-      data: { status: 'cancelled' },
-    });
-
-    if (wasApproved) {
-      await tx.leaveBalance.updateMany({
-        where: { employeeId: application.employeeId, leaveMasterId: application.leaveMasterId, year },
-        data: { availed: { decrement: numberOfDays }, closingBalance: { increment: numberOfDays } },
-      });
-
-      const leaveRows = await tx.dailyAttendance.findMany({
-        where: {
-          employeeId: application.employeeId,
-          date: { gte: application.fromDate, lte: application.toDate },
-          status: 'Leave',
-        },
-      });
-
-      for (const row of leaveRows) {
-        await upsertDailyAttendanceWithHistory(
-          tx,
-          application.employeeId,
-          row.date,
-          { status: 'LOP' },
-          { userId, changedBySource: 'manual' }
-        );
-        touchedMonths.add(`${row.date.getUTCFullYear()}-${row.date.getUTCMonth() + 1}`);
-      }
-    }
-  });
-
-  for (const key of touchedMonths) {
-    const [y, m] = key.split('-').map(Number);
-    await refreshMonthlySummary(application.employeeId, y, m);
-  }
+  const result = await cancelLeaveApplication(application, scope.companyId, userId);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
   // After the transaction commits, never inside it: a notification must not
   // hold a database transaction open, nor be sent for work that rolled back.
@@ -105,6 +51,5 @@ export async function POST(
     linkPath: '/ess/leave',
   });
 
-
-  return NextResponse.json({ message: 'Leave application cancelled' });
+  return NextResponse.json({ message: 'Leave application cancelled', ...result });
 }

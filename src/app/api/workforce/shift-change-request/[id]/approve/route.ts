@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
+import { checkMonthNotFrozen } from '@/lib/attendanceFreeze';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (req.status !== 'pending') {
     return NextResponse.json({ error: `Request is already ${req.status}` }, { status: 409 });
   }
+
+  // The override changes which shift the day is measured against (late,
+  // early-out, OT) — a locked month cannot take one.
+  const freezeErr = await checkMonthNotFrozen(req.employeeId, req.requestedDate);
+  if (freezeErr) return freezeErr;
 
   // Load the approval chain for SHIFT_CHANGE
   const chainConfigs = await prisma.approvalChainConfig.findMany({
