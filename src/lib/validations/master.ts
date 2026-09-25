@@ -471,6 +471,12 @@ export const compOffPolicySchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const mispunchPolicySchema = z.object({
+  maxBackdateDays: z.coerce.number().int().min(0).default(60),
+  maxRequestsPerMonth: z.coerce.number().int().min(0).default(3),
+  isActive: z.boolean().default(true),
+});
+
 export const otIncentiveSlabSchema = z.object({
   code: z.string().min(1).max(20),
   name: z.string().min(1).max(100),

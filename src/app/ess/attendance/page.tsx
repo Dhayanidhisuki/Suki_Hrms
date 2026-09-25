@@ -284,7 +284,7 @@ export default function EssAttendancePage() {
       const exportData = days.map((d) => ({
         Date: new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }),
         Status: d.status,
-        Shift: d.shiftMaster?.code ?? '—',
+        Shift: d.shiftMaster?.code ?? 'General',
         'In Time': d.inTime ? wallClock(d.inTime) : '—',
         'Out Time': d.outTime ? wallClock(d.outTime) : '—',
         'Working Hrs': d.workingMinutes > 0 ? hm(d.workingMinutes) : '—',
@@ -620,7 +620,7 @@ export default function EssAttendancePage() {
                       <td className="px-4 py-2">
                         <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: meta.bg, color: meta.fg }}>{meta.label}</span>
                       </td>
-                      <td className="px-4 py-2" style={{ color: 'var(--text-muted)' }}>{d.shiftMaster?.code ?? '—'}</td>
+                      <td className="px-4 py-2" style={{ color: 'var(--text-muted)' }}>{d.shiftMaster?.code ?? 'General'}</td>
                       <td className="px-4 py-2" style={{ color: 'var(--text-primary)' }}>{wallClock(d.inTime)}</td>
                       <td className="px-4 py-2" style={{ color: 'var(--text-primary)' }}>{wallClock(d.outTime)}</td>
                       <td className="px-4 py-2" style={{ color: 'var(--text-primary)' }}>{d.workingMinutes > 0 ? hm(d.workingMinutes) : '—'}</td>
@@ -649,7 +649,7 @@ export default function EssAttendancePage() {
               const row = dayByDate.get(dateStr);
               const isToday = dateStr === todayStr;
               const meta = resolveDayMeta(dateStr, row, wfhRanges, pendingLeave);
-              const shiftLabel = row?.shiftMaster?.name ?? null;
+              const shiftLabel = row ? (row.shiftMaster?.name ?? 'General') : null;
 
               return (
                 <div key={i} className="min-h-[92px] p-2" style={{ backgroundColor: 'var(--bg-card)' }}>

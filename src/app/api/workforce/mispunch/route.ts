@@ -20,6 +20,18 @@ import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
 import { mispunchRequestSchema } from '@/lib/validations/workforce';
 import { notifyEssRequest, formatPeriod } from '@/lib/ess/notifyRequest';
+import { getMispunchPolicy } from '@/lib/mispunchPolicy';
+
+const OPEN_OR_APPROVED = ['pending_manager', 'pending_hr', 'approved'] as const;
+
+/** How many mis-punch requests this employee has already used for the calendar month `on` falls in. */
+async function countUsedForMonth(employeeId: number, on: Date): Promise<number> {
+  const monthStart = new Date(Date.UTC(on.getUTCFullYear(), on.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(on.getUTCFullYear(), on.getUTCMonth() + 1, 1));
+  return prisma.mispunchCorrection.count({
+    where: { employeeId, date: { gte: monthStart, lt: monthEnd }, status: { in: [...OPEN_OR_APPROVED] } },
+  });
+}
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -44,7 +56,17 @@ export async function GET(request: NextRequest) {
       include,
       orderBy: { appliedAt: 'desc' },
     });
-    return NextResponse.json({ data });
+    const policy = await getMispunchPolicy(scope.companyId);
+    const usedCount = await countUsedForMonth(ownEmployeeId, new Date());
+    return NextResponse.json({
+      data,
+      policy: {
+        maxBackdateDays: policy.maxBackdateDays,
+        maxRequestsPerMonth: policy.maxRequestsPerMonth,
+        usedCount,
+        remainingCount: Math.max(0, policy.maxRequestsPerMonth - usedCount),
+      },
+    });
   }
 
   if (scopeParam === 'manager') {
@@ -96,6 +118,8 @@ export async function POST(request: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized — authentication required' }, { status: 401 });
   }
+  const scope = getCompanyId(request);
+  if ('error' in scope) return scope.error;
 
   const ownEmployeeId = await resolveOwnEmployeeId(userId);
   if (!ownEmployeeId) {
@@ -105,6 +129,29 @@ export async function POST(request: NextRequest) {
   const parsed = mispunchRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const policy = await getMispunchPolicy(scope.companyId);
+
+  // How far back this correction can be dated — configured in Masters, not hardcoded.
+  const today = new Date();
+  const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const reqUTC = Date.UTC(parsed.data.date.getUTCFullYear(), parsed.data.date.getUTCMonth(), parsed.data.date.getUTCDate());
+  const daysBack = Math.round((todayUTC - reqUTC) / 86_400_000);
+  if (daysBack > policy.maxBackdateDays) {
+    return NextResponse.json(
+      { error: `Cannot request a correction more than ${policy.maxBackdateDays} days in the past.` },
+      { status: 400 }
+    );
+  }
+
+  // Hard cap on requests per calendar month (the month the requested date falls in).
+  const usedThisMonth = await countUsedForMonth(ownEmployeeId, parsed.data.date);
+  if (usedThisMonth >= policy.maxRequestsPerMonth) {
+    return NextResponse.json(
+      { error: `You've reached your limit of ${policy.maxRequestsPerMonth} mis-punch requests for this month.` },
+      { status: 400 }
+    );
   }
 
   // One open correction per day. Without this an employee could stack several

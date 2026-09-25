@@ -141,6 +141,7 @@ export const navigation: NavModule[] = [
           { label: "Holiday Master", href: "/masters/holidays", ready: true },
           { label: "Attendance Policy", href: "/masters/attendance-policy", ready: true },
           { label: "Comp-Off Policy", href: "/masters/comp-off-policy", ready: true },
+          { label: "Mis-Punch Policy", href: "/masters/mispunch-policy", ready: true },
         ],
       },
       {

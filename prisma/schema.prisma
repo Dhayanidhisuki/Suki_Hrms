@@ -276,6 +276,7 @@ model Company {
   payrollWorkflowConfig      PayrollWorkflowConfig?
   payrollDisplayConfig       PayrollDisplayConfig?
   compOffPolicy              CompOffPolicy?
+  mispunchPolicy             MispunchPolicy?
   otIncentiveSlabs           OTIncentiveSlab[]
   attendanceBonusConfig      AttendanceBonusConfig?
   lwfRates                   LwfRate[]
@@ -2845,6 +2846,23 @@ model CompOffPolicy {
   company Company @relation(fields: [companyId], references: [id])
 
   @@map("CompOffPolicy")
+}
+
+// How far back a mis-punch (biometric correction) request can be dated, and
+// how many an employee may file in a calendar month. Company-scoped
+// singleton, same shape as CompOffPolicy.
+model MispunchPolicy {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int      @unique
+  maxBackdateDays     Int      @default(60)
+  maxRequestsPerMonth Int      @default(3)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("MispunchPolicy")
 }
 
 // Per-employee comp-off balance — one row per employee. Updated by
@@ -5647,6 +5665,14 @@ model Announcement {
   // Optional end of relevance; past this the item drops off the ESS list but
   // stays readable in the HR archive.
   expiresAt   DateTime?
+
+  // null = every active employee of the company (unchanged default behavior).
+  // Otherwise one of DEPARTMENT | SUB_DEPARTMENT | DESIGNATION | EMPLOYEE_TYPE
+  // | UNIT, matched against that master's `code` in audienceScopeValues.
+  audienceScopeType   String? @db.NVarChar(20)
+  // Comma list of the target master's `code` values; only meaningful when
+  // audienceScopeType is set.
+  audienceScopeValues String? @db.NVarChar(2000)
 
   createdByUserId   Int?
   publishedByUserId Int?

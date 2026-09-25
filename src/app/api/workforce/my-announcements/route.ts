@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCompanyId } from '@/lib/companyScope';
 import { resolveOwnEmployeeId } from '@/lib/reportingManager';
+import { parseScopeValues, type AnnouncementAudienceScopeType } from '@/lib/employee/scope';
 
 export async function GET(request: NextRequest) {
   const userId = Number(request.headers.get('x-user-id'));
@@ -47,6 +48,8 @@ export async function GET(request: NextRequest) {
       priority: true,
       publishedAt: true,
       expiresAt: true,
+      audienceScopeType: true,
+      audienceScopeValues: true,
       // -1 never matches a real employee id, so a login without an employee
       // record simply comes back with no receipts rather than needing a
       // second query shape.
@@ -54,7 +57,48 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const data = rows.map(({ reads, ...a }) => ({ ...a, readAt: reads[0]?.readAt ?? null }));
+  // An announcement targeting a specific department/designation/etc. only
+  // reaches employees whose current job info matches it; a login with no
+  // linked Employee row (ownEmployeeId === null) has nothing to match against,
+  // so it only sees untargeted (company-wide) announcements — same as today.
+  const myScopeCodes: Partial<Record<AnnouncementAudienceScopeType, string>> = {};
+  if (ownEmployeeId) {
+    const jobInfo = await prisma.jobInfo.findFirst({
+      where: { employeeId: ownEmployeeId, effectiveTo: null },
+      select: {
+        department: { select: { code: true } },
+        subDepartment: { select: { code: true } },
+        designation: { select: { code: true } },
+        employeeType: { select: { code: true } },
+        unit: { select: { code: true } },
+      },
+    });
+    if (jobInfo) {
+      if (jobInfo.department?.code) myScopeCodes.DEPARTMENT = jobInfo.department.code;
+      if (jobInfo.subDepartment?.code) myScopeCodes.SUB_DEPARTMENT = jobInfo.subDepartment.code;
+      if (jobInfo.designation?.code) myScopeCodes.DESIGNATION = jobInfo.designation.code;
+      if (jobInfo.employeeType?.code) myScopeCodes.EMPLOYEE_TYPE = jobInfo.employeeType.code;
+      if (jobInfo.unit?.code) myScopeCodes.UNIT = jobInfo.unit.code;
+    }
+  }
+
+  const data = rows
+    .filter((r) => {
+      if (!r.audienceScopeType) return true;
+      const myCode = myScopeCodes[r.audienceScopeType as AnnouncementAudienceScopeType];
+      if (!myCode) return false;
+      return parseScopeValues(r.audienceScopeValues).includes(myCode);
+    })
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      body: r.body,
+      category: r.category,
+      priority: r.priority,
+      publishedAt: r.publishedAt,
+      expiresAt: r.expiresAt,
+      readAt: r.reads[0]?.readAt ?? null,
+    }));
 
   // IMPORTANT items sort above NORMAL ones; within a band the newest wins
   // (the query already ordered by publishedAt, so this is a stable partition).

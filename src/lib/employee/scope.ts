@@ -174,6 +174,37 @@ export async function visibleEmployeeWhere(
   return { OR: fragments };
 }
 
+export type AnnouncementAudienceScopeType = 'DEPARTMENT' | 'SUB_DEPARTMENT' | 'DESIGNATION' | 'EMPLOYEE_TYPE' | 'UNIT';
+
+/**
+ * Prisma `where` fragment for `Employee`, restricting to an Announcement's
+ * target audience. `null` scopeType means "everyone" — callers should treat a
+ * `null` return as "no extra restriction", not "nobody".
+ */
+export function announcementAudienceEmployeeWhere(
+  scopeType: string | null | undefined,
+  scopeValues: string | null | undefined
+): Prisma.EmployeeWhereInput | null {
+  if (!scopeType) return null;
+  const values = parseScopeValues(scopeValues);
+  if (values.length === 0) return null;
+
+  switch (scopeType as AnnouncementAudienceScopeType) {
+    case 'DEPARTMENT':
+      return { jobInfos: { some: { effectiveTo: null, department: { code: { in: values } } } } };
+    case 'SUB_DEPARTMENT':
+      return { jobInfos: { some: { effectiveTo: null, subDepartment: { code: { in: values } } } } };
+    case 'DESIGNATION':
+      return { jobInfos: { some: { effectiveTo: null, designation: { code: { in: values } } } } };
+    case 'EMPLOYEE_TYPE':
+      return { jobInfos: { some: { effectiveTo: null, employeeType: { code: { in: values } } } } };
+    case 'UNIT':
+      return { jobInfos: { some: { effectiveTo: null, unit: { code: { in: values } } } } };
+    default:
+      return null;
+  }
+}
+
 /** True when the employee is inside the user's visible set (direct navigation check, §20.3 rule 5). */
 export async function canSeeEmployee(
   userId: number,

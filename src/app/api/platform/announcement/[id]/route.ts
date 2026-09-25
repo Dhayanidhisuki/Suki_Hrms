@@ -10,6 +10,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { audit } from '@/lib/platform/audit/service';
 import { announcementUpdateSchema } from '@/lib/validations/platform-announcement';
+import { announcementAudienceEmployeeWhere } from '@/lib/employee/scope';
 
 /** Company-scoped lookup — a bare id from the URL is never trusted. */
 async function findInCompany(id: number, companyId: number) {
@@ -34,17 +35,31 @@ export async function GET(
     orderBy: { readAt: 'desc' },
     select: {
       readAt: true,
-      employee: { select: { employeeCode: true, firstName: true, lastName: true } },
+      employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
     },
   });
+
+  // Who this announcement's audience is (scoped, or every active employee
+  // when untargeted), minus whoever already has a read receipt.
+  const scopeWhere = announcementAudienceEmployeeWhere(row.audienceScopeType, row.audienceScopeValues);
+  const audience = await prisma.employee.findMany({
+    where: { companyId: scope.companyId, deletedAt: null, isActive: true, ...(scopeWhere ?? {}) },
+    select: { id: true, employeeCode: true, firstName: true, lastName: true },
+  });
+  const readIds = new Set(reads.map((r) => r.employee.id));
+  const notRead = audience
+    .filter((e) => !readIds.has(e.id))
+    .map((e) => ({ employeeId: e.id, employeeCode: e.employeeCode, name: [e.firstName, e.lastName].filter(Boolean).join(' ') }));
 
   return NextResponse.json({
     ...row,
     reads: reads.map((r) => ({
+      employeeId: r.employee.id,
       readAt: r.readAt,
       employeeCode: r.employee.employeeCode,
       name: [r.employee.firstName, r.employee.lastName].filter(Boolean).join(' '),
     })),
+    notRead,
   });
 }
 
@@ -78,12 +93,15 @@ export async function PUT(
     );
   }
 
-  const { expiresAt, ...rest } = parsed.data;
+  const { expiresAt, audienceScopeValues, ...rest } = parsed.data;
   const updated = await prisma.announcement.update({
     where: { id },
     data: {
       ...rest,
       ...(expiresAt !== undefined ? { expiresAt: expiresAt ? new Date(expiresAt) : null } : {}),
+      ...(audienceScopeValues !== undefined
+        ? { audienceScopeValues: audienceScopeValues.length ? audienceScopeValues.join(',') : null }
+        : {}),
     },
   });
 

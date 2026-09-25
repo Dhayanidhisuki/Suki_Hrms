@@ -10,7 +10,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DataTable, Button, PageBreadcrumb, useToast, type Column } from '@/components/ui';
+import { DataTable, Button, GaugeCard, PageBreadcrumb, useToast, type Column } from '@/components/ui';
 
 interface MispunchRow {
   id: number;
@@ -30,6 +30,13 @@ interface RecordedDay {
   status: string;
   inTime: string | null;
   outTime: string | null;
+}
+
+interface MispunchPolicySummary {
+  maxBackdateDays: number;
+  maxRequestsPerMonth: number;
+  usedCount: number;
+  remainingCount: number;
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
@@ -71,6 +78,7 @@ function toTimeInput(iso: string | null): string {
 
 export default function MisPunchRequestsPage() {
   const [records, setRecords] = useState<MispunchRow[]>([]);
+  const [policy, setPolicy] = useState<MispunchPolicySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const toast = useToast();
@@ -80,8 +88,9 @@ export default function MisPunchRequestsPage() {
     try {
       const res = await fetch('/api/workforce/mispunch?scope=mine');
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to fetch');
-      const json: { data: MispunchRow[] } = await res.json();
+      const json: { data: MispunchRow[]; policy?: MispunchPolicySummary } = await res.json();
       setRecords(json.data);
+      setPolicy(json.policy ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -150,16 +159,52 @@ export default function MisPunchRequestsPage() {
         </p>
       </div>
 
+      {policy && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <GaugeCard
+            label="Mis-Punch Requests This Month"
+            value={policy.remainingCount}
+            max={policy.maxRequestsPerMonth}
+            deltaPct={null}
+            tone="var(--info)"
+          />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Monthly Limit</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{policy.maxRequestsPerMonth}</div>
+            </div>
+            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Used</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{policy.usedCount}</div>
+            </div>
+            <div
+              className="rounded-2xl border p-4"
+              style={{ borderColor: policy.remainingCount > 0 ? 'var(--border-main)' : '#fcd34d', backgroundColor: 'var(--bg-card)' }}
+            >
+              <div className="text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Remaining</div>
+              <div className="mt-1 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{policy.remainingCount}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-main)', backgroundColor: 'var(--bg-card)' }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>My Requests</h2>
-          <Button variant="primary" onClick={() => setModalOpen(true)}>Submit Request</Button>
+          <Button
+            variant="primary"
+            onClick={() => setModalOpen(true)}
+            disabled={policy?.remainingCount === 0}
+            title={policy?.remainingCount === 0 ? `You've reached your limit of ${policy.maxRequestsPerMonth} requests this month.` : undefined}
+          >
+            Submit Request
+          </Button>
         </div>
 
         <DataTable variant="card" columns={columns} data={records} loading={loading} emptyMessage="No mis-punch requests yet." />
       </div>
 
-      <MisPunchModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />
+      <MisPunchModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleSubmit} maxBackdateDays={policy?.maxBackdateDays ?? 60} />
     </div>
   );
 }
@@ -170,10 +215,12 @@ function MisPunchModal({
   isOpen,
   onClose,
   onSubmit,
+  maxBackdateDays,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (form: typeof EMPTY_FORM) => Promise<void>;
+  maxBackdateDays: number;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [recorded, setRecorded] = useState<RecordedDay | null>(null);
@@ -243,6 +290,14 @@ function MisPunchModal({
       toast.error('Cannot request a correction for a future date.');
       return;
     }
+    const [y, m, d] = form.date.split('-').map(Number);
+    const pickedUTC = Date.UTC(y, m - 1, d);
+    const todayUTC = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate());
+    const daysBack = Math.round((todayUTC - pickedUTC) / 86_400_000);
+    if (daysBack > maxBackdateDays) {
+      toast.error(`Cannot request a correction more than ${maxBackdateDays} days in the past.`);
+      return;
+    }
     setSubmitting(true);
     try {
       await onSubmit(form);
@@ -296,6 +351,9 @@ function MisPunchModal({
               className="w-full rounded-lg border px-3 py-2 text-sm"
               style={inputStyle}
             />
+            <p className="mt-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              Corrections can be requested up to {maxBackdateDays} days back.
+            </p>
           </div>
 
           {(lookingUp || lookedUp) && (

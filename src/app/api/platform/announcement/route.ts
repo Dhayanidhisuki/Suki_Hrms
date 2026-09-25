@@ -12,6 +12,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { audit } from '@/lib/platform/audit/service';
 import { announcementCreateSchema } from '@/lib/validations/platform-announcement';
+import { announcementAudienceEmployeeWhere } from '@/lib/employee/scope';
 
 export async function GET(request: NextRequest) {
   const permErr = await checkSpecificPermission(request, 'platform.announcement.view');
@@ -19,39 +20,59 @@ export async function GET(request: NextRequest) {
   const scope = getCompanyId(request);
   if ('error' in scope) return scope.error;
 
-  const status = request.nextUrl.searchParams.get('status');
+  const { searchParams } = request.nextUrl;
+  const page = parseInt(searchParams.get('page') ?? '1');
+  const limit = parseInt(searchParams.get('limit') ?? '20');
+  const status = searchParams.get('status');
+  const category = searchParams.get('category');
+  const search = searchParams.get('search') ?? '';
 
-  const rows = await prisma.announcement.findMany({
-    where: {
-      companyId: scope.companyId,
-      deletedAt: null,
-      ...(status ? { status } : {}),
-    },
-    orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-    select: {
-      id: true,
-      title: true,
-      body: true,
-      category: true,
-      priority: true,
-      status: true,
-      publishedAt: true,
-      expiresAt: true,
-      createdAt: true,
-      _count: { select: { reads: true } },
-    },
-  });
+  const where = {
+    companyId: scope.companyId,
+    deletedAt: null,
+    ...(status ? { status } : {}),
+    ...(category ? { category } : {}),
+    ...(search ? { title: { contains: search } } : {}),
+  };
 
-  // How many employees a published item is measured against, so the HR list can
-  // show "7 of 18 read" rather than a bare receipt count.
-  const audienceSize = await prisma.employee.count({
-    where: { companyId: scope.companyId, deletedAt: null, isActive: true },
-  });
+  const [rows, total] = await Promise.all([
+    prisma.announcement.findMany({
+      where,
+      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        category: true,
+        priority: true,
+        status: true,
+        publishedAt: true,
+        expiresAt: true,
+        createdAt: true,
+        audienceScopeType: true,
+        audienceScopeValues: true,
+        _count: { select: { reads: true } },
+      },
+    }),
+    prisma.announcement.count({ where }),
+  ]);
 
-  return NextResponse.json({
-    data: rows.map(({ _count, ...a }) => ({ ...a, readCount: _count.reads })),
-    audienceSize,
-  });
+  // How many employees each row is measured against, so the HR list can show
+  // "7 of 18 read" — scoped to that row's target audience when it has one,
+  // otherwise every active employee of the company.
+  const data = await Promise.all(
+    rows.map(async ({ _count, audienceScopeType, audienceScopeValues, ...a }) => {
+      const scopeWhere = announcementAudienceEmployeeWhere(audienceScopeType, audienceScopeValues);
+      const audienceSize = await prisma.employee.count({
+        where: { companyId: scope.companyId, deletedAt: null, isActive: true, ...(scopeWhere ?? {}) },
+      });
+      return { ...a, audienceScopeType, audienceScopeValues, readCount: _count.reads, audienceSize };
+    })
+  );
+
+  return NextResponse.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 }
 
 export async function POST(request: NextRequest) {
@@ -79,6 +100,8 @@ export async function POST(request: NextRequest) {
       priority: parsed.data.priority,
       status: 'DRAFT',
       expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+      audienceScopeType: parsed.data.audienceScopeType ?? null,
+      audienceScopeValues: parsed.data.audienceScopeValues?.length ? parsed.data.audienceScopeValues.join(',') : null,
       createdByUserId: userId,
     },
   });

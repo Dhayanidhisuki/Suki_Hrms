@@ -204,7 +204,7 @@ export default function DailyAttendancePage() {
 
   const columns: Column<AttendanceRow>[] = [
     { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
-    { key: 'shiftMaster', label: 'Shift', render: (r) => r.shiftMaster?.code ?? '—' },
+    { key: 'shiftMaster', label: 'Shift', render: (r) => r.shiftMaster?.code ?? 'General' },
     { key: 'status', label: 'Status' },
     { key: 'inTime', label: 'In', render: (r) => formatWallClockTime(r.inTime) },
     { key: 'outTime', label: 'Out', render: (r) => formatWallClockTime(r.outTime) },

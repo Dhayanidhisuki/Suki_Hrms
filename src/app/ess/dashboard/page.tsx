@@ -102,6 +102,15 @@ interface DashboardPayload {
   latestPayslip: { id: number; netSalary: string; payrollRun: { year: number; month: number } } | null;
 }
 
+interface AnnouncementItem {
+  id: number;
+  title: string;
+  category: string;
+  priority: string;
+  publishedAt: string | null;
+  readAt: string | null;
+}
+
 // ── Attendance flag colours (matches the reference legend) ────────────────────
 
 /** "2.5h", "4h" — trailing zeros are noise on a dashboard tile. */
@@ -228,6 +237,8 @@ export default function EssDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [entryTab, setEntryTab] = useState<'missing' | 'absent'>('missing');
   const [reqTab, setReqTab] = useState<'requests' | 'approvals'>('requests');
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [announcementsUnread, setAnnouncementsUnread] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -249,6 +260,19 @@ export default function EssDashboardPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => { if (!cancelled && json) setFlagData(json); })
       .catch(() => { if (!cancelled) toast.error('Failed to load attendance flags.'); });
+    return () => { cancelled = true; };
+  }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/workforce/my-announcements')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        setAnnouncements((json.data ?? []).slice(0, 5));
+        setAnnouncementsUnread(json.unreadCount ?? 0);
+      })
+      .catch(() => { if (!cancelled) toast.error('Failed to load announcements.'); });
     return () => { cancelled = true; };
   }, [toast]);
 
@@ -986,6 +1010,50 @@ export default function EssDashboardPage() {
               </Link>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Announcements */}
+      <div className={card}>
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-bold" style={fg}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--info)" strokeWidth="2" strokeLinecap="round"><path d="M3 11v3a1 1 0 0 0 1 1h1l3 4v-4h9a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v0" /></svg>
+            Announcements
+            {announcementsUnread > 0 && (
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: 'var(--danger)' }}>
+                {announcementsUnread} unread
+              </span>
+            )}
+          </h3>
+          <Link href="/ess/announcements" className="text-xs font-semibold" style={{ color: 'var(--info)' }}>
+            View all
+          </Link>
+        </div>
+        <div className="mt-4 space-y-2">
+          {announcements.length === 0 ? (
+            <p className="py-6 text-center text-xs" style={muted}>No announcements right now.</p>
+          ) : (
+            announcements.map((a) => (
+              <Link
+                key={a.id}
+                href={`/ess/announcements?id=${a.id}`}
+                className="flex items-center gap-3 rounded-xl border px-3 py-2.5 transition hover:border-[color:var(--info)]"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                {!a.readAt && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: 'var(--info)' }} />}
+                <span className="min-w-0 flex-1 truncate text-[13px]" style={fg}>{a.title}</span>
+                {a.priority === 'IMPORTANT' && (
+                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: '#fee2e2', color: '#b91c1c' }}>
+                    IMPORTANT
+                  </span>
+                )}
+                <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'var(--surface-muted)', color: 'var(--foreground-muted)' }}>
+                  {a.category}
+                </span>
+                <span className="shrink-0 text-[11px]" style={muted}>{fmtDate(a.publishedAt)}</span>
+              </Link>
+            ))
+          )}
         </div>
       </div>
     </div>

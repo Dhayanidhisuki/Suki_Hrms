@@ -14,6 +14,7 @@ import { checkSpecificPermission } from '@/lib/rbac-employee';
 import { getCompanyId } from '@/lib/companyScope';
 import { audit } from '@/lib/platform/audit/service';
 import { notify } from '@/lib/platform/notification/service';
+import { announcementAudienceEmployeeWhere } from '@/lib/employee/scope';
 
 export async function POST(
   request: NextRequest,
@@ -51,13 +52,22 @@ export async function POST(
     after: published,
   });
 
-  // Audience: every active employee in the company that has a login to receive
-  // it. An employee with no user account has nowhere to show a bell, so they
-  // are skipped here and simply see the item next time they are given one.
+  // Audience: every active employee in the company (or, when this announcement
+  // targets a specific department/designation/etc., just that subset) that has
+  // a login to receive it. An employee with no user account has nowhere to
+  // show a bell, so they are skipped here and simply see the item next time
+  // they are given one.
   let notified = 0;
   try {
+    const scopeWhere = announcementAudienceEmployeeWhere(published.audienceScopeType, published.audienceScopeValues);
     const audience = await prisma.employee.findMany({
-      where: { companyId: scope.companyId, deletedAt: null, isActive: true, userId: { not: null } },
+      where: {
+        companyId: scope.companyId,
+        deletedAt: null,
+        isActive: true,
+        userId: { not: null },
+        ...(scopeWhere ?? {}),
+      },
       // employeeCode, not id: the EMPLOYEE:<x> recipient expression resolves
       // by code, and an id silently matches nobody.
       select: { employeeCode: true },
