@@ -98,7 +98,7 @@ export async function gatherFnfFreeze(employeeId: number, exitInterviewId: numbe
   );
 
   const leaveBalances = await prisma.leaveBalance.findMany({
-    where: { employeeId },
+    where: { employeeId, leaveMaster: { deletedAt: null } },
     include: { leaveMaster: true },
   });
   const leave = leaveBalances.map((b) => {

@@ -181,7 +181,9 @@ export default function LeaveMastersPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code,
+          // On create, code is left out entirely — the server auto-allocates
+          // LT-001, LT-002, ... . On edit, the existing code is preserved.
+          ...(editingId ? { code } : {}),
           name,
           description: description || null,
           defaultAnnualDays,
@@ -356,11 +358,13 @@ export default function LeaveMastersPage() {
             </h2>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Code *</label>
-                <input value={code} onChange={(e) => setCode(e.target.value)} className={inputClass} style={inputStyle} placeholder="e.g. SL" />
-              </div>
-              <div className="flex flex-col gap-1">
+              {editingId && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Code *</label>
+                  <input value={code} onChange={(e) => setCode(e.target.value)} className={inputClass} style={inputStyle} placeholder="e.g. SL" />
+                </div>
+              )}
+              <div className={`flex flex-col gap-1 ${editingId ? '' : 'col-span-2'}`}>
                 <label className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>Name *</label>
                 <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} style={inputStyle} placeholder="e.g. Sick Leave" />
               </div>
@@ -462,7 +466,7 @@ export default function LeaveMastersPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !code || !name}
+                disabled={saving || (!!editingId && !code) || !name}
                 className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: 'var(--accent)' }}
               >

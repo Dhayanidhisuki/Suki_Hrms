@@ -36,6 +36,7 @@ import {
   refreshMonthlySummary,
   type EmployeeShiftConfig,
 } from './biometricConversion';
+import { appMergeEnabled, recordSourceContribution, reconcileAttendanceDay } from './attendanceMerge';
 
 export interface SyncOptions {
   companyId: number;
@@ -60,7 +61,8 @@ export interface SyncOutcome {
   daysUnchanged: number;
   skippedFrozen: number;
   /** Days left alone because a person had already corrected / approved them — see isProtectedFromDeviceOverwrite. */
-  skippedProtected: number;
+  skippedProtected?: number;
+  needsReview?: number;
   unmatched: UnmatchedDeviceUser[];
   error?: string;
 }
@@ -77,7 +79,7 @@ export function normaliseDeviceUserId(raw: string): string {
  * on. There is deliberately NO fallback to the system code (EMPnnn): the
  * device's own test user "1" would otherwise land on EMP001.
  */
-async function buildEmployeeLookup(companyId: number): Promise<Map<string, number>> {
+export async function buildEmployeeLookup(companyId: number): Promise<Map<string, number>> {
   const employees = await prisma.employee.findMany({
     where: { companyId, deletedAt: null, isActive: true, oldEmployeeCode: { not: null } },
     select: { id: true, oldEmployeeCode: true },
@@ -113,7 +115,7 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
 
   // skippedProtected is not a BiometricSyncRun column (derived, reported in
   // the outcome only) — keep it out of the `counts` spread written to the run.
-  const counts = { rowsFetched: 0, daysCreated: 0, daysUpdated: 0, daysUnchanged: 0, skippedFrozen: 0 };
+  const counts = { rowsFetched: 0, daysCreated: 0, daysUpdated: 0, daysUnchanged: 0, skippedFrozen: 0, needsReview: 0 };
   let skippedProtected = 0;
   const conflicts: LeaveConflictNotice[] = [];
   const unmatched = new Map<string, UnmatchedDeviceUser>();
@@ -156,37 +158,6 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         continue;
       }
 
-      // Locked = FROZEN / READY_FOR_PAYROLL / payroll processed — never written.
-      if (await isAttendanceLocked(employeeId, day.date)) {
-        counts.skippedFrozen += 1;
-        continue;
-      }
-
-      // A day a person already decided (manual entry, mispunch correction,
-      // leave / on-duty / WFH approval) is not re-derived from the device.
-      // Before this guard the 8-hourly sync flipped such days back to
-      // whatever the device reported and undid the approval (audit A1).
-      const existingRow = await prisma.dailyAttendance.findUnique({
-        where: { employeeId_date: { employeeId, date: day.date } },
-        select: { id: true, source: true, status: true, leaveApplicationId: true, leaveDayKind: true, leaveConflictInTime: true, leaveConflictOutTime: true },
-      });
-      const isHalfDayLeave = existingRow?.leaveApplicationId != null && existingRow.leaveDayKind === 'HALF';
-      if (existingRow && !isHalfDayLeave && isProtectedFromDeviceOverwrite(existingRow, 'biometric')) {
-        skippedProtected += 1;
-        // A punch on an approved full leave day is a conflict for HR to
-        // decide (leave core 2026-09-25), never applied silently.
-        if (existingRow.leaveApplicationId != null) {
-          const inTime = day.firstIn?.at ?? null;
-          const outTime =
-            carried.closes.get(day) ??
-            (day.lastOut && day.firstIn && day.lastOut.at.getTime() !== day.firstIn.at.getTime() ? day.lastOut.at : null);
-          if (await recordLeaveConflict(prisma, existingRow, { inTime, outTime, source: 'biometric' })) {
-            conflicts.push({ employeeId, date: day.date, leaveApplicationId: existingRow.leaveApplicationId });
-          }
-        }
-        continue;
-      }
-
       let config = shiftConfigs.get(employeeId);
       if (!config) {
         config = await resolveEmployeeShiftConfig(employeeId);
@@ -202,55 +173,106 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
         carried.closes.get(day) ??
         (day.lastOut && day.firstIn && day.lastOut.at.getTime() !== day.firstIn.at.getTime() ? day.lastOut.at : null);
 
-      const derived = deriveStatusAndMinutes(null, inTime, outTime, shift, config.otThresholdMinutes, config.maxOtMinutesPerDay);
+      if (appMergeEnabled()) {
+        // Merged mode: record THIS source's contribution, then let the
+        // shared merge decide the final row from both feeds. The merge
+        // itself enforces the locked-month and human-decision protections.
+        await recordSourceContribution(prisma, employeeId, day.date, 'biometric', {
+          inTime,
+          outTime,
+          sourceRowId: `bio:${day.userid}:${day.date.toISOString().slice(0, 10)}`,
+        });
+        const outcome = await reconcileAttendanceDay(prisma, employeeId, day.date, {
+          companyId: opts.companyId,
+          userId: opts.triggeredByUserId ?? null,
+          shiftConfig: config,
+        });
+        if (outcome === 'created') counts.daysCreated += 1;
+        else if (outcome === 'updated') counts.daysUpdated += 1;
+        else if (outcome === 'unchanged') counts.daysUnchanged += 1;
+        else if (outcome === 'skipped_locked_month') counts.skippedFrozen += 1;
+        else if (outcome === 'needs_review') {
+          counts.needsReview = (counts.needsReview ?? 0) + 1;
+        }
+      } else {
+        // Single-source path (app merge off). Locked = FROZEN /
+        // READY_FOR_PAYROLL / payroll processed — never written.
+        if (await isAttendanceLocked(employeeId, day.date)) {
+          counts.skippedFrozen += 1;
+          continue;
+        }
 
-      if (isHalfDayLeave) {
-        // Half-day leave: the worked half's punches merge into the day; it
-        // stays HalfDay and never queues OT or LOM (the other half is leave).
+        // A day a person already decided (manual entry, mispunch correction,
+        // leave / on-duty / WFH approval) is not re-derived from the device.
+        // Before this guard the 8-hourly sync flipped such days back to
+        // whatever the device reported and undid the approval (audit A1).
+        const existingRow = await prisma.dailyAttendance.findUnique({
+          where: { employeeId_date: { employeeId, date: day.date } },
+          select: { id: true, source: true, status: true, leaveApplicationId: true, leaveDayKind: true, leaveConflictInTime: true, leaveConflictOutTime: true },
+        });
+        const isHalfDayLeave = existingRow?.leaveApplicationId != null && existingRow.leaveDayKind === 'HALF';
+        if (existingRow && !isHalfDayLeave && isProtectedFromDeviceOverwrite(existingRow, 'biometric')) {
+          skippedProtected += 1;
+          // A punch on an approved full leave day is a conflict for HR to
+          // decide (leave core 2026-09-25), never applied silently.
+          if (existingRow.leaveApplicationId != null) {
+            if (await recordLeaveConflict(prisma, existingRow, { inTime, outTime, source: 'biometric' })) {
+              conflicts.push({ employeeId, date: day.date, leaveApplicationId: existingRow.leaveApplicationId });
+            }
+          }
+          continue;
+        }
+
+        const derived = deriveStatusAndMinutes(null, inTime, outTime, shift, config.otThresholdMinutes, config.maxOtMinutesPerDay);
+
+        if (isHalfDayLeave) {
+          // Half-day leave: the worked half's punches merge into the day; it
+          // stays HalfDay and never queues OT or LOM (the other half is leave).
+          const result = await upsertDailyAttendanceWithHistory(
+            prisma,
+            employeeId,
+            day.date,
+            { inTime, outTime, workingMinutes: derived.workingMinutes, shiftMasterId: shift.shiftMasterId, otMinutesCalculated: 0, lateMinutes: 0, earlyOutMinutes: 0 },
+            { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
+          );
+          if (result.outcome === 'updated') counts.daysUpdated += 1;
+          else counts.daysUnchanged += 1;
+          touchedMonths.add(`${employeeId}:${day.date.getUTCFullYear()}-${day.date.getUTCMonth() + 1}`);
+          continue;
+        }
+
+        const status = inTime && !outTime ? 'MissingPunch' : derived.status;
+
+        // Same rule as the import path: any punch on a weekly off / holiday
+        // flags the day so OT approval can offer comp-off settlement and the
+        // day-type OT factor applies. Gated on "any punch", not both.
+        const worked = Boolean(inTime || outTime) && status !== 'Absent';
+        const isWeeklyOffWorked = worked && weeklyOff.isWeeklyOff(employeeId, day.date);
+        const isHolidayWorked = worked && holidayKeys.has(day.date.toISOString().slice(0, 10));
+
         const result = await upsertDailyAttendanceWithHistory(
           prisma,
           employeeId,
           day.date,
-          { inTime, outTime, workingMinutes: derived.workingMinutes, shiftMasterId: shift.shiftMasterId, otMinutesCalculated: 0, lateMinutes: 0, earlyOutMinutes: 0 },
+          {
+            status,
+            inTime,
+            outTime,
+            workingMinutes: derived.workingMinutes,
+            otMinutesCalculated: derived.otMinutes,
+            lateMinutes: derived.lateMinutes,
+            earlyOutMinutes: derived.earlyOutMinutes,
+            source: 'biometric',
+            shiftMasterId: shift.shiftMasterId,
+            isWeeklyOffWorked,
+            isHolidayWorked,
+          },
           { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
         );
-        if (result.outcome === 'updated') counts.daysUpdated += 1;
+        if (result.outcome === 'created') counts.daysCreated += 1;
+        else if (result.outcome === 'updated') counts.daysUpdated += 1;
         else counts.daysUnchanged += 1;
-        touchedMonths.add(`${employeeId}:${day.date.getUTCFullYear()}-${day.date.getUTCMonth() + 1}`);
-        continue;
       }
-
-      const status = inTime && !outTime ? 'MissingPunch' : derived.status;
-
-      // Same rule as the import path: any punch on a weekly off / holiday
-      // flags the day so OT approval can offer comp-off settlement and the
-      // day-type OT factor applies. Gated on "any punch", not both.
-      const worked = Boolean(inTime || outTime) && status !== 'Absent';
-      const isWeeklyOffWorked = worked && weeklyOff.isWeeklyOff(employeeId, day.date);
-      const isHolidayWorked = worked && holidayKeys.has(day.date.toISOString().slice(0, 10));
-
-      const result = await upsertDailyAttendanceWithHistory(
-        prisma,
-        employeeId,
-        day.date,
-        {
-          status,
-          inTime,
-          outTime,
-          workingMinutes: derived.workingMinutes,
-          otMinutesCalculated: derived.otMinutes,
-          lateMinutes: derived.lateMinutes,
-          earlyOutMinutes: derived.earlyOutMinutes,
-          source: 'biometric',
-          shiftMasterId: shift.shiftMasterId,
-          isWeeklyOffWorked,
-          isHolidayWorked,
-        },
-        { userId: opts.triggeredByUserId ?? null, changedBySource: 'biometric' }
-      );
-      if (result.outcome === 'created') counts.daysCreated += 1;
-      else if (result.outcome === 'updated') counts.daysUpdated += 1;
-      else counts.daysUnchanged += 1;
 
       touchedMonths.add(`${employeeId}:${day.date.getUTCFullYear()}-${day.date.getUTCMonth() + 1}`);
     }
@@ -266,18 +288,21 @@ export async function runBiometricSync(opts: SyncOptions): Promise<SyncOutcome> 
     for (const c of conflicts) await notifyLeaveConflict(opts.companyId, c);
 
     const unmatchedList = Array.from(unmatched.values()).sort((a, b) => b.days - a.days);
+    // BiometricSyncRun has no needsReview column — strip it before the update.
+    const { needsReview: _needsReview, ...runCounts } = counts;
     await prisma.biometricSyncRun.update({
       where: { id: run.id },
-      data: { ...counts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
+      data: { ...runCounts, status: 'success', unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
     });
     return { runId: run.id, status: 'success', ...counts, skippedProtected, unmatched: unmatchedList };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const unmatchedList = Array.from(unmatched.values());
+    const { needsReview: _needsReview, ...runCounts } = counts;
     await prisma.biometricSyncRun
       .update({
         where: { id: run.id },
-        data: { ...counts, status: 'failed', error: message.slice(0, 2000), unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
+        data: { ...runCounts, status: 'failed', error: message.slice(0, 2000), unmatchedUserIds: JSON.stringify(unmatchedList), finishedAt: new Date() },
       })
       .catch(() => {});
     console.error('[biometric-sync] run failed', { runId: run.id, message });

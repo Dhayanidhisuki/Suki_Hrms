@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { ReportBarChart, ReportMultiLineChart } from '@/components/ui/ReportCharts';
 import { handleExport } from '@/lib/export-utils';
+import { fetchCurrentUser } from '@/lib/currentUser';
 import { useToast } from '@/components/ui';
 import { AnnouncementPopup } from '@/components/ess/AnnouncementPopup';
 
@@ -41,6 +42,9 @@ interface DayRow {
   otMinutesApproved: number | null;
   otApprovalStatus: string | null;
   shiftMaster: { code: string; name: string } | null;
+  /** What was actually applied for that day (leave type or Comp-Off), when
+   *  a request covers it — overrides the raw attendance status for display. */
+  requestLabel: string | null;
 }
 
 interface MonthSummary {
@@ -240,6 +244,16 @@ export default function EssDashboardPage() {
   const [reqTab, setReqTab] = useState<'requests' | 'approvals'>('requests');
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [announcementsUnread, setAnnouncementsUnread] = useState(0);
+  // The full month/year picker and the filled-area chart style are a
+  // reporting-manager-only enhancement — a plain employee keeps the original
+  // Current Month/Last Month dropdown and plain-line chart.
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCurrentUser().then((me) => { if (!cancelled) setIsManager(!!me?.isManager); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -511,18 +525,43 @@ export default function EssDashboardPage() {
                   </button>
                 ))}
               </div>
-              <select
-                value={`${year}-${month}`}
-                onChange={(e) => {
-                  const [y, m] = e.target.value.split('-').map(Number);
-                  setYear(y); setMonth(m);
-                }}
-                className="rounded-full border bg-transparent px-3 py-1 text-xs font-medium outline-none"
-                style={{ borderColor: 'var(--border)', ...fg }}
-              >
-                <option value={`${now.getUTCFullYear()}-${now.getUTCMonth() + 1}`}>Current Month</option>
-                <option value={`${new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).getUTCFullYear()}-${new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).getUTCMonth() + 1}`}>Last Month</option>
-              </select>
+              {isManager ? (
+                <>
+                  <select
+                    value={month}
+                    onChange={(e) => setMonth(Number(e.target.value))}
+                    className="rounded-full border bg-transparent px-3 py-1 text-xs font-medium outline-none"
+                    style={{ borderColor: 'var(--border)', ...fg }}
+                  >
+                    {MONTH_NAMES.map((m, i) => (
+                      <option key={m} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value))}
+                    className="rounded-full border bg-transparent px-3 py-1 text-xs font-medium outline-none"
+                    style={{ borderColor: 'var(--border)', ...fg }}
+                  >
+                    {Array.from({ length: 5 }, (_, i) => now.getUTCFullYear() - i).map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <select
+                  value={`${year}-${month}`}
+                  onChange={(e) => {
+                    const [y, m] = e.target.value.split('-').map(Number);
+                    setYear(y); setMonth(m);
+                  }}
+                  className="rounded-full border bg-transparent px-3 py-1 text-xs font-medium outline-none"
+                  style={{ borderColor: 'var(--border)', ...fg }}
+                >
+                  <option value={`${now.getUTCFullYear()}-${now.getUTCMonth() + 1}`}>Current Month</option>
+                  <option value={`${new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).getUTCFullYear()}-${new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).getUTCMonth() + 1}`}>Last Month</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -535,6 +574,7 @@ export default function EssDashboardPage() {
               columns={flagSeries.columns}
               series={flagSeries.series}
               valueFormatter={(v) => `${v} day${v === 1 ? '' : 's'}`}
+              filled={isManager}
             />
           </div>
         </div>
@@ -647,8 +687,11 @@ export default function EssDashboardPage() {
                   <td className="py-2">{fmtTime(d.inTime)}</td>
                   <td className="py-2">{fmtTime(d.outTime)}</td>
                   <td className="py-2">
-                    <span className="font-medium" style={{ color: entryTab === 'missing' ? '#ec4899' : '#ef5a3c' }}>
-                      {entryTab === 'missing' ? 'Missing' : d.status}
+                    <span
+                      className="font-medium"
+                      style={{ color: entryTab === 'missing' ? '#ec4899' : d.requestLabel ? 'var(--info)' : '#ef5a3c' }}
+                    >
+                      {entryTab === 'missing' ? 'Missing' : d.requestLabel ?? d.status}
                     </span>
                   </td>
                 </tr>

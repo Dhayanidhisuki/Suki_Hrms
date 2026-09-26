@@ -108,6 +108,17 @@ export async function POST(request: NextRequest) {
   const checked = await validateLeaveSubmission({ companyId: scope.companyId, employeeId, leaveMasterId, fromDate, toDate, isHalfDay });
   if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
 
+  // A reporting manager applying for their own leave has no one at Stage 1
+  // to act on it — isManagerOfAnyLevel would reject every caller, per
+  // src/app/api/workforce/leave/applications/[id]/approve/route.ts. Skip
+  // straight to HR for applicants who are themselves a reporting manager
+  // (same "isManager" check as /api/auth/me), regardless of whether they
+  // happen to have a reportingManagerId of their own.
+  const isManagerApplicant =
+    (await prisma.employee.count({
+      where: { reportingManagerId: employeeId, deletedAt: null, isActive: true },
+    })) > 0;
+
   const record = await prisma.leaveApplication.create({
     data: {
       employeeId,
@@ -120,7 +131,7 @@ export async function POST(request: NextRequest) {
       nonWorkingDaysCounted: checked.plan.nonWorkingCounted,
       isHalfDay,
       reason,
-      status: 'pending_manager',
+      status: isManagerApplicant ? 'pending_hr' : 'pending_manager',
     },
   });
 

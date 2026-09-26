@@ -1089,6 +1089,7 @@ model Employee {
   gratuityRecords            GratuityRecord[]
   biometricAttendanceImports BiometricAttendanceImport[]
   dailyAttendanceHistory     DailyAttendanceHistory[]
+  attendanceSourceDays       AttendanceSourceDay[]
   employeeBenefits           EmployeeBenefit[]
   visitorGatePasses          VisitorGatePass[]
   compOffBalance             CompOffBalance?
@@ -2255,9 +2256,28 @@ model DailyAttendance {
   lomActionAt        DateTime?
   lomRejectionReason String?   @db.NVarChar(500)
 
-  // manual | biometric — everything is "manual" in Phase 1; the column
-  // exists now so a future biometric-sync phase needs no migration.
+  // manual | biometric | app | biometric+app — which feed(s) produced the
+  // stored in/out. 'biometric+app' means the two endpoints came from
+  // different sources; inSource/outSource say which.
   source String @default("manual") @db.NVarChar(20)
+
+  // App-merge phase — per-endpoint attribution and the GPS the mobile app
+  // captured for the winning punch. inSource/outSource record which feed
+  // supplied each stored punch ('biometric' | 'app'); null on rows written
+  // before this phase or by manual entry. GPS is stored only when the app
+  // supplied that endpoint, and is cleared when biometric/manual replaces
+  // it — coordinates always belong to the punch they were captured with,
+  // never carried over to a different punch. inSourceRef/outSourceRef hold
+  // the winning source row's identifier (e.g. the app log ROW_ID) for
+  // traceability. Storage only — no geofencing or map use.
+  inLatitude    Float?
+  inLongitude   Float?
+  outLatitude   Float?
+  outLongitude  Float?
+  inSource      String? @db.NVarChar(20)
+  outSource     String? @db.NVarChar(20)
+  inSourceRef   String? @db.NVarChar(50)
+  outSourceRef  String? @db.NVarChar(50)
 
   // Phase 12 — flags for holiday/weekly-off work differentiation.
   isHolidayWorked   Boolean @default(false) // true if employee worked on a declared holiday
@@ -2331,6 +2351,17 @@ model DailyAttendanceHistory {
   source              String    @db.NVarChar(20)
   remarks             String?   @db.NVarChar(500)
   leaveApplicationId  Int?
+
+  // App-merge phase — endpoint attribution/GPS as they were before the
+  // change, mirroring the new DailyAttendance columns.
+  inLatitude    Float?
+  inLongitude   Float?
+  outLatitude   Float?
+  outLongitude  Float?
+  inSource      String?   @db.NVarChar(20)
+  outSource     String?   @db.NVarChar(20)
+  inSourceRef   String?   @db.NVarChar(50)
+  outSourceRef  String?   @db.NVarChar(50)
 
   // What replaced them.
   changedByUserId Int?
@@ -2433,6 +2464,80 @@ model BiometricSyncRun {
 
   @@index([companyId, startedAt])
   @@map("BiometricSyncRun")
+}
+
+// App-merge phase — one row per (employee, working date, source) holding
+// that source's CURRENT contribution to the merged DailyAttendance row:
+// the biometric feed's first-in/last-out or the app log's in/out for the
+// day. This is a per-source rollup, not a raw punch log — each source
+// writer replaces its own row, and the merge service (src/lib/
+// attendanceMerge.ts) re-derives the final in/out from both rows every
+// time either changes. Keeping each source's contribution separate is what
+// lets a corrected app/biometric value REPLACE a previously winning punch
+// (min/max against the saved final row alone can never go backwards).
+// GPS columns are populated only for the app source.
+model AttendanceSourceDay {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  date       DateTime @db.Date
+  source     String   @db.NVarChar(20) // biometric | app
+
+  inTime  DateTime?
+  outTime DateTime?
+
+  // Legacy bulk-import fallback: the source's hours figure for days with no
+  // usable punches (biometric source only — the app has no such field).
+  hours Float?
+
+  inLatitude   Float?
+  inLongitude  Float?
+  outLatitude  Float?
+  outLongitude Float?
+
+  // The source row this rollup came from (app log ROW_ID / device date
+  // key), so attribution on DailyAttendance can name the winning record.
+  sourceRowId String? @db.NVarChar(50)
+
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, date, source])
+  @@index([date])
+  @@map("AttendanceSourceDay")
+}
+
+// One run of the app-database sync (src/lib/appAttendanceSync.ts) — same
+// shape as BiometricSyncRun but tracked separately so app sync health can
+// be reported independently of the device feed. skippedProtected counts
+// days the merge refused to touch (decided approvals / manual corrections
+// / finalized-frozen-payroll months) and needsReview counts days where a
+// merged result differed but was held for human review.
+model AttendanceSyncRun {
+  id                Int       @id @default(autoincrement())
+  companyId         Int
+  source            String    @db.NVarChar(20) // app
+  trigger           String    @db.NVarChar(20) // scheduled | manual
+  rangeStart        DateTime  @db.Date
+  rangeEnd          DateTime  @db.Date
+  status            String    @default("running") @db.NVarChar(20) // running | success | failed
+  rowsFetched       Int       @default(0)
+  daysCreated       Int       @default(0)
+  daysUpdated       Int       @default(0)
+  daysUnchanged     Int       @default(0)
+  skippedFrozen     Int       @default(0)
+  skippedProtected  Int       @default(0)
+  needsReview       Int       @default(0)
+  unmatchedUserIds  String?   @db.NVarChar(Max) // JSON: [{ userid, username, days }]
+  error             String?   @db.NVarChar(2000)
+  triggeredByUserId Int?
+  startedAt         DateTime  @default(now())
+  finishedAt        DateTime?
+
+  @@index([companyId, startedAt])
+  @@map("AttendanceSyncRun")
 }
 
 model BiometricAttendanceImport {

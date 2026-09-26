@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface LeaveRow {
   id: number;
@@ -19,7 +20,7 @@ interface LeaveRow {
   isHalfDay: boolean;
   reason: string | null;
   status: string;
-  employee: { id: number; employeeCode: string; firstName: string; lastName: string };
+  employee: { id: number; oldEmployeeCode: string | null; firstName: string; lastName: string };
   leaveMaster: { code: string; name: string };
 }
 
@@ -115,7 +116,7 @@ function LeaveQueueSection({ title, scope, description }: { title: string; scope
     {
       key: 'employee',
       label: 'Employee',
-      render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}`,
+      render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}`,
     },
     {
       key: 'leaveMaster',
@@ -257,7 +258,7 @@ function LeaveHistorySection() {
   if (!visible) return null;
 
   const columns: Column<LeaveRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'leaveMaster', label: 'Leave Type', render: (r) => r.leaveMaster.name },
     { key: 'fromDate', label: 'From', render: (r) => new Date(r.fromDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
     { key: 'toDate', label: 'To', render: (r) => new Date(r.toDate).toLocaleDateString('en-IN', { timeZone: 'UTC' }) },
@@ -286,6 +287,7 @@ function LeaveHistorySection() {
 export default function LeaveApprovalPage() {
   return (
     <div className="space-y-8">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <div>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
           Leave Approval

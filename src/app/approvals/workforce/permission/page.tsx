@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DataTable, ConfirmDialog, FormModal, useToast, type Column, type FieldDef } from '@/components/ui';
+import MasterGroupTabs from '@/components/masters/MasterGroupTabs';
 
 interface PermissionRow {
   id: number;
@@ -24,7 +25,7 @@ interface PermissionRow {
   toTime: string;
   hours: number;
   reason: string | null;
-  employee: { employeeCode: string; firstName: string; lastName: string };
+  employee: { oldEmployeeCode: string | null; firstName: string; lastName: string };
 }
 
 const rejectFields: FieldDef[] = [{ name: 'rejectionReason', label: 'Rejection Reason', type: 'textarea', required: true }];
@@ -101,7 +102,7 @@ function PermissionQueueSection({ title, scope, description }: { title: string; 
   };
 
   const columns: Column<PermissionRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString() },
     { key: 'from', label: 'From', render: (r) => formatWallClockTime(r.fromTime) },
     { key: 'to', label: 'To', render: (r) => formatWallClockTime(r.toTime) },
@@ -211,7 +212,7 @@ function PermissionHistorySection() {
   if (!visible) return null;
 
   const columns: Column<PermissionRow>[] = [
-    { key: 'employee', label: 'Employee', render: (r) => `${r.employee.employeeCode} — ${r.employee.firstName} ${r.employee.lastName}` },
+    { key: 'employee', label: 'Employee', render: (r) => r.employee.oldEmployeeCode ? `${r.employee.oldEmployeeCode} — ${r.employee.firstName} ${r.employee.lastName}` : `${r.employee.firstName} ${r.employee.lastName}` },
     { key: 'date', label: 'Date', render: (r) => new Date(r.date).toLocaleDateString() },
     { key: 'from', label: 'From', render: (r) => formatWallClockTime(r.fromTime) },
     { key: 'to', label: 'To', render: (r) => formatWallClockTime(r.toTime) },
@@ -240,6 +241,7 @@ function PermissionHistorySection() {
 export default function PermissionApprovalPage() {
   return (
     <div className="space-y-8">
+      <MasterGroupTabs groupLabel="Workforce" moduleLabel="Approval Center" />
       <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
         Permission Approval
       </h1>

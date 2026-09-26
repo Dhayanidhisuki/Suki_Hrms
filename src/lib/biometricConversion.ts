@@ -52,6 +52,7 @@ import { notifyLeaveConflict, type LeaveConflictNotice } from './ess/notifyReque
 import { isWeeklyOffForEmployee, isHolidayOrYearlyLeave } from './weeklyOff';
 import type { BiometricAttendanceImport } from '@prisma/client';
 import { getFreeHoursPerMonthForEmployee } from './permissionPolicy';
+import { appMergeEnabled, recordSourceContribution, reconcileAttendanceDay } from './attendanceMerge';
 
 const HALF_DAY_THRESHOLD_HOURS = 7; // documented guess — see plan; only used when no in/out punch exists
 const FALLBACK_STANDARD_SHIFT_MINUTES = 8 * 60; // used only when the employee has no shift assigned at all
@@ -221,6 +222,8 @@ export interface ConversionResult {
   unmatchedTimes: number;
   /** Punches recorded as conflicts on approved leave days (HR queue). */
   conflicts: LeaveConflictNotice[];
+  /** App-merge mode only — protected days the merge held for human review. */
+  needsReview?: number;
 }
 
 function daysInMonth(year: number, month: number) {
@@ -233,7 +236,7 @@ function daysInMonth(year: number, month: number) {
  * "no punch that day", not midnight — confirmed by day1 always being 0
  * across all three source tables (a non-working anchor day).
  */
-function parseHHMM(raw: unknown): { hour: number; minute: number } | null {
+export function parseHHMM(raw: unknown): { hour: number; minute: number } | null {
   if (raw === null || raw === undefined) return null;
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) return null;
@@ -425,6 +428,30 @@ export async function convertImportToDailyAttendance(
 
     const inTime = parsedIn ? combineDateAndTime(date, parsedIn) : null;
     const outTime = parsedOut ? combineDateAndTime(date, parsedOut) : null;
+
+    if (appMergeEnabled()) {
+      // Merged mode: this import is just one source feeding the shared
+      // merge — record its contribution and let reconcileAttendanceDay
+      // decide the final row (with the locked-month, manual-correction and
+      // decided-approval protections enforced inside the merge).
+      await recordSourceContribution(prisma, employeeId, date, 'biometric', {
+        inTime,
+        outTime,
+        hours,
+        sourceRowId: `import:${importId}:day${d}`,
+      });
+      const outcome = await reconcileAttendanceDay(prisma, employeeId, date, {
+        companyId: row.companyId,
+        userId: triggeredByUserId ?? null,
+        shiftConfig,
+      });
+      if (outcome === 'skipped_locked_month') result.skippedFrozen++;
+      else if (outcome === 'needs_review') result.needsReview = (result.needsReview ?? 0) + 1;
+      else result.converted++;
+      touchedMonths.add(`${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`);
+      continue;
+    }
+
     const dailyShift = await resolveDailyShiftWithOverride(employeeId, date, shiftConfig);
     const { status, workingMinutes, otMinutes, lateMinutes, earlyOutMinutes, snappedInTime } = deriveStatusAndMinutes(
       hours, inTime, outTime, dailyShift, shiftConfig.otThresholdMinutes, shiftConfig.maxOtMinutesPerDay

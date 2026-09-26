@@ -41,10 +41,23 @@ export default function FormModal({
   onFieldChange,
 }: FormModalProps) {
   const [values, setValues] = useState<Record<string, string | number | boolean | undefined>>({});
-  const valuesRef = useRef(values);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Mirrors `values` synchronously so handleChange can read the latest state
+  // without the functional setState form — needed because onFieldChange may
+  // itself call setState on the CALLER's component (e.g. to mirror a field
+  // into local state). Calling that from inside setValues's updater trips
+  // React's "Cannot update a component while rendering a different
+  // component" check, since the updater runs as part of this component's
+  // state-update pass. Reading/writing a ref outside setValues keeps
+  // onFieldChange as a plain synchronous call from the event handler, which
+  // is always safe.
+  const valuesRef = useRef(values);
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
 
   const applyComputedFields = useCallback(
     (v: Record<string, string | number | boolean | undefined>) => {

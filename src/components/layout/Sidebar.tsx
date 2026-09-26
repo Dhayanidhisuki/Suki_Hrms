@@ -40,6 +40,17 @@ function managerApprovalModule(mod: NavModule): NavModule | null {
   return groups.length > 0 ? { ...mod, groups } : null;
 }
 
+/**
+ * Drops items flagged `managerOnly` (e.g. "My Team" on the Dashboard module)
+ * for a login that doesn't manage anyone — distinct from `managerQueue`,
+ * which marks an item as ALSO belonging to the ESS manager's Approval Center
+ * view rather than restricting who sees it at all.
+ */
+function dropManagerOnlyItems(mod: NavModule, isManager: boolean): NavModule {
+  if (isManager) return mod;
+  return { ...mod, groups: mod.groups.map((g) => ({ ...g, items: g.items.filter((i) => !i.managerOnly) })) };
+}
+
 /** Label tooltip for the collapsed rail. */
 function CollapsedTooltip({ label }: { label: string }) {
   return (
@@ -126,17 +137,19 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
         const managerView = approvals ? managerApprovalModule(approvals) : null;
         if (managerView) employeeNav.splice(1, 0, managerView);
       }
-      return employeeNav;
+      return employeeNav.map((mod) => dropManagerOnlyItems(mod, !!me.isManager));
     }
 
-    return navigation.filter((mod) => {
-      if (mod.label === "Superadmin") return false;
-      if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
-      // An HR user with no employee record has no self-service data to show,
-      // so those modules stay hidden for them and only for them.
-      if (isEmployeeModule(mod)) return me ? me.hasEmployeeAccess : false;
-      return true;
-    });
+    return navigation
+      .filter((mod) => {
+        if (mod.label === "Superadmin") return false;
+        if (mod.label === "Administration") return me ? me.hasAdminAccess : false;
+        // An HR user with no employee record has no self-service data to show,
+        // so those modules stay hidden for them and only for them.
+        if (isEmployeeModule(mod)) return me ? me.hasEmployeeAccess : false;
+        return true;
+      })
+      .map((mod) => dropManagerOnlyItems(mod, !!me?.isManager));
   }, [me]);
 
   const canSeeLeaf = (item: NavLeaf) =>

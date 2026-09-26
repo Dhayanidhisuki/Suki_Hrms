@@ -47,6 +47,27 @@ export interface DailyAttendanceValues {
   leaveConflictDecision?: string | null;
   leaveConflictDecidedAt?: Date | null;
   leaveConflictDecidedByUserId?: number | null;
+  // App-merge phase — endpoint attribution + GPS. GPS fields follow the
+  // punch that won the endpoint; a write that replaces an endpoint must
+  // pass the new coordinates (or null) explicitly.
+  inLatitude?: number | null;
+  inLongitude?: number | null;
+  outLatitude?: number | null;
+  outLongitude?: number | null;
+  inSource?: string | null;
+  outSource?: string | null;
+  inSourceRef?: string | null;
+  outSourceRef?: string | null;
+}
+
+/** Behaviour switches for the sync/merge writers (manual callers don't pass this). */
+export interface UpsertOptions {
+  /**
+   * When true, the auto-queue logic never resets an already-decided OT or
+   * LOM approval ('approved'/'rejected') back to pending — the merge
+   * service checks this before writing, and this guard is the backstop.
+   */
+  preserveDecidedApprovals?: boolean;
 }
 
 function sameTime(a: Date | null | undefined, b: Date | null | undefined) {
@@ -84,6 +105,14 @@ function isUnchanged(
     leaveConflictDecision: string | null;
     leaveConflictDecidedAt: Date | null;
     leaveConflictDecidedByUserId: number | null;
+    inLatitude: number | null;
+    inLongitude: number | null;
+    outLatitude: number | null;
+    outLongitude: number | null;
+    inSource: string | null;
+    outSource: string | null;
+    inSourceRef: string | null;
+    outSourceRef: string | null;
   },
   next: DailyAttendanceValues
 ) {
@@ -110,6 +139,14 @@ function isUnchanged(
   if (next.leaveConflictDecision !== undefined && next.leaveConflictDecision !== current.leaveConflictDecision) return false;
   if (next.leaveConflictDecidedAt !== undefined && !sameTime(next.leaveConflictDecidedAt, current.leaveConflictDecidedAt)) return false;
   if (next.leaveConflictDecidedByUserId !== undefined && next.leaveConflictDecidedByUserId !== current.leaveConflictDecidedByUserId) return false;
+  if (next.inLatitude !== undefined && next.inLatitude !== current.inLatitude) return false;
+  if (next.inLongitude !== undefined && next.inLongitude !== current.inLongitude) return false;
+  if (next.outLatitude !== undefined && next.outLatitude !== current.outLatitude) return false;
+  if (next.outLongitude !== undefined && next.outLongitude !== current.outLongitude) return false;
+  if (next.inSource !== undefined && next.inSource !== current.inSource) return false;
+  if (next.outSource !== undefined && next.outSource !== current.outSource) return false;
+  if (next.inSourceRef !== undefined && next.inSourceRef !== current.inSourceRef) return false;
+  if (next.outSourceRef !== undefined && next.outSourceRef !== current.outSourceRef) return false;
   return true;
 }
 
@@ -194,11 +231,20 @@ export async function upsertDailyAttendanceWithHistory(
   employeeId: number,
   date: Date,
   values: DailyAttendanceValues,
-  actor: { userId: number | null; changedBySource: string }
+  actor: { userId: number | null; changedBySource: string },
+  opts: UpsertOptions = {}
 ): Promise<UpsertResult> {
   const existing = await db.dailyAttendance.findUnique({
     where: { employeeId_date: { employeeId, date } },
   });
+
+  // An OT/LOM decision a human already made ('approved'/'rejected') is never
+  // reopened by an automatic sync write. The merge service skips such days
+  // before it gets here; this is the backstop for any automatic writer that
+  // reaches this helper directly. Pending queues are unaffected — a changed
+  // punch re-pends them exactly as before.
+  const otDecided = Boolean(opts.preserveDecidedApprovals && existing && ['approved', 'rejected'].includes(existing.otApprovalStatus ?? ''));
+  const lomDecided = Boolean(opts.preserveDecidedApprovals && existing && ['approved', 'rejected'].includes(existing.lomApprovalStatus ?? ''));
 
   // Auto-queue OT for approval the moment a write gives a day real OT
   // minutes — the OT Approval workflow (src/app/api/workforce/attendance/ot)
@@ -215,7 +261,7 @@ export async function upsertDailyAttendanceWithHistory(
   // reset an approved day back to pending_manager and nulled the approved
   // minutes (audit A2). Same minutes = same evidence = same decision.
   let resolvedValues = values;
-  if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined) {
+  if (values.otApprovalStatus === undefined && values.otMinutesCalculated !== undefined && !otDecided) {
     const otMinutesChanged = !existing || existing.otMinutesCalculated !== values.otMinutesCalculated;
     if (otMinutesChanged) {
       const otEligible = values.otMinutesCalculated > 0 && (await resolveOtEligibility(db, employeeId));
@@ -233,7 +279,7 @@ export async function upsertDailyAttendanceWithHistory(
   // in the DB persists — previously they got 0 + 0 = 0 → status reset to
   // null, and payroll's fallback then deducted rejected minutes.
   const carriesLomMinutes = 'lateMinutes' in values || 'earlyOutMinutes' in values;
-  if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes) {
+  if (resolvedValues.lomApprovalStatus === undefined && carriesLomMinutes && !lomDecided) {
     const nextLate = resolvedValues.lateMinutes ?? existing?.lateMinutes ?? 0;
     const nextEarly = resolvedValues.earlyOutMinutes ?? existing?.earlyOutMinutes ?? 0;
     const lomChanged = !existing || existing.lateMinutes !== nextLate || existing.earlyOutMinutes !== nextEarly;
@@ -270,6 +316,14 @@ export async function upsertDailyAttendanceWithHistory(
         leaveConflictDecision: resolvedValues.leaveConflictDecision ?? null,
         leaveConflictDecidedAt: resolvedValues.leaveConflictDecidedAt ?? null,
         leaveConflictDecidedByUserId: resolvedValues.leaveConflictDecidedByUserId ?? null,
+        inLatitude: resolvedValues.inLatitude ?? null,
+        inLongitude: resolvedValues.inLongitude ?? null,
+        outLatitude: resolvedValues.outLatitude ?? null,
+        outLongitude: resolvedValues.outLongitude ?? null,
+        inSource: resolvedValues.inSource ?? null,
+        outSource: resolvedValues.outSource ?? null,
+        inSourceRef: resolvedValues.inSourceRef ?? null,
+        outSourceRef: resolvedValues.outSourceRef ?? null,
         createdByUserId: actor.userId,
       },
     });
@@ -298,6 +352,14 @@ export async function upsertDailyAttendanceWithHistory(
       source: existing.source,
       remarks: existing.remarks,
       leaveApplicationId: existing.leaveApplicationId,
+      inLatitude: existing.inLatitude,
+      inLongitude: existing.inLongitude,
+      outLatitude: existing.outLatitude,
+      outLongitude: existing.outLongitude,
+      inSource: existing.inSource,
+      outSource: existing.outSource,
+      inSourceRef: existing.inSourceRef,
+      outSourceRef: existing.outSourceRef,
       changedByUserId: actor.userId,
       changedBySource: actor.changedBySource,
     },

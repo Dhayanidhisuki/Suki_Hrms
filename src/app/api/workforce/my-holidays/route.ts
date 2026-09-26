@@ -32,7 +32,13 @@ export async function GET(request: NextRequest) {
     }),
     prisma.yearlyLeaveCalendar.findMany({
       where: { companyId: scope.companyId, isActive: true, deletedAt: null, date: { gte: yearStart, lt: yearEnd } },
-      select: { id: true, date: true, name: true, description: true },
+      select: {
+        id: true,
+        date: true,
+        name: true,
+        description: true,
+        leaveTypeMaster: { select: { id: true, code: true, name: true, color: true } },
+      },
       orderBy: { date: 'asc' },
     }),
   ]);

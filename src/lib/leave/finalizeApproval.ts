@@ -214,6 +214,12 @@ export async function commitLeaveApproval(
       throw new LeaveApprovalError({ reason: 'ALREADY_ACTIONED', message: 'This application has already been actioned.' });
     }
 
+    // Comp-Off never gets a LeaveBalance row — it draws from CompOffBalance
+    // instead (debited below via debitCompOff), same split
+    // checkSufficientBalance already applies. Writing one here anyway
+    // created a phantom "Compensatory Off" balance row alongside the real
+    // ledger, showing as a duplicate/negative KPI card. Unpaid leave
+    // likewise has no paid balance to debit — its days stamp as LOP below.
     if (target.isPaid && target.leaveCode !== 'COMPOFF') {
       await tx.leaveBalance.upsert({
         where: {
@@ -250,6 +256,18 @@ export async function commitLeaveApproval(
           { userId, changedBySource: 'manual' }
         );
       } else {
+        // An employee who actually came in and punched on an approved leave
+        // day keeps their real Present attendance — stamping it 'Leave'/'LOP'
+        // would erase a genuine punch. The day still reads as on approved
+        // leave via the LeaveApplication itself.
+        const existing = await tx.dailyAttendance.findUnique({
+          where: { employeeId_date: { employeeId: target.employeeId, date: entry.date } },
+          select: { status: true },
+        });
+        if (existing?.status === 'Present') {
+          touchedMonths.add(`${entry.date.getUTCFullYear()}-${entry.date.getUTCMonth() + 1}`);
+          continue;
+        }
         // Full leave day (paid → Leave, unpaid / sandwiched → LOP): a clean
         // row, no punch data left underneath the status.
         const hadPunches = punched.has(entry.date.getTime());

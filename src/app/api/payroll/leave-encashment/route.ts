@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const [config, leaveBalances, lastPayrollLine] = await Promise.all([
     prisma.leaveEncashmentConfig.findUnique({ where: { companyId: scope.companyId } }),
     prisma.leaveBalance.findMany({
-      where: { employeeId: empId, leaveMaster: { isActive: true, deletedAt: null } },
+      where: { employeeId: empId, leaveMaster: { deletedAt: null, isActive: true } },
       include: { leaveMaster: true },
     }),
     prisma.payrollLine.findFirst({

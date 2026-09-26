@@ -81,6 +81,10 @@ export const assetMasterSchema = simpleMasterSchema;
 // master shape.
 export const leaveMasterSchema = simpleMasterSchema
   .extend({
+    // Auto-generated server-side (LT-001, LT-002, ...) on create — see
+    // POST /api/masters/leave-masters. Still required/editable on update,
+    // since existing rows (SL, CL, EL, COMPOFF) predate the LT- scheme.
+    code: z.string().min(1).max(20).optional(),
     defaultAnnualDays: z.coerce.number().min(0).max(365).default(0),
     // MANUAL = credited only by its own earning event (e.g. Compensatory
     // Off, granted when OT worked on a weekly-off/holiday is approved as

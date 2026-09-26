@@ -95,6 +95,10 @@ function fmtShort(ymd: string): string {
   return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
 }
 
+const CAL_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const CAL_DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const isoOf = (year: number, month: number, day: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
 export default function EssLeavePage() {
   const { confirm } = useConfirm();
   const [year, setYear] = useState(new Date().getFullYear());
@@ -109,6 +113,38 @@ export default function EssLeavePage() {
 
   const [typeFilter, setTypeFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+
+  // Re-seeds FormModal's internal values when its object identity changes
+  // (even while already open) — how the Comp-Off dialog below feeds its
+  // confirmed dates back into the form it sits on top of.
+  const [formInitialValues, setFormInitialValues] = useState<Record<string, string | number | boolean>>({});
+  const [compOffModalOpen, setCompOffModalOpen] = useState(false);
+  const [compOffWorkedDate, setCompOffWorkedDate] = useState('');
+  const [compOffLeaveDate, setCompOffLeaveDate] = useState('');
+  // Which date the calendar's next click sets — auto-advances from worked
+  // to off once the worked date is picked, but either dot can be reselected.
+  const [compOffPickMode, setCompOffPickMode] = useState<'worked' | 'off'>('worked');
+  const [compOffCalMonth, setCompOffCalMonth] = useState(() => new Date().getMonth());
+  const [compOffCalYear, setCompOffCalYear] = useState(() => new Date().getFullYear());
+  const [compOffEligibleDates, setCompOffEligibleDates] = useState<string[]>([]);
+  const [compOffExpiryMonths, setCompOffExpiryMonths] = useState(0);
+
+  const openCompOffModal = useCallback(() => {
+    const now = new Date();
+    setCompOffCalMonth(now.getMonth());
+    setCompOffCalYear(now.getFullYear());
+    setCompOffModalOpen(true);
+    fetch('/api/workforce/comp-off-eligible-dates')
+      .then((res) => (res.ok ? res.json() : { dates: [], expiryMonths: 0 }))
+      .then((json: { dates: string[]; expiryMonths: number }) => {
+        setCompOffEligibleDates(json.dates ?? []);
+        setCompOffExpiryMonths(json.expiryMonths ?? 0);
+      })
+      .catch(() => {
+        setCompOffEligibleDates([]);
+        setCompOffExpiryMonths(0);
+      });
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -267,6 +303,11 @@ export default function EssLeavePage() {
   const selectedRemaining = selectedType ? remainingByTypeId.get(selectedType.id) : undefined;
   const remainingAfter = selectedRemaining !== undefined ? selectedRemaining - previewDays : undefined;
 
+  const compOffTypeId = types.find((t) => t.code === 'COMPOFF')?.id;
+  /** Comp-Off selected → dates come from the dedicated calendar dialog, not the plain date fields. */
+  const isManagerCompOff = (v: Record<string, string | number | boolean | undefined>) =>
+    compOffTypeId !== undefined && String(v.leaveMasterId) === String(compOffTypeId);
+
   const fields: FieldDef[] = [
     {
       name: 'leaveMasterId',
@@ -278,9 +319,26 @@ export default function EssLeavePage() {
         return { value: String(t.id), label: remaining !== undefined ? `${t.name} (${remaining} left)` : t.name };
       }),
     },
-    { name: 'fromDate', label: 'From Date', type: 'date', required: true },
-    { name: 'toDate', label: 'To Date', type: 'date', required: true, showIf: (v) => !v.isHalfDay },
-    { name: 'isHalfDay', label: 'Half day', type: 'checkbox' },
+    {
+      name: 'fromDate',
+      label: 'From Date',
+      type: 'date',
+      required: true,
+      showIf: (v) => !isManagerCompOff(v),
+    },
+    {
+      name: 'toDate',
+      label: 'To Date',
+      type: 'date',
+      required: true,
+      showIf: (v) => !v.isHalfDay && !isManagerCompOff(v),
+    },
+    {
+      name: 'isHalfDay',
+      label: 'Half day',
+      type: 'checkbox',
+      showIf: (v) => !isManagerCompOff(v),
+    },
     { name: 'reason', label: 'Reason', type: 'textarea' },
   ];
 
@@ -379,6 +437,10 @@ export default function EssLeavePage() {
                 setFormFromDate('');
                 setFormToDate('');
                 setFormHalfDay(false);
+                setFormInitialValues({});
+                setCompOffWorkedDate('');
+                setCompOffLeaveDate('');
+                setCompOffPickMode('worked');
                 setModalOpen(true);
               }}
             >
@@ -433,13 +495,21 @@ export default function EssLeavePage() {
       <FormModal
         title="Submit Leave Request"
         fields={fields}
-        initialValues={{}}
+        initialValues={formInitialValues}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={applyForLeave}
         submitLabel="Submit Request"
         onFieldChange={(name, value, values) => {
-          if (name === 'leaveMasterId') setFormLeaveMasterId(String(value));
+          if (name === 'leaveMasterId') {
+            setFormLeaveMasterId(String(value));
+            if (compOffTypeId !== undefined && String(value) === String(compOffTypeId)) {
+              setCompOffWorkedDate('');
+              setCompOffLeaveDate('');
+              setCompOffPickMode('worked');
+              openCompOffModal();
+            }
+          }
           if (name === 'fromDate') setFormFromDate(String(value));
           if (name === 'toDate') setFormToDate(String(value));
           if (name === 'isHalfDay') setFormHalfDay(Boolean(value));
@@ -493,9 +563,259 @@ export default function EssLeavePage() {
                 This request ({previewDays} day{previewDays !== 1 ? 's' : ''}) exceeds your available balance — it will be refused at submission.
               </div>
             )}
+            {(compOffWorkedDate || compOffLeaveDate) && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {compOffWorkedDate && (
+                  <span className="rounded-full px-2.5 py-1 font-medium" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+                    Worked: {compOffWorkedDate}
+                  </span>
+                )}
+                {compOffLeaveDate && (
+                  <span className="rounded-full px-2.5 py-1 font-medium" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
+                    Off: {compOffLeaveDate}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={openCompOffModal}
+                  className="text-xs font-medium underline"
+                  style={{ color: 'var(--primary, #2563eb)' }}
+                >
+                  Change dates
+                </button>
+              </div>
+            )}
           </div>
         )}
       </FormModal>
+
+      {compOffModalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setCompOffModalOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-xl shadow-2xl"
+            style={{ backgroundColor: 'var(--surface, #fff)', border: '1px solid var(--border, #e5e7eb)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border, #e5e7eb)' }}>
+              <h2 className="text-base font-semibold" style={{ color: 'var(--foreground, #111827)' }}>Compensatory Off</h2>
+              <button onClick={() => setCompOffModalOpen(false)} className="text-lg leading-none hover:opacity-70" style={{ color: 'var(--foreground-muted, #6b7280)' }}>×</button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--border, #e5e7eb)', backgroundColor: 'rgba(59,130,246,0.06)' }}>
+                Available Comp-Off balance:{' '}
+                <strong>{compOffBalance ? compOffBalance.available : 0} day{compOffBalance?.available === 1 ? '' : 's'}</strong>
+              </div>
+
+              {compOffWorkedDate && compOffExpiryMonths > 0 && (
+                <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border, #e5e7eb)', backgroundColor: 'rgba(220,38,38,0.06)', color: '#991b1b' }}>
+                  Must be taken by{' '}
+                  <strong>
+                    {new Date(
+                      new Date(compOffWorkedDate).setUTCMonth(new Date(compOffWorkedDate).getUTCMonth() + compOffExpiryMonths)
+                    ).toLocaleDateString('en-IN', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })}
+                  </strong>{' '}
+                  ({compOffExpiryMonths} month{compOffExpiryMonths === 1 ? '' : 's'} policy) or it will expire.
+                </div>
+              )}
+
+              {/* Pick-mode toggle — click a dot to choose which date the
+                  calendar's next click sets. Picking a worked date
+                  auto-advances to off-date mode. */}
+              <div className="flex items-center gap-3 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setCompOffPickMode('worked')}
+                  className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition"
+                  style={{
+                    borderColor: compOffPickMode === 'worked' ? '#16a34a' : 'var(--border, #e5e7eb)',
+                    color: 'var(--foreground, #111827)',
+                    backgroundColor: compOffPickMode === 'worked' ? '#dcfce7' : 'transparent',
+                  }}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#16a34a' }} />
+                  Date Worked
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCompOffPickMode('off')}
+                  className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition"
+                  style={{
+                    borderColor: compOffPickMode === 'off' ? '#dc2626' : 'var(--border, #e5e7eb)',
+                    color: 'var(--foreground, #111827)',
+                    backgroundColor: compOffPickMode === 'off' ? '#fee2e2' : 'transparent',
+                  }}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#dc2626' }} />
+                  Date Off
+                </button>
+              </div>
+
+              {/* Inline calendar — click a date to set whichever dot is
+                  active above. Worked dates show green, the off date red. */}
+              <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border, #e5e7eb)' }}>
+                <div className="mb-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => { if (compOffCalMonth === 0) { setCompOffCalMonth(11); setCompOffCalYear(compOffCalYear - 1); } else setCompOffCalMonth(compOffCalMonth - 1); }}
+                    className="rounded-md px-2 py-1 text-sm hover:opacity-70"
+                    style={{ color: 'var(--foreground, #111827)' }}
+                  >
+                    ‹
+                  </button>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--foreground, #111827)' }}>
+                    {CAL_MONTH_NAMES[compOffCalMonth]} {compOffCalYear}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { if (compOffCalMonth === 11) { setCompOffCalMonth(0); setCompOffCalYear(compOffCalYear + 1); } else setCompOffCalMonth(compOffCalMonth + 1); }}
+                    className="rounded-md px-2 py-1 text-sm hover:opacity-70"
+                    style={{ color: 'var(--foreground, #111827)' }}
+                  >
+                    ›
+                  </button>
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {CAL_DOW.map((d) => (
+                    <div key={d} className="py-1 text-[11px] font-semibold uppercase" style={{ color: 'var(--foreground-muted, #6b7280)' }}>{d}</div>
+                  ))}
+                  {(() => {
+                    const firstDow = new Date(Date.UTC(compOffCalYear, compOffCalMonth, 1)).getUTCDay();
+                    const daysInMonth = new Date(Date.UTC(compOffCalYear, compOffCalMonth + 1, 0)).getUTCDate();
+                    const todayIso = new Date().toISOString().slice(0, 10);
+                    const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+                    // The eligible-worked-dates list is attendance-based
+                    // (every OT-approved weekly-off/holiday day not yet
+                    // settled as comp-off) and has no 1:1 link to the
+                    // aggregate CompOffBalance pool — there can be more
+                    // eligible dates than days actually available to spend.
+                    // Only offer as many as the balance can back, earliest
+                    // first, so the calendar never dangles a date the
+                    // request would just fail on.
+                    const spendableWorkedDates = compOffEligibleDates
+                      .slice()
+                      .sort()
+                      .slice(0, Math.floor(compOffBalance?.available ?? 0));
+                    return cells.map((day, idx) => {
+                      if (day === null) return <div key={`e${idx}`} />;
+                      const dateStr = isoOf(compOffCalYear, compOffCalMonth, day);
+                      const isWorked = dateStr === compOffWorkedDate;
+                      const isOff = dateStr === compOffLeaveDate;
+                      // "Eligible" worked dates are earning-eligibility (an
+                      // OT-approved weekly-off/holiday day not yet settled as
+                      // comp-off) — a separate concept from spend-eligibility
+                      // (the aggregate CompOffBalance actually has a day to
+                      // give). A date can look eligible here while the
+                      // balance is still 0 if that day was never actually
+                      // credited — so nothing is pickable at all once the
+                      // balance runs out, regardless of what the calendar
+                      // would otherwise highlight.
+                      const hasNoBalance = !compOffBalance || compOffBalance.available <= 0;
+                      const isEligibleWorked = spendableWorkedDates.includes(dateStr);
+                      const disallowWorked = hasNoBalance || (compOffPickMode === 'worked' && !isEligibleWorked);
+                      const offMaxIso = (() => {
+                        if (!compOffWorkedDate || compOffExpiryMonths <= 0) return null;
+                        const d = new Date(compOffWorkedDate);
+                        d.setUTCMonth(d.getUTCMonth() + compOffExpiryMonths);
+                        return d.toISOString().slice(0, 10);
+                      })();
+                      const disallowOff =
+                        compOffPickMode === 'off' &&
+                        (dateStr < todayIso || (offMaxIso !== null && dateStr > offMaxIso));
+                      return (
+                        <button
+                          key={dateStr}
+                          type="button"
+                          disabled={disallowWorked || disallowOff}
+                          onClick={() => {
+                            if (compOffPickMode === 'worked') {
+                              setCompOffWorkedDate(dateStr);
+                              if (compOffLeaveDate && compOffLeaveDate <= dateStr) setCompOffLeaveDate('');
+                              setCompOffPickMode('off');
+                            } else {
+                              setCompOffLeaveDate(dateStr);
+                            }
+                          }}
+                          className="mx-auto flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition disabled:opacity-30"
+                          style={{
+                            backgroundColor: isWorked ? '#16a34a' : isOff ? '#dc2626' : 'transparent',
+                            color: isWorked || isOff ? '#fff' : 'var(--foreground, #111827)',
+                            boxShadow: !isWorked && !isOff && isEligibleWorked ? 'inset 0 0 0 1.5px #16a34a' : undefined,
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {(compOffWorkedDate || compOffLeaveDate) && (
+                <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <span className="rounded-full px-2.5 py-1 font-semibold" style={{ backgroundColor: compOffWorkedDate ? '#dcfce7' : 'var(--bg-subtle, #f3f4f6)', color: compOffWorkedDate ? '#166534' : 'var(--foreground-muted, #6b7280)' }}>
+                    {compOffWorkedDate ? new Date(compOffWorkedDate).getUTCDate() : '—'}
+                  </span>
+                  <span style={{ color: 'var(--foreground-muted, #6b7280)' }}>→</span>
+                  <span className="rounded-full px-2.5 py-1 font-semibold" style={{ backgroundColor: compOffLeaveDate ? '#fee2e2' : 'var(--bg-subtle, #f3f4f6)', color: compOffLeaveDate ? '#991b1b' : 'var(--foreground-muted, #6b7280)' }}>
+                    {compOffLeaveDate ? new Date(compOffLeaveDate).getUTCDate() : '—'}
+                  </span>
+                </div>
+              )}
+
+              {compOffBalance && compOffBalance.available <= 0 && (
+                <p className="text-xs font-medium" style={{ color: '#dc2626' }}>
+                  You have no Comp-Off balance available right now.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompOffModalOpen(false);
+                    if (!compOffLeaveDate) {
+                      setFormInitialValues({ ...formInitialValues, leaveMasterId: '' });
+                      setFormLeaveMasterId('');
+                    }
+                  }}
+                  className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:opacity-80"
+                  style={{ borderColor: 'var(--border, #e5e7eb)', color: 'var(--foreground, #111827)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!compOffWorkedDate || !compOffLeaveDate}
+                  onClick={() => {
+                    setFormInitialValues({
+                      leaveMasterId: String(compOffTypeId ?? ''),
+                      fromDate: compOffLeaveDate,
+                      toDate: compOffLeaveDate,
+                      isHalfDay: false,
+                      // LeaveApplication has no worked-date column of its own
+                      // (only the older, separate CompOffRequest table does)
+                      // — encoded into reason so the merged Comp-Off history
+                      // view (/api/workforce/comp-off-request) can parse it
+                      // back out for the "Worked On" column instead of
+                      // showing "—" for every calendar-flow request.
+                      reason: `Worked on ${compOffWorkedDate}`,
+                    });
+                    setFormFromDate(compOffLeaveDate);
+                    setFormToDate(compOffLeaveDate);
+                    setFormHalfDay(false);
+                    setCompOffModalOpen(false);
+                  }}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--primary, #2563eb)' }}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
