@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ReportBarChart, ReportMultiLineChart } from '@/components/ui/ReportCharts';
 import { handleExport } from '@/lib/export-utils';
 import { useToast } from '@/components/ui';
+import { AnnouncementPopup } from '@/components/ess/AnnouncementPopup';
 
 // ── Types matching /api/workforce/my-dashboard ────────────────────────────────
 
@@ -381,6 +382,10 @@ export default function EssDashboardPage() {
 
   return (
     <div className="space-y-5">
+      {/* Celebratory unread-announcement card — queues every unread item
+          and posts a read receipt on Confirm. Renders nothing when the
+          employee is caught up. */}
+      <AnnouncementPopup />
       {/* Tabs + greeting header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex gap-6 border-b" style={{ borderColor: 'var(--border)' }}>

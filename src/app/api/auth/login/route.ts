@@ -14,14 +14,14 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
   try {
-    let body: { email?: string; password?: string };
+    let body: { email?: string; password?: string; remember?: boolean };
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const { email, password } = body;
+    const { email, password, remember } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -85,7 +85,8 @@ export async function POST(request: NextRequest) {
             roleId: user.role!.id,
             roleCode: user.role!.code,
             companyId: user.companyId!,
-          }
+          },
+      remember === true ? '30d' : undefined
     );
 
     // Create response with user info
@@ -98,13 +99,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Set httpOnly cookie
+    // Set httpOnly cookie — "remember me" extends the session to 30 days
+    // (JWT expiry above is extended to match; a longer cookie around a 24h
+    // token would be a session that silently dies anyway).
     response.cookies.set('hrms-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24, // 24 hours
+      maxAge: remember === true ? 60 * 60 * 24 * 30 : 60 * 60 * 24,
     });
 
     return response;

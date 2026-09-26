@@ -53,8 +53,11 @@ import jwt from 'jsonwebtoken';
 const nodeSecret = process.env.JWT_SECRET ?? 'suki-hrms-super-secret-jwt-key';
 
 /** Sign a JWT using jsonwebtoken (Node-only). Use in API routes / server actions. */
-export function signTokenNode(payload: Omit<TokenPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, nodeSecret, { expiresIn });
+export function signTokenNode(
+  payload: Omit<TokenPayload, 'iat' | 'exp'>,
+  expires: jwt.SignOptions['expiresIn'] = expiresIn,
+): string {
+  return jwt.sign(payload, nodeSecret, { expiresIn: expires });
 }
 
 /** Verify a JWT using jsonwebtoken (Node-only). Use in API routes. */
